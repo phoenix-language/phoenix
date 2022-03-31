@@ -1,6 +1,6 @@
 {
     "scripts": {
-        "core:dev:test:cmd:run": "deno run --watch ./phoenix.ts"
+        "core:phx:start": "deno run --watch ./phoenix.ts"
     },
     "files": [
         "./phoenix.ts"
