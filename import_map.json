@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "fmt/": "https://deno.land/std/fmt/",
+    "fs/": "https://deno.land/std/fs/"
+  }
+}

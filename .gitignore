@@ -1,0 +1,11 @@
+# Deno 
+
+registries/
+deps/
+gen/
+
+# Enviroment
+
+.local.env
+.production.env
+.env
