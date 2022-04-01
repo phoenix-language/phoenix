@@ -1,4 +1,4 @@
-import { Phoenix_Meta_Data } from "../metadata.ts";
+import { Phoenix_Meta_Data } from "../../metadata.ts";
 
 export function display_help_message(): string {
     return `
