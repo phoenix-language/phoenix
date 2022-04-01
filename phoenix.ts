@@ -1,5 +1,1 @@
-function run() {
-    console.log("Programming reborn...🐦")
-}
-
-run()
+console.log("Programming reborn...🐦 Welcome to Phoenix!");
