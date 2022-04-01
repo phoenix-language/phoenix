@@ -1,0 +1,11 @@
+// Basic syntax example
+
+// function declaration
+
+func init{} -> (
+ std::out::write("Hello, world!\n");
+)
+
+// Variable declaration
+
+define Foo = "Bar"

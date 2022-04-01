@@ -1,7 +1,7 @@
 {
     "scripts": {
         "core:phx:fmt": "deno fmt",
-        "core:phx:welcome": "deno run --watch ./phoenix.ts",
+        "core:phx:test": "deno run --watch ./test/phoenix.ts",
         "core:phx:cli:test": "deno run -A ./cli/mod.ts"
     },
     "files": [
