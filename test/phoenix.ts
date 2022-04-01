@@ -5,7 +5,7 @@ console.log("Programming reborn...🐦 Welcome to Phoenix!");
 /**
  * @param file_name The name of the file we are tokenizing.
  * @param file_content Our source code to execute.
- * @returns 
+ * @returns
  */
 function execute(file_name: string, file_content: string): void {
     console.log(`Executing ${file_name}...`);
@@ -34,4 +34,4 @@ function execute(file_name: string, file_content: string): void {
     }
 }
 
-execute("mock.phx", "10 + 20");
+execute("mock.phx", "(10) + (5 * 3 - 3) / 33 + 30 + (10 / 4 (3 + 2))");

@@ -1,5 +1,5 @@
 import { Position } from "../lexer/Position.ts";
-import { parse_string_with_arrows } from "../lexer/utilities.ts";
+import { parse_string_with_arrows } from "../lexer/Utilities.ts";
 
 export class Core_Exception {
     public start_position: Position;

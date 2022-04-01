@@ -48,6 +48,9 @@ export class Lexer {
                 : null;
     }
 
+    /**
+     * Handles the lexer tokens and parsing of the str to a token.
+     */
     public generateTokens() {
         const tokens = [];
 
@@ -56,9 +59,77 @@ export class Lexer {
         ) {
             if (" \t\r".includes(this.current_char)) {
                 this.advance();
+            } else if ("\n;".includes(this.current_char)) {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.NEWLINE,
+                        null,
+                        this.current_Position,
+                    ),
+                );
+                this.advance();
             } else if (Internal_Constants.numbers.includes(this.current_char)) {
                 tokens.push(this.generateNumber());
-            } else {
+            } else if (Internal_Constants.letters.includes(this.current_char)) {
+                tokens.push(this.generateIdentifier());
+            } else if (this.current_char === "+") {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.PLUS,
+                        "+",
+                        this.current_Position,
+                    ),
+                );
+                this.advance()
+            } else if (this.current_char === "-") {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.MINUS,
+                        null,
+                        this.current_Position,
+                    ),
+                );
+                this.advance()
+            } else if (this.current_char === "*") {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.MULTIPLY,
+                        null,
+                        this.current_Position,
+                    ),
+                );
+                this.advance()
+            } else if (this.current_char === "/") {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.DIVIDE,
+                        null,
+                        this.current_Position,
+                    ),
+                );
+                this.advance()
+            }
+            else if (this.current_char === "(") {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.LPAREN,
+                        null,
+                        this.current_Position,
+                    ),
+                );
+                this.advance()
+            }
+            else if (this.current_char === ")") {
+                tokens.push(
+                    new Token(
+                        Internal_TokeTypes.RPAREN,
+                        null,
+                        this.current_Position,
+                    ),
+                );
+                this.advance()
+            }
+            else {
                 const start_position = this.current_Position.copy();
                 const char = this.current_char;
                 this.advance();
@@ -79,6 +150,30 @@ export class Lexer {
             tokens: tokens,
             error: null,
         };
+    }
+
+    private generateIdentifier() {
+        let str_id = ""
+        const start_position = this.current_Position.copy();
+        const letter_numbers = Internal_Constants.letters + Internal_Constants.numbers;
+        while (
+            this.current_char != null &&
+            letter_numbers.includes(this.current_char)
+        ) {
+            str_id += this.current_char;
+            this.advance();
+        }
+
+        const toke_type = Internal_TokeTypes.KEYWORDS.includes(str_id)
+            ? Internal_TokeTypes.KEYWORDS
+            : Internal_TokeTypes.IDENTIFIER;
+
+        return new Token(
+            toke_type,
+            str_id,
+            start_position,
+            this.current_Position
+        );
     }
 
     private generateNumber(): Token {

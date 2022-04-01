@@ -1,7 +1,7 @@
 import { Position } from "./Position.ts";
 
 export default class Token {
-    public type: string;
+    public type: string | string[];
     public value: string | null;
     public position_start: Position;
     public position_end: Position | undefined;
@@ -13,7 +13,7 @@ export default class Token {
      * @param _position_end The ending position of the token
      */
     public constructor(
-        type: string,
+        type: string | string[],
         value: string | null,
         _position_start: Position,
         _position_end?: Position,
@@ -47,7 +47,7 @@ export default class Token {
         return this.type === expected_type && this.value === expected_value;
     }
 
-    public toString(): string {
+    public toString(): string | string[] {
         if (this.value) {
             return `${this.type}:${this.value}`;
         } else {
