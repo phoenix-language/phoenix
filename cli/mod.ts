@@ -1,4 +1,4 @@
-import { parse } from "https://deno.land/std@0.133.0/flags/mod.ts";
+import { parse } from "./deps.ts";
 import { display_discord_message, display_help_message } from "./messages.ts";
 
 const parsedArgs = parse(Deno.args);
