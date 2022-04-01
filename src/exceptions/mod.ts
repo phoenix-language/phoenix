@@ -1,7 +1,7 @@
 import { Position } from "../lexer/Position.ts";
 import { parse_string_with_arrows } from "../lexer/Utilities.ts";
 
-export class Core_Exception {
+export class Exception {
     public start_position: Position;
     public end_position: Position;
     public exception_name: string;
@@ -38,7 +38,7 @@ export class Core_Exception {
     }
 }
 
-export class Illegal_Char_Exception extends Core_Exception {
+export class Illegal_Char_Exception extends Exception {
     public constructor(
         start_position: Position,
         end_position: Position,
