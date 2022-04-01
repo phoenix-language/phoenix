@@ -7,11 +7,12 @@ function Phoenix_CLI() {
     if (import.meta.url) {
         (function () {
             switch (Object.keys(parsedArgs)[1]) {
-                // D
+                // Help CLi Command
                 case "help":
                     console.log(display_help_message());
                     break;
-                case "discord": 
+                // Discord CLi Command
+                case "discord":
                     console.log(display_discord_message());
                     break;
                 default:
