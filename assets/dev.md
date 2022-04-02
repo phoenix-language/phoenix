@@ -2,9 +2,9 @@
 
 Folders:
 
-- [Compiler](../compiler/)
+- [Compiler](../runtime/compiler/)
 
-- [Parser](../parser/)
+- [Parser](../runtime/parser/)
 
 - [Cli](../cli/)
 

@@ -1,4 +1,4 @@
-import { Lexer } from "../src/lexer/Lexer.ts";
+import { Lexer } from "../runtime/lexer/Lexer.ts";
 
 console.log("Programming reborn...🐦 Welcome to Phoenix!");
 
@@ -34,4 +34,19 @@ function execute(file_name: string, file_content: string): void {
     }
 }
 
-execute("mock.phx", "(10) + (5 * 3 - 3) / 33 + 30 + (10 / 4 (3 + 2))");
+execute("mock.phx", "1 - 200 * 2 (48.3 * 3 (50 * 7) - 5) + 3");
+
+// Lexers to:
+
+//     [
+//     "INT:1",      "MINUS",
+//         "INT:200",    "MULTIPLY",
+//         "INT:2",      "LPAREN",
+//         "FLOAT:48.3", "MULTIPLY",
+//         "INT:3",      "LPAREN",
+//         "INT:50",     "MULTIPLY",
+//         "INT:7",      "RPAREN",
+//         "MINUS",      "INT:5",
+//         "RPAREN",     "PLUS:+",
+//         "INT:3",      "EOF"
+//     ]

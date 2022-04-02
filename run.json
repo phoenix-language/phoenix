@@ -1,10 +1,13 @@
 {
     "scripts": {
-        "core:phx:fmt": "deno fmt",
-        "core:phx:test": "deno run --watch ./test/phoenix.ts",
-        "core:phx:cli:test": "deno run -A ./cli/mod.ts"
+        "phx:core:util:fmt": "deno fmt",
+        "phx:core:util:lint": "deno lint",
+
+        "phx:core:test:lexer:watch": "deno run --watch ./test/phoenix.ts",
+
+        "phx:core:cli:run": "deno run -A ./cli/mod.ts"
     },
     "files": [
-        "./phoenix.ts"
+        "./test/phoenix.ts"
     ]
 }
