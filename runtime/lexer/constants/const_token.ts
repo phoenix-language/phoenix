@@ -1,5 +1,5 @@
 /** Valid token types for the tokenizer */
-export const Internal_TokeTypes = {
+export const Internal_TokenTypes = {
     // Data types
     STRING: "STRING", // "string"
     INT: "INT", // 1

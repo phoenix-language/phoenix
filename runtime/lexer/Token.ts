@@ -4,10 +4,10 @@ import { Position } from "./Position.ts";
  * Internal Token Utility Class
  */
 export default class Token {
-    public type: string | string[];
+    public type: string;
     public value: string | null;
-    public position_start: Position;
-    public position_end: Position | undefined;
+    public position_start!: Position;
+    public position_end!: Position;
 
     /**
      * @param type The type of the token
@@ -16,7 +16,7 @@ export default class Token {
      * @param _position_end The ending position of the token
      */
     public constructor(
-        type: string | string[],
+        type: string,
         value: string | null,
         _position_start: Position,
         _position_end?: Position,
@@ -35,9 +35,6 @@ export default class Token {
         if (_position_end) {
             this.position_end = _position_end;
         }
-
-        this.position_start = _position_start;
-        this.position_end = _position_end;
     }
 
     /**

@@ -23,10 +23,10 @@ export class Exception {
      * Generates a string representation of the exception
      */
     public createException() {
-        let result = `${this.exception_name}: ${this.message}`;
-        result += `File: ${this.start_position.file_name}, at line ${
-            this.start_position.line + 1
-        }`;
+        let result = `[${this.exception_name}] ${this.message}`;
+        // result += `File: ${this.start_position.file_name}, at line ${
+        //     this.start_position.line + 1
+        // }`;
         result += `\n\n ${
             parse_string_with_arrows(
                 this.start_position.file_context,
@@ -48,5 +48,23 @@ export class Illegal_Char_Exception extends Exception {
         message: string,
     ) {
         super(start_position, end_position, "Illegal Char Exception", message);
+    }
+}
+
+/**
+ * Handles invalid characters in your code and throws and error.
+ */
+export class Illegal_Syntax_Exception extends Exception {
+    public constructor(
+        start_position: Position,
+        end_position: Position,
+        message: string,
+    ) {
+        super(
+            start_position,
+            end_position,
+            "Illegal Syntax Exception",
+            message,
+        );
     }
 }

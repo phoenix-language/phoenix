@@ -53,6 +53,14 @@ export class Position {
         );
     }
 
+    public toString(): string | string[] {
+        if (this.file_name) {
+            return `Colum ${this.colum}, Line ${this.line} in ${this.file_name}`;
+        } else {
+            return this.file_name;
+        }
+    }
+
     /** The column in the input stream. */
     public colum: number;
     /** The file content to lex. */

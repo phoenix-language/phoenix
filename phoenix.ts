@@ -1,4 +1,5 @@
-import { Lexer } from "../runtime/lexer/Lexer.ts";
+import { Lexer } from "./runtime/lexer/Lexer.ts";
+import {Parser} from "./runtime/parser/Parser.ts";
 
 console.log("Programming reborn...🐦 Welcome to Phoenix!");
 
@@ -18,23 +19,31 @@ function execute(file_name: string, file_content: string): void {
     try {
         const _lexer = new Lexer(file_name, file_content);
         const { error, tokens } = _lexer.generateTokens();
-        if (error) {
-            return error.createException();
-        }
+        if (error) return error.createException();
 
-        const token_cache: any = [];
 
-        tokens.forEach((token: { toString: () => any }) => {
-            token_cache.push(token.toString());
-        });
+        // const token_cache: any = [];
+        //
+        // tokens.forEach((token: { toString: () => any }) => {
+        //     token_cache.push(token.toString());
+        // });
+        //
+        // console.log(token_cache);
 
-        console.log(token_cache);
+        const parser = new Parser(tokens);
+
+        const parser_queue = parser.parse();
+
+        if(parser_queue.error) return parser_queue.error.createException();
+
+        console.log(parser_queue.node.toString());
+
     } catch (e) {
         console.log(e);
     }
 }
 
-execute("mock.phx", "1 - 200 * 2 (48.3 * 3 (50 * 7) - 5) + 3");
+execute("mock.phx", "10 + 19");
 
 // Lexers to:
 

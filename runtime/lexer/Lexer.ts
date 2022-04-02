@@ -1,7 +1,7 @@
 import { Position } from "./Position.ts";
 import {
     Internal_Constants,
-    Internal_TokeTypes,
+    Internal_TokenTypes,
 } from "./constants/const_token.ts";
 import Token from "./Token.ts";
 import { Illegal_Char_Exception } from "../exceptions/mod.ts";
@@ -62,7 +62,7 @@ export class Lexer {
             } else if ("\n;".includes(this.current_char)) {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.NEWLINE,
+                        Internal_TokenTypes.NEWLINE,
                         null,
                         this.current_Position,
                     ),
@@ -75,7 +75,7 @@ export class Lexer {
             } else if (this.current_char === "+") {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.PLUS,
+                        Internal_TokenTypes.PLUS,
                         "+",
                         this.current_Position,
                     ),
@@ -84,7 +84,7 @@ export class Lexer {
             } else if (this.current_char === "-") {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.MINUS,
+                        Internal_TokenTypes.MINUS,
                         null,
                         this.current_Position,
                     ),
@@ -93,7 +93,7 @@ export class Lexer {
             } else if (this.current_char === "*") {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.MULTIPLY,
+                        Internal_TokenTypes.MULTIPLY,
                         null,
                         this.current_Position,
                     ),
@@ -102,7 +102,7 @@ export class Lexer {
             } else if (this.current_char === "/") {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.DIVIDE,
+                        Internal_TokenTypes.DIVIDE,
                         null,
                         this.current_Position,
                     ),
@@ -111,7 +111,7 @@ export class Lexer {
             } else if (this.current_char === "(") {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.LPAREN,
+                        Internal_TokenTypes.LPAREN,
                         null,
                         this.current_Position,
                     ),
@@ -120,7 +120,7 @@ export class Lexer {
             } else if (this.current_char === ")") {
                 tokens.push(
                     new Token(
-                        Internal_TokeTypes.RPAREN,
+                        Internal_TokenTypes.RPAREN,
                         null,
                         this.current_Position,
                     ),
@@ -135,13 +135,13 @@ export class Lexer {
                     error: new Illegal_Char_Exception(
                         start_position,
                         this.current_Position,
-                        `Invalid character: ${char} at ${start_position.toString()}`,
+                        `Invalid character: "${char}" at ${start_position.toString()},`,
                     ),
                 };
             }
         }
         tokens.push(
-            new Token(Internal_TokeTypes.EOF, null, this.current_Position),
+            new Token(Internal_TokenTypes.EOF, null, this.current_Position),
         );
         return {
             tokens: tokens,
@@ -166,11 +166,12 @@ export class Lexer {
             this.advance();
         }
 
-        const toke_type = Internal_TokeTypes.KEYWORDS.includes(str_id)
-            ? Internal_TokeTypes.KEYWORDS
-            : Internal_TokeTypes.IDENTIFIER;
+        const toke_type = Internal_TokenTypes.KEYWORDS.includes(str_id)
+            ? Internal_TokenTypes.KEYWORDS
+            : Internal_TokenTypes.IDENTIFIER;
 
         return new Token(
+            // @ts-ignore - we know this is a keyword or identifier
             toke_type,
             str_id,
             start_position,
@@ -200,7 +201,7 @@ export class Lexer {
         if (dot_count === 0) {
             // Integer
             return new Token(
-                Internal_TokeTypes.INT,
+                Internal_TokenTypes.INT,
                 number_str,
                 start_position,
                 this.current_Position,
@@ -208,7 +209,7 @@ export class Lexer {
         } else {
             // We have a float
             return new Token(
-                Internal_TokeTypes.FLOAT,
+                Internal_TokenTypes.FLOAT,
                 number_str,
                 start_position,
                 this.current_Position,
