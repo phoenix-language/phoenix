@@ -2,21 +2,23 @@
 
 ## What is this?
 
-Phoenix is a `static typed` language built using Typescript and the Deno runtime. While re-imagining programming
-I've realized there is no need for this language, however, we could all still be using ASM in 2022 so your welcome.
+Phoenix is a `static typed` language built using Typescript and the Deno
+runtime. While re-imagining programming I've realized there is no need for this
+language, however, we could all still be using ASM in 2022 so your welcome.
 
 ## Why?
 
-Why not? I'm simply interested in how programming languages work on the inside. I also realized,
-Javascript was the only language I know the best, and instead of spending 6 months learning pointers
-in **C** I decided to use a language im already good at.
+Why not? I'm simply interested in how programming languages work on the inside.
+I also realized, Javascript was the only language I know the best, and instead
+of spending 6 months learning pointers in **C** I decided to use a language im
+already good at.
 
 ## Performance
 
-A concern with many dynamic programming languages is the Performance verses standard compiled ones.
-Phoenix leverages the Deno runtime (built with rust) to compile your code down to a single executable.
-This makes the preform loss in using a dynamic language like javascript virtually meaning less at
-runtime.
+A concern with many dynamic programming languages is the Performance verses
+standard compiled ones. Phoenix leverages the Deno runtime (built with rust) to
+compile your code down to a single executable. This makes the preform loss in
+using a dynamic language like javascript virtually meaning less at runtime.
 
 ## TODO list
 
@@ -73,7 +75,8 @@ To create a development environment to build Phoenix you need a few tools.
 
 After installing these, you can set up deno in your code editor.
 
-All the commands for Trex can be found in the [run.json](./run.json) file. Eg: `trex run <command>`
+All the commands for Trex can be found in the [run.json](./run.json) file. Eg:
+`trex run <command>`
 
 _more information coming as more of the lang is development._
 

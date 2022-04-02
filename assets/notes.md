@@ -12,4 +12,5 @@ Folders:
 
 - The language is built on the [deno.land](https://deno.land/) runtime.
 
-- Package manager for building the language - [Trex](https://github.com/crewdevio/Trex)
+- Package manager for building the language -
+  [Trex](https://github.com/crewdevio/Trex)

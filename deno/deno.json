@@ -1,44 +1,44 @@
 {
-    "compilerOptions": {
-        "allowJs": false,
-        "lib": [
-            "deno.window"
-        ],
-        "strict": true,
-        "experimentalDecorators": true,
-        "checkJs": false
+  "compilerOptions": {
+    "allowJs": false,
+    "lib": [
+      "deno.window"
+    ],
+    "strict": true,
+    "experimentalDecorators": true,
+    "checkJs": false
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "ban-untagged-todo"
+      ],
+      "exclude": [
+        "no-explicit-any",
+        "no-unused-vars"
+      ]
+    }
+  },
+  "fmt": {
+    "files": {
+      "exclude": [
+        "../gen/",
+        "../deps/",
+        "../registries/",
+        ".vscode/",
+        ".github/"
+      ]
     },
-    "lint": {
-        "rules": {
-            "tags": [
-                "recommended"
-            ],
-            "include": [
-                "ban-untagged-todo"
-            ],
-            "exclude": [
-                "no-explicit-any",
-                "no-unused-vars"
-            ]
-        }
-    },
-    "fmt": {
-        "files": {
-            "exclude": [
-                "gen/",
-                "deps/",
-                "registries/",
-                ".vscode/",
-                ".github/"
-            ]
-        },
-        "options": {
-            "useTabs": false,
-            "lineWidth": 80,
-            "indentWidth": 4,
-            "singleQuote": false,
-            "proseWrap": "preserve"
-        }
-    },
-    "importMap": "./deno/import_map.json"
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80,
+      "indentWidth": 4,
+      "singleQuote": false,
+      "proseWrap": "preserve"
+    }
+  },
+  "importMap": "./deno/import_map.json"
 }
