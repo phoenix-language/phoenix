@@ -1,5 +1,8 @@
 import { Position } from "./Position.ts";
 
+/**
+ * Internal Token Utility Class
+ */
 export default class Token {
     public type: string | string[];
     public value: string | null;

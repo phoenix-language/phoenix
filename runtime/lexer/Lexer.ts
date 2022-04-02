@@ -10,10 +10,10 @@ import { Illegal_Char_Exception } from "../exceptions/mod.ts";
  * Internal Lexer class which tokenized our code.
  */
 export class Lexer {
-    public file_name: string;
-    public file_contents: string;
-    public current_char: string | null;
-    public current_Position: Position;
+    private file_name: string;
+    private readonly file_contents: string;
+    private current_char: string | null;
+    private readonly current_Position: Position;
 
     /**
      * @param _file_name The name of the file we are tokenizing.
@@ -80,7 +80,7 @@ export class Lexer {
                         this.current_Position,
                     ),
                 );
-                this.advance()
+                this.advance();
             } else if (this.current_char === "-") {
                 tokens.push(
                     new Token(
@@ -89,7 +89,7 @@ export class Lexer {
                         this.current_Position,
                     ),
                 );
-                this.advance()
+                this.advance();
             } else if (this.current_char === "*") {
                 tokens.push(
                     new Token(
@@ -98,7 +98,7 @@ export class Lexer {
                         this.current_Position,
                     ),
                 );
-                this.advance()
+                this.advance();
             } else if (this.current_char === "/") {
                 tokens.push(
                     new Token(
@@ -107,9 +107,8 @@ export class Lexer {
                         this.current_Position,
                     ),
                 );
-                this.advance()
-            }
-            else if (this.current_char === "(") {
+                this.advance();
+            } else if (this.current_char === "(") {
                 tokens.push(
                     new Token(
                         Internal_TokeTypes.LPAREN,
@@ -117,9 +116,8 @@ export class Lexer {
                         this.current_Position,
                     ),
                 );
-                this.advance()
-            }
-            else if (this.current_char === ")") {
+                this.advance();
+            } else if (this.current_char === ")") {
                 tokens.push(
                     new Token(
                         Internal_TokeTypes.RPAREN,
@@ -127,9 +125,8 @@ export class Lexer {
                         this.current_Position,
                     ),
                 );
-                this.advance()
-            }
-            else {
+                this.advance();
+            } else {
                 const start_position = this.current_Position.copy();
                 const char = this.current_char;
                 this.advance();
@@ -152,10 +149,15 @@ export class Lexer {
         };
     }
 
+    /**
+     * Helps parse our Identifiers
+     * @private
+     */
     private generateIdentifier() {
-        let str_id = ""
+        let str_id = "";
         const start_position = this.current_Position.copy();
-        const letter_numbers = Internal_Constants.letters + Internal_Constants.numbers;
+        const letter_numbers = Internal_Constants.letters +
+            Internal_Constants.numbers;
         while (
             this.current_char != null &&
             letter_numbers.includes(this.current_char)
@@ -172,10 +174,14 @@ export class Lexer {
             toke_type,
             str_id,
             start_position,
-            this.current_Position
+            this.current_Position,
         );
     }
 
+    /**
+     * Creates a number based token with is type float or int
+     * @private
+     */
     private generateNumber(): Token {
         let number_str = "";
         let dot_count = 0;

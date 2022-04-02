@@ -38,6 +38,9 @@ export class Exception {
     }
 }
 
+/**
+ * Handles invalid characters in your code and throws and error.
+ */
 export class Illegal_Char_Exception extends Exception {
     public constructor(
         start_position: Position,

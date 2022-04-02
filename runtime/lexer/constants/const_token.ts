@@ -1,4 +1,6 @@
+/** Valid token types for the tokenizer */
 export const Internal_TokeTypes = {
+    // Data types
     STRING: "STRING", // "string"
     INT: "INT", // 1
     FLOAT: "FLOAT", // 1.1
@@ -19,7 +21,10 @@ export const Internal_TokeTypes = {
     // brackets
     LPAREN: "LPAREN", // (
     RPAREN: "RPAREN", // )
-    ARROW: "ARROW", // =>
+    LSQUARE: "LSQUARE", // [
+    RSQUARE: "RSQUARE", // ]
+
+    // Logical operators
     EE: "EE", // ==
     NE: "NE", // !=
     LT: "LT", // <
@@ -27,19 +32,23 @@ export const Internal_TokeTypes = {
     GTE: "GTE", // >=
     LTE: "LTE", // <=
     COMMA: "COMMA", // ,
-    LSQUARE: "LSQUARE", // [
-    RSQUARE: "RSQUARE", // ]
     NEWLINE: "NEWLINE", // \n ;
 
     KEYWORDS: [
+        // Variable declaration
         "define",
+        ":=",
+
+        // conditionals
         "if",
         "else",
+        "|", // or
+        "&", // and
+
+        // loops
+        "phor", // for loop
         "while",
         "do",
-        "::",
-        "|",
-        "&",
     ],
 };
 
