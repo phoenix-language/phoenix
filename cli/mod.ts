@@ -1,4 +1,4 @@
-import { parse } from "https://deno.land/std@0.133.0/flags/mod.ts";
+import { parse } from "fmt";
 import {
   display_discord_message,
   display_help_message,
