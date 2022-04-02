@@ -27,6 +27,7 @@ A list of current mandatory things I need to get done for the language to work.
 - [ ] Commands
   - [x] Help
   - [x] Discord
+  - [ ] Version
   - [ ] Documentation
   - [ ] Switch to a more modern cmd framework...
 - [ ] Execute nodejs scripts
@@ -35,18 +36,16 @@ A list of current mandatory things I need to get done for the language to work.
 **Lexer**
 
 - [ ] Tokenizer
-- [x] Position
 - [ ] Token Types
 
 **Parser**
 
 - [ ] Parser
-- [ ] Result
 
 **Exception**
 
 - [x] Base class
-- [x] char exception
+- [ ] char exception
 - [ ] type exception
 
 **Compiler / Interrupter**

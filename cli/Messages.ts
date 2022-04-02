@@ -1,8 +1,8 @@
-import { Phoenix_Meta_Data } from "../metadata.ts";
+import { Phoenix_Meta_Data } from "../meta/metadata.ts";
 
 export function display_help_message(): string {
     return `
-    > Phoenix CLI v${Phoenix_Meta_Data.cli_version}
+    > The Phoenix Programming Language | https://github.com/phoenix-language/phoenix
 
     Available commands:
 

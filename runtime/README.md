@@ -1,3 +1,3 @@
-# Source
+# Runtime
 
-The source folder containing each of the directories for the language.
+All folders in this directory help built the Phoenix runtime.

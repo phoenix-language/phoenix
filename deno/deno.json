@@ -40,5 +40,5 @@
             "proseWrap": "preserve"
         }
     },
-    "importMap": "./import_map.json"
+    "importMap": "./deno/import_map.json"
 }
