@@ -77,3 +77,7 @@ After installing these, you can set up deno in your code editor.
 All the commands for Trex can be found in the [run.json](./run.json) file. Eg: `trex run <command>`
 
 _more information coming as more of the lang is development._
+
+# Contributing
+
+Join the discord for more information: https://discord.gg/U4FmBUHzEP
