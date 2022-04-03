@@ -1,13 +1,15 @@
-import { red } from 'colors';
+import { red } from "colors";
 
-const date = new Date()
+const date = new Date();
 
 /** Logs invalid type declarations */
 export class IllegalTypeException extends Error {
   constructor(error_message: string) {
     super(error_message);
     this.name = "IllegalTypeException";
-    this.message = `[${date.toLocaleDateString()} ${date.toLocaleTimeString()}] ` + error_message;
+    this.message =
+      `[${date.toLocaleDateString()} ${date.toLocaleTimeString()}] ` +
+      error_message;
   }
 }
 
@@ -19,7 +21,9 @@ export class IllegalNullableTypeException extends Error {
 
     this.name = err_name;
 
-    error_message = `[${date.toLocaleDateString()} ${date.toLocaleTimeString()}] ` + `${red(err_name)}: ${error_message}`;
+    error_message =
+      `[${date.toLocaleDateString()} ${date.toLocaleTimeString()}] ` +
+      `${red(err_name)}: ${error_message}`;
 
     this.message = error_message;
   }
@@ -29,6 +33,8 @@ export class IllegalStateTypeException extends Error {
   constructor(error_message: string) {
     super(error_message);
     this.name = "IllegalStateTypeException";
-    this.message = `[${date.toLocaleDateString()} ${date.toLocaleTimeString()}] ` + error_message;
+    this.message =
+      `[${date.toLocaleDateString()} ${date.toLocaleTimeString()}] ` +
+      error_message;
   }
 }

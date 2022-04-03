@@ -28,8 +28,8 @@
         "../gen/",
         "../deps/",
         "../registries/",
-        ".vscode/",
-        ".github/"
+        "../.vscode/",
+        "../.github/"
       ]
     },
     "options": {
