@@ -1,6 +1,6 @@
 import { Token, Tokenizer } from "./types.ts";
 import type { ParserSpecs } from "../constants/TokenTypes.ts";
-import { IllegalStateTypeException } from "../exceptions/Exception.ts";
+import { IllegalStateTypeException } from "../../../exceptions/Exception.ts";
 
 export class TokenizerModule implements Tokenizer {
     private _specs: ParserSpecs;

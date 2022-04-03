@@ -1,4 +1,4 @@
-import { red } from "../../../../deno/deps.ts";
+import { red } from "../../deno/deps.ts";
 
 const date = new Date();
 
