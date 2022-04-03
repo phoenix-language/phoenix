@@ -2,9 +2,9 @@ export interface Tokenizer {
     /**
      * Starts the tokenizer
      * @param string_to_tokenize
-     * @returns {boolean} boolean
+     * @returns {void} nothing
      */
-    init(string_to_tokenize: string): boolean;
+    init(string_to_tokenize: string): void;
 
     /** Checks if the token is at the end of the file */
     isEOF(): boolean;
