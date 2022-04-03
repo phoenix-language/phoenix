@@ -5,8 +5,8 @@ const date = new Date();
 /** Logs invalid type declarations */
 export class IllegalTypeException extends Error {
     /**
-    * @param error_message The error message to be displayed
-    */
+     * @param error_message The error message to be displayed
+     */
     constructor(error_message: string) {
         super(error_message);
         this.name = "IllegalTypeException";
@@ -37,8 +37,8 @@ export class IllegalNullableTypeException extends Error {
 
 export class IllegalStateTypeException extends Error {
     /**
-    * @param error_message The error message to be displayed
-    */
+     * @param error_message The error message to be displayed
+     */
     constructor(error_message: string) {
         super(error_message);
         this.name = "IllegalStateTypeException";

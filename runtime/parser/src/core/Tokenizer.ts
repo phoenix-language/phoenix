@@ -14,7 +14,7 @@ export class TokenExecutionModule {
      * @param tokenType The type of token to process
      * @returns The token that was processed or null if there was no token to process
      */
-    public consume_active_tokens(tokenType: string | null): Token | null {
+    public consume_token_and_next(tokenType: string | null): Token | null {
         const _token = this._active_token;
 
         if (_token == null) {
@@ -36,7 +36,7 @@ export class TokenExecutionModule {
 
     public consume_semicolon_tokens(): void {
         if (this.get_active_token?.type == TokenTypes.SEMI_COLON_TYPE) {
-            this.consume_active_tokens(TokenTypes.SEMI_COLON_TYPE);
+            this.consume_token_and_next(TokenTypes.SEMI_COLON_TYPE);
         }
     }
 

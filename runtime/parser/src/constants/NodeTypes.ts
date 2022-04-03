@@ -22,7 +22,7 @@ export const NodeTypes = {
     EmptyStatement: "EmptyStatement",
     ExpressionStatement: "ExpressionStatement",
     InitStatement: "InitStatement",
-    PrintStatement: "PrintStatement",
+    ConsoleStatement: "ConsoleStatement",
 
     IfStatement: "IfStatement",
     WhileStatement: "WhileStatement",

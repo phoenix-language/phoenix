@@ -1,3 +1,4 @@
+/** Abstract Syntax Tree Type Definitions */
 export type ASTNode = {
     type: string;
     body?: ASTNode | ASTNode[];

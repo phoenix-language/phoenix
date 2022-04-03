@@ -30,3 +30,7 @@ if (import.meta.url) {
         }
     })();
 }
+
+Deno.run({
+    cmd: ["echo", "hello"],
+});

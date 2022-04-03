@@ -1,5 +1,5 @@
 import { NodeTypes } from "../constants/NodeTypes.ts";
-import { StatementListModule } from "./StatmentList.ts";
+import { StatementListModule } from "./StatementList.ts";
 import { ASTNode } from "./Types.ts";
 
 export class ProgramModule {
@@ -14,5 +14,9 @@ export class ProgramModule {
             type: NodeTypes.Program,
             body: this._StatementListModule.get_initial_statement_list(),
         };
+    }
+
+    public get_program() {
+        throw new Error("Method not implemented.");
     }
 }

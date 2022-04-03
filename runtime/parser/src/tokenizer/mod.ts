@@ -3,7 +3,7 @@ import type { ParserSpecs } from "../constants/TokenTypes.ts";
 import { IllegalStateTypeException } from "../../../exceptions/Exception.ts";
 
 export class TokenizerModule implements Tokenizer {
-    private _specs: ParserSpecs;
+    private readonly _specs: ParserSpecs;
     private _string_to_tokenize: string | undefined = undefined;
     private _current_token_index: number;
 
