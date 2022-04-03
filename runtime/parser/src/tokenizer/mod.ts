@@ -12,10 +12,9 @@ export class TokenizerModule implements Tokenizer {
         this._current_token_index = 0;
     }
 
-    public init(string_to_tokenize: string): boolean {
-        if (!this._string_to_tokenize) return true;
-
-        return this._current_token_index === this._string_to_tokenize.length;
+    public init(string_to_tokenize: string): void {
+        this._string_to_tokenize = string_to_tokenize;
+        this._current_token_index = 0;
     }
 
     public isEOF(): boolean {
