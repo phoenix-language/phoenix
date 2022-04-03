@@ -1,4 +1,4 @@
-import { parse } from "fmt";
+import { parse } from "../deno/deps.ts";
 import {
   display_discord_message,
   display_help_message,
