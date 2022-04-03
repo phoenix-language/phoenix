@@ -1,7 +1,7 @@
 {
-  "imports": {
-    "fmt": "https://deno.land/std@0.133.0/flags/mod.ts",
-    "fs": "https://deno.land/std/fs/mod.ts",
-    "colors": "https://deno.land/std@0.117.0/fmt/colors.ts"
-  }
+    "imports": {
+        "fmt": "https://deno.land/std@0.133.0/flags/mod.ts",
+        "fs": "https://deno.land/std/fs/mod.ts",
+        "colors": "https://deno.land/std@0.117.0/fmt/colors.ts"
+    }
 }

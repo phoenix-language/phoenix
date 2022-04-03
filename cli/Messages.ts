@@ -1,7 +1,7 @@
 import { Phoenix_Meta_Data } from "../meta/metadata.ts";
 
 export function display_help_message(): string {
-  return `
+    return `
     > The Phoenix Programming Language | https://github.com/phoenix-language/phoenix
 
     Available commands:
@@ -16,13 +16,13 @@ export function display_help_message(): string {
 }
 
 export function display_discord_message(): string {
-  return `
+    return `
     You can find our official discord server here: https://discord.gg/U4FmBUHzEP
     `;
 }
 
 export function display_invalid_argument(arg: string): string {
-  return `
+    return `
         Argument '${arg}' was not expected, or isn't a valid option.
         
         USAGE:
@@ -33,7 +33,7 @@ export function display_invalid_argument(arg: string): string {
 }
 
 export function display_version_message(): string {
-  return `
+    return `
     Phoenix CLI v${Phoenix_Meta_Data.cli_version}
     Phoenix Runtime v${Phoenix_Meta_Data.runtime_version}
     
