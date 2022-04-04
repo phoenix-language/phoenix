@@ -2,23 +2,18 @@
 
 ## What is this?
 
-Phoenix is a `static typed` language built using Typescript and the Deno
-runtime. While re-imagining programming I've realized there is no need for this
-language, however, we could all still be using ASM in 2022 so your welcome.
+Phoenix is the birth of a new language. It is a language that is designed to be simply like python, yet as powerful as C. 
+Phoenix will support static typing, functions, and more.
 
 ## Why?
 
 Why not? I'm simply interested in how programming languages work on the inside.
-I also realized, Javascript was the only language I know the best, and instead
-of spending 6 months learning pointers in **C** I decided to use a language im
-already good at.
+I also realized, that doing this in typescript was not a good idea, so I switched to
+go lang about midway through the project.
 
 ## Performance
 
-A concern with many dynamic programming languages is the Performance verses
-standard compiled ones. Phoenix leverages the Deno runtime (built with rust) to
-compile your code down to a single executable. This makes the preform loss in
-using a dynamic language like javascript virtually meaning less at runtime.
+soon...
 
 ## TODO list
 
@@ -27,13 +22,12 @@ A list of current mandatory things I need to get done for the language to work.
 **CLI**
 
 - [ ] Commands
-  - [x] Help
-  - [x] Discord
+  - [ ] Help
+  - [ ] Discord
   - [ ] Version
   - [ ] Documentation
+  - [ ] Compile (to bytecode)
   - [ ] Switch to a more modern cmd framework...
-- [ ] Execute nodejs scripts
-- [ ] Execute deno.land scripts
 
 **Lexer**
 
@@ -44,9 +38,9 @@ A list of current mandatory things I need to get done for the language to work.
 
 - [ ] Parser
 
-**Exception**
+**Exception Handler**
 
-- [x] Base class
+- [ ] Base class
 - [ ] char exception
 - [ ] type exception
 
@@ -70,15 +64,7 @@ A list of current mandatory things I need to get done for the language to work.
 
 To create a development environment to build Phoenix you need a few tools.
 
-- The [deno.land](https://deno.land/) runtime.
-- [Trex](https://github.com/crewdevio/Trex) (A package manager for deno).
-
-After installing these, you can set up deno in your code editor.
-
-All the commands for Trex can be found in the [run.json](./run.json) file. Eg:
-`trex run <command>`
-
-_more information coming as more of the lang is development._
+**Coming soon**
 
 # Contributing
 
