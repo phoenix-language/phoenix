@@ -7,7 +7,7 @@ import (
 
 const (
 	// The name of the program
-	Name = "Phoenix"
+	ProgramName = "The Phoenix Programming Language"
 )
 
 // Build script injections
@@ -25,6 +25,8 @@ var (
 	ProgramFullName              string
 	ProgramFullNameWithBuildDate string
 	CreatedAt                    time.Time
+	GitHubRepoUrl                = "https://github.com/phoenix-language/phoenix"
+	DocumentationUrl             = "n/a"
 )
 
 // Returns the current subname of the program
@@ -39,18 +41,18 @@ func SetProgramSubName(name string) {
 
 func UpdateProgramFullNames() {
 	if programSubName != "" {
-		ProgramFullName = fmt.Sprintf("%s %s %s (%s)", Name, programSubName, Version, VersionState)
-		ProgramFullNameWithBuildDate = fmt.Sprintf("%s %s %s (%s)", Name, programSubName, Version, BuildDate)
+		ProgramFullName = fmt.Sprintf("%s %s %s (%s)", ProgramName, programSubName, Version, VersionState)
+		ProgramFullNameWithBuildDate = fmt.Sprintf("%s %s %s (%s)", ProgramName, programSubName, Version, BuildDate)
 		return
 	}
 
-	ProgramFullName = fmt.Sprintf("%s %s (%s)", Name, Version, VersionState)
-	ProgramFullNameWithBuildDate = fmt.Sprintf("%s %s %s", Name, Version, BuildDate)
+	ProgramFullName = fmt.Sprintf("%s %s (%s)", ProgramName, Version, VersionState)
+	ProgramFullNameWithBuildDate = fmt.Sprintf("%s %s %s", ProgramName, Version, BuildDate)
 
 }
 
 // Starts the version control program
-func initialize() {
+func InitializeVersionControl() {
 	CreatedAt = time.Now()
 	UpdateProgramFullNames()
 }
