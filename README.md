@@ -17,7 +17,7 @@ I also realized, that doing this in typescript was not a good idea, so I switche
 
 ## Language example
 
-**Basic**
+**Basic Example** - All of these a subject to change and still under thought
 ```phx
 
 // Variable declaration
