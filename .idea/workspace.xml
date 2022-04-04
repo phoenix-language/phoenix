@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="" />
+    <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/phoenix.go" beforeDir="false" afterPath="$PROJECT_DIR$/phoenix.go" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -64,7 +68,9 @@
       <filePath value="$PROJECT_DIR$" />
       <method v="2" />
     </configuration>
-    <configuration name="go build github.com/phoenix-language/phoenix" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
+    <configuration name="go build github.com/phoenix-language/phoenix" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true" show_console_on_std_err="true" show_console_on_std_out="true">
+      <output_file path="$PROJECT_DIR$/logs/log.log" is_save="true" />
+      <log_file alias="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\logs\log.log" path="$PROJECT_DIR$/logs/log.log" />
       <module name="phoenix" />
       <working_directory value="$PROJECT_DIR$" />
       <kind value="PACKAGE" />

@@ -9,3 +9,7 @@ gen/
 .local.env
 .production.env
 .env
+
+# Err reports
+
+*.log
