@@ -19,6 +19,7 @@ I also realized, that doing this in typescript was not a good idea, so I switche
 
 **Basic Example** - All of these a subject to change and still under thought
 ```phx
+// console output is declared using the 'terminal' key word.
 
 // Variable declaration
 
@@ -26,9 +27,35 @@ declare Foo = Bar
 
 // function declaration
 
-phun Foo (params type) returnType -> {
-    return voidBar
-}
+phun Foo (params type) returnType -> (
+    declare bar = "foobar"
+    return bar
+)
+
+// Logical operators
+
+terminal true || false
+terminal false && true
+
+// control flow
+
+if [condition] (
+    "yes please"
+) else (
+    terminal "no thanks"
+)
+
+// For loops
+
+for [declare i = 1; i < 5; i++] (
+    terminal i
+)
+
+// while loop
+
+while [true] (
+    terminal true
+)
 
 ```
 
