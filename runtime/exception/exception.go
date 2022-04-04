@@ -1,4 +1,4 @@
-package exception
+package runtime_exception
 
 import (
 	"fmt"

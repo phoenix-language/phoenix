@@ -7,7 +7,7 @@ The API is subject to change without notice. Use at your own risk.
 
 ## What is this?
 
-Phoenix is a [Concurrent language](https://en.wikipedia.org/wiki/Concurrency_(computer_science)), [Garbage collected languages](https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)) for [Computers](https://en.wikipedia.org/wiki/Computer).
+Phoenix is a [Concurrent language](https://en.wikipedia.org/wiki/Concurrency_(computer_science)), [Garbage collected languages](https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)) for [Computers](https://en.wikipedia.org/wiki/Computer). Currently implemented with go, but in the future will be rewritten in phoenix itself!
 
 ## Why?
 
@@ -69,8 +69,6 @@ soon...
 
 
 ## Developers
-
-To create a development environment to build Phoenix you need a few tools.
 
 **Coming soon**
 

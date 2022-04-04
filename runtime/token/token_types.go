@@ -1,4 +1,4 @@
-package tokenizer
+package runtime_tokenizer
 
 const (
 	// single-character tokens

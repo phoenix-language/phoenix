@@ -1,4 +1,4 @@
-package tokenizer
+package runtime_tokenizer
 
 type Token struct {
 	// The data type of the token
