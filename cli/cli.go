@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-func Run() {
+func ExecuteClI() {
 	terminalReader := bufio.NewReader(os.Stdin)
 
 	for {
