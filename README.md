@@ -13,7 +13,24 @@ Phoenix is a [Concurrent language](https://en.wikipedia.org/wiki/Concurrency_(co
 
 Why not? I'm simply interested in how programming languages work on the inside.
 I also realized, that doing this in typescript was not a good idea, so I switched to
-go lang about midway through the project.
+[golang](https://go.dev/) about midway through the project.
+
+## Language example
+
+**Basic**
+```phx
+
+// Variable declaration
+
+declare Foo = Bar
+
+// function declaration
+
+phun Foo (params type) returnType -> {
+    return voidBar
+}
+
+```
 
 ## Performance ⚡
 
