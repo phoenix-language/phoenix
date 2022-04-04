@@ -11,7 +11,7 @@ func main() {
 
 	// check if the user has provided the correct number of arguments
 	if len(os.Args) != 2 {
-		fmt.Println("Usage: phoenix <command> or get help using phoenix help")
+		fmt.Println("Usage: phoenix <command> or phoenix help")
 		os.Exit(1)
 	}
 
@@ -23,25 +23,29 @@ func main() {
 		versionCommand()
 	case "build":
 		buildCommand()
+	case "info":
+		infoCommand()
 	case "run":
 		runCommand()
 	case "help":
 		helpCommand()
 	default:
-		fmt.Printf("Invalid command: %s | Use phoenix help to get a list of commands", os.Args[1])
-		fmt.Print("\n")
+		fmt.Printf("Invalid command: %s | Displaying help command.", os.Args[1])
+		helpCommand()
 		os.Exit(1)
 	}
 }
 
 // Shows the help information
 func helpCommand() {
+	util.ConsoleClear()
 	fmt.Println("Usage: phoenix <command> [option]")
 	fmt.Println("Commands:")
-	fmt.Println("  version")
-	fmt.Println("  help")
-	fmt.Println("  build <file>.phx")
-	fmt.Println("  run <file>.phx")
+	fmt.Println("  version - Shows the version information")
+	fmt.Println("  help   - Shows the help information")
+	fmt.Println("  build <file>.phx - Compiles your phoenix program file")
+	fmt.Println("  run <file>.phx - Runs your phoenix program file")
+	fmt.Println("  info - Shows the information about the phoenix language")
 }
 
 // Shows the version information
@@ -51,7 +55,7 @@ func versionCommand() {
 
 func infoCommand() {
 	fmt.Printf(" === %s ===\n", util.ProgramName)
-	fmt.Printf("Version: %s\n", util.Version)
+	fmt.Printf("Version: %s | Stability: %s\n", util.Version, util.VersionState)
 	fmt.Printf("Build Date: %s\n", util.BuildDate)
 	fmt.Printf("Created At: %s\n", util.CreatedAt)
 
