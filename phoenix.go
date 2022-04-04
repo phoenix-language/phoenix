@@ -7,9 +7,10 @@ import (
 )
 
 var output = "Phoenix, Programming Reborn...🐦"
-var langMetaData = util.SyncMap[string, string]
 
 func main() {
+
+	langMetaData := util.SyncMap[string, string]{}
 
 	langMetaData.Store("version", "0.0.1")
 	langMetaData.Store("developers", "Phoenix Development Team")

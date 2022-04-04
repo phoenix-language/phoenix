@@ -1,9 +1,13 @@
 # Phoenix Language🐦
 
+# Warning
+
+Phoenix is not ready for production in any way and is still under heavy development. 
+The API is subject to change without notice. Use at your own risk.
+
 ## What is this?
 
-Phoenix is the birth of a new language. It is a language that is designed to be simply like python, yet as powerful as C. 
-Phoenix will support static typing, functions, and more.
+Phoenix is a [Concurrent language](https://en.wikipedia.org/wiki/Concurrency_(computer_science)), [Garbage collected languages](https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)) for [Computers](https://en.wikipedia.org/wiki/Computer).
 
 ## Why?
 
@@ -19,46 +23,7 @@ soon...
 
 A list of current mandatory things I need to get done for the language to work.
 
-**CLI**
 
-- [ ] Commands
-  - [ ] Help
-  - [ ] Discord
-  - [ ] Version
-  - [ ] Documentation
-  - [ ] Compile (to bytecode)
-  - [ ] Switch to a more modern cmd framework...
-
-**Lexer**
-
-- [ ] Tokenizer
-- [ ] Token Types
-
-**Parser**
-
-- [ ] Parser
-
-**Exception Handler**
-
-- [ ] Base class
-- [ ] char exception
-- [ ] type exception
-
-**Compiler / Interrupter**
-
-- [ ] n/a
-
-**Grammar**
-
-- [ ] Syntax
-- [ ] Keywords
-
-**Miscellaneous**
-
-- [ ] standard library
-- [ ] built in code formatter
-- [ ] built in linter
-- [ ] configuration file
 
 ## Developers
 
