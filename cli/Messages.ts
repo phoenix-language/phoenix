@@ -1,5 +1,3 @@
-import { Phoenix_Meta_Data } from "../meta/metadata.ts";
-
 export function display_help_message(): string {
     return `
     > The Phoenix Programming Language | https://github.com/phoenix-language/phoenix
@@ -34,8 +32,8 @@ export function display_invalid_argument(arg: string): string {
 
 export function display_version_message(): string {
     return `
-    Phoenix CLI v${Phoenix_Meta_Data.cli_version}
-    Phoenix Runtime v${Phoenix_Meta_Data.runtime_version}
+    Phoenix CLI v$0.0.1
+    Phoenix Runtime v$0.0.1
     
     Use the --upgrade command to get the latest version of Phoenix.  
     `;
