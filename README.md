@@ -27,7 +27,7 @@ declare Foo = Bar
 
 // function declaration
 
-phun Foo (params type) returnType -> (
+phunc Foo (params type) returnType -> (
     declare bar = "foobar"
     return bar
 )
