@@ -21,9 +21,7 @@ soon...
 
 ## TODO list 📃
 
-A list of current mandatory things I need to get done for the language to work.
-
-
+soon...
 
 ## Developers
 
