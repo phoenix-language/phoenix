@@ -15,6 +15,8 @@ func main() {
 	langMetaData.Store("version", "0.0.1")
 	langMetaData.Store("developers", "Phoenix Development Team")
 
+	fmt.Println(langMetaData.Load("version"))
+
 	fmt.Println(output)
 
 	cli.ExecuteClI()
