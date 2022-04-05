@@ -23,5 +23,7 @@ func CreateGeneralException(name string, message string, level int) {
 		fmt.Printf("[ERROR] - %s: %s\n", name, message)
 	} else if level == 2 {
 		fmt.Printf("[FATAL] - %s: %s\n", name, message)
+	} else {
+		panic("[INTERNAL-RUNTIME-ERROR] - Unknown Exception Level. Options: 0, 1, 2")
 	}
 }
