@@ -29,7 +29,7 @@ func (l *Lexer) lexReadChar() {
 	l.readPosition += 1
 }
 
-// LexNextToken returns the next token from the input string
+// LexNextToken returns the next token in the string and advances our position in the input string.
 func (l *Lexer) LexNextToken() tokenizer.Token {
 	var tok tokenizer.Token
 
@@ -86,6 +86,7 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 	return tok
 }
 
+// LexReadIdentifier reads an identifier from the input string
 func (l *Lexer) LexReadIdentifier() string {
 	position := l.position
 	for isLetter(l.ch) {
@@ -94,17 +95,19 @@ func (l *Lexer) LexReadIdentifier() string {
 	return l.input[position:l.position]
 }
 
+// LexNewToken creates a new token with the given type and literal
 func LexNewToken(tokenType tokenizer.TokenType, ch byte) tokenizer.Token {
 	return tokenizer.Token{Type: tokenType, Literal: string(ch)}
 }
 
-// filters out whitespace
+// LexIgnoreWhitespace skips over whitespaces in the lexer input string
 func (l *Lexer) lexIgnoreWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
 		l.lexReadChar()
 	}
 }
 
+// LexReadNumber returns the next sequence of digits in the input string
 func (l *Lexer) LexReadNumber() string {
 	position := l.position
 	for isDigit(l.ch) {
@@ -113,11 +116,12 @@ func (l *Lexer) LexReadNumber() string {
 	return l.input[position:l.position]
 }
 
+// isDigit returns true if the input character is a digit
 func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
 }
 
-// checks if the character is a letter or underscore
+// isLetter returns true if the input character is a letter
 func isLetter(ch byte) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
 }

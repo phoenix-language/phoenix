@@ -16,3 +16,8 @@ gen/
 
 # Note
 node_modules/
+
+
+# IDE related files
+.idea/
+*.xml
