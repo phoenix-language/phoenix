@@ -15,48 +15,63 @@ Why not? I'm simply interested in how programming languages work on the inside.
 I also realized, that doing this in typescript was not a good idea, so I switched to
 [golang](https://go.dev/) about midway through the project.
 
-## Language example
+## Features
 
-**Basic Example** - All of these a subject to change and still under thought
-```phx
-// console output is declared using the 'terminal' key word.
+- [ ] C-like syntax
+```text
+Semi-colon ;
+Comma ,
+Brackets [ ]
+Braces { }
+```
+- [ ] variable binding
+```text
+declare age = 17
+```
+- [ ] integers and booleans
+- [ ] arithmetic expressions
+- [ ] built-in functions
+- [ ] first class and higher order functions
+```text
+// High order functions
+declare add = phunc(a, b) => { a + b } 
+// or 
+declare add = phunc(a, b) => { return a + b }
 
-// Variable declaration
+add(1, 2) // => 3
 
-declare Foo = Bar
+// First class functions
+declare sub = phunc(a, b) => { a - b } 
 
-// function declaration
+// Functions can be passed as arguments
+declare minus = phunc(sub, a) => { return sub - a }
 
-phunc Foo (params type) returnType -> (
-    declare bar = "foobar"
-    return bar
-)
+```
+- [ ] closures
+```text
+declare AdvancedFunc = phunc(a, b) {
+    declare c = a + b
+    // allows for the function to call itself
+    return AdvancedFunc(a, c) {
+        return a + c / b
+    }
+}
+```
+- [ ] String data type
+- [ ] Array data type
+```text
+declare arr = [1, 2, 3]
 
-// Logical operators
+arr[0] // => 1
+```
+- [ ] Hash data type
+```text
+declare hash = {
+  "name": "Miku",
+  "age": 17
+}
 
-terminal true || false
-terminal false && true
-
-// control flow
-
-if [condition] (
-    "yes please"
-) else (
-    terminal "no thanks"
-)
-
-// For loops
-
-for [declare i = 1; i < 5; i++] (
-    terminal i
-)
-
-// while loop
-
-while [true] (
-    terminal true
-)
-
+hash["name"] // => "Miku"
 ```
 
 ## Performance ⚡
