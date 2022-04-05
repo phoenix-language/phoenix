@@ -16,8 +16,15 @@ const (
 	IDENT = "IDENT" // add, foobar, x, y, ...
 	INT   = "INT"   // 1343456
 
-	ASSIGN = "=" // assignment operator
-	PLUS   = "+"
+	ASSIGN   = "::" // assignment operator
+	PLUS     = "+"
+	MINUS    = "-"
+	BANG     = "!"
+	ASTERISK = "*"
+
+	SLASH = "/"
+	LT    = "<"
+	GT    = ">"
 
 	COMMA     = ","
 	SEMICOLON = ";"
