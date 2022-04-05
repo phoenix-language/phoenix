@@ -62,7 +62,8 @@ const (
 	EOF = -39
 )
 
-var keywords = map[string]int{
+// Base keywords used in the Phoenix-language
+var Keywords = map[string]int{
 	"&&":       AND,
 	"class":    CLASS,
 	"else":     ELSE,

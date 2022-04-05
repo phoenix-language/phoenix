@@ -9,9 +9,8 @@ import (
 func main() {
 	fmt.Println("Phoenix, Programming Reborn...🐦")
 
-	// loop through all the tokens and print them out
-	for _, token := range make(tokenizer.TokenList, 100) {
-		fmt.Println("=== List of Tokens ===")
-		fmt.Println(token)
+	// loop through all the keywords and print them out
+	for _, keyword := range tokenizer.Keywords {
+		fmt.Printf("Keyword value: %d \n", keyword)
 	}
 }
