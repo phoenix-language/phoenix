@@ -13,3 +13,6 @@ gen/
 # Err reports
 
 *.log
+
+# Note
+node_modules/
