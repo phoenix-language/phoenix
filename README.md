@@ -36,7 +36,7 @@ declare age :: 17
 // High order functions
 declare add :: phunc(a, b) => { a + b } 
 // or 
-declare add :: phunc(a, b) => { return a + b }
+declare add :: phunc(a, b) => { pass a + b }
 
 add(1, 2) // => 3
 
@@ -44,7 +44,7 @@ add(1, 2) // => 3
 declare sub :: phunc(a, b) => { a - b } 
 
 // Functions can be passed as arguments
-declare minus :: phunc(sub, a) => { return sub - a }
+declare minus :: phunc(sub, a) => { pass sub - a }
 
 ```
 - [ ] closures

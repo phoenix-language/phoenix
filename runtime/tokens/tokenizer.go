@@ -35,11 +35,13 @@ const (
 
 	PHUNC   = "PHUNC"   // functions
 	DECLARE = "DECLARE" // variables
+	PASS    = "PASS"    // pass a value back from a function
 )
 
 var keywords = map[string]TokenType{
 	"phunc":   PHUNC,
 	"declare": DECLARE,
+	"pass":    PASS,
 }
 
 // LookupIdent checks if the token is a keyword
