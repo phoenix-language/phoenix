@@ -5,8 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/github/makefile" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -72,6 +71,7 @@
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\github\static" />
       <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\github" />
       <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\runtime" />
       <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix" />
