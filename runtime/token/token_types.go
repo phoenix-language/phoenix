@@ -1,4 +1,16 @@
-package runtime_tokenizer
+package tokenizer
+
+type Token struct {
+	// The data type of the token
+	TokenType int
+	Lexer     string
+	Literal   any
+	// The line number the token was found on
+	Line int
+}
+
+// The token types in an array
+type TokenList []*Token
 
 const (
 	// single-character tokens

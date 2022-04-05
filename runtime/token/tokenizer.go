@@ -1,13 +1,4 @@
-package runtime_tokenizer
-
-type Token struct {
-	// The data type of the token
-	TokenType int
-	Lexer     string
-	Literal   interface{}
-	// The line number the token was found on
-	Line int
-}
+package tokenizer
 
 // Creates a new token
 func CreateToken(tokenType int, lexer string, literal any, line int) Token {
