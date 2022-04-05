@@ -11,7 +11,7 @@ type Error struct {
 	message string
 }
 
-// Levels
+// CreateGeneralException Levels
 //
 // 0 - Warning
 // 1 - Error

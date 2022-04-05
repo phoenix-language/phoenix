@@ -33,6 +33,8 @@ func (l *Lexer) lexReadChar() {
 func (l *Lexer) LexNextToken() tokenizer.Token {
 	var tok tokenizer.Token
 
+	l.lexIgnoreWhitespace()
+
 	switch l.ch {
 	case '=':
 		tok = LexNewToken(tokenizer.ASSIGN, l.ch)
@@ -57,6 +59,11 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 	default:
 		if isLetter(l.ch) {
 			tok.Literal = l.LexReadIdentifier()
+			tok.Type = tokenizer.LookupIdent(tok.Literal)
+			return tok
+		} else if isDigit(l.ch) {
+			tok.Type = tokenizer.INT
+			tok.Literal = l.LexReadNumber()
 			return tok
 		} else {
 			tok = LexNewToken(tokenizer.ILLEGAL, l.ch)
@@ -65,11 +72,6 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 
 	l.lexReadChar()
 	return tok
-}
-
-// checks if the character is a letter or underscore
-func isLetter(ch byte) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
 }
 
 func (l *Lexer) LexReadIdentifier() string {
@@ -82,4 +84,28 @@ func (l *Lexer) LexReadIdentifier() string {
 
 func LexNewToken(tokenType tokenizer.TokenType, ch byte) tokenizer.Token {
 	return tokenizer.Token{Type: tokenType, Literal: string(ch)}
+}
+
+// filters out whitespace
+func (l *Lexer) lexIgnoreWhitespace() {
+	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+		l.lexReadChar()
+	}
+}
+
+func (l *Lexer) LexReadNumber() string {
+	position := l.position
+	for isDigit(l.ch) {
+		l.lexReadChar()
+	}
+	return l.input[position:l.position]
+}
+
+func isDigit(ch byte) bool {
+	return '0' <= ch && ch <= '9'
+}
+
+// checks if the character is a letter or underscore
+func isLetter(ch byte) bool {
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
 }

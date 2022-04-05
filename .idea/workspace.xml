@@ -6,10 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/phoenix.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/phoenix.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/token/token_types.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/token/tokenizer.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/tokens/tokenizer.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/exceptions/exception.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/exceptions/exception.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/lexer/lexer.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/lexer/lexer.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/lexer/lexer_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/lexer/lexer_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/tokens/tokenizer.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/tokens/tokenizer.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -74,6 +74,7 @@
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\runtime" />
       <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix" />
     </key>
   </component>

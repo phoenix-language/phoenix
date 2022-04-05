@@ -16,7 +16,7 @@ const (
 	IDENT = "IDENT" // add, foobar, x, y, ...
 	INT   = "INT"   // 1343456
 
-	ASSIGN = "::" // assignment operator
+	ASSIGN = "=" // assignment operator
 	PLUS   = "+"
 
 	COMMA     = ","
@@ -29,3 +29,16 @@ const (
 	PHUNC   = "PHUNC"   // functions
 	DECLARE = "DECLARE" // variables
 )
+
+var keywords = map[string]TokenType{
+	"phunc":   PHUNC,
+	"declare": DECLARE,
+}
+
+// LookupIdent checks if the token is a keyword
+func LookupIdent(ident string) TokenType {
+	if tok, ok := keywords[ident]; ok {
+		return tok
+	}
+	return IDENT
+}
