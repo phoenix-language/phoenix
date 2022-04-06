@@ -6,6 +6,14 @@ import (
 	tokenizer "github.com/phoenix-language/phoenix/runtime/tokens"
 )
 
+type Parser struct {
+	// pointer instance for lexer package
+	l *lexer.Lexer
+
+	currentToken tokenizer.Token
+	peekToken    tokenizer.Token
+}
+
 func Create(l *lexer.Lexer) *Parser {
 	p := &Parser{
 		l: l,
@@ -38,25 +46,53 @@ func (p *Parser) ParseProgram() *ast.Program {
 	return program
 }
 
-func (p Parser) parseStatement() interface{} {
+func (p Parser) parseDeclareStatement() ast.Statement {
+	stmt := &ast.DeclareStatement{
+		Token: p.currentToken,
+	}
+
+	if !p.expectPeek(tokenizer.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{
+		Token: p.currentToken,
+		Value: p.currentToken.Literal,
+	}
+
+	if !p.expectPeek(tokenizer.ASSIGN) {
+		return nil
+	}
+
+	for !p.currentTokenIs(tokenizer.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+
+}
+
+func (p Parser) parseStatement() ast.Statement {
 	switch p.currentToken.Type {
 	case tokenizer.DECLARE:
 		return p.parseDeclareStatement()
-	case tokenizer.PASS:
-		return p.parsePassStatement()
 	default:
-		return p.parseExpressionStatement()
+		return nil
 	}
 }
 
-func (p Parser) parseDeclareStatement() any {
-	return nil
+func (p Parser) expectPeek(ident tokenizer.TokenType) bool {
+	if p.currentTokenIs(ident) {
+		p.nextToken()
+		return true
+	} else {
+		return false
+	}
 }
 
-func (p Parser) parsePassStatement() any {
-	return nil
+func (p Parser) currentTokenIs(t tokenizer.TokenType) bool {
+	return p.currentToken.Type == t
 }
 
-func (p Parser) parseExpressionStatement() any {
-	return nil
-}
+
+
