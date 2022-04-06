@@ -6,6 +6,7 @@ import (
 )
 
 type Parser struct {
+	// pointer instance for lexer package
 	l *lexer.Lexer
 
 	currentToken tokenizer.Token
