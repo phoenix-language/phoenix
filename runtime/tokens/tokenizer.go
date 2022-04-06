@@ -17,3 +17,7 @@ func LookupIdent(ident string) TokenType {
 	}
 	return IDENT
 }
+
+func (t TokenType) String() string {
+	return string(t)
+}

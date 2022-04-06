@@ -9,6 +9,8 @@ import (
 type Parser struct {
 	// pointer instance for lexer package
 	l *lexer.Lexer
+	// stacks errors hit during parsing
+	errors []string
 
 	currentToken tokenizer.Token
 	peekToken    tokenizer.Token
@@ -81,6 +83,9 @@ func (p Parser) parseStatement() ast.Statement {
 	}
 }
 
+// Enforces correct order of tokens by checking the next token type
+// If the token type is correct, it returns true, otherwise it returns false
+// True will advance the parser to the next token
 func (p Parser) expectPeek(ident tokenizer.TokenType) bool {
 	if p.currentTokenIs(ident) {
 		p.nextToken()
@@ -93,6 +98,3 @@ func (p Parser) expectPeek(ident tokenizer.TokenType) bool {
 func (p Parser) currentTokenIs(t tokenizer.TokenType) bool {
 	return p.currentToken.Type == t
 }
-
-
-
