@@ -2,13 +2,15 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"os/user"
 
+	"github.com/phoenix-language/phoenix/runtime/repl"
 	"github.com/phoenix-language/phoenix/util"
 )
 
 // Shows the help information
 func helpCommand() {
-	util.ConsoleClear()
 	fmt.Println("Usage: phoenix <command> [option]")
 	fmt.Println("Commands:")
 	fmt.Println("  version - Shows the version information")
@@ -38,5 +40,16 @@ func buildCommand() {
 
 // Runs the language runner
 func runCommand() {
-	fmt.Println("Ran command ran! *fake execution*")
+	cmdUser, err := user.Current()
+
+	if err != nil {
+		panic(err)
+	}
+
+	util.ConsoleClear()
+
+	fmt.Printf("@%s | Phoenix REPL Tool\n", cmdUser.Username)
+	fmt.Println("Lexer testing, type some valid phoenix below...")
+
+	repl.Create(os.Stdin, os.Stdout)
 }

@@ -7,11 +7,12 @@ import (
 	"github.com/phoenix-language/phoenix/util"
 )
 
-func main() {
+// Execute Run the cli package
+func Execute() {
 
 	// check if the user has provided the correct number of arguments
 	if len(os.Args) != 2 {
-		fmt.Println("Usage: phoenix <command> or phoenix help")
+		fmt.Printf("Usage: %s <command> or %s help\n", util.GetProgramSubName(), util.GetProgramSubName())
 		os.Exit(1)
 	}
 
@@ -30,7 +31,7 @@ func main() {
 	case "help":
 		helpCommand()
 	default:
-		fmt.Printf("Invalid command: %s | Displaying help command.", os.Args[1])
+		fmt.Printf("Invalid command: %s | Displaying help command.\n", os.Args[1])
 		helpCommand()
 		os.Exit(1)
 	}

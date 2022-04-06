@@ -6,7 +6,7 @@ import (
 	"runtime"
 )
 
-var clear map[string]func() //create a map for storing clear funcs
+var clear map[string]func() //create a map for storing clear functions
 
 func init() {
 
@@ -15,16 +15,24 @@ func init() {
 	clear["linux"] = func() {
 		cmd := exec.Command("clear") //Linux example, its tested
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		err := cmd.Run()
+
+		if err != nil {
+			panic(err)
+		}
 	}
 	clear["windows"] = func() {
 		cmd := exec.Command("cmd", "/c", "cls", "clear") //Windows example, its tested
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		err := cmd.Run()
+
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
-// Function to clear the terminal screen
+// ConsoleClear Function to wipe previous the terminal screen
 func ConsoleClear() {
 	//runtime.GOOS -> linux, windows, darwin etc.
 	value, ok := clear[runtime.GOOS]
