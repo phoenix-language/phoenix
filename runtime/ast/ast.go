@@ -29,3 +29,14 @@ func (p *Program) TokenLiteral() string {
 		return ""
 	}
 }
+
+func (ds *DeclareStatement) statementNode() {}
+
+func (ds *DeclareStatement) TokenLiteral() string {
+	return ds.Token.Literal
+}
+
+func (i *Identifier) expressionNode() {}
+func (i *Identifier) TokenLiteral() string {
+	return i.Token.Literal
+}
