@@ -7,7 +7,7 @@ import (
 
 func TestNextToken(t *testing.T) {
 	input := `
-declare six = 5;
+declare six :: 5;
 `
 
 	test := []struct {
@@ -16,7 +16,7 @@ declare six = 5;
 	}{
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "six"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.INT, "5"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.EOF, ""},
@@ -40,13 +40,13 @@ declare six = 5;
 // Testing mathematical operators
 func TestMathTokens(t *testing.T) {
 	input := `
-declare six = 5;
-declare seven = 6;
+declare six :: 5;
+declare seven :: 6;
 
-declare add = six + seven;
-declare sub = six - seven;
-declare mul = six * seven;
-declare div = six / seven;
+declare add :: six + seven;
+declare sub :: six - seven;
+declare mul :: six * seven;
+declare div :: six / seven;
 `
 
 	test := []struct {
@@ -55,38 +55,38 @@ declare div = six / seven;
 	}{
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "six"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.INT, "5"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "seven"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.INT, "6"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "add"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.IDENT, "six"},
 		{tokenizer.PLUS, "+"},
 		{tokenizer.IDENT, "seven"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "sub"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.IDENT, "six"},
 		{tokenizer.MINUS, "-"},
 		{tokenizer.IDENT, "seven"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "mul"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.IDENT, "six"},
 		{tokenizer.ASTERISK, "*"},
 		{tokenizer.IDENT, "seven"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.DECLARE, "declare"},
 		{tokenizer.IDENT, "div"},
-		{tokenizer.ASSIGN, "="},
+		{tokenizer.ASSIGN, "::"},
 		{tokenizer.IDENT, "six"},
 		{tokenizer.SLASH, "/"},
 		{tokenizer.IDENT, "seven"},

@@ -22,7 +22,7 @@ I also realized, that doing this in typescript was not a good idea, so I switche
 Semi-colon ;
 Comma ,
 Brackets [ ]
-Braces { }
+Curly Braces { }
 ```
 - [ ] variable binding
 ```text
@@ -49,7 +49,7 @@ declare minus :: phunc(sub, a) => { pass sub - a }
 ```
 - [ ] closures
 ```text
-declare AdvancedFunc = phunc(a, b) {
+declare AdvancedFunc :: phunc(a, b) {
     declare c :: a + b
     // allows for the function to call itself
     pass AdvancedFunc(a, c) {
@@ -60,13 +60,13 @@ declare AdvancedFunc = phunc(a, b) {
 - [ ] String data type
 - [ ] Array data type
 ```text
-declare arr = [1, 2, 3]
+declare arr :: [1, 2, 3]
 
 arr[0] // => 1
 ```
 - [ ] Hash data type
 ```text
-declare hash = {
+declare hash :: {
   "name": "Miku",
   "age": 17
 }
@@ -74,13 +74,14 @@ declare hash = {
 hash["name"] // => "Miku"
 ```
 
-## Performance ⚡
+## Performance Goals ⚡
 
-soon...
+- faster than python O_o
 
 ## TODO list 📃
 
-soon...
+- Get the basic language up and running...
+- Then make a real list!
 
 
 ## Developers

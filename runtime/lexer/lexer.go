@@ -42,7 +42,7 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 			l.lexReadChar()
 			tok = tokenizer.Token{Type: tokenizer.EQ, Literal: string(ch) + string(l.ch)}
 		} else {
-			tok = tokenizer.Token{Type: tokenizer.ASSIGN, Literal: string(l.ch)}
+			tok = LexNewToken(tokenizer.ILLEGAL, l.ch)
 		}
 	case '!':
 		if l.LexPeekChar() == '=' {
@@ -51,6 +51,15 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 			tok = tokenizer.Token{Type: tokenizer.NOT_EQ, Literal: string(ch) + string(l.ch)}
 		} else {
 			tok = tokenizer.Token{Type: tokenizer.BANG, Literal: string(l.ch)}
+		}
+		// Lex variable assignment
+	case ':':
+		if l.LexPeekChar() == ':' {
+			ch := l.ch
+			l.lexReadChar()
+			tok = tokenizer.Token{Type: tokenizer.ASSIGN, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = LexNewToken(tokenizer.ILLEGAL, l.ch)
 		}
 	case ';':
 		tok = LexNewToken(tokenizer.SEMICOLON, l.ch)
