@@ -146,7 +146,7 @@ func TestNextToken3(t *testing.T) {
 		{tokenizer.INT, "10"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.INT, "10"},
-		{tokenizer.NOT_EQ, "!="},
+		{tokenizer.NotEq, "!="},
 		{tokenizer.INT, "9"},
 		{tokenizer.SEMICOLON, ";"},
 		{tokenizer.EOF, ""},

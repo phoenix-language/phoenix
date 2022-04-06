@@ -6,17 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cli/cli.go" beforeDir="false" afterPath="$PROJECT_DIR$/cli/cli.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cli/displays.go" beforeDir="false" afterPath="$PROJECT_DIR$/cli/displays.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/bin/phoenix-windows.exe" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/bin/phoenix-windows.exe" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/exceptions/exception.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/exceptions/exception.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/runtime/lexer/lexer.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/lexer/lexer.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/runtime/lexer/lexer_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/lexer/lexer_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/makefile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/phoenix.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/phoenix.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/util/console.go" beforeDir="false" afterPath="$PROJECT_DIR$/util/console.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/util/version.go" beforeDir="false" afterPath="$PROJECT_DIR$/util/version.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/tokens/tokenizer.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/tokens/tokenizer.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

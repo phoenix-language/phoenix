@@ -48,7 +48,7 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 		if l.LexPeekChar() == '=' {
 			ch := l.ch
 			l.lexReadChar()
-			tok = tokenizer.Token{Type: tokenizer.NOT_EQ, Literal: string(ch) + string(l.ch)}
+			tok = tokenizer.Token{Type: tokenizer.NotEq, Literal: string(ch) + string(l.ch)}
 		} else {
 			tok = tokenizer.Token{Type: tokenizer.BANG, Literal: string(l.ch)}
 		}

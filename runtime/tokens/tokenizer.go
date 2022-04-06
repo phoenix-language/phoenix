@@ -13,21 +13,25 @@ const (
 	ILLEGAL = "ILLEGAL" // Illegal token
 	EOF     = "EOF"     // End of file
 
-	IDENT = "IDENT" // add, foobar, x, y, ...
-	INT   = "INT"   // 1343456
+	// Identifiers + Literals
+	IDENT  = "IDENT"  // add, foobar, x, y, ...
+	INT    = "INT"    // 1343456
+	STRING = "STRING" // "foobar"
 
-	ASSIGN   = "::" // assignment operator
+	// Operators
+	ASSIGN   = "::"
 	PLUS     = "+"
 	MINUS    = "-"
 	BANG     = "!"
 	ASTERISK = "*"
 
-	SLASH  = "/"
-	LT     = "<"
-	GT     = ">"
-	EQ     = "=="
-	NOT_EQ = "!="
+	SLASH = "/"
+	LT    = "<"
+	GT    = ">"
+	EQ    = "=="
+	NotEq = "!="
 
+	// Delimiters
 	COMMA     = ","
 	SEMICOLON = ";"
 	LPAREN    = "("
@@ -35,6 +39,7 @@ const (
 	LBRACE    = "{"
 	RBRACE    = "}"
 
+	// Keywords
 	PHUNC   = "PHUNC"   // functions
 	DECLARE = "DECLARE" // variables
 	PASS    = "PASS"    // pass a value back from a function
