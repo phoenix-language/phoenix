@@ -107,3 +107,63 @@ declare div = six / seven;
 		}
 	}
 }
+
+// Checking ==, !=, pass, true, false
+func TestNextToken3(t *testing.T) {
+	input := `
+	if (5 < 10) {
+		pass true;
+	} else {
+		pass false;
+	}
+	10 == 10;
+	10 != 9;
+`
+
+	test := []struct {
+		expectedType    tokenizer.TokenType
+		expectedLiteral string
+	}{
+		{tokenizer.IF, "if"},
+		{tokenizer.LPAREN, "("},
+		{tokenizer.INT, "5"},
+		{tokenizer.LT, "<"},
+		{tokenizer.INT, "10"},
+		{tokenizer.RPAREN, ")"},
+		{tokenizer.LBRACE, "{"},
+		{tokenizer.PASS, "pass"},
+		{tokenizer.TRUE, "true"},
+		{tokenizer.SEMICOLON, ";"},
+		{tokenizer.RBRACE, "}"},
+		{tokenizer.ELSE, "else"},
+		{tokenizer.LBRACE, "{"},
+		{tokenizer.PASS, "pass"},
+		{tokenizer.FALSE, "false"},
+		{tokenizer.SEMICOLON, ";"},
+		{tokenizer.RBRACE, "}"},
+		{tokenizer.INT, "10"},
+		{tokenizer.EQ, "=="},
+		{tokenizer.INT, "10"},
+		{tokenizer.SEMICOLON, ";"},
+		{tokenizer.INT, "10"},
+		{tokenizer.NOT_EQ, "!="},
+		{tokenizer.INT, "9"},
+		{tokenizer.SEMICOLON, ";"},
+		{tokenizer.EOF, ""},
+	}
+
+	l := LexNewChar(input)
+
+	for i, tt := range test {
+		tok := l.LexNextToken()
+
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+
+}

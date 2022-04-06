@@ -37,7 +37,21 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 
 	switch l.ch {
 	case '=':
-		tok = LexNewToken(tokenizer.ASSIGN, l.ch)
+		if l.LexPeekChar() == '=' {
+			ch := l.ch
+			l.lexReadChar()
+			tok = tokenizer.Token{Type: tokenizer.EQ, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = tokenizer.Token{Type: tokenizer.ASSIGN, Literal: string(l.ch)}
+		}
+	case '!':
+		if l.LexPeekChar() == '=' {
+			ch := l.ch
+			l.lexReadChar()
+			tok = tokenizer.Token{Type: tokenizer.NOT_EQ, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = tokenizer.Token{Type: tokenizer.BANG, Literal: string(l.ch)}
+		}
 	case ';':
 		tok = LexNewToken(tokenizer.SEMICOLON, l.ch)
 	case '(':
@@ -54,8 +68,6 @@ func (l *Lexer) LexNextToken() tokenizer.Token {
 		tok = LexNewToken(tokenizer.RBRACE, l.ch)
 	case '-':
 		tok = LexNewToken(tokenizer.MINUS, l.ch)
-	case '!':
-		tok = LexNewToken(tokenizer.BANG, l.ch)
 	case '*':
 		tok = LexNewToken(tokenizer.ASTERISK, l.ch)
 	case '/':
@@ -124,4 +136,13 @@ func isDigit(ch byte) bool {
 // isLetter returns true if the input character is a letter
 func isLetter(ch byte) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+
+// LexPeekChar returns the next character in the input string without advancing the lexer position
+// Similar to LexReadChar but does not advance the lexer position
+func (l *Lexer) LexPeekChar() byte {
+	if l.readPosition >= len(l.input) {
+		return 0
+	}
+	return l.input[l.readPosition]
 }

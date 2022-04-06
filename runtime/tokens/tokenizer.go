@@ -22,9 +22,11 @@ const (
 	BANG     = "!"
 	ASTERISK = "*"
 
-	SLASH = "/"
-	LT    = "<"
-	GT    = ">"
+	SLASH  = "/"
+	LT     = "<"
+	GT     = ">"
+	EQ     = "=="
+	NOT_EQ = "!="
 
 	COMMA     = ","
 	SEMICOLON = ";"
@@ -36,12 +38,20 @@ const (
 	PHUNC   = "PHUNC"   // functions
 	DECLARE = "DECLARE" // variables
 	PASS    = "PASS"    // pass a value back from a function
+	IF      = "IF"
+	ELSE    = "ELSE"
+	TRUE    = "TRUE"
+	FALSE   = "FALSE"
 )
 
 var keywords = map[string]TokenType{
 	"phunc":   PHUNC,
 	"declare": DECLARE,
 	"pass":    PASS,
+	"if":      IF,
+	"else":    ELSE,
+	"true":    TRUE,
+	"false":   FALSE,
 }
 
 // LookupIdent checks if the token is a keyword
