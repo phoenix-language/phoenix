@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	// The name of the program
+	// ProgramName The name of the program
 	ProgramName = "The Phoenix Programming Language"
 )
 
@@ -21,7 +21,7 @@ var (
 )
 
 var (
-	// The full name of the program
+	// ProgramFullName The full name of the program
 	ProgramFullName              string
 	ProgramFullNameWithBuildDate string
 	CreatedAt                    time.Time
@@ -29,12 +29,12 @@ var (
 	DocumentationUrl             = "n/a"
 )
 
-// Returns the current subname of the program
-func ProgramSubName() string {
+// GetProgramSubName Returns the current subname of the program
+func GetProgramSubName() string {
 	return programSubName
 }
 
-// Sets a new subname for the program
+// SetProgramSubName Sets a new subname for the program
 func SetProgramSubName(name string) {
 	programSubName = name
 }
@@ -51,8 +51,9 @@ func UpdateProgramFullNames() {
 
 }
 
-// Starts the version control program
+// InitializeVersionControl Starts the version control program
 func InitializeVersionControl() {
-	CreatedAt = time.Now()
+	CreatedAt = time.Now().Local()
+	SetProgramSubName("phoenix")
 	UpdateProgramFullNames()
 }
