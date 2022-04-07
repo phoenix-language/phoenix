@@ -6,20 +6,26 @@ import (
 	"testing"
 )
 
+// TODO get working...
 func TestDeclareStatements(t *testing.T) {
 	input := `
-declare a = 1;
-declare b = 2;
-declare c = 3;
-`
+		declare a :: 1;
+		declare b :: 2;
+		declare c :: 3;
+	`
+
 	l := lexer.LexNewChar(input)
 	p := Create(l)
 
 	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if program == nil {
+		t.Fatalf("ParseProgram() returned nil")
+	}
 
 	if len(program.Statements) != 3 {
-		t.Fatalf("program.Statements does not contain 3 statements. got=%d",
-			len(program.Statements))
+		t.Fatalf("program.Statements does not contain 3 statements. got=%d", len(program.Statements))
 	}
 
 	tests := []struct {
@@ -62,4 +68,20 @@ func testDeclareStatement(t *testing.T, stmt ast.Statement, identifier string) b
 	}
 
 	return true
+}
+
+// helper func for checking if an error has occurred during testing of the parser.
+// if an error has occurred, the test will fail.
+func checkParserErrors(t *testing.T, p *Parser) {
+	errors := p.Errors()
+
+	if len(errors) == 0 {
+		return
+	}
+
+	t.Errorf("parser has %d errors", len(errors))
+	for _, msg := range errors {
+		t.Errorf("parser error: %q", msg)
+	}
+	t.FailNow()
 }

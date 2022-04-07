@@ -16,9 +16,11 @@ type Parser struct {
 	peekToken    tokenizer.Token
 }
 
+// Create creates a new parser instance
 func Create(l *lexer.Lexer) *Parser {
 	p := &Parser{
-		l: l,
+		l:      l,
+		errors: []string{},
 	}
 	// Read the next two tokens, and peak ahead one
 	p.nextToken()
@@ -48,6 +50,16 @@ func (p *Parser) ParseProgram() *ast.Program {
 	return program
 }
 
+func (p Parser) parseStatement() ast.Statement {
+	switch p.currentToken.Type {
+	case tokenizer.DECLARE:
+		return p.parseDeclareStatement()
+	default:
+		return nil
+	}
+}
+
+// parseDeclareStatement parses a declare statement and checks if it is valid
 func (p Parser) parseDeclareStatement() ast.Statement {
 	stmt := &ast.DeclareStatement{
 		Token: p.currentToken,
@@ -66,7 +78,9 @@ func (p Parser) parseDeclareStatement() ast.Statement {
 		return nil
 	}
 
-	for !p.currentTokenIs(tokenizer.SEMICOLON) {
+	// TODO: We're skipping the expressions until we
+	// encounter a semicolon
+	for !p.peekTokenIs(tokenizer.SEMICOLON) {
 		p.nextToken()
 	}
 
@@ -74,27 +88,20 @@ func (p Parser) parseDeclareStatement() ast.Statement {
 
 }
 
-func (p Parser) parseStatement() ast.Statement {
-	switch p.currentToken.Type {
-	case tokenizer.DECLARE:
-		return p.parseDeclareStatement()
-	default:
-		return nil
-	}
-}
-
 // Enforces correct order of tokens by checking the next token type
 // If the token type is correct, it returns true, otherwise it returns false
 // True will advance the parser to the next token
 func (p Parser) expectPeek(ident tokenizer.TokenType) bool {
-	if p.currentTokenIs(ident) {
+	if p.peekTokenIs(ident) {
 		p.nextToken()
 		return true
 	} else {
+		p.peekError(ident)
 		return false
 	}
 }
 
-func (p Parser) currentTokenIs(t tokenizer.TokenType) bool {
-	return p.currentToken.Type == t
+// Checks if the next token is the same as the next expected token
+func (p Parser) peekTokenIs(ident tokenizer.TokenType) bool {
+	return p.peekToken.Type == ident
 }

@@ -1,6 +1,8 @@
 package parser
 
-import tokenizer "github.com/phoenix-language/phoenix/runtime/tokens"
+import (
+	tokenizer "github.com/phoenix-language/phoenix/runtime/tokens"
+)
 
 // Parses the next token and checks if it has any errors
 func (p *Parser) peekError(t tokenizer.TokenType) {
