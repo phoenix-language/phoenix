@@ -23,11 +23,11 @@ I also realized, that doing this in typescript was not a good idea, so I switche
 
 ## Performance Goals ⚡
 
+- faster than python O_o
+
 ## Roadmap
 
 [click me](https://github.com/phoenix-language/phoenix/projects/1)
-
-- faster than python O_o
 
 ## TODO list 📃
 
