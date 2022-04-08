@@ -8,8 +8,8 @@ pub_website:
 
 # Built Commands
 
-windows_build_script_path := bin/phoenix-windows.exe
-windows_build_script_args := -tags=windows -installsuffix=windows
+windows_build_script_path = bin/phoenix-windows.exe
+windows_build_script_args = -tags=windows -installsuffix=windows
 
 linux_build_script_path := bin/phoenix-linux.so
 
