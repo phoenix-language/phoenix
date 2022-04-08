@@ -8,9 +8,9 @@ Folders:
 
 - [Cli](../cli/)
 
-## Development tools used
+# External Dependencies
 
-- The language is built on the [deno.land](https://deno.land/) runtime.
-
-- Package manager for building the language -
-  [Trex](https://github.com/crewdevio/Trex)
+- File System Abstractions [github](https://github.com/spf13/afero)
+- Configuration manager for go [github](https://github.com/spf13/viper)
+- Command line interface for go [github](https://github.com/spf13/cobra)
+- Static Site Generator we use [github](https://github.com/gohugoio/hugo)

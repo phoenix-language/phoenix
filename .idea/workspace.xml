@@ -5,10 +5,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.gitmodules" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/parser/exception.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/parser/exception.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/parser/parser.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/parser/parser.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/parser/parser_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/parser/parser_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/notes.md" beforeDir="false" afterPath="$PROJECT_DIR$/assets/notes.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cli/cli.go" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cli/displays.go" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/makefile" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/runtime/phoenix.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/package-lock.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/package.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/pages.js" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/pages/pages.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/static/index.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/static/scripts.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/github/static/style.css" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -69,15 +81,17 @@
     <property name="go.sdk.automatically.set" value="true" />
     <property name="go.watchers.conflict.with.on.save.actions.check.performed" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="nodejs_package_manager_path" value="npm" />
     <property name="settings.editor.selected.configurable" value="discord-application" />
     <property name="ts.external.directory.path" value="C:\Users\ThatGuyJamal\AppData\Local\JetBrains\Toolbox\apps\Goland\ch-0\213.7172.22\plugins\JavaScriptLanguage\jsLanguageServicesImpl\external" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\github\static" />
-      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\github" />
-      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\runtime" />
+      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\pages" />
+      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts" />
       <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix" />
+      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\github\web" />
+      <recent name="C:\Users\ThatGuyJamal\Desktop\code\phoenix-lang\phoenix\scripts\github\static" />
     </key>
   </component>
   <component name="RunManager">
