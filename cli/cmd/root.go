@@ -1,7 +1,3 @@
-/*
-Copyright © 2022 GNU
-
-*/
 package cmd
 
 import (

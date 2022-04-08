@@ -5,22 +5,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.gitmodules" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/notes.md" beforeDir="false" afterPath="$PROJECT_DIR$/assets/notes.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cli/cli.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/cli/displays.go" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/runtime/makefile" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/phoenix.go" beforeDir="false" afterPath="$PROJECT_DIR$/runtime/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/makefile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/package-lock.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/package.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/pages.js" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/pages/pages.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/github/static/index.html" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/github/static/scripts.js" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/github/static/style.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/pages/pages.js" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
