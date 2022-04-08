@@ -5,14 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="36506639-3ab8-44c7-8a85-84ba7da47bcd" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runtime/makefile" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/static/index.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/static/scripts.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/github/static/style.css" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/pages/pages.js" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
