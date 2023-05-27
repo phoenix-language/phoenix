@@ -9,7 +9,7 @@ The API is subject to change without notice. Use at your own risk.
 
 Phoenix is a [Concurrent language](https://en.wikipedia.org/wiki/Concurrency_(computer_science)), 
 [Garbage collected languages](https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)) for [Computers](https://en.wikipedia.org/wiki/Computer).
-Currently, bootstrapped with go. 
+Currently, bootstrapped with the rust programming language.
 
 ## Why?
 
@@ -24,16 +24,6 @@ I also realized, that doing this in typescript was not a good idea, so I switche
 ## Performance Goals ⚡
 
 - faster than python O_o
-
-## Roadmap
-
-[click me](https://github.com/phoenix-language/phoenix/projects/1)
-
-## TODO list 📃
-
-- Get the basic language up and running...
-- Then make a real list!
-
 
 ## References 🔗
 

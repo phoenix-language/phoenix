@@ -1,6 +1,6 @@
 [workspace]
 
-members = ["repl", "lexer"]
+members = ["repl", "lexer", "parser", "compiler"]
 
 # Dependencies for all crates
 [workspace.dependencies]
