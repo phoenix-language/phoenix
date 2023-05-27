@@ -2,7 +2,7 @@
 use logos::Logos;
 use tokens::Token;
 
-mod tokens;
+pub mod tokens;
 
 /// Lexes the input string and returns a vector of the tokens.
 pub fn lex(input: &str) -> Vec<Token> {

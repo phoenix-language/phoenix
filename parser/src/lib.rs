@@ -1,14 +1,23 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+use lexer::tokens::Token;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod ast;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+use crate::ast::*;
+
+pub fn parse(input: &mut Vec<Token>) -> Vec<Statement> {
+    let mut program = vec![];
+
+    loop {
+        let token = &input[0];
+
+        match token {
+           _ => program.push(
+                Statement::ExpressionStatement(
+                    Box::new(Expression::Literal(
+                        Literal::Boolean(true)
+                    ))
+                )
+            )
+        }
     }
 }
