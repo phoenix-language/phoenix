@@ -33,18 +33,18 @@ mod tests {
 
         let expected_tokens = vec![
             Token::Declare,
-            Token::Identifier,
+            Token::Identifier(String::from("x")),
             Token::Colon,
             Token::NumberType,
             Token::Equals,
-            Token::NumberLiteral,
+            Token::NumberLiteral(String::from("10")),
             Token::Semicolon,
             Token::Declare,
-            Token::Identifier,
+            Token::Identifier(String::from("y")),
             Token::Colon,
             Token::NumberType,
             Token::Equals,
-            Token::NumberLiteral,
+            Token::NumberLiteral(String::from("20")),
             Token::Semicolon,
         ];
 
@@ -65,25 +65,27 @@ mod tests {
 
         let expected_tokens = vec![
             Token::Declare,
-            Token::Identifier,
+            Token::Identifier(String::from("message")),
             Token::Colon,
             Token::StringType,
             Token::Equals,
-            Token::StringLiteral,
+            Token::StringLiteral(String::from("Hello, world!")),
             Token::Semicolon,
             Token::Declare,
-            Token::Identifier,
+            Token::Identifier(String::from("emptyString")),
             Token::Colon,
             Token::StringType,
             Token::Equals,
-            Token::StringLiteral,
+            Token::StringLiteral(String::from("")),
             Token::Semicolon,
             Token::Declare,
-            Token::Identifier,
+            Token::Identifier(String::from("multilineString")),
             Token::Colon,
             Token::StringType,
             Token::Equals,
-            Token::StringLiteral,
+            Token::StringLiteral(String::from(
+                "This is\n        a multiline\n        string.",
+            )),
             Token::Semicolon,
         ];
 
@@ -96,43 +98,30 @@ mod tests {
     fn test_lexer_identifiers() {
         let input = r#"
         declare name: string = "John";
-        phunc greet(person: string) {
-            terminal.write("Hello, " + person + "!");
-        }
+        phunc greet(person: string) {}
         greet(name);
     "#;
 
         let expected_tokens = vec![
             Token::Declare,
-            Token::Identifier,
+            Token::Identifier(String::from("name")),
             Token::Colon,
             Token::StringType,
             Token::Equals,
-            Token::StringLiteral,
+            Token::StringLiteral(String::from("John")),
             Token::Semicolon,
             Token::Phunc,
-            Token::Identifier,
+            Token::Identifier(String::from("greet")),
             Token::LeftParenthesis,
-            Token::Identifier,
+            Token::Identifier(String::from("person")),
             Token::Colon,
             Token::StringType,
             Token::RightParenthesis,
             Token::LeftBrace,
-            Token::Terminal,
-            Token::Dot,
-            Token::Identifier,
-            Token::LeftParenthesis,
-            Token::StringLiteral,
-            Token::Plus,
-            Token::Identifier,
-            Token::Plus,
-            Token::StringLiteral,
-            Token::RightParenthesis,
-            Token::Semicolon,
             Token::RightBrace,
-            Token::Identifier,
+            Token::Identifier(String::from("greet")),
             Token::LeftParenthesis,
-            Token::Identifier,
+            Token::Identifier(String::from("name")),
             Token::RightParenthesis,
             Token::Semicolon,
         ];

@@ -1,6 +1,8 @@
 #![allow(unused_must_use)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(unreachable_patterns)]
 
 mod ast;
 
@@ -77,9 +79,7 @@ impl Parser {
                 Token::Match => todo!(),
                 Token::FatArrow => todo!(),
                 Token::In => todo!(),
-                Token::Dot => todo!(),
                 Token::Range => todo!(),
-                Token::Terminal => todo!(),
                 Token::NotEqual => todo!(),
                 Token::Equal => todo!(),
                 Token::GreaterThan => todo!(),

@@ -54,14 +54,8 @@ pub enum Token {
     #[token("in")]
     In,
 
-    #[token(".")]
-    Dot,
-
     #[token("..")]
     Range,
-
-    #[token("terminal")]
-    Terminal,
 
     // Operators
     #[token("!=")]
