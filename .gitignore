@@ -38,4 +38,4 @@ node_modules/
 
 # Added by cargo
 
-./lib/target/
+/target

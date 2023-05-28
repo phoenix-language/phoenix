@@ -20,7 +20,6 @@ pub fn lex(input: &str) -> Vec<Token> {
     tokens
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,8 +54,8 @@ mod tests {
     }
 
     #[test]
-fn test_lexer_string_literals() {
-    let input = r#"
+    fn test_lexer_string_literals() {
+        let input = r#"
         declare message: string = "Hello, world!";
         declare emptyString: string = "";
         declare multilineString: string = "This is
@@ -64,38 +63,38 @@ fn test_lexer_string_literals() {
         string.";
     "#;
 
-    let expected_tokens = vec![
-        Token::Declare,
-        Token::Identifier,
-        Token::Colon,
-        Token::StringType,
-        Token::Equals,
-        Token::StringLiteral,
-        Token::Semicolon,
-        Token::Declare,
-        Token::Identifier,
-        Token::Colon,
-        Token::StringType,
-        Token::Equals,
-        Token::StringLiteral,
-        Token::Semicolon,
-        Token::Declare,
-        Token::Identifier,
-        Token::Colon,
-        Token::StringType,
-        Token::Equals,
-        Token::StringLiteral,
-        Token::Semicolon,
-    ];
+        let expected_tokens = vec![
+            Token::Declare,
+            Token::Identifier,
+            Token::Colon,
+            Token::StringType,
+            Token::Equals,
+            Token::StringLiteral,
+            Token::Semicolon,
+            Token::Declare,
+            Token::Identifier,
+            Token::Colon,
+            Token::StringType,
+            Token::Equals,
+            Token::StringLiteral,
+            Token::Semicolon,
+            Token::Declare,
+            Token::Identifier,
+            Token::Colon,
+            Token::StringType,
+            Token::Equals,
+            Token::StringLiteral,
+            Token::Semicolon,
+        ];
 
-    let tokens = lex(input);
+        let tokens = lex(input);
 
-    assert_eq!(tokens, expected_tokens);
-}
+        assert_eq!(tokens, expected_tokens);
+    }
 
-#[test]
-fn test_lexer_identifiers() {
-    let input = r#"
+    #[test]
+    fn test_lexer_identifiers() {
+        let input = r#"
         declare name: string = "John";
         phunc greet(person: string) {
             terminal.write("Hello, " + person + "!");
@@ -103,44 +102,43 @@ fn test_lexer_identifiers() {
         greet(name);
     "#;
 
-    let expected_tokens = vec![
-        Token::Declare,
-        Token::Identifier,
-        Token::Colon,
-        Token::StringType,
-        Token::Equals,
-        Token::StringLiteral,
-        Token::Semicolon,
-        Token::Phunc,
-        Token::Identifier,
-        Token::LeftParenthesis,
-        Token::Identifier,
-        Token::Colon,
-        Token::StringType,
-        Token::RightParenthesis,
-        Token::LeftBrace,
-        Token::Terminal,
-        Token::Dot,
-        Token::Identifier,
-        Token::LeftParenthesis,
-        Token::StringLiteral,
-        Token::Plus,
-        Token::Identifier,
-        Token::Plus,
-        Token::StringLiteral,
-        Token::RightParenthesis,
-        Token::Semicolon,
-        Token::RightBrace,
-        Token::Identifier,
-        Token::LeftParenthesis,
-        Token::Identifier,
-        Token::RightParenthesis,
-        Token::Semicolon,
-    ];
+        let expected_tokens = vec![
+            Token::Declare,
+            Token::Identifier,
+            Token::Colon,
+            Token::StringType,
+            Token::Equals,
+            Token::StringLiteral,
+            Token::Semicolon,
+            Token::Phunc,
+            Token::Identifier,
+            Token::LeftParenthesis,
+            Token::Identifier,
+            Token::Colon,
+            Token::StringType,
+            Token::RightParenthesis,
+            Token::LeftBrace,
+            Token::Terminal,
+            Token::Dot,
+            Token::Identifier,
+            Token::LeftParenthesis,
+            Token::StringLiteral,
+            Token::Plus,
+            Token::Identifier,
+            Token::Plus,
+            Token::StringLiteral,
+            Token::RightParenthesis,
+            Token::Semicolon,
+            Token::RightBrace,
+            Token::Identifier,
+            Token::LeftParenthesis,
+            Token::Identifier,
+            Token::RightParenthesis,
+            Token::Semicolon,
+        ];
 
-    let tokens = lex(input);
+        let tokens = lex(input);
 
-    assert_eq!(tokens, expected_tokens);
-}
-
+        assert_eq!(tokens, expected_tokens);
+    }
 }

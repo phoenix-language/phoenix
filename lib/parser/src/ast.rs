@@ -1,45 +1,3 @@
-// AST Node for a program
-pub struct Program {
-    pub statements: Vec<Statement>,
-}
-
-// AST Node for statements
-pub enum Statement {
-    VariableDeclaration {
-        identifier: String,
-        value: Expression,
-        datatype: Type,
-    },
-    FunctionDeclaration {
-        name: String,
-        parameters: Vec<String>,
-        body: Vec<Statement>,
-        return_type: Type,
-    },
-    ReturnStatement {
-        expression: Option<Expression>,
-    },
-    IfStatement {
-        condition: Expression,
-        true_branch: Vec<Statement>,
-        false_branch: Option<Vec<Statement>>,
-    },
-    WhileStatement {
-        condition: Expression,
-        body: Vec<Statement>,
-    },
-    ForStatement {
-        variable: String,
-        start: Expression,
-        end: Expression,
-        body: Vec<Statement>,
-    },
-    BreakStatement,
-    ContinueStatement,
-    ExpressionStatement(Box<Expression>),
-}
-
-// AST Node for expressions
 pub enum Expression {
     Identifier(String),
     Literal(Literal),
@@ -64,13 +22,51 @@ pub enum Expression {
     HashMapLiteral(Vec<(Expression, Expression)>),
 }
 
-// AST Node for match cases
+pub enum Statement {
+    VariableDeclaration {
+        identifier: String,
+        value: Expression,
+        datatype: Type,
+    },
+    VariableAssignment {
+        identifier: String,
+        value: Expression,
+    },
+    FunctionDeclaration {
+        visibility: Visibility,
+        name: String,
+        parameters: Vec<FunctionParameter>,
+        return_type: Type,
+        body: Vec<Statement>,
+    },
+    ReturnStatement {
+        expression: Option<Expression>,
+    },
+    IfStatement {
+        condition: Expression,
+        true_branch: Vec<Statement>,
+        false_branch: Option<Vec<Statement>>,
+    },
+    WhileStatement {
+        condition: Expression,
+        body: Vec<Statement>,
+    },
+    ForStatement {
+        variable: String,
+        start: Expression,
+        end: Expression,
+        body: Vec<Statement>,
+    },
+    BreakStatement,
+    ContinueStatement,
+    ExpressionStatement(Box<Expression>),
+}
+
 pub struct MatchCase {
     pub pattern: Expression,
     pub body: Vec<Statement>,
 }
 
-// AST Node for literal values
 pub enum Literal {
     Number(f64),
     String(String),
@@ -78,7 +74,6 @@ pub enum Literal {
     Null,
 }
 
-// AST Node for types
 pub enum Type {
     NumberType,
     StringType,
@@ -90,7 +85,6 @@ pub enum Type {
     VoidType,
 }
 
-// AST Node for operators
 pub enum Operator {
     Add,
     Subtract,
@@ -106,4 +100,16 @@ pub enum Operator {
     LessThanOrEqual,
     And,
     Or,
+}
+
+pub struct FunctionParameter {
+    pub identifier: String,
+    pub datatype: Type,
+    pub default_value: Option<Expression>,
+}
+
+pub enum Visibility {
+    Public,
+    Private,
+    // ... other visibility modifiers ...
 }

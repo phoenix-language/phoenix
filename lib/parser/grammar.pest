@@ -1,0 +1,84 @@
+program = { statement* }
+
+statement = _{ variable_declaration
+             | variable_assignment
+             | function_declaration
+             | return_statement
+             | if_statement
+             | while_statement
+             | for_statement
+             | break_statement
+             | continue_statement
+             | expression_statement }
+
+variable_declaration = _{ "declare" ~ identifier ~ ":" ~ type_ ~ "=" ~ expression }
+
+variable_assignment = _{ identifier ~ "=" ~ expression }
+
+function_declaration = _{ "phunc" ~ identifier ~ "(" ~ identifier* ~ ")" ~ ":" ~ type_ ~ "{" ~ statement* ~ "}" }
+
+return_statement = _{ "return" ~ expression? }
+
+if_statement = _{ "if" ~ expression ~ "{" ~ statement* ~ "}" ~ else_block? }
+
+else_block = _{ "else" ~ "{" ~ statement* ~ "}" }
+
+while_statement = _{ "while" ~ expression ~ "{" ~ statement* ~ "}" }
+
+for_statement = _{ "for" ~ identifier ~ "in" ~ expression ~ ".." ~ expression ~ "{" ~ statement* ~ "}" }
+
+break_statement = _{ "break" }
+
+continue_statement = _{ "continue" }
+
+expression_statement = _{ expression }
+
+expression = _{ literal
+             | identifier
+             | binary_operation
+             | unary_operation
+             | function_call
+             | match_statement
+             | array_literal
+             | hashmap_literal }
+
+literal = _{ number_literal
+           | string_literal
+           | boolean_literal
+           | "null" }
+
+binary_operation = _{ expression ~ operator ~ expression }
+
+unary_operation = _{ operator ~ expression }
+
+function_call = _{ identifier ~ "(" ~ expression* ~ ")" }
+
+match_statement = _{ "match" ~ expression ~ "{" ~ match_case* ~ "}" }
+
+match_case = _{ expression ~ "{" ~ statement* ~ "}" }
+
+array_literal = _{ "[" ~ expression* ~ "]" }
+
+hashmap_literal = _{ "[" ~ expression ~ ":" ~ expression ~ ("," ~ expression ~ ":" ~ expression)* ~ "]" }
+
+number_literal = _{ ( "-"? ~ integer ~ ("." ~ integer)? ) | integer }
+
+any_character = _{  "." }
+
+string_literal = _{ "\"" ~ (!['"'] ~ any_character)* ~ "\"" }
+
+boolean_literal = _{ "true" | "false" }
+
+type_ = _{ "number" | "string" | "bool" | "any" | "void" | vec_type | hash_type }
+
+vec_type = _{ "vec" ~ "<" ~ type_ ~ ">" }
+
+hash_type = _{ "hash" ~ "<" ~ type_ ~ ">" }
+
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+operator = _{ "+" | "-" | "*" | "/" | "%" | "!" | "==" | "!=" | ">" | ">=" | "<" | "<=" | "&&" | "||" }
+
+integer = _{ DIGIT+ }
+
+_ = _{ " "* }

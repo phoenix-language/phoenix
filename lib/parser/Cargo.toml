@@ -9,3 +9,5 @@ edition = "2021"
 lexer = { path = "../lexer" }
 
 anyhow.workspace = true
+pest = "2.6.0"
+pest_derive = "2.6.0"

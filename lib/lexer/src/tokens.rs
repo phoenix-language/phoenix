@@ -139,6 +139,9 @@ pub enum Token {
     #[token(";")]
     Semicolon,
 
+    #[token(",")]
+    Comma,
+
     // Types
     #[token("number")]
     NumberType,
