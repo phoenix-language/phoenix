@@ -45,6 +45,10 @@
 - `Hash` (Hashmap)
 - `Null` (Null value)
 
+The syntax for types is `Identifier : Type`.
+
+- Functions would be `phunc NAME (Params: TYPE): RETURN_TYPE { ... }`
+- Variables would be `declare NAME: TYPE = VALUE;`
 
 ## Comments
 
