@@ -3,6 +3,7 @@ use logos::Logos;
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token {
     EOF,
+    Illegal,
 
     // Keywords
     #[token("declare")]
@@ -103,14 +104,16 @@ pub enum Token {
     Or,
 
     // Other Tokens
-    #[regex("[a-zA-Z][a-zA-Z0-9]*")]
-    Identifier,
+    #[regex("[a-zA-Z][a-zA-Z0-9]*", |lexer| lexer.slice().to_owned())]
+    Identifier(String),
 
-    #[regex(r#""([^"\\]|\\.)*""#)]
-    StringLiteral,
+    #[regex(r#""[^"]*""#, |lexer| lexer.slice()[1..(lexer.slice().len()-1)].to_owned())]
+    StringLiteral(String),
 
-    #[regex(r"[0-9]+(\.[0-9]+)?")]
-    NumberLiteral,
+    #[regex(r"[0-9]+(\.[0-9]+)?", |lexer| lexer.slice().to_owned())]
+    /// The number literal is type f64 so its compatible with multiple number types for the language.
+    // The number literal is stored as a string so that it can be parsed into a number later.
+    NumberLiteral(String),
 
     #[token("{")]
     LeftBrace,
