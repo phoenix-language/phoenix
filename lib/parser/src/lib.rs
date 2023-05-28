@@ -1,6 +1,10 @@
+#![allow(unused_must_use)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 mod ast;
 
-use anyhow::{Result, Error};
+use anyhow::Result;
 use ast::*;
 
 use lexer::tokens::Token;
@@ -33,21 +37,21 @@ impl Parser {
         }
     }
 
-    fn consume_token(&mut self, expected_token: &Token) -> Result<(), String> {
+    fn consume_token(&mut self, expected_token: Token) -> Result<(), String> {
         if let Some(token) = &self.current_token {
-            if token == expected_token {
+            if *token == expected_token {
                 self.advance_token();
                 return Ok(());
             }
         }
-        
+
         Err(format!(
             "Expected {:?} but found {:?}",
             expected_token, self.current_token
         ))
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Statement>> {
+    pub fn parse(&mut self, input: &mut Vec<Token>) -> Result<Vec<Statement>> {
         let mut program: ProgramType = Vec::new();
 
         loop {
@@ -56,30 +60,97 @@ impl Parser {
             match token {
                 Token::EOF => break,
                 Token::Illegal => todo!(),
-                Token::Declare => self.parse_declarations(&mut program),
-                Token::Phunc => self.parse_phunctions(&mut program),
+                Token::Comment(_) => todo!(),
+
+                Token::Declare => self.parse_declarations(input, &mut program),
+                Token::Phunc => self.parse_phunctions(input, &mut program),
+                Token::Return => todo!(),
+                Token::If => todo!(),
+                Token::Else => todo!(),
+                Token::While => todo!(),
+                Token::For => todo!(),
+                Token::Break => todo!(),
+                Token::Continue => todo!(),
+                Token::True => todo!(),
+                Token::False => todo!(),
+                Token::Null => todo!(),
+                Token::Match => todo!(),
+                Token::FatArrow => todo!(),
+                Token::In => todo!(),
+                Token::Dot => todo!(),
+                Token::Range => todo!(),
+                Token::Terminal => todo!(),
+                Token::NotEqual => todo!(),
+                Token::Equal => todo!(),
+                Token::GreaterThan => todo!(),
+                Token::GreaterThanOrEqual => todo!(),
+                Token::LessThan => todo!(),
+                Token::LessThanOrEqual => todo!(),
+                Token::Plus => todo!(),
+                Token::Minus => todo!(),
+                Token::Multiply => todo!(),
+                Token::Divide => todo!(),
+                Token::Modulo => todo!(),
+                Token::Not => todo!(),
+                Token::And => todo!(),
+                Token::Or => todo!(),
+
+                Token::Identifier(_) => todo!(),
+                Token::StringLiteral(_) => todo!(),
+                Token::NumberLiteral(_) => todo!(),
+
+                Token::LeftBrace => todo!(),
+                Token::RightBrace => todo!(),
+                Token::LeftParenthesis => todo!(),
+                Token::RightParenthesis => todo!(),
+                Token::LeftBracket => todo!(),
+                Token::RightBracket => todo!(),
+                Token::Equals => todo!(),
+                Token::Comma => todo!(),
+                Token::Semicolon => todo!(),
+                Token::Colon => todo!(),
+
+                Token::NumberType => todo!(),
+                Token::StringType => todo!(),
+                Token::BooleanType => todo!(),
+                Token::VoidType => todo!(),
+                Token::AnyType => todo!(),
+                Token::VecType => todo!(),
+                Token::PhuncType => todo!(),
+                Token::HashType => todo!(),
+
+                _ => Ok(program.push(Statement::ExpressionStatement(Box::new(
+                    Expression::Literal(Literal::Null),
+                )))),
             };
 
-            self.consume_token(token);
+             assert_eq!(Token::Semicolon, input.remove(0));
         }
 
         Ok(program)
     }
 
-    fn parse_declarations(&mut self, program: &mut ProgramType) -> Result<()> {
-        self.consume_token(Token::Declare);
-
-        Ok(())
+    fn parse_declarations(
+        &mut self,
+        input: &mut Vec<Token>,
+        program: &mut ProgramType,
+    ) -> Result<()> {
+        todo!();
     }
 
-    fn parse_phunctions(&mut self, program: &mut ProgramType) -> Result<()> {
+    fn parse_phunctions(
+        &mut self,
+        input: &mut Vec<Token>,
+        program: &mut ProgramType,
+    ) -> Result<()> {
         todo!()
     }
 
-    fn to_f64(&mut self, t: Token) -> Result<f64> {
-        let number_str = match &self.current_token {
-            Some(Token::NumberLiteral(n)) => n.clone(),
-           _ => return Err("Expected number literal found '{t}'".to_string()),
+    /// Converts a NumberLiteral token to a f64. Because of how the lexer stores the types, it needs to a string first.
+    fn to_f64(&mut self, t: &Token) -> Result<f64, String> {
+        let number_str = match t {
+            Token::NumberLiteral(n) => n.clone(),
+            _ => return Err("Expected number literal found '{t}'".to_string()),
         };
 
         match number_str.parse::<f64>() {

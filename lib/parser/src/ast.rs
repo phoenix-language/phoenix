@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Identifier(String),
     Literal(Literal),
@@ -22,6 +23,7 @@ pub enum Expression {
     HashMapLiteral(Vec<(Expression, Expression)>),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     VariableDeclaration {
         identifier: String,
@@ -62,11 +64,13 @@ pub enum Statement {
     ExpressionStatement(Box<Expression>),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct MatchCase {
     pub pattern: Expression,
     pub body: Vec<Statement>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Number(f64),
     String(String),
@@ -74,6 +78,7 @@ pub enum Literal {
     Null,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     NumberType,
     StringType,
@@ -85,6 +90,7 @@ pub enum Type {
     VoidType,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
     Add,
     Subtract,
@@ -102,12 +108,14 @@ pub enum Operator {
     Or,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct FunctionParameter {
     pub identifier: String,
     pub datatype: Type,
     pub default_value: Option<Expression>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Visibility {
     Public,
     Private,

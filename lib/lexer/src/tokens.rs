@@ -5,6 +5,9 @@ pub enum Token {
     EOF,
     Illegal,
 
+    #[regex("[a-zA-Z][a-zA-Z0-9]*", |lexer| lexer.slice().to_owned(), priority = 2)]
+    Comment(String),
+
     // Keywords
     #[token("declare")]
     Declare,
@@ -166,4 +169,7 @@ pub enum Token {
 
     #[token("hash")]
     HashType,
+
+    #[token("Phunc")]
+    PhuncType,
 }
