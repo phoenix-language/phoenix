@@ -61,14 +61,15 @@ declare y: number = 20;
 
 ## Functions
 ```phoenix
-declare add = phunc(x, y): number {
+declare num1: number = 5;
+declare num2: number = 5;
+
+phunc addTwoNumbers(x: number, y: number): number {
     return x + y;
 };
 
-declare result = add(10, 20);
-
-phunc log() {
-    terminal.write(result);
+declare log = phunc logTheSum(): void {
+    terminal.write(addTwoNumbers(num1, num2));
 };
 
 log();
