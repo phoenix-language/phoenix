@@ -6,6 +6,8 @@
 
 mod ast;
 
+use std::fmt::format;
+
 use anyhow::Result;
 use ast::*;
 
@@ -48,12 +50,12 @@ impl Parser {
         }
 
         Err(format!(
-            "Expected {:?} but found {:?}",
+            "Expected {:?} but found {:?} during token consumption",
             expected_token, self.current_token
         ))
     }
 
-    pub fn parse(&mut self, input: &mut Vec<Token>) -> Result<Vec<Statement>, String> {
+    pub fn parse(&mut self) -> Result<Vec<Statement>, String> {
         let mut program: ProgramType = Vec::new();
 
         loop {
@@ -61,75 +63,21 @@ impl Parser {
 
             match token {
                 Token::EOF => break,
-                Token::Illegal => todo!(),
+                Token::Illegal => todo!("Handle illegal tokens using a custom error handler."),
+
                 Token::Comment(_) => todo!(),
 
                 Token::Declare => self.parse_variable_declaration(&mut program),
-                Token::Phunc => Ok(self.parse_phunctions_declaration(&mut program)),
-                Token::Assign => todo!(),
-                Token::Return => todo!(),
-                Token::If => todo!(),
-                Token::Else => todo!(),
-                Token::While => todo!(),
-                Token::For => todo!(),
-                Token::Break => todo!(),
-                Token::Continue => todo!(),
-                Token::True => todo!(),
-                Token::False => todo!(),
-                Token::Null => todo!(),
-                Token::Match => todo!(),
-                Token::FatArrow => todo!(),
-                Token::In => todo!(),
-                Token::Range => todo!(),
-                Token::NotEqual => todo!(),
-                Token::Equal => todo!(),
-                Token::GreaterThan => todo!(),
-                Token::GreaterThanOrEqual => todo!(),
-                Token::LessThan => todo!(),
-                Token::LessThanOrEqual => todo!(),
-                Token::Plus => todo!(),
-                Token::Minus => todo!(),
-                Token::Multiply => todo!(),
-                Token::Divide => todo!(),
-                Token::Modulo => todo!(),
-                Token::Not => todo!(),
-                Token::And => todo!(),
-                Token::Or => todo!(),
-
-                Token::Identifier(_) => todo!(),
-                Token::StringLiteral(_) => todo!(),
-                Token::NumberLiteral(_) => todo!(),
-
-                Token::LeftBrace => todo!(),
-                Token::RightBrace => todo!(),
-                Token::LeftParenthesis => todo!(),
-                Token::RightParenthesis => todo!(),
-                Token::LeftBracket => todo!(),
-                Token::RightBracket => todo!(),
-                Token::Comma => todo!(),
                 Token::Semicolon => match self.consume_token(Token::Semicolon) {
                     Ok(_) => continue,
                     Err(err) => {
                         return Err(err.to_string());
                     }
                 },
-                Token::Colon => todo!(),
-
-                Token::NumberType => todo!(),
-                Token::StringType => todo!(),
-                Token::BooleanType => todo!(),
-                Token::VoidType => todo!(),
-                Token::AnyType => todo!(),
-                Token::VecType => todo!(),
-                Token::PhuncType => todo!(),
-                Token::HashType => todo!(),
-
                 _ => Ok(program.push(Statement::ExpressionStatement(Box::new(
-                    Expression::Literal(Literal::Null),
+                    self.parse_expression()?,
                 )))),
             };
-
-            assert_eq!(Token::Semicolon, input.remove(0));
         }
 
         Ok(program)
@@ -138,62 +86,41 @@ impl Parser {
     fn parse_variable_declaration(&mut self, program: &mut ProgramType) -> Result<(), String> {
         self.consume_token(Token::Declare)?;
 
-        loop {
-            match &self.current_token {
-                Some(Token::Identifier(ident)) => {
-                    let identifier = ident.clone();
-                    self.consume_token(Token::Identifier(identifier.clone()))?;
+        match &self.current_token {
+            Some(Token::Identifier(ident)) => {
+                let identifier = ident.clone();
+                self.consume_token(Token::Identifier(identifier.clone()))?;
 
-                    let datatype = match &self.current_token {
-                        Some(Token::NumberType) => Type::NumberType,
-                        Some(Token::StringType) => Type::StringType,
-                        Some(Token::BooleanType) => Type::BooleanType,
-                        Some(Token::VoidType) => Type::VoidType,
-                        Some(Token::AnyType) => Type::AnyType,
-                        Some(Token::VecType) => {
-                            self.consume_token(Token::VecType)?;
-                            let element_type = self.parse_type()?;
-                            Type::VecType(Box::new(element_type))
-                        }
-                        Some(Token::HashType) => {
-                            self.consume_token(Token::HashType)?;
-                            let value_type = self.parse_type()?;
-                            Type::HashType(Box::new(value_type))
-                        }
-                        _ => {
-                            return Err(format!(
-                                "Invalid variable type for identifier '{}'",
-                                identifier
-                            ))
-                        }
-                    };
+                let datatype = if let Some(Token::Colon) = &self.current_token {
+                    self.consume_token(Token::Colon)?;
+                    self.parse_type()?
+                } else {
+                    // Default to AnyType if no explicit type is provided
+                    Type::AnyType
+                };
 
-                    self.consume_token(datatype.clone().into())?;
+                self.consume_token(datatype.clone().into())?;
 
-                    let value = if let Some(Token::Assign) = &self.current_token {
-                        self.consume_token(Token::Assign)?;
-                        self.parse_expression().ok()
-                    } else {
-                        None
-                    };
+                let value = if let Some(Token::Assign) = &self.current_token {
+                    self.consume_token(Token::Assign)?;
+                    self.parse_expression().ok()
+                } else {
+                    None
+                };
 
-                    let declaration = Statement::VariableDeclaration {
-                        identifier,
-                        value: value.unwrap_or_else(|| Expression::Literal(Literal::Null)),
-                        datatype,
-                    };
-                    program.push(declaration);
+                let declaration = Statement::VariableDeclaration {
+                    identifier,
+                    value: value.unwrap_or_else(|| Expression::Literal(Literal::Null)),
+                    datatype,
+                };
 
-                    // Check if there is a comma to indicate multiple declarations on the same line
-                    if let Some(Token::Comma) = &self.current_token {
-                        self.consume_token(Token::Comma)?;
-                        continue;
-                    }
-                }
-                _ => {
-                    // If the next token is not an identifier, break the loop
-                    break;
-                }
+                program.push(declaration);
+            }
+            _ => {
+                return Err(format!(
+                    "Expected identifier on declaration, found: {:?}",
+                    self.current_token
+                ))
             }
         }
 
@@ -246,7 +173,10 @@ impl Parser {
                     Ok(variable_identifier)
                 }
             }
-            _ => Err("Unexpected token while parsing expression".to_string()),
+            _ => Err(format!(
+                "Unexpected token while parsing expression {:?}",
+                self.current_token
+            )),
         }
     }
 
@@ -270,7 +200,10 @@ impl Parser {
                 Ok(Type::HashType(Box::new(value_type)))
             }
 
-            _ => Err("Invalid type".to_string()),
+            _ => Err(format!(
+                "Unexpected token while parsing type {:?}",
+                self.current_token
+            )),
         }
     }
 
@@ -279,11 +212,14 @@ impl Parser {
             Some(Token::NumberLiteral(number)) => {
                 let num = number
                     .parse::<f64>()
-                    .map_err(|_| "Invalid number literal".to_string())?;
+                    .map_err(|_| format!("Invalid number literal {}", number))?;
                 self.advance_token();
                 Ok(Literal::Number(num))
             }
-            _ => Err("Expected number literal".to_string()),
+            _ => Err(format!(
+                "Expected number literal found {:?}",
+                self.current_token
+            )),
         }
     }
 
@@ -295,7 +231,10 @@ impl Parser {
 
                 Ok(Literal::String(value))
             }
-            _ => Err("Expected string literal".to_string()),
+            _ => Err(format!(
+                "Expected string literal found {:?}",
+                self.current_token
+            )),
         }
     }
 
@@ -342,5 +281,79 @@ impl Into<Token> for ast::Type {
             ast::Type::AnyType => Token::AnyType,
             ast::Type::VoidType => Token::VoidType,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lexer::lex;
+    use Type::*;
+
+    #[test]
+    fn test_parse_number_literal() {
+        let tokens = lex("1234");
+        let mut parser = Parser::new(tokens);
+        let literal = parser.parse_number_literal().unwrap();
+        assert_eq!(literal, Literal::Number(1234.0));
+    }
+
+    #[test]
+    fn test_parse_string_literal() {
+        let tokens = lex(r#""Hello World""#);
+        let mut parser = Parser::new(tokens);
+        let literal = parser.parse_string_literal().unwrap();
+        assert_eq!(literal, Literal::String("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_parse_variable_declaration() {
+        let tokens = lex("declare x: Number = 1234;");
+        let mut parser = Parser::new(tokens);
+        let mut program = Vec::new();
+
+        parser.parse_variable_declaration(&mut program).unwrap();
+
+        let expected_program = vec![Statement::VariableDeclaration {
+            identifier: "x".to_string(),
+            value: Expression::Literal(Literal::Number(1234.0)),
+            datatype: NumberType,
+        }];
+
+        assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    fn test_parse_variable_declaration_with_any_type() {
+        let tokens = lex("declare x: Any = 1234;");
+        let mut parser = Parser::new(tokens);
+        let mut program = Vec::new();
+
+        parser.parse_variable_declaration(&mut program).unwrap();
+
+        let expected_program = vec![Statement::VariableDeclaration {
+            identifier: "x".to_string(),
+            value: Expression::Literal(Literal::Number(1234.0)),
+            datatype: AnyType,
+        }];
+
+        assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    fn test_parse_variable_declaration_without_value() {
+        let tokens = lex("declare x: Number;");
+        let mut parser = Parser::new(tokens);
+        let mut program = Vec::new();
+
+        parser.parse_variable_declaration(&mut program).unwrap();
+
+        let expected_program = vec![Statement::VariableDeclaration {
+            identifier: "x".to_string(),
+            value: Expression::Literal(Literal::Null),
+            datatype: NumberType,
+        }];
+
+        assert_eq!(program, expected_program);
     }
 }

@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn test_lexer_declaration() {
-        let input = "declare x: number = 5;";
+        let input = "declare x: Number = 5;";
         let tokens = lex(input);
 
         let expected_tokens = vec![
