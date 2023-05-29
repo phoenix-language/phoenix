@@ -38,9 +38,9 @@
 
 # Types
 
-- `number` (Number) [Can be an integer or a float]
-- `bool` (Boolean)
-- `string` (String)
+- `Number` (Number) [Can be an integer or a float]
+- `Bool` (Boolean)
+- `String` (String)
 - `Vec` (Array)
 - `Hash` (Hashmap)
 - `Null` (Null value)
@@ -81,7 +81,7 @@ log();
 
 ## If statements
 ```phoenix
-declare x: number = 10;
+declare x: Number = 10;
 
 if x == 10 {
     terminal.write("x is 10");
@@ -92,7 +92,7 @@ if x == 10 {
 
 ## While statements
 ```phoenix
-declare x: number = 0;
+declare x: Number = 0;
 
 while x < 10 {
     terminal.write(x);
@@ -109,7 +109,7 @@ for x in 0..10 {
 
 ## Match statements
 ```phoenix
-declare x: number = 10;
+declare x: Number = 10;
 
 match x {
     10 => terminal.write("x is 10");
@@ -120,7 +120,7 @@ match x {
 
 ## Break and continue statements
 ```phoenix
-declare x: number = 0;
+declare x: Number = 0;
 
 while x < 10 {
     if x == 5 {
@@ -142,7 +142,7 @@ for x in 0..10 {
 
 ## Vec
 ```phoenix
-declare vec = Vec<number>();
+declare myVec: Vec<Number> = [1, 2, 3];
 
 vec.push(10);
 
@@ -155,7 +155,7 @@ terminal.write(vec[0]);
 
 ## Hash
 ```phoenix
-declare hash = Hash<number>();
+declare hash: Hash<String, Number> = {};
 
 hash.set("x", 10);
 
@@ -164,22 +164,22 @@ terminal.write(hash.get("x"));
 
 ## Null
 ```phoenix
-declare x: number = null;
+declare x: Number = null;
 ```
 
 ## Boolean
 ```phoenix
-declare x: bool = true;
-declare y: bool = false;
+declare x: Bool = true;
+declare y: Bool = false;
 ```
 
 ## String
 ```phoenix
-declare x: string = "Hello world!";
+declare x: String = "Hello world!";
 ```
 
 ## Number
 ```phoenix
-declare x: number = 10;
-declare y: number = 10.5;
+declare x: Number = 10;
+declare y: Number = 10.5;
 ```
