@@ -25,108 +25,118 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lexer() {
-        let input = r#"
-            declare x: number = 10;
-            declare y: number = 20;
-        "#;
+    fn test_lexer_declaration() {
+        let input = "declare x: number = 5;";
+        let tokens = lex(input);
 
         let expected_tokens = vec![
             Token::Declare,
-            Token::Identifier(String::from("x")),
+            Token::Identifier("x".to_owned()),
             Token::Colon,
             Token::NumberType,
-            Token::Equals,
-            Token::NumberLiteral(String::from("10")),
-            Token::Semicolon,
-            Token::Declare,
-            Token::Identifier(String::from("y")),
-            Token::Colon,
-            Token::NumberType,
-            Token::Equals,
-            Token::NumberLiteral(String::from("20")),
+            Token::Assign,
+            Token::NumberLiteral("5".to_owned()),
             Token::Semicolon,
         ];
-
-        let tokens = lex(input);
 
         assert_eq!(tokens, expected_tokens);
     }
 
     #[test]
-    fn test_lexer_string_literals() {
-        let input = r#"
-        declare message: string = "Hello, world!";
-        declare emptyString: string = "";
-        declare multilineString: string = "This is
-        a multiline
-        string.";
-    "#;
+    fn test_lexer_arithmetic_expression() {
+        let input = "x + 2 * (y - 3)";
+        let tokens = lex(input);
 
         let expected_tokens = vec![
-            Token::Declare,
-            Token::Identifier(String::from("message")),
-            Token::Colon,
-            Token::StringType,
-            Token::Equals,
-            Token::StringLiteral(String::from("Hello, world!")),
-            Token::Semicolon,
-            Token::Declare,
-            Token::Identifier(String::from("emptyString")),
-            Token::Colon,
-            Token::StringType,
-            Token::Equals,
-            Token::StringLiteral(String::from("")),
-            Token::Semicolon,
-            Token::Declare,
-            Token::Identifier(String::from("multilineString")),
-            Token::Colon,
-            Token::StringType,
-            Token::Equals,
-            Token::StringLiteral(String::from(
-                "This is\n        a multiline\n        string.",
-            )),
-            Token::Semicolon,
+            Token::Identifier("x".to_owned()),
+            Token::Plus,
+            Token::NumberLiteral("2".to_owned()),
+            Token::Multiply,
+            Token::LeftParenthesis,
+            Token::Identifier("y".to_owned()),
+            Token::Minus,
+            Token::NumberLiteral("3".to_owned()),
+            Token::RightParenthesis,
         ];
-
-        let tokens = lex(input);
 
         assert_eq!(tokens, expected_tokens);
     }
 
     #[test]
-    fn test_lexer_identifiers() {
-        let input = r#"
-        declare name: string = "John";
-        phunc greet(person: string) {}
-        greet(name);
-    "#;
+    fn test_lexer_string_literal() {
+        let input = "\"Hello, world!\"";
+        let tokens = lex(input);
+
+        let expected_tokens = vec![Token::StringLiteral("Hello, world!".to_owned())];
+
+        assert_eq!(tokens, expected_tokens);
+    }
+
+    #[test]
+    fn test_lexer_keywords() {
+        let input = "if else while for break continue true false null match => in ..";
+        let tokens = lex(input);
 
         let expected_tokens = vec![
-            Token::Declare,
-            Token::Identifier(String::from("name")),
-            Token::Colon,
-            Token::StringType,
-            Token::Equals,
-            Token::StringLiteral(String::from("John")),
-            Token::Semicolon,
-            Token::Phunc,
-            Token::Identifier(String::from("greet")),
-            Token::LeftParenthesis,
-            Token::Identifier(String::from("person")),
-            Token::Colon,
-            Token::StringType,
-            Token::RightParenthesis,
-            Token::LeftBrace,
-            Token::RightBrace,
-            Token::Identifier(String::from("greet")),
-            Token::LeftParenthesis,
-            Token::Identifier(String::from("name")),
-            Token::RightParenthesis,
-            Token::Semicolon,
+            Token::If,
+            Token::Else,
+            Token::While,
+            Token::For,
+            Token::Break,
+            Token::Continue,
+            Token::True,
+            Token::False,
+            Token::Null,
+            Token::Match,
+            Token::FatArrow,
+            Token::In,
+            Token::Range,
         ];
 
+        assert_eq!(tokens, expected_tokens);
+    }
+
+    #[test]
+    fn test_lexer_operators() {
+        let input = "!= == > < >= <= + - * / % ! && ||";
         let tokens = lex(input);
+
+        let expected_tokens = vec![
+            Token::NotEqual,
+            Token::Equal,
+            Token::GreaterThan,
+            Token::LessThan,
+            Token::GreaterThanOrEqual,
+            Token::LessThanOrEqual,
+            Token::Plus,
+            Token::Minus,
+            Token::Multiply,
+            Token::Divide,
+            Token::Modulo,
+            Token::Not,
+            Token::And,
+            Token::Or,
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+    }
+
+    #[test]
+    fn test_lexer_types() {
+        let input = "Number String Bool Any Void Vec Hash Phunc Null";
+        let tokens = lex(input);
+
+        let expected_tokens = vec![
+            Token::NumberType,
+            Token::StringType,
+            Token::BooleanType,
+            Token::AnyType,
+            Token::VoidType,
+            Token::VecType,
+            Token::HashType,
+            Token::PhuncType,
+            Token::NullType,
+        ];
 
         assert_eq!(tokens, expected_tokens);
     }

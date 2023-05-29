@@ -5,12 +5,15 @@ pub enum Token {
     EOF,
     Illegal,
 
-    #[regex("[a-zA-Z][a-zA-Z0-9]*", |lexer| lexer.slice().to_owned(), priority = 2)]
+    // todo - add comments
     Comment(String),
 
     // Keywords
     #[token("declare")]
     Declare,
+
+    #[token("=")]
+    Assign,
 
     #[token("phunc")]
     Phunc,
@@ -130,9 +133,6 @@ pub enum Token {
     #[token("]")]
     RightBracket,
 
-    #[token("=")]
-    Equals,
-
     #[token(":")]
     Colon,
 
@@ -143,27 +143,30 @@ pub enum Token {
     Comma,
 
     // Types
-    #[token("number")]
+    #[token("Number")]
     NumberType,
 
-    #[token("string")]
+    #[token("String")]
     StringType,
 
-    #[token("bool")]
+    #[token("Bool")]
     BooleanType,
 
-    #[token("any")]
+    #[token("Any")]
     AnyType,
 
-    #[token("void")]
+    #[token("Void")]
     VoidType,
 
-    #[token("vec")]
+    #[token("Vec")]
     VecType,
 
-    #[token("hash")]
+    #[token("Hash")]
     HashType,
 
     #[token("Phunc")]
     PhuncType,
+
+    #[token("Null")]
+    NullType,
 }

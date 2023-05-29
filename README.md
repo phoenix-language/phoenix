@@ -11,15 +11,9 @@ Phoenix is a [Concurrent language](https://en.wikipedia.org/wiki/Concurrency_(co
 [Garbage collected languages](https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)) for [Computers](https://en.wikipedia.org/wiki/Computer).
 Currently, bootstrapped with the rust programming language.
 
-## Why?
-
-Why not? I'm simply interested in how programming languages work on the inside.
-I also realized, that doing this in typescript was not a good idea, so I switched to
-[golang](https://go.dev/) about midway through the project.
-
 ## Sample 
 
-[click me](./assets/example.md)
+[click me](./assets/examples/test.phx)
 
 ## Performance Goals ⚡
 

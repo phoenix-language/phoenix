@@ -1,26 +1,6 @@
 #[derive(Debug, PartialEq, Clone)]
-pub enum Expression {
-    Identifier(String),
-    Literal(Literal),
-    BinaryOperation {
-        left: Box<Expression>,
-        operator: Operator,
-        right: Box<Expression>,
-    },
-    UnaryOperation {
-        operator: Operator,
-        operand: Box<Expression>,
-    },
-    FunctionCall {
-        name: String,
-        arguments: Vec<Expression>,
-    },
-    MatchStatement {
-        value: Box<Expression>,
-        cases: Vec<MatchCase>,
-    },
-    ArrayLiteral(Vec<Expression>),
-    HashMapLiteral(Vec<(Expression, Expression)>),
+pub struct Program {
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -65,6 +45,31 @@ pub enum Statement {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum Expression {
+    Identifier(String),
+    Literal(Literal),
+    BinaryOperation {
+        left: Box<Expression>,
+        operator: Operator,
+        right: Box<Expression>,
+    },
+    UnaryOperation {
+        operator: Operator,
+        operand: Box<Expression>,
+    },
+    FunctionCall {
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    MatchStatement {
+        value: Box<Expression>,
+        cases: Vec<MatchCase>,
+    },
+    ArrayLiteral(Vec<Expression>),
+    HashMapLiteral(Vec<(Expression, Expression)>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct MatchCase {
     pub pattern: Expression,
     pub body: Vec<Statement>,
@@ -89,6 +94,7 @@ pub enum Type {
     AnyType,
     VoidType,
 }
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {

@@ -1,0 +1,12 @@
+declare num1: Number = 5;
+declare num2: Number = 5;
+
+phunc addTwoNumbers(x: Number, y: Number): Number {
+    return x + y;
+};
+
+declare log = phunc logTheSum(): Void {
+    terminal.write(addTwoNumbers(num1, num2));
+};
+
+log();
