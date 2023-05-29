@@ -6,8 +6,6 @@
 
 mod ast;
 
-use std::fmt::format;
-
 use anyhow::Result;
 use ast::*;
 
@@ -23,7 +21,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        let mut parser = Parser {
+        let mut parser = Self {
             tokens,
             current_token: None,
             current_index: 0,
@@ -32,6 +30,9 @@ impl Parser {
         parser
     }
 
+    /// Reads the next token from the token stream and stores it in the current_token field.
+    ///
+    /// If there are no more tokens, the current_token field is set to None.
     fn advance_token(&mut self) {
         if self.current_index < self.tokens.len() {
             self.current_token = Some(self.tokens[self.current_index].clone());
@@ -41,6 +42,9 @@ impl Parser {
         }
     }
 
+    /// Consumes the current token if it matches the expected token.
+    ///
+    /// This function is called after a token has been parsed.
     fn consume_token(&mut self, expected_token: Token) -> Result<(), String> {
         if let Some(token) = &self.current_token {
             if *token == expected_token {
@@ -50,14 +54,16 @@ impl Parser {
         }
 
         Err(format!(
-            "Expected {:?} but found {:?} during token consumption",
+            "Expected {:?} but found {:?} during the consume_token function",
             expected_token, self.current_token
         ))
     }
 
+    /// Parses the tokens into an AST.
     pub fn parse(&mut self) -> Result<Vec<Statement>, String> {
         let mut program: ProgramType = Vec::new();
 
+        // Loop through each token and parse it into a statement for the AST.
         loop {
             let token = &self.tokens[self.current_index];
 
@@ -66,8 +72,21 @@ impl Parser {
                 Token::Illegal => todo!("Handle illegal tokens using a custom error handler."),
 
                 Token::Comment(_) => todo!(),
-
+                Token::Identifier(_) => {
+                    if self.lookahead_token(1) == Some(Token::LeftParenthesis) {
+                        self.parse_phunctions_declaration(&mut program)
+                    } else {
+                        self.parse_variable_declaration(&mut program)
+                    }
+                }
+                Token::Return => self.parse_return_statement(&mut program),
+                Token::If => todo!("Parse if statement"),
+                Token::While => todo!("Parse while statement"),
+                Token::For => todo!("Parse for statement"),
+                Token::Break => todo!("Parse break statement"),
                 Token::Declare => self.parse_variable_declaration(&mut program),
+                Token::Phunc => self.parse_phunctions_declaration(&mut program),
+                Token::Return => self.parse_return_statement(&mut program),
                 Token::Semicolon => match self.consume_token(Token::Semicolon) {
                     Ok(_) => continue,
                     Err(err) => {
@@ -89,17 +108,29 @@ impl Parser {
         match &self.current_token {
             Some(Token::Identifier(ident)) => {
                 let identifier = ident.clone();
-                self.consume_token(Token::Identifier(identifier.clone()))?;
+                match self.consume_token(Token::Identifier(identifier.clone())) {
+                    Ok(_) => (),
+                    Err(err) => return Err(err),
+                }
 
                 let datatype = if let Some(Token::Colon) = &self.current_token {
-                    self.consume_token(Token::Colon)?;
-                    self.parse_type()?
+                    match self.consume_token(Token::Colon) {
+                        Ok(_) => (),
+                        Err(err) => return Err(err),
+                    }
+                    match self.parse_type() {
+                        Ok(datatype) => datatype,
+                        Err(err) => return Err(err),
+                    }
                 } else {
                     // Default to AnyType if no explicit type is provided
                     Type::AnyType
                 };
 
-                self.consume_token(datatype.clone().into())?;
+                match self.consume_token(datatype.clone().into()) {
+                    Ok(_) => (),
+                    Err(err) => return Err(err),
+                }
 
                 let value = if let Some(Token::Assign) = &self.current_token {
                     self.consume_token(Token::Assign)?;
@@ -129,8 +160,130 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_phunctions_declaration(&mut self, program: &mut ProgramType) {
-        todo!()
+    /// Parses a return statement for functions.
+    fn parse_return_statement(&mut self, program: &mut ProgramType) -> Result<(), String> {
+        self.consume_token(Token::Return)?;
+
+        let expression = if let Some(Token::Semicolon) = &self.current_token {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        self.consume_token(Token::Semicolon)?;
+
+        let return_statement = Statement::ReturnStatement { expression };
+
+        program.push(return_statement);
+
+        Ok(())
+    }
+
+    fn parse_phunctions_declaration(&mut self, program: &mut ProgramType) -> Result<(), String> {
+        self.consume_token(Token::Phunc)?;
+
+        let phunc_name = if let Some(Token::Identifier(name)) = self.current_token.clone() {
+            self.advance_token();
+            name
+        } else {
+            return Err(format!(
+                "Expected identifier for function name, found: {:?}",
+                self.current_token
+            ));
+        };
+
+        self.consume_token(Token::LeftParenthesis)?;
+
+        let mut parameters: Vec<FunctionParameter> = vec![];
+
+        // Parse function parameters
+        // If the next token is a right parenthesis, then the function takes no parameters and we can break out of the loop.
+        while let Some(token) = self.current_token.clone() {
+            match token {
+                Token::RightParenthesis => {
+                    self.advance_token();
+                    break;
+                }
+                Token::Identifier(identifier) => {
+                    self.advance_token();
+
+                    self.consume_token(Token::Colon)?;
+
+                    // Expecting type after colon
+                    let datatype = self.parse_type()?;
+
+                    let param = FunctionParameter {
+                        identifier,
+                        datatype,
+                    };
+
+                    parameters.push(param);
+
+                    self.advance_token();
+
+                    // Expecting comma or right parenthesis after parameter
+                    if let Some(Token::Comma) = self.current_token.clone() {
+                        self.advance_token();
+                    } else if let Some(Token::RightParenthesis) = self.current_token.clone() {
+                        self.advance_token();
+                        break;
+                    } else {
+                        return Err(format!(
+                            "Expected comma or right parenthesis after parameter, found: {:?}",
+                            self.current_token
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "Expected identifier for parameter, found: {:?}",
+                        self.current_token
+                    ));
+                }
+            }
+        }
+
+        // Expecting function return type
+        let return_type = self.parse_type()?;
+
+        // Expecting open brace for function body
+        self.consume_token(Token::LeftBrace)?;
+
+        // Parse function body
+        let mut body = Vec::new();
+
+        while let Some(token) = self.current_token.clone() {
+            match token {
+                Token::RightBrace => {
+                    self.advance_token();
+                    break;
+                }
+                _ => {
+                    let statement = match self.parse() {
+                        Ok(statement) => statement,
+                        Err(err) => return Err(err),
+                    };
+
+                    body.extend(statement);
+                }
+            }
+        }
+
+        // todo - functions with public can be imported and exported into other files
+        // for now, all functions are private by default
+        let phunc = Statement::FunctionDeclaration {
+            visibility: Visibility::Private,
+            name: phunc_name,
+            parameters,
+            return_type,
+            body,
+        };
+
+        program.push(phunc);
+
+        println!("Program: {:?}", program);
+
+        Ok(())
     }
 
     fn parse_expression(&mut self) -> Result<Expression, String> {
@@ -267,6 +420,20 @@ impl Parser {
             Err(_) => return Err("Invalid number literal. Parse to f64 failed".to_string()),
         }
     }
+
+    /// Looks ahead in the token stream by n tokens.
+    /// 
+    /// This is helpful for looking at tokens and there value before parsing them.
+    /// 
+    /// Returns None if the index is out of bounds.
+    fn lookahead_token(&self, n: usize) -> Option<Token> {
+        let index = self.current_index + n;
+        if index < self.tokens.len() {
+            Some(self.tokens[index].clone())
+        } else {
+            None
+        }
+    }
 }
 
 impl Into<Token> for ast::Type {
@@ -355,5 +522,47 @@ mod tests {
         }];
 
         assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    // todo - get functions working!
+    fn test_parse_phunctions_declaration() {
+        let tokens = lex("phunc addTwoNumbers(x: Number, y: Number): Number { return x + y; };");
+        println!("Token Stream: {:?}", tokens); // Log the token stream
+
+        let mut parser = Parser::new(tokens);
+
+        let mut program = Vec::new();
+
+        let result = parser.parse_phunctions_declaration(&mut program);
+
+        let expected_parameters = vec![
+            FunctionParameter {
+                identifier: "x".to_string(),
+                datatype: Type::NumberType,
+            },
+            FunctionParameter {
+                identifier: "y".to_string(),
+                datatype: Type::NumberType,
+            },
+        ];
+
+        let return_statement = Statement::ReturnStatement {
+            expression: Some(Expression::BinaryOperation {
+                operator: Operator::Add,
+                left: Box::new(Expression::Identifier(String::from("x"))),
+                right: Box::new(Expression::Identifier(String::from("y"))),
+            }),
+        };
+
+        let expected_statement = Statement::FunctionDeclaration {
+            visibility: Visibility::Private,
+            name: String::from("addTwoNumbers"),
+            parameters: expected_parameters,
+            return_type: Type::NumberType,
+            body: vec![return_statement],
+        };
+
+        assert_eq!(program, vec![expected_statement]);
     }
 }

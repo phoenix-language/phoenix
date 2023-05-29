@@ -118,7 +118,6 @@ pub enum Operator {
 pub struct FunctionParameter {
     pub identifier: String,
     pub datatype: Type,
-    pub default_value: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
