@@ -59,20 +59,20 @@ Comments are written with `//`.
 Variables are assigned with the `var` keyword and the `=` operator.  
 
 ```phoenix
-declare x: number = 10;
-declare y: number = 20;
+declare x: Number = 10;
+declare y: Number = 20;
 ```
 
 ## Functions
 ```phoenix
-declare num1: number = 5;
-declare num2: number = 5;
+declare num1: Number = 5;
+declare num2: Number = 5;
 
-phunc addTwoNumbers(x: number, y: number): number {
+phunc addTwoNumbers(x: Number, y: Number): number {
     return x + y;
 };
 
-declare log = phunc logTheSum(): void {
+declare log = phunc logTheSum(): Void {
     terminal.write(addTwoNumbers(num1, num2));
 };
 
