@@ -1,0 +1,441 @@
+---
+description: Rust coding standards for phoenix — the Phoenix language compiler and VM
+globs: "**/*.rs"
+alwaysApply: true
+---
+
+# Rust Code Guidelines (phoenix)
+
+**Core directive:** You are building a programming language compiler and virtual machine in Rust. Prioritize correctness above all else — a compiler that produces wrong output is worse than one that produces no output. Clarity and maintainability come second. Performance matters but never at the cost of correctness.
+
+This crate uses **Rust standard library only**. Never add dependencies to `Cargo.toml` unless explicitly approved. If something is missing, implement it in-tree. This is a compiler — owning your dependencies is owning your correctness.
+
+---
+
+## Design authority
+
+Before implementing any Phoenix language feature, read the relevant design documents. Do not invent semantics.
+
+| Document | Use when |
+|---|---|
+| `docs/design/mvp.md` | Scoping any work — what is in/out of MVP |
+| `docs/design/grammar.ebnf` | Lexer, parser, syntax |
+| `docs/design/features/type-system.md` | Typing rules, primitives, `Option`/`Result` |
+| `docs/design/features/ownership.md` | Moves, Copyable, borrows (post-MVP checker) |
+| `docs/design/features/vm-linear.md` | Bytecode file format, opcodes, verifier |
+| `docs/design/features/modules.md` | `#import`, file-based modules, `pub` |
+| `docs/design/features/compiler-directives.md` | `#` compile-time vs `@` runtime directives |
+| `docs/design/features/error-handling.md` | `Result`, `?`, no exceptions |
+| `docs/design/features/traits.md` | Traits, Copyable vs Clone |
+| `docs/design/features/grammar-deferred.md` | Parse-only vs not-yet-designed grammar |
+
+Post-MVP design (reference only — do not implement until MVP acceptance checklist passes):
+
+| Document | Topic |
+|---|---|
+| `docs/design/features/runtime-transparency.md` | Pure vs schedulable I/O vs actor boundaries |
+| `docs/design/features/concurrency.md` | Scheduler, M:N, schedulable I/O |
+| `docs/design/features/messages.md` | Actor message ownership |
+
+---
+
+## MVP scope (implement now)
+
+Build the minimal pipeline defined in `docs/design/mvp.md`:
+
+1. Lex → parse → resolve → type-check → lower → emit bytecode
+2. Load and **verify** bytecode, then execute on a **single-process stack VM**
+3. Enforce required entrypoint: `main :: () => { ... }`
+
+**MVP in scope:** numeric primitives, `bool`, tuples, unit, raw pointers, fixed arrays, slices, structs, enums, pattern matching, `Option<T>`, `Result<T, E>`, `?`, control flow, arithmetic/comparison/logical operators.
+
+**MVP out of scope — do not implement yet:**
+
+- M:N scheduler, actors, mailboxes, supervision
+- Full borrow checker / ownership verifier (beyond use-after-move)
+- Primitive `string` type — MVP is byte-first (`u8`, arrays, slices, pointers, allocation intrinsics)
+- Std I/O, networking, rich collections
+- JIT, hot reload, `#derive` codegen
+
+When adding a language feature, follow this order:
+
+**lexer → parser → AST node → resolver → type checker → IR lowering → codegen → bytecode verifier → VM → tests**
+
+Do not skip resolver for multi-file or `#import` work. Do not build post-MVP runtime modules until MVP passes its acceptance checklist.
+
+---
+
+## Project architecture
+
+The Phoenix compiler and VM are divided into distinct pipeline stages. Each stage is its own module and owns its data structures. Never reach across stages.
+
+```
+src/
+  lexer/        — tokenization; source text → token stream
+  parser/       — parsing; token stream → AST
+  ast/          — AST node definitions, visitor/fold traits
+  resolver/     — name resolution, `#import`, symbol tables, scoping
+  typeck/       — type checking and inference; Result/Option rules, use-after-move
+  lower/        — AST → IR lowering
+  ir/           — intermediate representation definitions
+  codegen/      — IR → bytecode emission
+  bytecode/     — file format, serialization, loader, verifier
+  vm/           — MVP: stack interpreter; post-MVP: scheduler, actors
+  runtime/      — post-MVP: actor lifecycle, mailboxes, supervision
+  std/          — Phoenix standard library implemented in Rust
+  utils/        — arena allocator, interning, diagnostics
+  error/        — compiler error types, diagnostics, span reporting
+```
+
+One primary concern per file. Never put lexer logic in the parser. Never put type checking in codegen.
+
+---
+
+## Dependencies and crate policy
+
+- **NEVER** add external crates without explicit approval.
+- **NEVER** use `unsafe` outside of `src/vm/` and `src/utils/arena.rs`. These are the only permitted locations; every `unsafe` block requires a `// SAFETY:` comment explaining the invariant.
+- Prefer `#![forbid(unsafe_code)]` on all modules except `vm/` and `utils/arena.rs`.
+- Any `unsafe` code must be wrapped in a safe abstraction immediately. No raw pointer arithmetic leaking into safe modules.
+- Prefer `std` modules: `std::io`, `std::collections`, `std::sync`, `std::thread`.
+- Edition is **2024** (see `Cargo.toml`).
+
+---
+
+## Phoenix language semantics (compiler-facing)
+
+Distill these from design docs — do not guess.
+
+### Types and literals
+
+- No primitive `string` in MVP. Text/data handling is byte-first.
+- Integer literals default to `s32`; `u` suffix → `u32`. Float literals default to `f32`.
+- No implicit numeric widening or narrowing — casts must be explicit (`expr as Type`).
+- Borrow types in signatures: `&T`, `&mut T`.
+- Function parameters must be explicitly typed. Omitted return type defaults to `()`.
+- `if` and `match` expression branches must unify to one type.
+- `?` is valid only in functions returning compatible `Result<_, _>` or `Option<_>`.
+- Operators in MVP are compiler-defined for primitive numerics and booleans only.
+
+### Copyable vs Clone
+
+- **Copyable** (language marker): implicit bitwise copy on assignment/pass-by-value. Compiler-known for primitives and eligible user types. See `ownership.md`.
+- **Clone** (std trait): explicit duplication that may allocate. Not a language primitive.
+- Do not conflate these with Rust's `Copy`/`Clone` API names in Phoenix-facing diagnostics.
+
+### Declarations (`::` form)
+
+- `Name :: struct`, `Name :: enum`, `Name :: trait`, `Type :: impl`, `Type :: impl for Trait` — same declaration style as functions (`name :: (…) => T`).
+- Parse-only or deferred semantics: see `grammar-deferred.md` (`#derive`, `@spawn`, lambdas, trait default body codegen).
+
+### Directives and modules
+
+- `#` prefix = compile-time directives (`#import`, `#unsafe`, `#inline`, …)
+- `@` prefix = runtime directives (`@spawn`, `@send`, …) — post-MVP semantics
+- Files are modules. Paths use `::`. Items are private by default; `pub` exports. See `modules.md`.
+
+### Ownership (phased)
+
+**MVP:** enforce use-after-move. A moved binding is invalid; subsequent use is a type error with the original move site in the diagnostic.
+
+**Post-MVP:** full borrow checker per `ownership.md` — `&T` / `&mut T` exclusivity, borrow lifetimes, actor-boundary rules. Do not implement full borrow checking until MVP stack VM is complete.
+
+---
+
+## Compiler-specific patterns
+
+### Spans and source locations
+
+Every AST node, token, and error must carry a `Span` — a byte-offset range into the source text. Never discard span information.
+
+```rust
+/// A byte-offset range in the source file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    pub start: u32,
+    pub end: u32,
+}
+```
+
+Validate all spans and indices before indexing into source buffers.
+
+### AST node design
+
+- AST nodes are **immutable plain data** — no methods that perform analysis or transformation.
+- Wrap nodes in a `Node<T>` that carries both the value and its `Span`.
+- Traverse and transform via explicit **visitor** or **fold** traits in `src/ast/`, not methods on nodes.
+- Never store string values directly in AST nodes — intern all identifiers through the `Interner` in `src/utils/`.
+
+```rust
+pub struct Node<T> {
+    pub inner: T,
+    pub span: Span,
+}
+```
+
+### Symbol interning
+
+All identifiers must be interned. Store `Symbol` (a newtype over `u32`) in AST nodes, not `String` or `&str`. The interner lives in `src/utils/intern.rs`.
+
+```rust
+// CORRECT
+pub struct Ident {
+    pub symbol: Symbol,
+    pub span: Span,
+}
+
+// WRONG — never store raw strings in AST
+pub struct Ident {
+    pub name: String,
+}
+```
+
+### Error handling in the compiler
+
+The compiler must never panic on malformed input. Every error path must produce a `Diagnostic` and attempt to recover. Panics are only acceptable for internal invariant violations — never for anything that depends on user input.
+
+- Use `Result<T, Diagnostic>` for operations that can produce a single fatal error.
+- Use a `DiagnosticBag` collected across a pass for operations that should continue after errors.
+- Implement error recovery in the parser — a single syntax error should not prevent the rest of the file from being parsed.
+- Diagnostics must include span, a clear message, and a fix hint where possible.
+- **NEVER** expose internal compiler panics or Rust stack traces to Phoenix developers.
+
+```rust
+// NEVER panic on user input — match exhaustively on Token, not `_`
+fn parse_type(&mut self) -> Result<Type, Diagnostic> {
+    match self.peek() {
+        Token::Ident(_) => { /* ... */ }
+        Token::Star => { /* ... */ }
+        Token::LBracket => { /* ... */ }
+        other => Err(Diagnostic::error(format!("expected a type, found {other:?}"))
+            .span(self.current_span())),
+    }
+}
+```
+
+### Type checking (MVP)
+
+- Every expression node must be assigned a `TypeId` after type checking — no untyped nodes post-typeck.
+- `Result<T, E>` and `Option<T>` must be tracked specially — emit an error when either is silently discarded without `match`, `given`, or `?`.
+- Track ownership transfers per binding: `OwnershipState::Owned`, `OwnershipState::Moved(Span)`. Use-after-move is a core MVP guarantee.
+- Enforce deterministic MVP type rules from `type-system.md` (no implicit casts, branch unification, `?` constraints).
+
+### Bytecode format and verifier
+
+Follow `docs/design/features/vm-linear.md` exactly.
+
+**File layout:** magic `PHX0`, header (24 bytes), section table, section payloads (constants, types, functions, code, symbols). All integers little-endian.
+
+**Instruction encoding:** each instruction is `u8 opcode` + `u8 operand_count` + `operand_count × u32` operands. This is variable-length per instruction — do not assume fixed instruction size.
+
+**Operands** are indices into constant pools, local slots, function tables, or jump offsets — never embedded strings or raw pointers.
+
+**Verifier/loader** (`src/bytecode/`) is a first-class pass. Reject bytecode when:
+
+- Header magic/version invalid or sections out of bounds
+- Jump targets misaligned or out of range
+- Local indexes exceed `local_count`
+- Stack effect analysis exceeds `stack_max` or underflows
+- `entry_function_id` missing or refers to a function with non-zero arity
+
+Every opcode must be documented with its stack effect and preconditions:
+
+```rust
+/// Pop two values, push their sum. Both operands must be the same numeric type.
+/// Stack: [..., a, b] → [..., a + b]
+Add,
+```
+
+Separate **encode** (codegen), **decode** (loader), and **verify** (static analysis) concerns.
+
+### VM (MVP)
+
+MVP VM responsibilities only:
+
+- One process, one VM instance, deterministic stack-machine interpretation
+- Validate bytecode through the verifier before execution
+- No actor scheduling obligations
+
+Post-MVP VM targets (scheduler, I/O parking, actors) are documented in `vm-linear.md` and `concurrency.md`. Do not implement until MVP is complete.
+
+---
+
+## Post-MVP runtime (reference only)
+
+**Do not implement these until MVP acceptance checklist passes.**
+
+When post-MVP work begins:
+
+- M:N scheduler with fixed worker pool — OS threads spawned only in `src/vm/scheduler.rs`
+- Actors identified by `ActorId` (newtype over `u64`); no raw actor pointers across scheduler boundaries
+- Each actor: heap state + mailbox (`VecDeque<Message>`) + status (`Running`, `ParkedAwaitIO`, `ParkedAwaitMessage`, `Done`)
+- Supervisor trees as explicit data structures with `RestartStrategy`
+- Runtime transparency: schedulable I/O visible in types; explicit `@spawn`/`@send` for actor boundaries — see `runtime-transparency.md`
+- Compiler passes remain single-threaded; VM scheduler uses `std::thread` and `std::sync` only
+- Prefer `std::sync::mpsc` for inter-thread communication; document `Send`/`Sync` on types crossing thread boundaries
+
+---
+
+## Optimization
+
+"Optimized" for a compiler means:
+
+- **Arena allocation** for AST and IR — allocate in bulk, free all at once per compilation unit. Never individually `Box` AST nodes. Arena lives in `src/utils/arena.rs`.
+- **Pre-sized collections** — `Vec::with_capacity` when approximate size is known.
+- **Avoid cloning** across pipeline stages — pass references or move owned data forward.
+- **Profile before optimizing** — hot paths are lexer, parser inner loops, and type unification.
+- Reuse buffers in lexer and bytecode serializer hot paths.
+
+Avoid clever micro-optimizations without measurement. The compiler must be correct before it is fast.
+
+---
+
+## API design
+
+- Prefer **struct methods** over free functions that take `&mut Self`.
+- Keep functions single-purpose. `parse_expression` parses expressions only.
+- Limit parameters to **5 or fewer**; group extras in a config or context struct.
+- Pass compiler context (`&mut Ctx`) explicitly — no thread-locals or globals.
+- Use `impl Trait` in arguments when it clarifies intent.
+- Mark types/functions with `#[must_use]` when ignoring the value is likely a bug.
+
+---
+
+## Code style
+
+- Meaningful, descriptive names. `parse_fn_decl` not `pfn`. `TypeCheckError` not `TCErr`.
+- Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/).
+- `snake_case` — functions, variables, modules; `PascalCase` — types, traits, enums; `SCREAMING_SNAKE_CASE` — constants.
+- **NEVER** add tautological comments. Comments explain *why*, not *what*.
+- **NEVER** leak prompts, meta-commentary, or TODO notes in committed source.
+- Run `cargo fmt` before committing.
+
+---
+
+## Documentation
+
+- **MUST** document all public items (`missing_docs = "deny"` in `Cargo.toml`).
+- Document what each compiler pass assumes on input and guarantees on output.
+- Document every bytecode opcode with its stack effect.
+- Add `# Errors` and `# Panics` sections where relevant.
+
+---
+
+## Type system (Rust compiler code)
+
+- Encode invariants in types — newtypes for `Symbol`, `TypeId`, `Span`; `ActorId` when post-MVP runtime exists.
+- **NEVER** use `.unwrap()` or `.expect()` in compiler passes that process user input. Both are denied by Clippy in this crate.
+- For internal invariants in safe code, use `match`, `if let`, or explicit error propagation — not unwrap/expect.
+- Prefer `Option<T>` over sentinel values.
+- Make fields **private by default**.
+- Use `#[non_exhaustive]` on public enums representing Phoenix language constructs.
+
+---
+
+## Error handling
+
+- Use `Result<T, E>` for fallible operations; propagate with `?`.
+- Implement `Display` and `std::error::Error` manually — no external error libraries.
+- Define domain errors per module: `LexError`, `ParseError`, `TypeCheckError`, `VmError`, etc.
+
+---
+
+## Control flow
+
+- Prefer iterators when they improve clarity; use explicit loops in hot paths (lexer inner loop) where measurably faster.
+- Use `enumerate()` instead of manual index counters.
+- Prefer `if let` / `while let` for single-pattern matches.
+- Match exhaustively on AST nodes, token types, and IR opcodes — **never use `_` wildcards** on these enums. Every new language variant must be a compile error until all match sites are updated.
+
+---
+
+## Memory
+
+- **Arena allocate** all AST and IR nodes — never `Box` individual nodes.
+- Prefer `&str` over `String` at API boundaries; use `Symbol` for interned identifiers.
+- Pre-allocate with `Vec::with_capacity` when counts are known.
+- Use `Arc` only for data shared across scheduler threads in post-MVP VM — compiler passes are single-threaded.
+
+---
+
+## Testing
+
+- **MUST** add tests for every compiler pass.
+- Lexer: table-driven, one row per token type and edge case.
+- Parser: valid programs (AST shape) and invalid programs (error recovery, diagnostics).
+- Type checker: use-after-move, unhandled `Result`/`Option`, MVP type rules (no implicit casts, branch unification).
+- Bytecode: golden tests — compile `.phx` fixtures and assert emitted sections/opcodes match expected output.
+- Verifier: reject malformed bytecode (bad jumps, stack overflow, invalid entrypoint).
+- VM (MVP): stack execution, control flow, pattern matching, `Option`/`Result`/`?` behavior.
+- Diagnostics: snapshot tests — assert span, message, and hint for error fixtures.
+- Use `#[cfg(test)]` for unit tests; `tests/` for end-to-end integration tests.
+- Target layout (create when implementing): `tests/phoenix/*.phx` with expected output or diagnostics sidecars; `cargo test --test integration`.
+- Follow **Arrange-Act-Assert**.
+
+Post-MVP VM tests (actors, supervision, crash isolation) — add when that runtime ships, not before.
+
+---
+
+## Benchmarking
+
+- **NEVER** run benchmarks in parallel.
+- Benchmark lexer, parser, and VM execution loop separately.
+- Compare fairly — same input size, same optimization level, independent iterations.
+- Do not publish benchmark results from `RUSTFLAGS=-C target-cpu=native` builds.
+
+---
+
+## Security
+
+- **NEVER** hardcode secrets or API keys.
+- Validate all bytecode through the verifier before execution — malformed bytecode must produce a clean error, not a panic or out-of-bounds access.
+- Validate all spans and indices before indexing into source buffers.
+
+---
+
+## Version control
+
+- Commit messages: `[stage]: description` — e.g. `[lexer]: handle unterminated string literals`, `[typeck]: enforce Result discard error`.
+- **NEVER** commit commented-out code, `println!` / `dbg!` debug noise, or half-finished passes.
+- Each commit should leave the compiler in a working state — broken intermediate states belong in a branch.
+
+---
+
+## CI pipeline
+
+| Step | Command |
+|------|---------|
+| Format | `cargo fmt --check` |
+| Build | `cargo build` |
+| Lint | `cargo clippy -- -D warnings` |
+| Test | `cargo test` |
+| Docs | `cargo doc --no-deps` |
+| Integration | `cargo test --test integration` (when integration test harness exists) |
+
+Clippy groups enabled in `Cargo.toml`: `pedantic`, `perf`, `missing_errors_doc`. Also enforced: `unwrap_used = deny`, `expect_used = deny`, `dbg_macro = deny`, `print_stdout = deny`, `print_stderr = deny`. Address or allow with justification.
+
+---
+
+## Before committing checklist
+
+- [ ] `cargo test` passes
+- [ ] `cargo build` — no warnings
+- [ ] `cargo clippy -- -D warnings` passes
+- [ ] `cargo fmt --check` passes
+- [ ] All public items have doc comments
+- [ ] No `_` wildcards on AST, token, or opcode enums
+- [ ] No `.unwrap()` or `.expect()` in passes that process user input
+- [ ] Every `unsafe` block has a `// SAFETY:` comment
+- [ ] No commented-out code or debug prints
+- [ ] Span information preserved through the full pipeline
+- [ ] Language semantics match design docs — not invented in code
+
+---
+
+## Additional guidelines
+
+- Prefer `const` / `const fn` for compile-time constants — magic bytes (`PHX0`), version numbers, opcode tags.
+- Use `std::mem::take` / `std::mem::replace` to move out of `&mut T` in parser and type checker.
+- Prefer `enum` with variants over `bool` + parallel fields for compiler state.
+- Use `#[non_exhaustive]` on all Phoenix AST node enums and token enums.
+- Gate platform-specific VM code with `#[cfg(target_os = "...")]`.

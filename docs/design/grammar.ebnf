@@ -1,0 +1,343 @@
+(* =============================================================================
+   Phoenix Language — Formal EBNF (MVP-focused)
+   =============================================================================
+   Notation (ISO/IEC 14977 style):
+     =     definition
+     |     alternation
+     ,     sequence
+     { }   zero or more
+     [ ]   optional
+     ( )   grouping
+     " "   terminal
+     (* *) comment
+
+   Declaration forms use Name :: kind { } (struct, enum, trait, impl).
+
+   MVP vs parse-only:
+   - MVP: core types, control flow, trait/impl syntax, explicit casts (as),
+     borrow types (&T, &mut T), #import, #unsafe.
+   - Parse-only (semantics deferred): #derive, @spawn/@send/@receive/@reply,
+     for-in, ranges, lambdas. See features/grammar-deferred.md.
+
+   Expression precedence (lowest to highest):
+     assignment (=, +=, ...), cast (as), logical, bitwise, arithmetic,
+     unary (&, &mut, *, -, !, ~), postfix (. () [] ?).
+   ============================================================================= *)
+
+(* -----------------------------------------------------------------------------
+   Program and module
+   ----------------------------------------------------------------------------- *)
+
+program            = { file_directive } , { top_level_item } ;
+
+(* semantic constraint: executable programs must contain at least one function
+   with signature main :: () => () *)
+
+file_directive     = import_directive ;
+
+import_directive   = "#import" , module_path , [ import_brace ] , ";" ;
+import_brace       = "::" , "{" , import_item , { "," , import_item } , "}" ;
+import_item        = identifier | "*" ;
+
+top_level_item     = [ pub ] , top_level_decl , ";" ;
+pub                = "pub" ;
+
+top_level_decl     = struct_decl
+                   | enum_decl
+                   | type_alias_decl
+                   | trait_decl
+                   | impl_decl
+                   | function_decl
+                   | const_decl
+                   | var_binding ;
+
+(* -----------------------------------------------------------------------------
+   Declarations
+   ----------------------------------------------------------------------------- *)
+
+struct_decl        = type_identifier , "::" , [ generic_params ] , "struct" , struct_body ;
+struct_body        = "{" , [ field_list ] , "}"
+                   | "(" , type_expr , { "," , type_expr } , [ "," ] , ")"
+                   | /* unit struct */ ;
+
+field_list         = field , { "," , field } , [ "," ] ;
+field              = identifier , ":" , type_expr ;
+
+enum_decl          = type_identifier , "::" , [ generic_params ] , "enum" ,
+                     "{" , variant_list , "}" ;
+variant_list       = variant , { "," , variant } , [ "," ] ;
+variant            = type_identifier
+                   | type_identifier , "{" , field_list , "}"
+                   | type_identifier , "(" , type_expr , { "," , type_expr } , [ "," ] , ")" ;
+
+type_alias_decl    = "type" , type_identifier , [ generic_params ] , "=" , type_expr ;
+
+trait_decl         = type_identifier , "::" , [ generic_params ] , "trait" ,
+                     "{" , { trait_item } , "}" ;
+trait_item         = associated_type_decl | trait_method ;
+trait_method       = function_decl_body , ";"
+                   | function_signature , ";" ;
+associated_type_decl = "type" , type_identifier , ";" ;
+
+impl_decl          = type_identifier , "::" , [ generic_params ] , "impl" ,
+                     [ "for" , type_identifier ] , impl_block ;
+impl_block         = "{" , { impl_member } , "}" ;
+impl_member        = function_decl_body , ";" ;
+
+(* -----------------------------------------------------------------------------
+   Functions
+   ----------------------------------------------------------------------------- *)
+
+function_decl      = { fn_directive } , [ "#unsafe" ] , function_decl_body ;
+fn_directive       = "#inline" | "#cold" | "#hot" | derive_directive ;
+derive_directive   = "#derive" , "(" , type_identifier , { "," , type_identifier } , ")" ;
+
+function_decl_body = identifier , "::" , [ generic_params ] , "(" , [ param_list ] , ")" ,
+                     [ "=>" , type_expr ] , block ;
+
+function_signature = identifier , "::" , [ generic_params ] , "(" , [ param_list ] , ")" ,
+                     [ "=>" , type_expr ] ;
+
+const_decl         = "const" , identifier , [ ":" , type_expr ] , "=" , expr ;
+
+var_binding        = "var" , identifier , ":" , type_expr , "=" , expr ;
+
+param_list         = param , { "," , param } ;
+param              = receiver_param
+                   | identifier , ":" , type_expr ;
+receiver_param     = "self"
+                   | "mut" , "self"
+                   | "self" , ":" , type_expr
+                   | "mut" , "self" , ":" , type_expr ;
+
+(* -----------------------------------------------------------------------------
+   Statements and blocks
+   ----------------------------------------------------------------------------- *)
+
+block              = "{" , { block_item } , "}" ;
+block_item         = statement | expr_without_semi | expr , ";" ;
+
+statement          = const_stmt
+                   | var_stmt
+                   | assign_stmt
+                   | expr_stmt
+                   | return_stmt
+                   | break_stmt
+                   | continue_stmt
+                   | while_stmt
+                   | for_stmt
+                   | loop_stmt
+                   | given_stmt
+                   | unsafe_block ;
+
+const_stmt         = "const" , identifier , [ ":" , type_expr ] , "=" , expr , ";" ;
+var_stmt           = "var" , identifier , ":" , type_expr , "=" , expr , ";" ;
+assign_stmt        = assignable , assign_op , expr , ";" ;
+assignable         = identifier | postfix_expr ;
+assign_op          = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
+expr_stmt          = expr , ";" ;
+return_stmt        = "return" , [ expr ] , ";" ;
+break_stmt         = "break" , [ expr ] , ";" ;
+continue_stmt      = "continue" , ";" ;
+while_stmt         = "while" , expr , block ;
+for_stmt           = "for" , identifier , "in" , expr , block ;
+loop_stmt          = "loop" , block ;
+given_stmt         = "given" , pattern , "=" , expr , block ;
+unsafe_block       = "#unsafe" , block ;
+
+expr_without_semi  = if_expr | match_expr | block | expr ;
+
+(* -----------------------------------------------------------------------------
+   Expressions
+   ----------------------------------------------------------------------------- *)
+
+expr               = cast_expr ;
+cast_expr          = assign_expr , { "as" , type_expr } ;
+assign_expr        = logical_or_expr , [ assign_op , assign_expr ] ;
+logical_or_expr    = logical_and_expr , { "||" , logical_and_expr } ;
+logical_and_expr   = range_expr , { "&&" , range_expr } ;
+range_expr         = equality_expr , [ range_op , equality_expr ] ;
+range_op           = ".." | "..=" ;
+equality_expr      = relational_expr , { ( "==" | "!=" ) , relational_expr } ;
+relational_expr    = bitwise_or_expr , { ( "<" | "<=" | ">" | ">=" ) , bitwise_or_expr } ;
+bitwise_or_expr    = bitwise_xor_expr , { "|" , bitwise_xor_expr } ;
+bitwise_xor_expr   = bitwise_and_expr , { "^" , bitwise_and_expr } ;
+bitwise_and_expr   = shift_expr , { "&" , shift_expr } ;
+shift_expr         = additive_expr , { ( "<<" | ">>" ) , additive_expr } ;
+additive_expr      = multiplicative_expr , { ( "+" | "-" ) , multiplicative_expr } ;
+multiplicative_expr = power_expr , { ( "*" | "/" | "%" ) , power_expr } ;
+power_expr         = unary_expr , [ "**" , unary_expr ] ;
+unary_expr         = postfix_expr | ( "-" | "!" | "~" | "*" | "&" | "&mut" ) , unary_expr ;
+postfix_expr       = primary_expr , { postfix_op } ;
+postfix_op         = "." , identifier , [ generic_args ]
+                   | "." , identifier , "(" , [ arg_list ] , ")"
+                   | "(" , [ arg_list ] , ")"
+                   | "[" , expr , "]"
+                   | "?" ;
+
+primary_expr       = literal
+                   | identifier
+                   | path_expr
+                   | tuple_literal
+                   | array_literal
+                   | "(" , expr , ")"
+                   | if_expr
+                   | match_expr
+                   | struct_literal
+                   | lambda_expr
+                   | runtime_directive_expr
+                   | unsafe_block ;
+
+tuple_literal      = "(" , expr , "," , expr , { "," , expr } , [ "," ] , ")" ;
+array_literal      = "[" , [ expr , { "," , expr } , [ "," ] ] , "]" ;
+
+if_expr            = "if" , expr , block , { "else" , "if" , expr , block } , [ "else" , block ] ;
+match_expr         = "match" , expr , "{" , match_arm , { match_arm } , "}" ;
+match_arm          = pattern , [ "if" , expr ] , "=>" , ( block | expr_without_semi ) , ";" ;
+lambda_expr        = "(" , [ param_list ] , ")" , "=>" , ( block | expr ) ;
+
+struct_literal     = type_identifier , [ generic_args ] , "{" , struct_field_init ,
+                     { "," , struct_field_init } , [ "," ] , "}" ;
+struct_field_init  = identifier , ":" , expr | ".." , identifier ;
+
+runtime_directive_expr = spawn_directive | send_directive | receive_directive | reply_directive ;
+spawn_directive    = "@spawn" , "(" , expr , ")" ;
+send_directive     = "@send" , "(" , expr , "," , expr , ")" ;
+receive_directive  = "@receive" , "(" , expr , ")" ;
+reply_directive    = "@reply" , "(" , expr , ")" ;
+
+path_expr          = module_path ;
+arg_list           = expr , { "," , expr } ;
+
+(* -----------------------------------------------------------------------------
+   Patterns
+   ----------------------------------------------------------------------------- *)
+
+pattern            = wildcard
+                   | literal
+                   | identifier
+                   | type_identifier
+                   | type_identifier , struct_pattern
+                   | type_identifier , "(" , pattern , { "," , pattern } , [ "," ] , ")"
+                   | "Some" , "(" , pattern , ")"
+                   | "None"
+                   | "Ok" , "(" , pattern , ")"
+                   | "Err" , "(" , pattern , ")"
+                   | range_pattern ;
+
+wildcard           = "_" ;
+range_pattern      = expr , range_op , expr ;
+struct_pattern     = "{" , struct_pattern_field , { "," , struct_pattern_field } , [ "," ] , "}" ;
+struct_pattern_field = identifier | identifier , ":" , pattern ;
+
+(* -----------------------------------------------------------------------------
+   Types
+   ----------------------------------------------------------------------------- *)
+
+type_expr          = function_type
+                   | generic_type
+                   | reference_type
+                   | tuple_type
+                   | unit_type
+                   | array_type
+                   | slice_type
+                   | type_identifier
+                   | primitive_type ;
+
+function_type      = "::" , "(" , [ type_list ] , ")" , "=>" , type_expr ;
+generic_type       = type_identifier , generic_args ;
+reference_type     = ( "&" | "&mut" ) , type_expr ;
+tuple_type         = "(" , type_expr , "," , type_expr , { "," , type_expr } , [ "," ] , ")" ;
+unit_type          = "(" , ")" ;
+array_type         = "[" , type_expr , ";" , integer_literal , "]" ;
+slice_type         = "[" , type_expr , "]" ;
+type_list          = type_expr , { "," , type_expr } ;
+
+generic_params     = "<" , generic_param , { "," , generic_param } , ">" ;
+generic_param      = identifier , [ ":" , trait_bounds ] ;
+generic_args       = "<" , type_expr , { "," , type_expr } , ">" ;
+trait_bounds       = trait_bound , { "+" , trait_bound } ;
+trait_bound        = type_identifier ;
+
+primitive_type     = signed_int
+                   | unsigned_int
+                   | float_type
+                   | "bool"
+                   | pointer_type
+                   | "Option" , "<" , type_expr , ">"
+                   | "Result" , "<" , type_expr , "," , type_expr , ">" ;
+
+signed_int         = "s8" | "s16" | "s32" | "s64" | "s128" ;
+unsigned_int       = "u8" | "u16" | "u32" | "u64" | "u128" ;
+float_type         = "f32" | "f64" ;
+pointer_type       = "*" , [ "mut" ] , type_expr ;
+
+(* -----------------------------------------------------------------------------
+   Literals
+   ----------------------------------------------------------------------------- *)
+
+literal            = integer_literal
+                   | float_literal
+                   | boolean_literal
+                   | byte_char_literal
+                   | byte_string_literal ;
+
+boolean_literal    = "true" | "false" ;
+
+integer_literal    = decimal_integer , [ unsigned_suffix ]
+                   | hex_integer , [ unsigned_suffix ]
+                   | binary_integer , [ unsigned_suffix ] ;
+
+decimal_integer    = digit_nonzero , { [ "_" ] , digit } | "0" ;
+hex_integer        = "0x" , hex_digit , { [ "_" ] , hex_digit } ;
+binary_integer     = "0b" , binary_digit , { [ "_" ] , binary_digit } ;
+unsigned_suffix    = "u" ;
+
+float_literal      = decimal_float , [ float_suffix ] ;
+decimal_float      = digit , { [ "_" ] , digit } , "." , digit , { [ "_" ] , digit } , [ exponent_part ]
+                   | digit , { [ "_" ] , digit } , exponent_part ;
+exponent_part      = ( "e" | "E" ) , [ "+" | "-" ] , digit , { [ "_" ] , digit } ;
+float_suffix       = "f32" | "f64" ;
+
+byte_char_literal  = "b'" , byte_char_content , "'" ;
+byte_char_content  = ascii_byte | escape_sequence ;
+
+byte_string_literal = "b\"" , { byte_string_char } , "\"" ;
+byte_string_char   = ascii_byte_no_quote_backslash | escape_sequence ;
+
+escape_sequence    = "\\n" | "\\r" | "\\t" | "\\0" | "\\\\" | "\\'" | "\\\"" | "\\x" , hex_digit , hex_digit ;
+
+(* -----------------------------------------------------------------------------
+   Module paths and identifiers
+   ----------------------------------------------------------------------------- *)
+
+module_path        = path_segment , { "::" , path_segment } ;
+path_segment       = identifier | type_identifier ;
+identifier         = snake_identifier ;
+type_identifier    = pascal_identifier ;
+
+(* -----------------------------------------------------------------------------
+   Lexical classes
+   ----------------------------------------------------------------------------- *)
+
+snake_identifier   = ( ascii_letter | "_" ) , { ascii_letter | digit | "_" } ;
+pascal_identifier  = ascii_upper , { ascii_letter | digit } ;
+
+ascii_letter       = ascii_lower | ascii_upper ;
+ascii_lower        = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m"
+                   | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+ascii_upper        = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M"
+                   | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+
+digit              = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+digit_nonzero      = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+binary_digit       = "0" | "1" ;
+hex_digit          = digit | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" ;
+
+ascii_byte         = ? any byte 0x00-0x7F ? ;
+ascii_byte_no_quote_backslash = ? any byte 0x00-0x7F except '"' and '\' ? ;
+
+line_comment       = "//" , { ? any char except line_break ? } ;
+block_comment      = "///" , { ? any char sequence not containing terminator ? } , "///" ;
+line_break         = "\n" | "\r\n" ;
+whitespace         = " " | "\t" | line_break ;
