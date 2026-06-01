@@ -1,0 +1,28 @@
+[package]
+name = "phoenix-compiler"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lints.rust]
+missing_debug_implementations = "warn"
+missing_docs = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "warn"
+perf = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[dependencies]
+
