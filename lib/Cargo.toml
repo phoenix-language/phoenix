@@ -1,7 +1,0 @@
-[workspace]
-
-members = ["repl", "lexer", "parser", "compiler"]
-
-# Dependencies for all crates
-[workspace.dependencies]
-anyhow = "1"
