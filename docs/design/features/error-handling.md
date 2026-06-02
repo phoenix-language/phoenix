@@ -1,6 +1,6 @@
 # Error handling
 
-Phoenix has no `throw` or `catch`. Functions that can fail return `Result<T, E>`. Absence of a value uses `Option<T>`. See [type-system.md](type-system.md#built-in-generic-types).
+Phoenix has no `throw` or `catch`. Functions that can fail return `Result<T, E>`; absence uses `Option<T>`. Both are **std generic enums** (post-MVP), not MVP compiler builtins. See [type-system.md](type-system.md#phased-option-and-result-language--std).
 
 ---
 
@@ -28,9 +28,9 @@ Errors are values, not control-flow exceptions. Failure paths stay visible in ty
 
 ---
 
-## The `?` operator
+## The `?` operator (post-MVP)
 
-`?` is part of **runtime transparency**: every call site that can fail shows propagation explicitly. See [runtime-transparency.md](runtime-transparency.md).
+`?` is part of **runtime transparency** (after std `Option`/`Result` exist): every call site that can fail shows propagation explicitly. See [runtime-transparency.md](runtime-transparency.md).
 
 Inside a function returning `Result`, `?` propagates errors early.
 

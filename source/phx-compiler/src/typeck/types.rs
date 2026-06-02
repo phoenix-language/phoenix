@@ -55,15 +55,6 @@ pub enum Ty {
         /// Generic arguments.
         args: Vec<TypeId>,
     },
-    /// Builtin `Option<T>`.
-    Option(TypeId),
-    /// Builtin `Result<T, E>`.
-    Result {
-        /// Ok payload.
-        ok: TypeId,
-        /// Err payload.
-        err: TypeId,
-    },
     /// Tuple type.
     Tuple(Vec<TypeId>),
     /// Fixed array `[T; N]`.

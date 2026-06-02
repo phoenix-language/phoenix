@@ -16,9 +16,45 @@ fn typeck_err(source: &str) -> TypeCheckBag {
     }
 }
 
+fn has_unsupported(bag: &TypeCheckBag, needle: &str) -> bool {
+    bag.errors().iter().any(|e| {
+        matches!(e, TypeCheckError::UnsupportedFeature { feature, .. } if feature.contains(needle))
+    })
+}
+
 #[test]
 fn empty_main_ok() {
     ok("main :: () => { };");
+}
+
+#[test]
+fn while_loop_ok() {
+    ok("main :: () => { var i: s32 = 0; while 3 > (i) { i = i + 1; }; };");
+}
+
+#[test]
+fn loop_break_continue_ok() {
+    ok("main :: () => { loop { break; }; loop { continue; }; };");
+}
+
+#[test]
+fn break_outside_loop() {
+    let bag = typeck_err("main :: () => { break; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::LoopControlOutsideLoop { .. }))
+    );
+}
+
+#[test]
+fn continue_outside_loop() {
+    let bag = typeck_err("main :: () => { continue; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::LoopControlOutsideLoop { .. }))
+    );
 }
 
 #[test]
@@ -38,13 +74,9 @@ fn if_branch_mismatch() {
 }
 
 #[test]
-fn invalid_question_mark_outside_result_fn() {
+fn question_mark_unsupported_in_mvp() {
     let bag = typeck_err("main :: () => { const _ = 1?; };");
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(e, TypeCheckError::InvalidQuestionMark { .. }))
-    );
+    assert!(has_unsupported(&bag, "`?`"));
 }
 
 #[test]
@@ -181,25 +213,33 @@ fn assign_moves_non_copyable() {
 }
 
 #[test]
-fn discard_ok_expr_stmt() {
+fn ok_ctor_unsupported_in_mvp() {
     let bag = typeck_err("main :: () => { Ok(1); };");
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(e, TypeCheckError::DiscardResultOrOption { .. }))
-    );
+    assert!(has_unsupported(&bag, "Result"));
 }
 
 #[test]
-fn discard_result_call_in_result_fn() {
-    let bag = typeck_err(
-        "f :: () => Result<s32, s32> { Ok(1) }; g :: () => Result<s32, s32> { f(); }; main :: () => { };",
-    );
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(e, TypeCheckError::DiscardResultOrOption { .. }))
-    );
+fn result_type_unsupported_in_mvp() {
+    let bag = typeck_err("main :: () => { const x: Result<s32, s32> = Ok(1); };");
+    assert!(has_unsupported(&bag, "Option"));
+}
+
+#[test]
+fn some_ctor_unsupported_in_mvp() {
+    let bag = typeck_err("main :: () => { const x: Option<s32> = Some(1); };");
+    assert!(has_unsupported(&bag, "Option"));
+}
+
+#[test]
+fn err_ctor_unsupported_in_mvp() {
+    let bag = typeck_err("main :: () => { const x: Result<s32, s32> = Err(1); };");
+    assert!(has_unsupported(&bag, "Result"));
+}
+
+#[test]
+fn none_ctor_unsupported_in_mvp() {
+    let bag = typeck_err("main :: () => { const x: Option<s32> = None; };");
+    assert!(has_unsupported(&bag, "Option"));
 }
 
 #[test]
@@ -215,24 +255,4 @@ fn index_non_indexable_error() {
             .iter()
             .any(|e| matches!(e, TypeCheckError::InvalidOperator { .. }))
     );
-}
-
-#[test]
-fn ok_expr() {
-    ok("main :: () => { const x: Result<s32, s32> = Ok(1); };");
-}
-
-#[test]
-fn some_expr() {
-    ok("main :: () => { const x: Option<s32> = Some(1); };");
-}
-
-#[test]
-fn err_expr() {
-    ok("main :: () => { const x: Result<s32, s32> = Err(1); };");
-}
-
-#[test]
-fn none_with_annotation() {
-    ok("main :: () => { const x: Option<s32> = None; };");
 }

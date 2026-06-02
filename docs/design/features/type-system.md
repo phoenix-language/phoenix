@@ -8,12 +8,12 @@ How Phoenix divides compiler-known types from library-defined behavior, and the 
 
 | Layer | Purpose | Examples |
 |---|---|---|
-| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, arrays, slices, tuples, `()`, `Name :: struct`, `Name :: enum`; `Option`/`Result` are **MVP bootstrap only** (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
+| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, arrays, slices, tuples, `()`, `Name :: struct`, `Name :: enum` (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
 | VM runtime primitives | Scheduler-owned execution machinery (not user-declared types) | execution context, schedulable-I/O markers in std signatures, mailbox registration (post-MVP) |
 | Compile-time directives | Compiler behavior controls | `#import`, `#inline`, `#cold`, `#unsafe` |
 | Runtime directives | Opt-in explicit actor/message operations | `@spawn`, `@send`, `@receive`, `@reply` (post-MVP) |
 | Standard library | APIs built on language + runtime primitives | `File.read`, collections, formatting, traits |
-| Sugar | Surface syntax lowered by compiler | `given`, `?`, ranges, `for` |
+| Sugar | Surface syntax lowered by compiler | `given`, ranges, `for`; `?` when std `Option`/`Result` exist (post-MVP) |
 
 Notes:
 
@@ -53,8 +53,6 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 - Slices/views: `[T]`
 - Tuples: `(T1, T2, ...)`
 - Unit: `()`
-- Bootstrap generics (temporary): `Option<T>`, `Result<T, E>` — compiler-known until std ships; see [Phased: Option and Result](#phased-option-and-result-language--std)
-
 ---
 
 ## Deterministic MVP type rules
@@ -67,63 +65,40 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 6. Function return type may be omitted; omitted return type is `()`.
 7. `if` and `match` are expressions; branch/arm result types must unify.
 8. `return;` is valid only for `()` return functions.
-9. `?` is valid only when the enclosing function returns compatible `Result<_, _>` or `Option<_>`.
-10. Operators in MVP are compiler-defined on primitive numeric/boolean types only.
-11. Generic inference is local to call-site constraints and does not perform global search.
+9. Operators in MVP are compiler-defined on primitive numeric/boolean types only.
+10. Generic inference is local to call-site constraints and does not perform global search.
 
 ---
 
-## Built-in generic types (MVP bootstrap)
+## Phased: Option and Result (language → std)
 
-Phoenix has no `null`. Until std defines these enums, the compiler treats `Option` and `Result` as known generic types so `?` and error handling work without a library tree.
+Phoenix has no `null`. **Absence and failure are std concerns**, not compiler builtins in MVP.
 
-```phoenix
-Option<T>      // Some(T) | None  — MVP: compiler bootstrap; target: std enum
-Result<T, E>   // Ok(T) | Err(E) — MVP: compiler bootstrap; target: std enum
-```
+| Layer | What belongs there |
+|---|---|
+| **Language** | `struct`, `enum`, `trait`, `impl`, generics, `match`, `if`, moves/`Copyable`, primitive types, explicit casts; optional **sugar** (`?`, `Some`/`None`/`Ok`/`Err` patterns) lowered against std-defined types once std ships |
+| **Std** | `Option`, `Result`, `Clone`, `Copyable`, collections, text helpers, I/O, formatting — imported via `#import` / prelude |
+| **Compiler (MVP)** | Knows primitives and user `enum`/`struct` only; **rejects** `Option`/`Result` types and std ctor/`?` syntax until std exists |
 
-```phoenix
-const id: Option<u32> = Some(7u);
-const miss: Option<u32> = None;
-
-const ok: Result<s32, ParseError> = Ok(1);
-const err: Result<s32, ParseError> = Err(ParseError::BadInput);
-```
-
-Long-term definitions belong in std (ordinary `enum` + generics), not as permanent language primitives:
+**Std shape (ordinary generic enums, not language primitives):**
 
 ```phoenix
 pub Option :: enum<Type> {
   None,
   Some(Type),
 }
+
+pub Result :: enum<Ok, Err> {
+  Ok(Ok),
+  Err(Err),
+}
 ```
 
----
+**When std lands:** add prelude re-exports, type-check `Option`/`Result` like any other enum, wire `?` and ctor/pattern sugar to those definitions ([error-handling.md](error-handling.md)). Do not reintroduce `Ty::Option` / `Ty::Result` in the type checker.
 
-## Phased: Option and Result (language → std)
+**Grammar note:** [grammar.ebnf](../grammar.ebnf) may still parse `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, and `?` for forward compatibility; MVP type-check reports them as post-MVP std features.
 
-**Target architecture (same path as Rust):**
-
-| Layer | What belongs there |
-|---|---|
-| **Language** | Syntax and analysis: `struct`, `enum`, `trait`, `impl`, generics, `match`, `if`, moves/`Copyable`, primitive types, explicit casts; **sugar** such as `?` that lowers against std-defined types |
-| **Std** | `Option`, `Result`, `Clone`, `Copyable`, collections, text helpers, I/O, formatting — behavior users import via `#import` / prelude |
-| **VM intrinsics** | Small opcode/kernel surface only (`ALLOC`, pointer ops, scheduler hooks) — not user-facing rich APIs |
-
-**What stays out of the language core:** strings as a primitive, collections, filesystem/network APIs, derive codegen, and most “standard library” behavior.
-
-**MVP exception (bootstrap):** With no std crate yet, `Option<T>` and `Result<T, E>` are compiler-known so MVP can enforce errors-as-values (`?`, discard rules, ctor syntax for `Some`/`None`/`Ok`/`Err`). This is an implementation shortcut, not the long-term model.
-
-**Migration when std exists:**
-
-1. Define `Option` and `Result` in std as public generic enums (as in the example above).
-2. Optional small **prelude** re-exports common std types (not auto-import of all of std).
-3. Retain `?` and ctor **surface syntax** as compiler sugar lowering to those std types (same as today’s desugaring direction in [error-handling.md](error-handling.md)).
-4. Remove special `Ty::Option` / `Ty::Result` cases from the type checker in favor of ordinary enum typing + trait or name-based hooks for `?`.
-5. Keep VM helper opcodes only if still needed for efficient lowering; they target std type layouts, not ad hoc language types.
-
-**Already aligned with this policy:** `Clone` lives in std ([traits.md](traits.md), [ownership.md](ownership.md)); **`Copyable` uses the same language → std phased path** ([Phased: Copyable](ownership.md#phased-copyable-language--std), [traits.md](traits.md#phased-copyable-language--std)); no primitive `string`; collections and I/O are post-MVP std ([mvp.md](../mvp.md)).
+**Already aligned:** `Clone` and phased `Copyable` live in std ([traits.md](traits.md), [ownership.md](ownership.md)); no primitive `string`; collections and I/O are post-MVP ([mvp.md](../mvp.md)).
 
 ---
 
@@ -154,6 +129,6 @@ const pair: (s32, u8) = (1, 2u);
 | Sugar | Lowering direction | MVP status |
 |---|---|---|
 | `given Pat = expr { ... }` | `match`-style single-pattern branch | Included |
-| `expr?` | early return from `Result`/`Option` context | Included |
+| `expr?` | early return from `Result`/`Option` context | Post-MVP (requires std types) |
 | `for x in y` | iterator-protocol lowering | Parseable; richer iterator semantics post-MVP |
 | `0..n`, `0..=n` | range values | Parseable; std range behavior post-MVP |

@@ -216,4 +216,4 @@ Unsafe is for intra-context low-level work — not for bypassing explicit actor 
 | `#unsafe` forms | [compiler-directives.md](compiler-directives.md) |
 | VM move/borrow opcodes | [vm-linear.md](vm-linear.md) |
 | std `Clone` / phased `Copyable` | [traits.md](traits.md#clone-and-copyable), [Phased: Copyable](traits.md#phased-copyable-language--std) |
-| `Option` / `Result` bootstrap | [type-system.md](type-system.md#phased-option-and-result-language--std) |
+| `Option` / `Result` (std, post-MVP) | [type-system.md](type-system.md#phased-option-and-result-language--std) |

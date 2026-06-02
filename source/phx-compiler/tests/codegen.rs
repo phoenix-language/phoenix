@@ -65,3 +65,11 @@ fn codegen_constants_include_sample_literals() {
     }
     assert!(has_ten && has_two);
 }
+
+#[test]
+fn continue_program_verifies() {
+    let source = "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
+    let unit = compile_source(source, None).unwrap();
+    let module = codegen(&lower(&unit.typed));
+    verify(&module).expect("verify continue program");
+}

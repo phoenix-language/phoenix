@@ -7,6 +7,15 @@ use crate::ir::{IrBasicBlock, IrInst};
 use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
 use crate::typeck::{ExprId, FunctionLayout, LocalSlot, TypeId, TypedProgram};
 
+/// Jump targets for `break` / `continue` in the innermost active loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoopLabels {
+    /// Block after the loop (target of `break`).
+    pub exit: u32,
+    /// Block where the next iteration begins (`while`: condition; `loop`: body head).
+    pub continue_target: u32,
+}
+
 /// Mutable state while lowering one function body.
 pub struct LowerCtx<'a> {
     /// Typed program (AST, types, resolutions).
@@ -19,6 +28,8 @@ pub struct LowerCtx<'a> {
     pub blocks: Vec<IrBasicBlock>,
     /// Block index receiving non-terminator instructions.
     pub current: u32,
+    /// Stack of active loops (innermost last).
+    pub loop_stack: Vec<LoopLabels>,
 }
 
 impl<'a> LowerCtx<'a> {
@@ -31,7 +42,24 @@ impl<'a> LowerCtx<'a> {
             next_expr: 0,
             blocks: vec![IrBasicBlock::new()],
             current: 0,
+            loop_stack: Vec::new(),
         }
+    }
+
+    /// Records `labels` as the innermost loop for nested `break` / `continue`.
+    pub fn push_loop(&mut self, labels: LoopLabels) {
+        self.loop_stack.push(labels);
+    }
+
+    /// Removes the innermost loop after its body has been lowered.
+    pub fn pop_loop(&mut self) {
+        let _ = self.loop_stack.pop();
+    }
+
+    /// Returns jump targets for the innermost loop, if any.
+    #[must_use]
+    pub fn innermost_loop(&self) -> Option<LoopLabels> {
+        self.loop_stack.last().copied()
     }
 
     /// Advances the expression cursor and returns the typeck-assigned type.

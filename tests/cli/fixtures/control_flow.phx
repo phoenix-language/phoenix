@@ -1,0 +1,16 @@
+// Exercises while, loop, break, and if-in-loop (continue is typeck/lowering-tested separately).
+
+main :: () => {
+  var i: s32 = 0;
+  while 5 > (i) {
+    i = i + 1;
+  };
+  loop {
+    if 10 > (i) {
+      i = i + 1;
+    } else {
+      break;
+    }
+  };
+  const _ = i;
+};

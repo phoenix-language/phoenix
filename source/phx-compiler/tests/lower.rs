@@ -61,3 +61,61 @@ fn lower_sample_produces_ir() {
         "main has params/locals for base, step, sum, ok, _"
     );
 }
+
+#[test]
+fn lower_control_flow_emits_loops() {
+    let source = include_str!("../../../tests/cli/fixtures/control_flow.phx");
+    let unit = compile_source(source, Some(Path::new("control_flow.phx")))
+        .unwrap_or_else(|e| panic!("compile control_flow.phx: {e}"));
+    let ir = lower(&unit.typed);
+
+    let mut jump_count = 0u32;
+    let mut jump_if_count = 0u32;
+    for f in &ir.functions {
+        for block in &f.blocks {
+            for inst in &block.insts {
+                if matches!(inst, IrInst::Jump { .. }) {
+                    jump_count += 1;
+                }
+                if matches!(inst, IrInst::JumpIf { .. }) {
+                    jump_if_count += 1;
+                }
+            }
+        }
+    }
+    assert!(jump_count >= 4, "while/loop/break/continue need Jump");
+    assert!(jump_if_count >= 2, "while and if-in-loop need JumpIf");
+}
+
+#[test]
+fn continue_merge_block_has_no_loop_back_edge() {
+    let source = "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed);
+    let main = ir
+        .functions
+        .iter()
+        .find(|f| Some(f.def) == ir.entry)
+        .expect("main");
+    let merge = main
+        .blocks
+        .iter()
+        .find(|b| {
+            b.insts
+                .iter()
+                .any(|i| matches!(i, IrInst::Jump { target: 2 }))
+        })
+        .expect("merge with break");
+    assert!(
+        !merge
+            .insts
+            .iter()
+            .any(|i| matches!(i, IrInst::Jump { target: 1 })),
+        "loop back-edge must not be emitted on the if merge block"
+    );
+    let header = &main.blocks[1];
+    assert!(
+        header.insts.last().is_some_and(|i| matches!(i, IrInst::Jump { target: 1 })),
+        "loop header block should end with back-edge jump"
+    );
+}

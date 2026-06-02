@@ -37,15 +37,6 @@ fn format_type_inner(
                 format!("{base}<{}>", args_s.join(", "))
             }
         }
-        Ty::Option(inner) => format!(
-            "Option<{}>",
-            format_type_inner(types, names, defs, *inner, depth)
-        ),
-        Ty::Result { ok, err } => format!(
-            "Result<{}, {}>",
-            format_type_inner(types, names, defs, *ok, depth),
-            format_type_inner(types, names, defs, *err, depth)
-        ),
         Ty::Tuple(elems) => {
             let inner: Vec<_> = elems
                 .iter()

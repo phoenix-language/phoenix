@@ -42,18 +42,6 @@ pub fn u8_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Primitive(Keyword::U8))
 }
 
-/// Returns `Option<T>` type id.
-#[must_use]
-pub fn option_type(types: &mut TypeInterner, inner: TypeId) -> TypeId {
-    types.intern(&Ty::Option(inner))
-}
-
-/// Returns `Result<T, E>` type id.
-#[must_use]
-pub fn result_type(types: &mut TypeInterner, ok: TypeId, err: TypeId) -> TypeId {
-    types.intern(&Ty::Result { ok, err })
-}
-
 /// Returns whether `id` is Copyable in MVP (primitives, unit, tuples of Copyable, etc.).
 #[must_use]
 pub fn is_copyable(types: &TypeInterner, id: TypeId) -> bool {
@@ -68,19 +56,10 @@ fn is_copyable_inner(types: &TypeInterner, id: TypeId, seen: &mut Vec<TypeId>) -
     let ok = match types.get(id) {
         Ty::Primitive(_) | Ty::Unit => true,
         Ty::Ref { .. } | Ty::Ptr { .. } | Ty::Fn { .. } | Ty::Var(_) | Ty::Named { .. } => false,
-        Ty::Option(inner) | Ty::Slice(inner) => is_copyable_inner(types, *inner, seen),
-        Ty::Result { ok, err } => {
-            is_copyable_inner(types, *ok, seen) && is_copyable_inner(types, *err, seen)
-        }
+        Ty::Slice(inner) => is_copyable_inner(types, *inner, seen),
         Ty::Tuple(elems) => elems.iter().all(|e| is_copyable_inner(types, *e, seen)),
         Ty::Array { elem, .. } => is_copyable_inner(types, *elem, seen),
     };
     seen.pop();
     ok
-}
-
-/// Returns `true` if `id` is `Result<_, _>` or `Option<_>`.
-#[must_use]
-pub fn is_result_or_option(types: &TypeInterner, id: TypeId) -> bool {
-    matches!(types.get(id), Ty::Result { .. } | Ty::Option(_))
 }

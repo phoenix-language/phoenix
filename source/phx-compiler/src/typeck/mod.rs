@@ -15,7 +15,6 @@ mod check;
 mod display;
 mod lower_ty;
 mod ops;
-mod option_result;
 mod ownership;
 mod types;
 mod unify;

@@ -18,7 +18,7 @@ The first milestone is intentionally narrow:
 - bytecode compiler pipeline (lex -> parse -> type-check -> lower)
 - single-process stack VM
 - structs, enums, pattern matching
-- `Option<T>` and `Result<T, E>`
+- user `struct` / `enum` (std `Option` / `Result` are post-MVP)
 - typed variables and functions
 - arithmetic/comparison/logical operators on primitive types
 - required executable entrypoint: `main :: () => { ... }`

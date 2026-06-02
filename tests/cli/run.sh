@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_OK="${ROOT}/tests/cli/fixtures/sample.phx"
+FIXTURE_LOOPS="${ROOT}/tests/cli/fixtures/control_flow.phx"
 PHX_BIN="${ROOT}/target/debug/phx"
 
 cd "${ROOT}"
@@ -27,5 +28,17 @@ if ! "${PHX_BIN}" run "${FIXTURE_OK}"; then
   exit 1
 fi
 echo "phx run passed (valid program)"
+
+if [[ ! -f "${FIXTURE_LOOPS}" ]]; then
+  echo "missing fixture: ${FIXTURE_LOOPS}" >&2
+  exit 1
+fi
+
+echo "running: phx run ${FIXTURE_LOOPS} (expect success)"
+if ! "${PHX_BIN}" run "${FIXTURE_LOOPS}"; then
+  echo "phx run should succeed for ${FIXTURE_LOOPS}" >&2
+  exit 1
+fi
+echo "phx run passed (control flow)"
 
 echo "all phx run CLI tests passed"

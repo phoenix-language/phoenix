@@ -170,7 +170,7 @@ This fixed-width operand unit simplifies MVP decoding.
 | Data construction | `MAKE_TUPLE`, `MAKE_ARRAY`, `MAKE_STRUCT`, `MAKE_ENUM` |
 | Data access | `GET_FIELD`, `SET_FIELD`, `INDEX` |
 | Pattern helpers | `MATCH_TAG`, `MATCH_INT_RANGE` |
-| Option/Result helpers | `MAKE_SOME`, `MAKE_NONE`, `MAKE_OK`, `MAKE_ERR`, `TRY` |
+| Std Option/Result helpers (post-MVP) | `MAKE_SOME`, `MAKE_NONE`, `MAKE_OK`, `MAKE_ERR`, `TRY` — only if lowering needs dedicated opcodes after std enums exist |
 | Memory intrinsics | `ALLOC`, `PTR_LOAD`, `PTR_STORE` (unsafe boundary) |
 
 Exact opcode numeric assignments are VM-implementation-defined but must remain stable per file format version.

@@ -4,7 +4,7 @@ use phx_syntax::ast::expr::Expr;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 
 use crate::ir::IrInst;
-use crate::lower::ctx::{LowerCtx, unit_ty};
+use crate::lower::ctx::{LoopLabels, LowerCtx, unit_ty};
 use crate::lower::expr::{lower_assign_expr, lower_expr};
 use crate::typeck::TypeId;
 
@@ -43,11 +43,8 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
             }
         }
         Stmt::Return(expr) => lower_return(ctx, expr.as_ref()),
-        Stmt::While { cond, body } => {
-            lower_expr(ctx, cond);
-            lower_block_value(ctx, &body.inner);
-        }
-        Stmt::Loop(body) => lower_block_value(ctx, &body.inner),
+        Stmt::While { cond, body } => lower_while(ctx, cond, &body.inner),
+        Stmt::Loop(body) => lower_loop(ctx, &body.inner),
         Stmt::Given {
             scrutinee, body, ..
         } => {
@@ -55,8 +52,76 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
             lower_block_value(ctx, &body.inner);
         }
         Stmt::Unsafe(body) => lower_block_value(ctx, &body.inner),
-        Stmt::Break(_) | Stmt::Continue => {}
+        Stmt::Break(expr) => lower_break(ctx, expr.as_ref()),
+        Stmt::Continue => lower_continue(ctx),
         _ => {}
+    }
+}
+
+/// `while (cond) { body }` — header tests `cond`, body jumps back to header.
+fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &Block) {
+    let header = ctx.fresh_block();
+    let body_id = ctx.fresh_block();
+    let exit = ctx.fresh_block();
+
+    ctx.emit(IrInst::Jump { target: header });
+    ctx.push_loop(LoopLabels {
+        exit,
+        continue_target: header,
+    });
+
+    ctx.set_current(header);
+    lower_expr(ctx, cond);
+    ctx.emit(IrInst::JumpIf {
+        then_block: body_id,
+        else_block: exit,
+    });
+
+    ctx.set_current(body_id);
+    lower_block_value(ctx, body);
+    ctx.set_current(header);
+    ctx.emit(IrInst::Jump { target: header });
+
+    ctx.pop_loop();
+    ctx.set_current(exit);
+}
+
+/// `loop { body }` — body repeats until `break` (or `return`).
+fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
+    let header = ctx.fresh_block();
+    let exit = ctx.fresh_block();
+
+    ctx.emit(IrInst::Jump { target: header });
+    ctx.push_loop(LoopLabels {
+        exit,
+        continue_target: header,
+    });
+
+    ctx.set_current(header);
+    lower_block_value(ctx, body);
+    ctx.set_current(header);
+    ctx.emit(IrInst::Jump { target: header });
+
+    ctx.pop_loop();
+    ctx.set_current(exit);
+}
+
+fn lower_break(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>) {
+    if let Some(e) = expr {
+        lower_expr(ctx, e);
+    }
+    if let Some(labels) = ctx.innermost_loop() {
+        ctx.emit(IrInst::Jump {
+            target: labels.exit,
+        });
+    }
+}
+
+fn lower_continue(ctx: &mut LowerCtx<'_>) {
+    if let Some(labels) = ctx.innermost_loop() {
+        ctx.emit(IrInst::Jump {
+            target: labels.continue_target,
+        });
     }
 }
 

@@ -72,14 +72,11 @@ pub enum TypeCheckError {
         /// Span of the operation.
         span: Span,
     },
-    /// `Result` or `Option` value discarded without handling.
-    DiscardResultOrOption {
-        /// Expression span.
-        span: Span,
-    },
-    /// `?` used outside a function returning compatible `Result` or `Option`.
-    InvalidQuestionMark {
-        /// `?` span.
+    /// Post-MVP language or std feature used in MVP build.
+    UnsupportedFeature {
+        /// Short feature name for the diagnostic.
+        feature: &'static str,
+        /// Use site span.
         span: Span,
     },
     /// Use of a binding after it was moved.
@@ -103,6 +100,13 @@ pub enum TypeCheckError {
         /// Span.
         span: Span,
     },
+    /// `break` or `continue` not inside a loop.
+    LoopControlOutsideLoop {
+        /// `"break"` or `"continue"`.
+        keyword: &'static str,
+        /// Statement span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -118,11 +122,11 @@ impl TypeCheckError {
             | Self::NonUnifyingBranches { span }
             | Self::InvalidCast { span, .. }
             | Self::InvalidOperator { span, .. }
-            | Self::DiscardResultOrOption { span }
-            | Self::InvalidQuestionMark { span }
+            | Self::UnsupportedFeature { span, .. }
             | Self::UseAfterMove { span, .. }
             | Self::MovedAssignTarget { span }
-            | Self::UnresolvedValue { span, .. } => Some(*span),
+            | Self::UnresolvedValue { span, .. }
+            | Self::LoopControlOutsideLoop { span, .. } => Some(*span),
         }
     }
 }
@@ -153,11 +157,8 @@ impl fmt::Display for TypeCheckError {
                 write!(f, "invalid cast from `{from}` to `{to}`")
             }
             Self::InvalidOperator { op, .. } => write!(f, "invalid use of operator `{op}`"),
-            Self::DiscardResultOrOption { .. } => {
-                f.write_str("discarded `Result` or `Option` without `match`, `given`, or `?`")
-            }
-            Self::InvalidQuestionMark { .. } => {
-                f.write_str("`?` is only valid in functions returning `Result` or `Option`")
+            Self::UnsupportedFeature { feature, .. } => {
+                write!(f, "{feature} is not available in MVP")
             }
             Self::UseAfterMove { symbol_index, .. } => {
                 write!(f, "use of moved value (sym#{symbol_index})")
@@ -165,6 +166,9 @@ impl fmt::Display for TypeCheckError {
             Self::MovedAssignTarget { .. } => f.write_str("cannot assign to a moved value"),
             Self::UnresolvedValue { symbol_index, .. } => {
                 write!(f, "unresolved value (sym#{symbol_index})")
+            }
+            Self::LoopControlOutsideLoop { keyword, .. } => {
+                write!(f, "`{keyword}` outside of a loop")
             }
         }
     }

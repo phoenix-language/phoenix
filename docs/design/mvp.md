@@ -38,7 +38,6 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl for Trait` (parse + static method resolution) |
 | Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given` |
-| Errors and absence | `Option<T>`, `Result<T, E>`, `?` |
 | Expressions | arithmetic, comparison, logical operators; explicit casts (`expr as Type`) |
 
 ## MVP Out of Scope
@@ -49,7 +48,7 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Actor language contracts | actor directives, actor trait enforcement, actor handles |
 | Ownership safety model | full borrow checker and ownership verifier |
 | Runtime sophistication | JIT, hot reload |
-| Standard library breadth | collections, formatting, rich text/string APIs, **std I/O** (`File.read`, networking) |
+| Standard library breadth | collections, formatting, rich text/string APIs, **std I/O** (`File.read`, networking), **`Option` / `Result` / error propagation (`?`)** |
 | Compile-time generation | `@derive(...)` or `#derive(...)` semantic codegen |
 | Deferred grammar/semantics | default trait body codegen, associated-type bounds, heap alloc surface syntax, full borrow checker — see [features/grammar-deferred.md](features/grammar-deferred.md) |
 
@@ -76,8 +75,7 @@ Higher-level text and ergonomic string utilities are post-MVP library design.
 4. Function parameters must always be explicitly typed.
 5. Omitted function return type defaults to `()`.
 6. `if` and `match` expression branches must unify to one type.
-7. `?` is only valid in functions returning `Result<_, _>` or `Option<_>`.
-8. Operator support in MVP is compiler-defined for primitive numerics and booleans only.
+7. Operator support in MVP is compiler-defined for primitive numerics and booleans only.
 
 ## Directive Model (Phased)
 

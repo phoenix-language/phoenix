@@ -13,17 +13,19 @@ use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
-use phx_syntax::ast::{BlockNode, ExprNode};
+use phx_syntax::ast::types::Type;
+use phx_syntax::ast::{BlockNode, ExprNode, Node};
+use phx_syntax::token::Keyword;
 
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
-    bool_type, float_literal_type, int_literal_type, is_copyable, is_result_or_option, u8_type,
-    unit,
+    bool_type, float_literal_type, int_literal_type, is_copyable, u8_type, unit,
 };
 use super::display::format_type;
-use super::lower_ty::{TypeDefMap, build_type_def_map, lower_type, push_generics};
+use super::lower_ty::{
+    TypeDefMap, build_type_def_map, is_post_mvp_std_type, lower_type, push_generics,
+};
 use super::ops::{check_binary, check_cast, check_unary};
-use super::option_result::{EnumCtorContext, check_enum_ctor_with_inner_ty};
 use super::ownership::OwnershipTracker;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
 use super::unify::unify_branch;
@@ -53,6 +55,8 @@ pub struct TypeChecker<'a> {
     functions: Vec<FunctionLayout>,
     layout: Option<FunctionLayoutBuilder>,
     ctor_expected: Option<TypeId>,
+    /// Nesting depth of `while` / `loop` bodies being checked.
+    loop_depth: u32,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -76,7 +80,19 @@ impl<'a> TypeChecker<'a> {
             functions: Vec::new(),
             layout: None,
             ctor_expected: None,
+            loop_depth: 0,
         }
+    }
+
+    fn error_loop_control_outside_loop(&mut self, keyword: &'static str, span: Span) {
+        self.bag
+            .push(TypeCheckError::LoopControlOutsideLoop { keyword, span });
+    }
+
+    fn with_loop_body<F: FnOnce(&mut Self)>(&mut self, f: F) {
+        self.loop_depth = self.loop_depth.saturating_add(1);
+        f(self);
+        self.loop_depth = self.loop_depth.saturating_sub(1);
     }
 
     fn fn_def_for(&self, f: &Function) -> Option<DefId> {
@@ -111,6 +127,30 @@ impl<'a> TypeChecker<'a> {
             found: self.format_ty(found),
             span,
         });
+    }
+
+    fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
+        if is_post_mvp_std_type(&ty.inner) {
+            self.bag.push(TypeCheckError::UnsupportedFeature {
+                feature: "std `Option` / `Result` types",
+                span: ty.span,
+            });
+            return self.unit;
+        }
+        lower_type(&mut self.types, type_defs, &ty.inner)
+    }
+
+    fn lower_ast_type(&mut self, ty: &Node<Type>) -> TypeId {
+        let type_defs = self.type_defs.clone();
+        self.lower_ast_type_with_defs(ty, &type_defs)
+    }
+
+    const fn std_ctor_feature(variant: Keyword) -> &'static str {
+        match variant {
+            Keyword::Some | Keyword::None => "std `Option` constructors",
+            Keyword::Ok | Keyword::Err => "std `Result` constructors",
+            _ => "enum constructor",
+        }
     }
 
     fn find_def(&self, name: Symbol, kind: DefKind) -> Option<DefId> {
@@ -159,7 +199,7 @@ impl<'a> TypeChecker<'a> {
                     let mut fields = HashMap::new();
                     if let StructBody::Fields(fs) = body {
                         for f in fs {
-                            let ty = lower_type(&mut self.types, &td, &f.ty.inner);
+                            let ty = self.lower_ast_type_with_defs(&f.ty, &td);
                             fields.insert(f.name.symbol, ty);
                         }
                     }
@@ -178,7 +218,7 @@ impl<'a> TypeChecker<'a> {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
                 if let Some(def) = self.find_def(name.symbol, DefKind::TypeAlias) {
-                    let lowered = lower_type(&mut self.types, &td, &ty.inner);
+                    let lowered = self.lower_ast_type_with_defs(ty, &td);
                     self.value_types.insert(def, lowered);
                 }
             }
@@ -204,13 +244,13 @@ impl<'a> TypeChecker<'a> {
                 if let (Some(def), Some(t)) =
                     (self.find_def(name.symbol, DefKind::Const), ty.as_ref())
                 {
-                    let tid = lower_type(&mut self.types, &self.type_defs, &t.inner);
+                    let tid = self.lower_ast_type(t);
                     self.value_types.insert(def, tid);
                 }
             }
             TopLevelDecl::Var { name, ty, .. } => {
                 if let Some(def) = self.find_def(name.symbol, DefKind::Var) {
-                    let tid = lower_type(&mut self.types, &self.type_defs, &ty.inner);
+                    let tid = self.lower_ast_type(ty);
                     self.value_types.insert(def, tid);
                 }
             }
@@ -222,18 +262,14 @@ impl<'a> TypeChecker<'a> {
         let ret = f
             .ret
             .as_ref()
-            .map(|r| lower_type(&mut self.types, &self.type_defs, &r.inner))
+            .map(|r| self.lower_ast_type(r))
             .unwrap_or(self.unit);
         let params: Vec<_> = f
             .params
             .iter()
             .filter_map(|p| match p {
-                Param::Named { ty, .. } => {
-                    Some(lower_type(&mut self.types, &self.type_defs, &ty.inner))
-                }
-                Param::Receiver { ty, .. } => ty
-                    .as_ref()
-                    .map(|t| lower_type(&mut self.types, &self.type_defs, &t.inner)),
+                Param::Named { ty, .. } => Some(self.lower_ast_type(ty)),
+                Param::Receiver { ty, .. } => ty.as_ref().map(|t| self.lower_ast_type(t)),
                 _ => None,
             })
             .collect();
@@ -247,18 +283,14 @@ impl<'a> TypeChecker<'a> {
         let ret = sig
             .ret
             .as_ref()
-            .map(|r| lower_type(&mut self.types, &self.type_defs, &r.inner))
+            .map(|r| self.lower_ast_type(r))
             .unwrap_or(self.unit);
         let params: Vec<_> = sig
             .params
             .iter()
             .filter_map(|p| match p {
-                Param::Named { ty, .. } => {
-                    Some(lower_type(&mut self.types, &self.type_defs, &ty.inner))
-                }
-                Param::Receiver { ty, .. } => ty
-                    .as_ref()
-                    .map(|t| lower_type(&mut self.types, &self.type_defs, &t.inner)),
+                Param::Named { ty, .. } => Some(self.lower_ast_type(ty)),
+                Param::Receiver { ty, .. } => ty.as_ref().map(|t| self.lower_ast_type(t)),
                 _ => None,
             })
             .collect();
@@ -274,7 +306,7 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::Const { name, ty, init } => {
                 let got = self.check_expr_node(init);
                 if let Some(t) = ty {
-                    let expected = lower_type(&mut self.types, &self.type_defs, &t.inner);
+                    let expected = self.lower_ast_type(t);
                     if got != expected {
                         self.error_mismatch(expected, got, init.span);
                     }
@@ -282,7 +314,7 @@ impl<'a> TypeChecker<'a> {
                 self.ownership.define(name.symbol, got);
             }
             TopLevelDecl::Var { name, ty, init } => {
-                let expected = lower_type(&mut self.types, &self.type_defs, &ty.inner);
+                let expected = self.lower_ast_type(ty);
                 let got = self.check_expr_node(init);
                 if got != expected {
                     self.error_mismatch(expected, got, init.span);
@@ -303,7 +335,7 @@ impl<'a> TypeChecker<'a> {
         let ret = f
             .ret
             .as_ref()
-            .map(|r| lower_type(&mut self.types, &self.type_defs, &r.inner))
+            .map(|r| self.lower_ast_type(r))
             .unwrap_or(self.unit);
         let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
         self.fn_ret = Some(ret);
@@ -311,7 +343,7 @@ impl<'a> TypeChecker<'a> {
         self.layout = Some(FunctionLayoutBuilder::new(def, ret));
         for p in &f.params {
             if let Param::Named { name, ty, .. } = p {
-                let pty = lower_type(&mut self.types, &self.type_defs, &ty.inner);
+                let pty = self.lower_ast_type(ty);
                 self.define_local(name.symbol, pty, BindingKind::Param);
             }
         }
@@ -349,9 +381,7 @@ impl<'a> TypeChecker<'a> {
                     let _ = self.check_assign_expr(target, value, expr.span);
                     return self.unit;
                 }
-                let ty = self.check_expr_node(expr);
-                self.check_discard(expr.span, ty);
-                ty
+                self.check_expr_node(expr)
             }
             Stmt::Return(expr) => self.check_return(expr.as_ref()),
             other => {
@@ -383,9 +413,7 @@ impl<'a> TypeChecker<'a> {
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Const { name, ty, init } => {
-                let expected = ty
-                    .as_ref()
-                    .map(|t| lower_type(&mut self.types, &self.type_defs, &t.inner));
+                let expected = ty.as_ref().map(|t| self.lower_ast_type(t));
                 self.ctor_expected = expected;
                 let got = self.check_expr_node(init);
                 self.ctor_expected = None;
@@ -397,7 +425,7 @@ impl<'a> TypeChecker<'a> {
                 self.define_local(name.symbol, got, BindingKind::Const);
             }
             Stmt::Var { name, ty, init } => {
-                let expected = lower_type(&mut self.types, &self.type_defs, &ty.inner);
+                let expected = self.lower_ast_type(ty);
                 let got = self.check_expr_node(init);
                 if got != expected {
                     self.error_mismatch(expected, got, init.span);
@@ -414,22 +442,32 @@ impl<'a> TypeChecker<'a> {
                 if let Expr::Assign { target, value, .. } = &expr.inner {
                     let _ = self.check_assign_expr(target, value, expr.span);
                 } else {
-                    let ty = self.check_expr_node(expr);
-                    self.check_discard(expr.span, ty);
+                    let _ = self.check_expr_node(expr);
                 }
             }
             Stmt::Return(expr) => {
                 let _ = self.check_return(expr.as_ref());
             }
-            Stmt::Break(_) | Stmt::Continue => {}
+            Stmt::Break(expr) => {
+                if self.loop_depth == 0 {
+                    self.error_loop_control_outside_loop("break", loop_control_stmt_span(stmt));
+                } else if let Some(e) = expr {
+                    let _ = self.check_expr_node(e);
+                }
+            }
+            Stmt::Continue => {
+                if self.loop_depth == 0 {
+                    self.error_loop_control_outside_loop("continue", loop_control_stmt_span(stmt));
+                }
+            }
             Stmt::While { cond, body } => {
                 let c = self.check_expr_node(cond);
                 if c != self.bool_ty {
                     self.error_mismatch(self.bool_ty, c, cond.span);
                 }
-                self.check_block(&body.inner);
+                self.with_loop_body(|this| this.check_block(&body.inner));
             }
-            Stmt::Loop(body) => self.check_block(&body.inner),
+            Stmt::Loop(body) => self.with_loop_body(|this| this.check_block(&body.inner)),
             Stmt::Given {
                 pattern,
                 scrutinee,
@@ -499,13 +537,6 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_discard(&mut self, span: Span, ty: TypeId) {
-        if is_result_or_option(&self.types, ty) {
-            self.bag
-                .push(TypeCheckError::DiscardResultOrOption { span });
-        }
-    }
-
     fn check_expr_node(&mut self, expr: &ExprNode) -> TypeId {
         let id = self.alloc_expr_id();
         let ty = self.check_expr(&expr.inner, expr.span);
@@ -551,20 +582,19 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Assign { target, value, .. } => self.check_assign_expr(target, value, span),
             Expr::EnumCtor { variant, inner } => {
-                let inner_ty = inner.as_ref().map(|e| self.check_expr_node(e));
-                let mut ctx = EnumCtorContext {
-                    types: &mut self.types,
-                    bag: &mut self.bag,
-                    interner: &self.resolved.interner,
-                    defs: &self.resolved.defs,
-                    expected: self.ctor_expected,
-                };
-                check_enum_ctor_with_inner_ty(&mut ctx, *variant, inner_ty, span)
+                if let Some(inner_expr) = inner {
+                    let _ = self.check_expr_node(inner_expr);
+                }
+                self.bag.push(TypeCheckError::UnsupportedFeature {
+                    feature: Self::std_ctor_feature(*variant),
+                    span,
+                });
+                self.unit
             }
             Expr::Cast { expr, ty } => {
                 let from = self.check_expr_node(expr);
                 let td = self.type_defs.clone();
-                let to = lower_type(&mut self.types, &td, &ty.inner);
+                let to = self.lower_ast_type_with_defs(ty, &td);
                 if !check_cast(&self.types, from, to) {
                     self.bag.push(TypeCheckError::InvalidCast {
                         from: self.format_ty(from),
@@ -669,7 +699,13 @@ impl<'a> TypeChecker<'a> {
                     let _ = self.check_expr_node(idx);
                     self.check_index(ty, span)
                 }
-                PostfixOp::Try => self.check_try(ty, span),
+                PostfixOp::Try => {
+                    self.bag.push(TypeCheckError::UnsupportedFeature {
+                        feature: "`?` operator (requires std `Option` / `Result`)",
+                        span,
+                    });
+                    self.unit
+                }
                 _ => self.unit,
             };
         }
@@ -749,46 +785,6 @@ impl<'a> TypeChecker<'a> {
             span,
         });
         self.unit
-    }
-
-    fn check_try(&mut self, operand: TypeId, span: Span) -> TypeId {
-        let Some(ret) = self.fn_ret else {
-            self.bag.push(TypeCheckError::InvalidQuestionMark { span });
-            return self.unit;
-        };
-        let operand_ty = self.types.get(operand).clone();
-        let ret_ty = self.types.get(ret).clone();
-        match (operand_ty, ret_ty) {
-            (
-                Ty::Result { ok, err },
-                Ty::Result {
-                    ok: ret_ok,
-                    err: ret_err,
-                },
-            ) => {
-                if err != ret_err {
-                    self.error_mismatch(ret_err, err, span);
-                }
-                if ok != ret_ok {
-                    self.error_mismatch(ret_ok, ok, span);
-                }
-                ok
-            }
-            (Ty::Option(inner), Ty::Option(ret_inner)) => {
-                if inner != ret_inner {
-                    self.error_mismatch(ret_inner, inner, span);
-                }
-                inner
-            }
-            (Ty::Result { .. } | Ty::Option(_), _) => {
-                self.bag.push(TypeCheckError::InvalidQuestionMark { span });
-                self.unit
-            }
-            _ => {
-                self.bag.push(TypeCheckError::InvalidQuestionMark { span });
-                self.unit
-            }
-        }
     }
 
     fn check_if(
@@ -909,6 +905,15 @@ impl<'a> TypeChecker<'a> {
         Vec<FunctionLayout>,
     ) {
         (self.types, self.expr_types, self.bag, self.functions)
+    }
+}
+
+/// Best-effort span for `break` / `continue` (statement nodes are not spanned in blocks).
+fn loop_control_stmt_span(stmt: &Stmt) -> Span {
+    match stmt {
+        Stmt::Break(Some(e)) => e.span,
+        Stmt::Break(None) | Stmt::Continue => Span::new(0, 0),
+        _ => Span::new(0, 0),
     }
 }
 

@@ -17,6 +17,9 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `lambda_expr` | `(params) => expr \| block` | Parse | Closure typing, capture, lowering TBD |
 | Trait default bodies | `Name :: trait { fn :: () => T { … }; }` | Parse | Inherit defaults in typeck/codegen |
 | `break expr` | `break` , [ expr ] | Parse | Loop-value / labeled break semantics TBD |
+| `Option` / `Result` types | Type expressions | Parse; typeck rejects | Std generic enums + prelude |
+| `Some` / `None` / `Ok` / `Err` | Expr / patterns | Parse; typeck rejects | Std enum constructors |
+| `expr?` | Postfix `?` | Parse; typeck rejects | Sugar over std `Option`/`Result` |
 
 ---
 
@@ -43,7 +46,7 @@ These are in [grammar.ebnf](../grammar.ebnf) and intended for full MVP pipeline 
 - Functions `name :: (params) => T { }`, top-level and block `const` / `var`
 - Borrow types `&T`, `&mut T`; explicit casts `expr as Type`
 - Module paths with PascalCase segments; `#import`
-- `Option` / `Result`, `?`, `match`, `given`, control flow
+- `match`, `given`, control flow (MVP); `Option` / `Result` / `?` parse-only until std
 - Unit enum patterns (`Eof => …`); struct/tuple enum patterns
 
 See [mvp.md](../mvp.md) for milestone scope.

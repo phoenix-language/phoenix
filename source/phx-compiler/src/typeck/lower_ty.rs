@@ -5,11 +5,22 @@ use phx_syntax::ast::ident::TypeName;
 use phx_syntax::ast::types::Type;
 use phx_syntax::token::Keyword;
 
-use super::builtins::{option_type, result_type};
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::{DefId, DefKind};
 
 /// Maps type names to definition ids (module + generic scopes).
+/// Returns `true` when `ty` names post-MVP std `Option` / `Result` (not compiler builtins).
+#[must_use]
+pub fn is_post_mvp_std_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Generic {
+            name: Keyword::Option | Keyword::Result,
+            ..
+        } | Type::Primitive(Keyword::Option | Keyword::Result)
+    )
+}
+
 pub type TypeDefMap = std::collections::HashMap<phx_syntax::Symbol, DefId>;
 
 /// Lowers `ty` using `type_defs` for named types.
@@ -37,25 +48,8 @@ fn lower_type_inner(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type)
                 types.intern(&Ty::Unit)
             }
         }
-        Type::Generic { name, args } => match name {
-            Keyword::Option => {
-                let inner = match args.first() {
-                    Some(a) => lower_type_node(types, type_defs, a),
-                    None => types.intern(&Ty::Unit),
-                };
-                option_type(types, inner)
-            }
-            Keyword::Result => {
-                let ok = match args.first() {
-                    Some(a) => lower_type_node(types, type_defs, a),
-                    None => types.intern(&Ty::Unit),
-                };
-                let err = match args.get(1) {
-                    Some(a) => lower_type_node(types, type_defs, a),
-                    None => types.intern(&Ty::Unit),
-                };
-                result_type(types, ok, err)
-            }
+        Type::Generic { name, args: _ } => match name {
+            Keyword::Option | Keyword::Result => types.intern(&Ty::Unit),
             other => types.intern(&Ty::Primitive(*other)),
         },
         Type::Function { params, ret } => {

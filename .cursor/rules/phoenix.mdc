@@ -12,7 +12,7 @@ You are implementing **Phoenix**, a systems-oriented language with a static fron
 - Programs compile to portable **`PHX0` bytecode** and run on a Phoenix VM (not LLVM-as-primary).
 - **No GC** — memory safety via ownership, moves, and (post-MVP) borrowing.
 - **Runtime transparency** — pure computation, schedulable I/O, and actor boundaries must be visible in types or syntax (see post-MVP docs).
-- **Errors as values** — `Result<T, E>`, `Option<T>`, `?`; no exceptions.
+- **Errors as values** — post-MVP std `Result<T, E>`, `Option<T>`, and `?`; no exceptions.
 
 Correctness of the **language definition** beats clever features. If a behavior is not in the design docs, it is out of scope until the docs are updated.
 
@@ -75,7 +75,6 @@ Compilation fails if `main` is missing. MVP runs `main` on a plain stack interpr
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl for Trait` (parse + static method resolution per spec) |
 | Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given` |
-| Errors / absence | `Option<T>`, `Result<T, E>`, `?` |
 | Operators | arithmetic, comparison, logical; explicit `expr as Type` |
 
 ---
@@ -87,7 +86,7 @@ Do not implement until MVP is accepted:
 - M:N scheduler, actors, mailboxes, supervision
 - Full borrow checker (beyond **use-after-move**)
 - Primitive `string` — MVP is **byte-first** (`u8`, arrays, slices, pointers, alloc intrinsics)
-- Std I/O, networking, rich collections
+- Std I/O, networking, rich collections, std `Option` / `Result` / `?`
 - JIT, hot reload, `#derive` / `@derive` codegen
 - Deferred grammar semantics — see `grammar-deferred.md`
 
@@ -115,7 +114,6 @@ Full rules live in the design docs. These are the non-negotiable headlines:
 - **No implicit numeric widening/narrowing** — use `expr as Type`.
 - Function parameters are always explicitly typed; omitted return type → `()`.
 - `if` / `match` expression branches must unify to one type.
-- `?` only in functions returning compatible `Result<_, _>` or `Option<_>`.
 - MVP operators are compiler-defined for primitive numerics and `bool` only.
 
 ### Copyable vs Clone
@@ -140,7 +138,7 @@ Uniform `::` declaration style: `Name :: struct`, `Name :: enum`, `Name :: trait
 
 ### Errors
 
-- No exceptions. Discarded `Result` / `Option` without `match`, `given`, or `?` is an error (MVP type checker).
+- No exceptions. Post-MVP: discarded `Result` / `Option` without `match`, `given`, or `?` is a type error once std defines those enums.
 
 ---
 
@@ -173,7 +171,7 @@ Do not implement in the compiler/VM until MVP checklist passes:
 
 - The compiler needs a **small intrinsic kernel** (primitives, operators, alloc) known at compile time before a full std exists.
 - **Language core:** `struct`, `enum`, `trait`, `impl`, generics, control flow, `Copyable`, primitives — not rich std APIs.
-- **`Option` / `Result`:** MVP treats them as compiler bootstrap only; long-term they are **std generic enums** (see `type-system.md` § Phased: Option and Result). Do not add more permanent language builtins where std + sugar suffices.
+- **`Option` / `Result`:** **Post-MVP std** — generic `enum` types in the library, not compiler builtins. MVP type-check rejects `Option`/`Result` types, `Some`/`None`/`Ok`/`Err` ctors, and `?`. See `type-system.md` (Phased: Option and Result). Do not add `Ty::Option` / `Ty::Result` or bootstrap tables in the compiler.
 - Higher-level APIs (text, collections, I/O, `Clone`) are std/post-MVP unless listed as MVP bootstrap.
 - Packaging/modules: follow `modules.md`; Odin-style “file = module” and package layout may evolve — do not invent a second module system in code without updating docs.
 

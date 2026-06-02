@@ -275,7 +275,9 @@ fn lower_if(
 
     ctx.set_current(then_id);
     lower_block_expr(ctx, then_block);
-    ctx.emit(IrInst::Jump { target: merge_id });
+    if !block_ends_with_unconditional_jump(ctx, then_id) {
+        ctx.emit(IrInst::Jump { target: merge_id });
+    }
 
     ctx.set_current(else_id);
     if else_ifs.is_empty() {
@@ -285,9 +287,22 @@ fn lower_if(
     } else {
         lower_else_if_chain(ctx, else_ifs, else_block);
     }
-    ctx.emit(IrInst::Jump { target: merge_id });
+    if !block_ends_with_unconditional_jump(ctx, else_id) {
+        ctx.emit(IrInst::Jump { target: merge_id });
+    }
 
     ctx.set_current(merge_id);
+}
+
+/// True when `block` ends with an unconditional branch (no fall-through to merge).
+fn block_ends_with_unconditional_jump(ctx: &LowerCtx<'_>, block: u32) -> bool {
+    let idx = usize::try_from(block).ok();
+    let Some(b) = idx.and_then(|i| ctx.blocks.get(i)) else {
+        return false;
+    };
+    b.insts
+        .last()
+        .is_some_and(|inst| matches!(inst, IrInst::Jump { .. } | IrInst::Return { .. }))
 }
 
 fn lower_else_if_chain(
@@ -310,7 +325,9 @@ fn lower_else_if_chain(
 
     ctx.set_current(then_id);
     lower_block_expr(ctx, first_block);
-    ctx.emit(IrInst::Jump { target: merge_id });
+    if !block_ends_with_unconditional_jump(ctx, then_id) {
+        ctx.emit(IrInst::Jump { target: merge_id });
+    }
 
     ctx.set_current(else_id);
     if rest.is_empty() {
@@ -320,7 +337,9 @@ fn lower_else_if_chain(
     } else {
         lower_else_if_chain(ctx, rest, final_else);
     }
-    ctx.emit(IrInst::Jump { target: merge_id });
+    if !block_ends_with_unconditional_jump(ctx, else_id) {
+        ctx.emit(IrInst::Jump { target: merge_id });
+    }
 
     ctx.set_current(merge_id);
 }
