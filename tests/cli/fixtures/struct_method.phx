@@ -1,0 +1,16 @@
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+Point :: impl {
+    zero :: () => s32 {
+        0
+    };
+};
+
+main :: () => {
+    const p: Point = Point { x: 3, y: 4 };
+    const total: s32 = p.zero();
+    const _ = total;
+};

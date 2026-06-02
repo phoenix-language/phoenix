@@ -14,7 +14,7 @@
 | Short-circuit `&&` / `\|\|` | `lower_short_circuit_bool`, `logical.phx` |
 | `match` on literals / wildcard | `match_int.phx`, `match_bool.phx`, `run_match.rs` |
 | Option/Result not MVP | No lexer keywords; parse as `TypeIdent`; resolve fails until std prelude |
-| CLI `run.sh` | Runs 6 fixtures (sample, control_flow, continue_in_if, logical, match_*) |
+| CLI `run.sh` | Runs 10 fixtures including struct/enum aggregates |
 
 ### Known gaps (do not assume done)
 
@@ -22,8 +22,8 @@
 |-------|--------|
 | `i < n` / `c \|\| d {` before `{` | Parser ambiguity; parenthesize (`n > (i)`, `(c \|\| d)`) |
 | `match (x)` scrutinee | Use `match (ident)` not `match ident {` (struct-literal parse) |
-| Enum/struct `match` patterns | Lowering defers to fail arm; Phase 2 aggregates |
-| VM scalar model (`Value` = one `s64` slot) | No struct/enum/tuple runtime representation |
+| Enum/struct `match` patterns | done for struct/tuple/unit enum arms; enum struct variants deferred |
+| VM aggregate model | `Value::Scalar` / `Value::Agg` arena handles; 20 opcodes including `MAKE_STRUCT`/`MAKE_ENUM`/`GET_FIELD`/`SET_FIELD`/`MATCH_TAG` |
 
 ---
 
@@ -38,12 +38,12 @@ A credible MVP demo `.phx` should be able to:
 - [x] Use `while`, `loop`, `break`, `continue`, `return`
 - [x] Use `match` on `s32` / `bool` literals and `_` (with `match (expr)` syntax)
 - [x] Use short-circuit `&&` / `||` on `bool`
-- [ ] Construct and use **user** `struct` / `enum` values with field/tag access at runtime
+- [x] Construct and use **user** `struct` / `enum` values with field/tag access at runtime
 - [ ] Explicit `expr as Type` casts where types differ (per [type-system.md](design/features/type-system.md))
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
 
-**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`.
+**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`, `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`.
 
 ---
 
@@ -131,15 +131,15 @@ A credible MVP demo `.phx` should be able to:
 | Calls, arity, return types                 | done     | `typeck/check.rs`                 |                                                                               | `call_*` tests                                         |
 | `const` / `var` inference & assign         | done     | `typeck/check.rs`                 |                                                                               | assign tests                                           |
 | Index `[T; N]` / slice                     | partial  | `typeck/check.rs`                 | Typing only; no runtime slice value                                           | `index_array_ok`                                       |
-| Struct literals + fields                   | partial  | `typeck/check.rs`                 | Field types checked; patterns not                                             | Struct lit in typeck test via move tests               |
+| Struct literals + fields                   | done     | `typeck/check.rs`, `layout.rs`    | Missing/unknown field errors; layout tables                                   | Struct lit + field read in `struct_point.phx`          |
 | Std ctors `Some`/`None`/`Ok`/`Err`         | deferred | —                                 | Lex as `TypeIdent`; resolve as unknown type until std prelude                 | `ok_ctor_unresolved_until_std`                         |
 | `Option`/`Result` types                    | deferred | —                                 | Lex as `TypeIdent` + generics; no compiler builtin                            | `result_type_unresolved_until_std`                     |
 | `?`                                        | deferred | `typeck/check.rs`                 | Postfix `?` rejected until std                                                | `question_mark_unsupported_in_mvp`                     |
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
-| `match` / `given` pattern checking         | partial  | `typeck/check.rs`                 | `check_pattern`: wildcard/literal/ident only; struct/tuple/enum pat **no-op** | Enum pattern mismatch errors                           |
+| `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns                                               | `enum_match.phx`                                       |
 | `&&` / `||` on `bool`                      | done     | `typeck/ops.rs`                   |                                                                               | Typeck accepts                                         |
 | `%` `**` bitwise shifts                    | partial  | `typeck/ops.rs`                   | Typed on numerics; **no codegen**                                             | Runtime test when VM supports                          |
-| Method calls `x.foo()`                     | partial  | `typeck/check.rs`                 | `check_method_call` ignores receiver; resolves **name in scope only**         | `obj.method()` uses impl for `obj`'s type              |
+| Method calls `x.foo()`                     | partial  | `typeck/check.rs`, `lower/expr.rs` | Inherent impl dispatch; synthetic receiver param; `self.` in impl body parse gap | `struct_method.phx`                                    |
 | Trait / impl static resolution             | missing  | —                                 | Impl bodies type-checked; no trait constraint dispatch                        | `Point :: impl for Eq` call resolves to impl           |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/lower_ty.rs`              | In type AST; no borrow checker                                                | Signatures parse+type; exclusivity post-MVP            |
 | Raw pointers `*T`                          | partial  | `typeck/lower_ty.rs`              | Types only                                                                    | No VM `PTR_LOAD`                                       |
@@ -164,12 +164,12 @@ A credible MVP demo `.phx` should be able to:
 | `while` / `loop` / `break` / `continue`       | done    | `lower/stmt.rs`           |                                                                                    | `lower_control_flow_emits_loops`         |
 | `return`                                      | done    | `lower/stmt.rs`           |                                                                                    |                                          |
 | Function calls                                | done    | `lower/expr.rs`           | `IrInst::Call`                                                                     | Call in sample IR                        |
-| `match`                                       | partial | `lower/expr.rs`           | Literal / `_` / ident arms; if-else-if chain; `match (scrutinee)` syntax | `match_int.phx`, `match_bool.phx` |
+| `match`                                       | done    | `lower/expr.rs`           | Primitives + struct/enum via `MatchTag` / `GetField`                               | `enum_match.phx`, `match_int.phx`        |
 | `given`                                       | partial | `lower/stmt.rs`           | Scrutinee + body; no pattern dispatch                                              | Runtime `given` test                     |
 | `?`                                           | deferred  | `lower/expr.rs`           | `PostfixOp::Try => {}`; post-MVP std only                                          | After std: early-return lowering         |
-| Struct / enum value construction              | partial | `lower/expr.rs`           | Fields evaluated; no aggregate IR                                                  | `MAKE_STRUCT` / `MAKE_ENUM` path         |
+| Struct / enum value construction              | done    | `lower/expr.rs`           | `MakeStruct`, `MakeEnum`, `GetField`, `SetField`                                  | `struct_point.phx`, `struct_assign.phx`  |
 | Casts                                         | partial | `lower/expr.rs`           | Value passed through unchanged                                                     | Cast changes representation when needed  |
-| Field access `x.f`                            | partial | `lower/expr.rs`           | Base lowered; **no `GET_FIELD`**                                                   | Field read returns correct slot          |
+| Field access `x.f`                            | done    | `lower/expr.rs`           | `GetField` / `SetField`                                                           | Aggregate fixtures                       |
 
 
 ---
@@ -179,11 +179,11 @@ A credible MVP demo `.phx` should be able to:
 
 | Item                                                                                                               | Status  | Where                            | Notes                                                    | Acceptance                   |
 | ------------------------------------------------------------------------------------------------------------------ | ------- | -------------------------------- | -------------------------------------------------------- | ---------------------------- |
-| MVP opcode set (15 opcodes)                                                                                        | partial | `phx-bytecode/src/opcode.rs`     | vs [vm-linear.md](design/features/vm-linear.md) families | Documented subset stable     |
+| MVP opcode set (20 opcodes)                                                                                        | partial | `phx-bytecode/src/opcode.rs`     | Includes aggregate opcodes 15–19                           | Documented subset stable     |
 | `CONST` / locals / arithmetic / compare / jumps / `CALL` / `RETURN`                                                | done    | `opcode.rs`, `emit.rs`           |                                                          | Verified sample module       |
-| `POP`, `MOD`, `NEG`, bitwise, `MAKE_*`, `GET_FIELD`, `INDEX`, `MATCH_*`, `MAKE_SOME/OK/…`, `TRY`, `ALLOC`, ptr ops | missing | —                                | Spec listed in vm-linear                                 | Opcode + VM + verifier each  |
+| `POP`, `MOD`, `NEG`, bitwise, `MAKE_*`, `GET_FIELD`, `INDEX`, `MATCH_*`, `MAKE_SOME/OK/…`, `TRY`, `ALLOC`, ptr ops | partial | `opcode.rs`, `emit.rs`, VM       | Aggregate `MAKE_*`/`GET_FIELD`/`SET_FIELD`/`MATCH_TAG` done | Aggregate fixtures verify    |
 | Constants: `s64` / `u64` / `bool` tags                                                                             | partial | `const_pool.rs`, VM `load_const` | Float/blob tags exist in spec; VM rejects most           | `f32` literal runs           |
-| Types section metadata                                                                                             | partial | `phx-bytecode/src/types.rs`      | Encoded; execution ignores                               | Types round-trip in module   |
+| Types section metadata                                                                                             | done    | `codegen/mod.rs`, `types.rs`     | Struct/enum aux from typeck layout tables                | Types round-trip in module   |
 | Symbols / debug section                                                                                            | missing | spec § symbols                   | Optional in MVP                                          | —                            |
 | Stack depth / `stack_max`                                                                                          | done    | `emit.rs`, `stack_effect.rs`     |                                                          | Verifier `StackExceedsMax`   |
 | Entry = zero-arity `main`                                                                                          | done    | `codegen/mod.rs`                 |                                                          | `entry_function_id`, arity 0 |
@@ -383,12 +383,14 @@ Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver 
 3. ~~Match lowering (primitives)~~ — done for literal / `_` / ident; enum/struct patterns Phase 2.
 4. ~~E2E fixtures~~ — `run.sh` runs 6 programs; `run_match.rs` integration tests.
 
-### Phase 2 — User-defined aggregates
+### Phase 2 — User-defined aggregates (done)
 
-1. **VM value model:** tagged enum/struct or index handles (still no GC — MVP stack/linear).
-2. `**MAKE_STRUCT` / `MAKE_ENUM` / `GET_FIELD`** (+ verifier stack rules).
-3. **Pattern typeck:** struct/tuple/enum patterns against scrutinee type.
-4. **Method resolution:** map `receiver.method` to inherent/trait impl symbol.
+1. ~~**VM value model:**~~ `Value::Scalar` / `Value::Agg` arena handles (freed at run end; not GC).
+2. ~~`MAKE_STRUCT` / `MAKE_ENUM` / `GET_FIELD` / `SET_FIELD` / `MATCH_TAG`~~ (+ verifier stack rules).
+3. ~~**Pattern typeck:**~~ struct/tuple/unit enum patterns against scrutinee type.
+4. ~~**Method resolution:**~~ inherent impl `receiver.method` → `Call` with synthetic receiver param.
+
+Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`; integration `run_aggregates.rs`.
 
 ### Phase 3 — Bytecode completeness & tooling
 
@@ -410,11 +412,11 @@ Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver 
 .phx source
   → phx-syntax (lex/parse)     [strong]
   → phx-compiler/resolver      [single-file; import blocked]
-  → phx-compiler/typeck        [strong MVP rules; match patterns shallow]
-  → phx-compiler/lower → ir    [control flow ok; match/?/aggregates weak]
-  → phx-compiler/codegen       [PHX0 subset]
-  → phx-bytecode/verify        [matches subset]
-  → phx-vm/interpreter         [`s64` scalar stack; 15 opcodes]
+  → phx-compiler/typeck        [MVP rules + aggregate layouts/patterns]
+  → phx-compiler/lower → ir    [control flow + struct/enum aggregates]
+  → phx-compiler/codegen       [PHX0 + types section metadata]
+  → phx-bytecode/verify        [scalar + aggregate opcode rules]
+  → phx-vm/interpreter         [scalar + arena aggregate handles; 20 opcodes]
 ```
 
 ---

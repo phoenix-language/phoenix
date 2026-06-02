@@ -34,6 +34,16 @@ pub enum Opcode {
     Return = 13,
     /// Call function by id. Stack: `[args…] → [ret]`
     Call = 14,
+    /// Build struct from field values. Stack: `[fields…] → [agg]`
+    MakeStruct = 15,
+    /// Build enum variant. Stack: `[payload…] → [agg]`
+    MakeEnum = 16,
+    /// Read struct field or enum payload slot. Stack: `[agg] → [value]`
+    GetField = 17,
+    /// Write struct field in-place. Stack: `[agg, value] → [agg]`
+    SetField = 18,
+    /// Compare enum tag. Stack: `[agg] → [bool]`
+    MatchTag = 19,
 }
 
 impl Opcode {
@@ -59,6 +69,11 @@ impl Opcode {
             12 => Ok(Self::JumpIfFalse),
             13 => Ok(Self::Return),
             14 => Ok(Self::Call),
+            15 => Ok(Self::MakeStruct),
+            16 => Ok(Self::MakeEnum),
+            17 => Ok(Self::GetField),
+            18 => Ok(Self::SetField),
+            19 => Ok(Self::MatchTag),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

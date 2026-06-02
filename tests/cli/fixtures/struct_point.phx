@@ -1,0 +1,14 @@
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+sum_x :: (p: Point) => s32 {
+    p.x + p.y
+};
+
+main :: () => {
+    const p: Point = Point { x: 3, y: 4 };
+    const total: s32 = sum_x(p);
+    const _ = total;
+};

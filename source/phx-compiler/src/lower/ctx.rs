@@ -5,7 +5,7 @@ use phx_syntax::Symbol;
 
 use crate::ir::{IrBasicBlock, IrInst};
 use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
-use crate::typeck::{ExprId, FunctionLayout, LocalSlot, TypeId, TypedProgram};
+use crate::typeck::{ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram};
 
 /// Jump target placeholder for a loop exit not yet allocated (`0xF000_0000 + slot`).
 pub const LOOP_EXIT_TARGET_BASE: u32 = 0xF000_0000;
@@ -232,8 +232,30 @@ pub fn const_index_for_literal(lit: &phx_syntax::ast::lit::Literal) -> Option<u3
     }
 }
 
-/// Maps a resolved local binding to its slot.
+/// Maps slot for symbol in layout.
 #[must_use]
 pub fn slot_for_symbol(layout: &FunctionLayout, symbol: Symbol) -> Option<LocalSlot> {
     layout.binding(symbol).map(|b| b.slot)
+}
+
+/// Returns the named type `def` for a struct/enum value type, if any.
+#[must_use]
+pub fn named_def_for_ty(typed: &TypedProgram, ty: TypeId) -> Option<DefId> {
+    if let Ty::Named { def, .. } = typed.types.get(ty) {
+        Some(*def)
+    } else {
+        None
+    }
+}
+
+/// Finds a struct definition by type name symbol.
+#[must_use]
+pub fn struct_def_by_name(resolved: &ResolvedProgram, name: Symbol) -> Option<DefId> {
+    use crate::resolver::DefKind;
+    for (i, d) in resolved.defs.iter().enumerate() {
+        if d.name == name && d.kind == DefKind::Struct {
+            return u32::try_from(i).ok().map(DefId::from_raw);
+        }
+    }
+    None
 }

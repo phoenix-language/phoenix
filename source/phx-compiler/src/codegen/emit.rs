@@ -45,14 +45,22 @@ impl ConstPoolBuilder {
 }
 
 fn encoded_size(inst: &IrInst) -> u32 {
+    fn with_operands(count: u32) -> u32 {
+        2 + count.saturating_mul(4)
+    }
     match inst {
-        IrInst::JumpIf { .. } => (2 + 4) * 2,
+        IrInst::JumpIf { .. } => with_operands(1).saturating_add(with_operands(1)),
         IrInst::BinOp { .. } | IrInst::Return { .. } => 2,
         IrInst::Const { .. }
         | IrInst::LoadLocal { .. }
         | IrInst::StoreLocal { .. }
         | IrInst::Call { .. }
-        | IrInst::Jump { .. } => 2 + 4,
+        | IrInst::Jump { .. } => with_operands(1),
+        IrInst::MakeStruct { .. } | IrInst::GetField { .. } | IrInst::SetField { .. } => {
+            with_operands(2)
+        }
+        IrInst::MakeEnum { .. } => with_operands(3),
+        IrInst::MatchTag { .. } => with_operands(2),
     }
 }
 
@@ -75,26 +83,42 @@ fn apply_ir_stack_effect(
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
 ) {
+    let none = None::<u32>;
     match inst {
         IrInst::Const { .. } => {
-            let _ = apply_stack_effect(Opcode::Const, stack, None);
+            let _ = apply_stack_effect(Opcode::Const, stack, None, none);
         }
         IrInst::LoadLocal { .. } => {
-            let _ = apply_stack_effect(Opcode::LoadLocal, stack, None);
+            let _ = apply_stack_effect(Opcode::LoadLocal, stack, None, none);
         }
         IrInst::StoreLocal { .. } => {
-            let _ = apply_stack_effect(Opcode::StoreLocal, stack, None);
+            let _ = apply_stack_effect(Opcode::StoreLocal, stack, None, none);
         }
         IrInst::BinOp { .. } => {
-            let _ = apply_stack_effect(Opcode::Add, stack, None);
+            let _ = apply_stack_effect(Opcode::Add, stack, None, none);
         }
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
             let arity = *fn_arity.get(&fn_id).unwrap_or(&0);
-            let _ = apply_stack_effect(Opcode::Call, stack, Some(arity));
+            let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
         }
         IrInst::JumpIf { .. } => {
-            let _ = apply_stack_effect(Opcode::JumpIfTrue, stack, None);
+            let _ = apply_stack_effect(Opcode::JumpIfTrue, stack, None, none);
+        }
+        IrInst::MakeStruct { field_count, .. } => {
+            let _ = apply_stack_effect(Opcode::MakeStruct, stack, None, Some(*field_count));
+        }
+        IrInst::MakeEnum { payload_count, .. } => {
+            let _ = apply_stack_effect(Opcode::MakeEnum, stack, None, Some(*payload_count));
+        }
+        IrInst::GetField { .. } => {
+            let _ = apply_stack_effect(Opcode::GetField, stack, None, none);
+        }
+        IrInst::SetField { .. } => {
+            let _ = apply_stack_effect(Opcode::SetField, stack, None, none);
+        }
+        IrInst::MatchTag { .. } => {
+            let _ = apply_stack_effect(Opcode::MatchTag, stack, None, none);
         }
         IrInst::Return { .. } | IrInst::Jump { .. } => {}
     }
@@ -169,6 +193,41 @@ fn emit_inst(
             let else_off = block_starts.get(*else_block as usize).copied().unwrap_or(0);
             out.extend(encode(Opcode::JumpIfTrue, &[then_off]));
             out.extend(encode(Opcode::Jump, &[else_off]));
+        }
+        IrInst::MakeStruct {
+            type_id,
+            field_count,
+        } => {
+            out.extend(encode(Opcode::MakeStruct, &[*type_id, *field_count]));
+        }
+        IrInst::MakeEnum {
+            type_id,
+            variant_tag,
+            payload_count,
+        } => {
+            out.extend(encode(
+                Opcode::MakeEnum,
+                &[*type_id, *variant_tag, *payload_count],
+            ));
+        }
+        IrInst::GetField {
+            type_id,
+            field_index,
+            ..
+        } => {
+            out.extend(encode(Opcode::GetField, &[*type_id, *field_index]));
+        }
+        IrInst::SetField {
+            type_id,
+            field_index,
+        } => {
+            out.extend(encode(Opcode::SetField, &[*type_id, *field_index]));
+        }
+        IrInst::MatchTag {
+            type_id,
+            variant_tag,
+        } => {
+            out.extend(encode(Opcode::MatchTag, &[*type_id, *variant_tag]));
         }
     }
 }

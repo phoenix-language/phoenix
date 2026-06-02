@@ -84,5 +84,5 @@ pub fn check_file(path: &Path) -> Result<CompilationUnit, CompileError> {
 /// Same as [`check_file`].
 pub fn compile_to_module(path: &Path) -> Result<BytecodeModule, CompileError> {
     let unit = check_file(path)?;
-    Ok(codegen(&lower(&unit.typed)))
+    Ok(codegen(&lower(&unit.typed), &unit.typed.layout))
 }

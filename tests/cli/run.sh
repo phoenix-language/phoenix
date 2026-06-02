@@ -12,6 +12,10 @@ FIXTURES=(
   logical.phx
   match_int.phx
   match_bool.phx
+  struct_point.phx
+  struct_assign.phx
+  enum_match.phx
+  struct_method.phx
 )
 
 cd "${ROOT}"

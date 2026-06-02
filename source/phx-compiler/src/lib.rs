@@ -22,7 +22,7 @@ mod resolver;
 mod typeck;
 mod unit;
 
-pub use codegen::codegen;
+pub use codegen::{build_type_table, codegen};
 pub use compile::{CompileError, check_file, compile_source, compile_to_module};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use lower::lower;

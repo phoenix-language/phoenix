@@ -23,6 +23,12 @@ pub enum VmError {
     TruncatedCode,
     /// Opcode not implemented in MVP interpreter.
     UnsupportedOpcode(u8),
+    /// Arithmetic/compare expected a scalar operand.
+    ExpectedScalar,
+    /// Aggregate handle invalid or wrong shape for operation.
+    InvalidAggregate,
+    /// Field or payload index out of range.
+    FieldOutOfRange,
 }
 
 impl std::fmt::Display for VmError {
@@ -38,6 +44,9 @@ impl std::fmt::Display for VmError {
             Self::DivisionByZero => write!(f, "division by zero"),
             Self::TruncatedCode => write!(f, "truncated code stream"),
             Self::UnsupportedOpcode(op) => write!(f, "unsupported opcode {op}"),
+            Self::ExpectedScalar => write!(f, "expected scalar value"),
+            Self::InvalidAggregate => write!(f, "invalid aggregate value"),
+            Self::FieldOutOfRange => write!(f, "field index out of range"),
         }
     }
 }

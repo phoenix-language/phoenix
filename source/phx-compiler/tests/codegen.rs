@@ -12,7 +12,7 @@ fn codegen_sample_round_trip_and_verify() {
     let unit = compile_source(source, Some(Path::new("sample.phx")))
         .unwrap_or_else(|e| panic!("compile: {e}"));
     let ir = lower(&unit.typed);
-    let module = codegen(&ir);
+    let module = codegen(&ir, &unit.typed.layout);
 
     assert_eq!(module.functions.functions.len(), 2);
     assert!(!module.code.is_empty());
@@ -48,7 +48,7 @@ fn codegen_sample_round_trip_and_verify() {
 fn codegen_constants_include_sample_literals() {
     let source = include_str!("../../../tests/cli/fixtures/sample.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed));
+    let module = codegen(&lower(&unit.typed), &unit.typed.layout);
 
     let mut has_ten = false;
     let mut has_two = false;
@@ -71,7 +71,7 @@ fn continue_program_runs_on_vm() {
     let source =
         "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed));
+    let module = codegen(&lower(&unit.typed), &unit.typed.layout);
     verify(&module).expect("verify continue program");
 }
 
@@ -123,6 +123,35 @@ fn lower_match_emits_eq_and_jump_if() {
     }
     assert!(eq_count >= 1, "literal match arm should compare with Eq");
     assert!(jump_if_count >= 1, "match should branch with JumpIf");
+}
+
+#[test]
+fn codegen_enum_match_verifies() {
+    let source = include_str!("../../../tests/cli/fixtures/enum_match.phx");
+    let unit = compile_source(source, None).unwrap();
+    let module = codegen(&lower(&unit.typed), &unit.typed.layout);
+    verify(&module).expect("enum_match bytecode should verify");
+}
+
+#[test]
+fn codegen_struct_point_emits_make_struct() {
+    let source = include_str!("../../../tests/cli/fixtures/struct_point.phx");
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed);
+    let has_make = ir
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.insts)
+        .any(|i| matches!(i, IrInst::MakeStruct { .. }));
+    assert!(has_make, "struct literal should emit MakeStruct");
+    let has_get = ir
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.insts)
+        .any(|i| matches!(i, IrInst::GetField { .. }));
+    assert!(has_get, "field read should emit GetField");
 }
 
 #[test]

@@ -3,7 +3,7 @@
 use phx_bytecode::{BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode};
 
 use crate::VmError;
-use crate::frame::{Machine, Value};
+use crate::frame::{Aggregate, Machine, Value};
 
 /// Runs `module` starting at `entry` until `main` returns.
 ///
@@ -69,26 +69,26 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                     .ok_or(VmError::InvalidLocalSlot(slot as u32))?;
                 *local = v;
             }
-            Opcode::Add => binop(&mut machine.stack, |a, b| a.saturating_add(b))?,
-            Opcode::Sub => binop(&mut machine.stack, |a, b| a.saturating_sub(b))?,
-            Opcode::Mul => binop(&mut machine.stack, |a, b| a.saturating_mul(b))?,
+            Opcode::Add => binop_scalar(&mut machine.stack, |a, b| a.saturating_add(b))?,
+            Opcode::Sub => binop_scalar(&mut machine.stack, |a, b| a.saturating_sub(b))?,
+            Opcode::Mul => binop_scalar(&mut machine.stack, |a, b| a.saturating_mul(b))?,
             Opcode::Div => binop_div(&mut machine.stack)?,
-            Opcode::Eq => binop(&mut machine.stack, |a, b| i64::from(a == b))?,
-            Opcode::Lt => binop(&mut machine.stack, |a, b| i64::from(a < b))?,
+            Opcode::Eq => binop_scalar(&mut machine.stack, |a, b| i64::from(a == b))?,
+            Opcode::Lt => binop_scalar(&mut machine.stack, |a, b| i64::from(a < b))?,
             Opcode::Jump => {
                 let target = inst.operands.first().copied().unwrap_or(0);
                 frame.pc = target;
             }
             Opcode::JumpIfTrue => {
                 let target = inst.operands.first().copied().unwrap_or(0);
-                let cond = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let cond = pop_scalar(&mut machine.stack)?;
                 if cond != 0 {
                     frame.pc = target;
                 }
             }
             Opcode::JumpIfFalse => {
                 let target = inst.operands.first().copied().unwrap_or(0);
-                let cond = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let cond = pop_scalar(&mut machine.stack)?;
                 if cond == 0 {
                     frame.pc = target;
                 }
@@ -101,7 +101,7 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 if machine.stack.len() < arity {
                     return Err(VmError::StackUnderflow);
                 }
-                let mut args = vec![0i64; arity];
+                let mut args = vec![Value::Scalar(0); arity];
                 for i in (0..arity).rev() {
                     args[i] = machine.stack.pop().expect("checked len");
                 }
@@ -121,6 +121,82 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
             }
             Opcode::Pop => {
                 let _ = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+            }
+            Opcode::MakeStruct => {
+                let type_id = inst.operands.first().copied().unwrap_or(0);
+                let field_count = inst.operands.get(1).copied().unwrap_or(0) as usize;
+                let mut fields = Vec::with_capacity(field_count);
+                for _ in 0..field_count {
+                    fields.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
+                }
+                fields.reverse();
+                let handle = machine.push_aggregate(Aggregate::Struct { type_id, fields });
+                machine.stack.push(handle);
+            }
+            Opcode::MakeEnum => {
+                let type_id = inst.operands.first().copied().unwrap_or(0);
+                let tag = inst.operands.get(1).copied().unwrap_or(0);
+                let payload_count = inst.operands.get(2).copied().unwrap_or(0) as usize;
+                let mut payload = Vec::with_capacity(payload_count);
+                for _ in 0..payload_count {
+                    payload.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
+                }
+                payload.reverse();
+                let handle = machine.push_aggregate(Aggregate::Enum {
+                    type_id,
+                    tag,
+                    payload,
+                });
+                machine.stack.push(handle);
+            }
+            Opcode::GetField => {
+                let _type_id = inst.operands.first().copied().unwrap_or(0);
+                let field_index = inst.operands.get(1).copied().unwrap_or(0) as usize;
+                let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
+                let value = match machine.aggregate(handle) {
+                    Some(Aggregate::Struct { fields, .. }) => fields
+                        .get(field_index)
+                        .copied()
+                        .ok_or(VmError::FieldOutOfRange)?,
+                    Some(Aggregate::Enum { payload, .. }) => payload
+                        .get(field_index)
+                        .copied()
+                        .ok_or(VmError::FieldOutOfRange)?,
+                    None => return Err(VmError::InvalidAggregate),
+                };
+                machine.stack.push(value);
+            }
+            Opcode::SetField => {
+                let _type_id = inst.operands.first().copied().unwrap_or(0);
+                let field_index = inst.operands.get(1).copied().unwrap_or(0) as usize;
+                let new_val = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
+                let agg_ref = machine
+                    .aggregate_mut(handle)
+                    .ok_or(VmError::InvalidAggregate)?;
+                match agg_ref {
+                    Aggregate::Struct { fields, .. } => {
+                        let slot = fields
+                            .get_mut(field_index)
+                            .ok_or(VmError::FieldOutOfRange)?;
+                        *slot = new_val;
+                    }
+                    Aggregate::Enum { .. } => return Err(VmError::InvalidAggregate),
+                }
+                machine.stack.push(agg);
+            }
+            Opcode::MatchTag => {
+                let _type_id = inst.operands.first().copied().unwrap_or(0);
+                let expected = inst.operands.get(1).copied().unwrap_or(0);
+                let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
+                let matches = match machine.aggregate(handle) {
+                    Some(Aggregate::Enum { tag, .. }) => *tag == expected,
+                    _ => return Err(VmError::InvalidAggregate),
+                };
+                machine.stack.push(Value::Scalar(i64::from(matches)));
             }
         }
     }
@@ -152,35 +228,42 @@ fn load_const(module: &BytecodeModule, index: usize) -> Result<Value, VmError> {
             let bytes: [u8; 8] = entry.payload[0..8]
                 .try_into()
                 .map_err(|_| VmError::InvalidConstPayload)?;
-            Ok(i64::from_le_bytes(bytes))
+            Ok(Value::Scalar(i64::from_le_bytes(bytes)))
         }
         ConstTag::Bool => {
             let b = entry.payload.first().copied().unwrap_or(0);
-            Ok(i64::from(b != 0))
+            Ok(Value::Scalar(i64::from(b != 0)))
         }
         ConstTag::UnsignedInt if entry.payload.len() >= 8 => {
             let bytes: [u8; 8] = entry.payload[0..8]
                 .try_into()
                 .map_err(|_| VmError::InvalidConstPayload)?;
-            Ok(i64::from_le_bytes(bytes))
+            Ok(Value::Scalar(i64::from_le_bytes(bytes)))
         }
         _ => Err(VmError::InvalidConstPayload),
     }
 }
 
-fn binop(stack: &mut Vec<Value>, f: fn(i64, i64) -> i64) -> Result<(), VmError> {
-    let b = stack.pop().ok_or(VmError::StackUnderflow)?;
-    let a = stack.pop().ok_or(VmError::StackUnderflow)?;
-    stack.push(f(a, b));
+fn pop_scalar(stack: &mut Vec<Value>) -> Result<i64, VmError> {
+    match stack.pop().ok_or(VmError::StackUnderflow)? {
+        Value::Scalar(v) => Ok(v),
+        Value::Agg(_) => Err(VmError::ExpectedScalar),
+    }
+}
+
+fn binop_scalar(stack: &mut Vec<Value>, f: fn(i64, i64) -> i64) -> Result<(), VmError> {
+    let b = pop_scalar(stack)?;
+    let a = pop_scalar(stack)?;
+    stack.push(Value::Scalar(f(a, b)));
     Ok(())
 }
 
 fn binop_div(stack: &mut Vec<Value>) -> Result<(), VmError> {
-    let b = stack.pop().ok_or(VmError::StackUnderflow)?;
-    let a = stack.pop().ok_or(VmError::StackUnderflow)?;
+    let b = pop_scalar(stack)?;
+    let a = pop_scalar(stack)?;
     if b == 0 {
         return Err(VmError::DivisionByZero);
     }
-    stack.push(a / b);
+    stack.push(Value::Scalar(a / b));
     Ok(())
 }

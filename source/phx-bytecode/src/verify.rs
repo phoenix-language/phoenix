@@ -303,14 +303,22 @@ fn verify_function_body(
             None
         };
 
-        apply_stack_effect(inst.opcode, &mut depth, call_arity).map_err(|e| match e {
-            StackEffectError::Underflow | StackEffectError::MissingCallArity => {
-                VerifyError::StackUnderflow {
+        let field_count = match inst.opcode {
+            Opcode::MakeStruct => Some(inst.operands.get(1).copied().unwrap_or(0)),
+            Opcode::MakeEnum => Some(inst.operands.get(2).copied().unwrap_or(0)),
+            _ => None,
+        };
+
+        apply_stack_effect(inst.opcode, &mut depth, call_arity, field_count).map_err(
+            |e| match e {
+                StackEffectError::Underflow
+                | StackEffectError::MissingCallArity
+                | StackEffectError::MissingFieldCount => VerifyError::StackUnderflow {
                     function_id: func.function_id,
                     offset: *rel,
-                }
-            }
-        })?;
+                },
+            },
+        )?;
         max_depth = max_depth.max(depth);
     }
 
@@ -376,6 +384,30 @@ fn verify_operands(
         | Opcode::Pop
         | Opcode::Return => {
             if !inst.operands.is_empty() {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::MakeStruct => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::MakeEnum => {
+            if inst.operands.len() != 3 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::GetField | Opcode::SetField | Opcode::MatchTag => {
+            if inst.operands.len() != 2 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,
                     offset,

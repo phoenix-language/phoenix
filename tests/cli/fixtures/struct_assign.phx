@@ -1,0 +1,10 @@
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+main :: () => {
+    var p: Point = Point { x: 1, y: 2 };
+    p.x = 5;
+    const _ = p.x;
+};

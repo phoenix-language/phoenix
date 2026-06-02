@@ -96,6 +96,45 @@ pub enum IrInst {
         /// Target when false.
         else_block: u32,
     },
+    /// Build struct aggregate. Stack: `[fields…] → [agg]`
+    MakeStruct {
+        /// Bytecode type id.
+        type_id: u32,
+        /// Number of fields (stack operands).
+        field_count: u32,
+    },
+    /// Build enum variant. Stack: `[payload…] → [agg]`
+    MakeEnum {
+        /// Bytecode type id.
+        type_id: u32,
+        /// Variant tag.
+        variant_tag: u32,
+        /// Payload count.
+        payload_count: u32,
+    },
+    /// Read field or enum payload slot. Stack: `[agg] → [value]`
+    GetField {
+        /// Bytecode type id.
+        type_id: u32,
+        /// Field index.
+        field_index: u32,
+        /// Result type.
+        result: TypeId,
+    },
+    /// Write struct field in-place. Stack: `[agg, value] → [agg]`
+    SetField {
+        /// Bytecode type id.
+        type_id: u32,
+        /// Field index.
+        field_index: u32,
+    },
+    /// Compare enum tag. Stack: `[agg] → [bool]`
+    MatchTag {
+        /// Bytecode type id.
+        type_id: u32,
+        /// Expected variant tag.
+        variant_tag: u32,
+    },
 }
 
 /// Binary operators mirrored from type-checked expressions.

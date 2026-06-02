@@ -6,17 +6,66 @@
 mod const_pool;
 mod emit;
 
-use phx_bytecode::{BytecodeModule, FileHeader, FunctionRecord, FunctionTable, TypeTable};
+use phx_bytecode::{
+    BytecodeModule, FileHeader, FunctionRecord, FunctionTable, TypeKind, TypeRecord, TypeTable,
+};
 use std::collections::HashMap;
 
 use crate::ir::IrModule;
 use crate::resolver::DefId;
+use crate::typeck::ProgramLayout;
 
 pub use const_pool::ConstPoolBuilder;
 
+/// Builds the bytecode types section from typeck layout tables.
+#[must_use]
+pub fn build_type_table(layout: &ProgramLayout) -> TypeTable {
+    let mut records = Vec::new();
+
+    for (&def, sl) in &layout.structs {
+        let Some(type_id) = layout.type_id(def) else {
+            continue;
+        };
+        let mut aux = Vec::new();
+        let field_count = u32::try_from(sl.fields.len()).unwrap_or(u32::MAX);
+        aux.extend_from_slice(&field_count.to_le_bytes());
+        for (name, _ty) in &sl.fields {
+            aux.extend_from_slice(&name.index().to_le_bytes());
+            aux.extend_from_slice(&0u32.to_le_bytes());
+        }
+        records.push(TypeRecord {
+            type_id,
+            kind: TypeKind::Struct,
+            aux,
+        });
+    }
+
+    for (&def, el) in &layout.enums {
+        let Some(type_id) = layout.type_id(def) else {
+            continue;
+        };
+        let mut aux = Vec::new();
+        let variant_count = u32::try_from(el.variants.len()).unwrap_or(u32::MAX);
+        aux.extend_from_slice(&variant_count.to_le_bytes());
+        for v in &el.variants {
+            aux.extend_from_slice(&v.name.index().to_le_bytes());
+            aux.extend_from_slice(&v.tag.to_le_bytes());
+            let payload_len = u32::try_from(v.kind.payload_len()).unwrap_or(u32::MAX);
+            aux.extend_from_slice(&payload_len.to_le_bytes());
+        }
+        records.push(TypeRecord {
+            type_id,
+            kind: TypeKind::Enum,
+            aux,
+        });
+    }
+
+    TypeTable { records }
+}
+
 /// Lowers `ir` to a [`BytecodeModule`] ready for [`phx_bytecode::verify`] and the VM.
 #[must_use]
-pub fn codegen(ir: &IrModule) -> BytecodeModule {
+pub fn codegen(ir: &IrModule, layout: &ProgramLayout) -> BytecodeModule {
     let def_to_fn: HashMap<DefId, u32> =
         ir.functions.iter().map(|f| (f.def, f.id.index())).collect();
     let fn_arity: HashMap<u32, u16> = ir
@@ -65,7 +114,7 @@ pub fn codegen(ir: &IrModule) -> BytecodeModule {
             ..FileHeader::new(4, entry_function_id)
         },
         constants,
-        types: TypeTable::default(),
+        types: build_type_table(layout),
         functions: FunctionTable { functions: records },
         code,
     }

@@ -7,7 +7,9 @@ use std::collections::HashMap;
 
 use phx_diagnostics::{Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::Symbol;
-use phx_syntax::ast::decl::{Function, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem};
+use phx_syntax::ast::decl::{
+    Function, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
+};
 use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
@@ -21,6 +23,9 @@ use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, u8_type, unit,
 };
 use super::display::format_type;
+use super::layout::{
+    EnumLayout, ProgramLayout, StructLayout, VariantKind, VariantLayout, VariantMeta,
+};
 use super::lower_ty::{TypeDefMap, build_type_def_map, lower_type, push_generics};
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
@@ -54,6 +59,11 @@ pub struct TypeChecker<'a> {
     ctor_expected: Option<TypeId>,
     /// Nesting depth of `while` / `loop` bodies being checked.
     loop_depth: u32,
+    /// Struct/enum layouts for lowering and codegen.
+    program_layout: ProgramLayout,
+    next_type_id: u32,
+    /// When checking inherent impl members, the receiver type (`Self`).
+    impl_self_type: Option<TypeId>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -78,7 +88,17 @@ impl<'a> TypeChecker<'a> {
             layout: None,
             ctor_expected: None,
             loop_depth: 0,
+            program_layout: ProgramLayout::default(),
+            next_type_id: 1,
+            impl_self_type: None,
         }
+    }
+
+    fn alloc_type_id(&mut self, def: DefId) -> u32 {
+        let id = self.next_type_id;
+        self.next_type_id += 1;
+        self.program_layout.type_ids.insert(def, id);
+        id
     }
 
     fn error_loop_control_outside_loop(&mut self, keyword: &'static str, span: Span) {
@@ -178,22 +198,89 @@ impl<'a> TypeChecker<'a> {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
                 if let Some(def) = self.find_def(name.symbol, DefKind::Struct) {
-                    let mut fields = HashMap::new();
+                    let mut fields_map = HashMap::new();
+                    let mut ordered = Vec::new();
                     if let StructBody::Fields(fs) = body {
                         for f in fs {
                             let ty = self.lower_ast_type_with_defs(&f.ty, &td);
-                            fields.insert(f.name.symbol, ty);
+                            fields_map.insert(f.name.symbol, ty);
+                            ordered.push((f.name.symbol, ty));
                         }
                     }
-                    self.struct_fields.insert(def, StructFields { fields });
+                    self.struct_fields
+                        .insert(def, StructFields { fields: fields_map });
+                    self.program_layout
+                        .structs
+                        .insert(def, StructLayout { fields: ordered });
+                    let _ = self.alloc_type_id(def);
                     let struct_ty = self.types.intern(&Ty::Named { def, args: vec![] });
                     self.value_types.insert(def, struct_ty);
                 }
             }
-            TopLevelDecl::Enum { name, .. } => {
-                if let Some(def) = self.find_def(name.symbol, DefKind::Enum) {
-                    let ty = self.types.intern(&Ty::Named { def, args: vec![] });
-                    self.value_types.insert(def, ty);
+            TopLevelDecl::Enum {
+                name,
+                generics,
+                variants,
+            } => {
+                let mut td = self.type_defs.clone();
+                push_generics(&mut td, &self.resolved.defs, generics.as_deref());
+                if let Some(enum_def) = self.find_def(name.symbol, DefKind::Enum) {
+                    let enum_ty = self.types.intern(&Ty::Named {
+                        def: enum_def,
+                        args: vec![],
+                    });
+                    self.value_types.insert(enum_def, enum_ty);
+                    let type_id = self.alloc_type_id(enum_def);
+                    let _ = type_id;
+                    let mut variant_layouts = Vec::new();
+                    for (tag, v) in variants.iter().enumerate() {
+                        let tag = u32::try_from(tag).unwrap_or(u32::MAX);
+                        let variant_def = self.find_def(v.name.symbol, DefKind::EnumVariant);
+                        let payload_types: Vec<TypeId> = match &v.kind {
+                            Variant::Unit => vec![],
+                            Variant::Tuple(ts) => ts
+                                .iter()
+                                .map(|t| self.lower_ast_type_with_defs(t, &td))
+                                .collect(),
+                            Variant::Struct(_) => vec![],
+                            _ => vec![],
+                        };
+                        let kind = match &v.kind {
+                            Variant::Unit => VariantKind::Unit,
+                            Variant::Tuple(_) => VariantKind::Tuple(payload_types.clone()),
+                            Variant::Struct(_) => VariantKind::Unit,
+                            _ => VariantKind::Unit,
+                        };
+                        if let Some(vdef) = variant_def {
+                            let params: Vec<TypeId> = payload_types.clone();
+                            let ctor_ty = self.types.intern(&Ty::Fn {
+                                params,
+                                ret: enum_ty,
+                            });
+                            self.value_types.insert(vdef, ctor_ty);
+                            self.program_layout.variants.insert(
+                                vdef,
+                                VariantMeta {
+                                    enum_def,
+                                    tag,
+                                    payload: kind.clone(),
+                                },
+                            );
+                            variant_layouts.push(VariantLayout {
+                                def: vdef,
+                                name: v.name.symbol,
+                                tag,
+                                kind,
+                            });
+                        }
+                    }
+                    self.program_layout.enums.insert(
+                        enum_def,
+                        EnumLayout {
+                            enum_def,
+                            variants: variant_layouts,
+                        },
+                    );
                 }
             }
             TopLevelDecl::TypeAlias { name, generics, ty } => {
@@ -210,10 +297,20 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::Impl {
                 type_name, members, ..
             } => {
-                for m in members {
-                    self.collect_fn_sig(m);
+                if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
+                    for m in members {
+                        self.collect_fn_sig(m);
+                        if let Some(fn_def) = self.find_def(m.name.symbol, DefKind::Fn) {
+                            self.program_layout
+                                .inherent_methods
+                                .insert((type_def, m.name.symbol), fn_def);
+                        }
+                    }
+                } else {
+                    for m in members {
+                        self.collect_fn_sig(m);
+                    }
                 }
-                let _ = type_name;
             }
             TopLevelDecl::Trait { items, .. } => {
                 for item in items {
@@ -304,9 +401,23 @@ impl<'a> TypeChecker<'a> {
                 self.move_if_non_copyable(init, got);
                 self.ownership.define(name.symbol, expected);
             }
-            TopLevelDecl::Impl { members, .. } => {
-                for m in members {
-                    self.check_function(m);
+            TopLevelDecl::Impl {
+                type_name, members, ..
+            } => {
+                if let Some(&type_def) = self.type_defs.get(&type_name.symbol) {
+                    let self_ty = self.types.intern(&Ty::Named {
+                        def: type_def,
+                        args: vec![],
+                    });
+                    self.impl_self_type = Some(self_ty);
+                    for m in members {
+                        self.check_function(m);
+                    }
+                    self.impl_self_type = None;
+                } else {
+                    for m in members {
+                        self.check_function(m);
+                    }
                 }
             }
             _ => {}
@@ -323,10 +434,27 @@ impl<'a> TypeChecker<'a> {
         self.fn_ret = Some(ret);
         self.ownership = OwnershipTracker::new();
         self.layout = Some(FunctionLayoutBuilder::new(def, ret));
+        let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
         for p in &f.params {
-            if let Param::Named { name, ty, .. } = p {
-                let pty = self.lower_ast_type(ty);
-                self.define_local(name.symbol, pty, BindingKind::Param);
+            match p {
+                Param::Named { name, ty, .. } => {
+                    let pty = self.lower_ast_type(ty);
+                    self.define_local(name.symbol, pty, BindingKind::Param);
+                }
+                Param::Receiver { ty, .. } => {
+                    let pty = ty
+                        .as_ref()
+                        .map(|t| self.lower_ast_type(t))
+                        .or(self.impl_self_type)
+                        .unwrap_or(self.unit);
+                    self.define_local(impl_receiver_symbol(), pty, BindingKind::Param);
+                }
+                _ => {}
+            }
+        }
+        if self.impl_self_type.is_some() && !has_receiver {
+            if let Some(self_ty) = self.impl_self_type {
+                self.define_local(impl_receiver_symbol(), self_ty, BindingKind::Param);
             }
         }
         let body_ty = self.check_block_value(&f.body.inner);
@@ -489,7 +617,11 @@ impl<'a> TypeChecker<'a> {
                 self.check_ident(ident, target.span)
             }
             Expr::Postfix { base, ops } if ops.len() == 1 => {
-                let base_ty = self.check_expr_node(base);
+                let base_ty = if matches!(ops[0], PostfixOp::Field(_)) {
+                    self.check_expr_node_read(base)
+                } else {
+                    self.check_expr_node(base)
+                };
                 if let PostfixOp::Field(field) = &ops[0] {
                     self.check_field(base_ty, field, target.span)
                 } else {
@@ -520,10 +652,28 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_expr_node(&mut self, expr: &ExprNode) -> TypeId {
+        self.check_expr_node_inner(expr, true)
+    }
+
+    fn check_expr_node_read(&mut self, expr: &ExprNode) -> TypeId {
+        self.check_expr_node_inner(expr, false)
+    }
+
+    fn check_expr_node_inner(&mut self, expr: &ExprNode, record_move: bool) -> TypeId {
         let id = self.alloc_expr_id();
-        let ty = self.check_expr(&expr.inner, expr.span);
+        let ty = self.check_expr_with_move(&expr.inner, expr.span, record_move);
         self.expr_types.insert(id, ty);
         ty
+    }
+
+    fn check_expr_with_move(&mut self, expr: &Expr, span: Span, record_move: bool) -> TypeId {
+        match expr {
+            Expr::Ident(ident) => self.check_ident_inner(ident, span, record_move),
+            Expr::Postfix { base, ops } => {
+                self.check_postfix_with_move(base, ops, span, record_move)
+            }
+            _ => self.check_expr(expr, span),
+        }
     }
 
     fn check_expr(&mut self, expr: &Expr, span: Span) -> TypeId {
@@ -614,6 +764,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_ident(&mut self, ident: &Ident, span: Span) -> TypeId {
+        self.check_ident_inner(ident, span, true)
+    }
+
+    fn check_ident_inner(&mut self, ident: &Ident, span: Span, record_move: bool) -> TypeId {
         if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
             self.bag.push(TypeCheckError::UseAfterMove {
                 symbol_index: ident.symbol.index(),
@@ -625,7 +779,7 @@ impl<'a> TypeChecker<'a> {
             self.lookup_resolution(span, ident.symbol)
                 .and_then(|def| self.value_types.get(&def).copied())
         }) {
-            if !is_copyable(&self.types, ty) {
+            if record_move && !is_copyable(&self.types, ty) {
                 self.ownership.move_binding(ident.symbol, span);
             }
             return ty;
@@ -647,6 +801,13 @@ impl<'a> TypeChecker<'a> {
             match &path.segments[0] {
                 PathSegment::Ident(ident) => return self.check_ident(ident, span),
                 PathSegment::Type(name) => {
+                    if let Some(def) = self.lookup_resolution(span, name.symbol) {
+                        if let Some(&fn_ty) = self.value_types.get(&def) {
+                            if matches!(self.types.get(fn_ty), Ty::Fn { .. }) {
+                                return fn_ty;
+                            }
+                        }
+                    }
                     if let Some(def) = self.type_defs.get(&name.symbol).copied() {
                         return self.value_types.get(&def).copied().unwrap_or_else(|| {
                             self.types.intern(&Ty::Named { def, args: vec![] })
@@ -659,7 +820,24 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_postfix(&mut self, base: &ExprNode, ops: &[PostfixOp], span: Span) -> TypeId {
-        let mut ty = self.check_expr_node(base);
+        self.check_postfix_with_move(base, ops, span, true)
+    }
+
+    fn check_postfix_with_move(
+        &mut self,
+        base: &ExprNode,
+        ops: &[PostfixOp],
+        span: Span,
+        record_move: bool,
+    ) -> TypeId {
+        let field_only = ops.iter().all(|op| matches!(op, PostfixOp::Field(_)));
+        let mut ty = if field_only {
+            self.check_expr_node_read(base)
+        } else if record_move {
+            self.check_expr_node(base)
+        } else {
+            self.check_expr_node_read(base)
+        };
         for op in ops {
             ty = match op {
                 PostfixOp::Field(name) => self.check_field(ty, name, span),
@@ -745,10 +923,16 @@ impl<'a> TypeChecker<'a> {
         args: &[ExprNode],
         span: Span,
     ) -> TypeId {
-        let _ = receiver;
-        if let Some(def) = self.lookup_resolution(span, name.symbol) {
-            if let Some(&fn_ty) = self.value_types.get(&def) {
-                return self.check_call(fn_ty, args, span);
+        if let Ty::Named { def, .. } = self.types.get(receiver) {
+            let def = *def;
+            if let Some(&fn_def) = self
+                .program_layout
+                .inherent_methods
+                .get(&(def, name.symbol))
+            {
+                if let Some(&fn_ty) = self.value_types.get(&fn_def) {
+                    return self.check_call(fn_ty, args, span);
+                }
             }
         }
         self.bag.push(TypeCheckError::UnresolvedMethod {
@@ -830,9 +1014,61 @@ impl<'a> TypeChecker<'a> {
             Pattern::Ident(ident) => {
                 self.define_local(ident.symbol, scrutinee, BindingKind::Var);
             }
-            Pattern::Struct { .. } | Pattern::Tuple { .. } => {}
+            Pattern::Struct { name, fields } => {
+                if let Some(&def) = self.type_defs.get(&name.symbol) {
+                    if let Ty::Named { def: sdef, .. } = self.types.get(scrutinee) {
+                        if *sdef != def {
+                            self.bag.push(TypeCheckError::Mismatch {
+                                expected: self.format_named(def),
+                                found: self.format_ty(scrutinee),
+                                span: Span::new(0, 0),
+                            });
+                        }
+                    }
+                    for field in fields {
+                        if let Some(fty) = self
+                            .struct_fields
+                            .get(&def)
+                            .and_then(|sf| sf.fields.get(&field.name.symbol).copied())
+                        {
+                            if let Some(p) = &field.pattern {
+                                self.check_pattern(&p.inner, fty);
+                            } else {
+                                self.define_local(field.name.symbol, fty, BindingKind::Var);
+                            }
+                        }
+                    }
+                }
+            }
+            Pattern::Tuple { name, patterns } => {
+                let payload: Vec<TypeId> =
+                    self.program_layout
+                        .enums
+                        .values()
+                        .find_map(|el| {
+                            el.variants.iter().find(|v| v.name == name.symbol).and_then(
+                                |v| match &v.kind {
+                                    VariantKind::Tuple(ts) => Some(ts.clone()),
+                                    _ => None,
+                                },
+                            )
+                        })
+                        .unwrap_or_default();
+                for (p, pty) in patterns.iter().zip(payload.iter()) {
+                    self.check_pattern(&p.inner, *pty);
+                }
+                let _ = scrutinee;
+            }
             _ => {}
         }
+    }
+
+    fn format_named(&self, def: DefId) -> String {
+        self.resolved
+            .defs
+            .get(def.index() as usize)
+            .map(|d| format!("type#{}", d.name.index()))
+            .unwrap_or_else(|| "<?>".to_string())
     }
 
     fn check_struct_lit(
@@ -843,23 +1079,45 @@ impl<'a> TypeChecker<'a> {
     ) -> TypeId {
         if let Some(&def) = self.type_defs.get(&name.symbol) {
             let ty = self.types.intern(&Ty::Named { def, args: vec![] });
-            let field_types: Vec<_> = fields
-                .iter()
-                .filter_map(|field| {
+            if let Some(sl) = self.program_layout.structs.get(&def) {
+                let required_fields: Vec<Symbol> = sl.fields.iter().map(|(n, _)| *n).collect();
+                for field in fields {
+                    if matches!(field, StructFieldInit::Spread(_)) {
+                        self.bag.push(TypeCheckError::UnsupportedFeature {
+                            feature: "struct literal spread",
+                            span,
+                        });
+                    }
+                }
+                let mut seen = std::collections::HashSet::new();
+                for field in fields {
                     let StructFieldInit::Field { name: fname, value } = field else {
-                        return None;
+                        continue;
                     };
-                    let expected = self
+                    seen.insert(fname.symbol);
+                    if let Some(expected) = self
                         .struct_fields
                         .get(&def)
-                        .and_then(|sf| sf.fields.get(&fname.symbol).copied())?;
-                    Some((expected, value))
-                })
-                .collect();
-            for (expected, value) in field_types {
-                let got = self.check_expr_node(value);
-                if got != expected {
-                    self.error_mismatch(expected, got, value.span);
+                        .and_then(|sf| sf.fields.get(&fname.symbol).copied())
+                    {
+                        let got = self.check_expr_node(value);
+                        if got != expected {
+                            self.error_mismatch(expected, got, value.span);
+                        }
+                    } else {
+                        self.bag.push(TypeCheckError::UnsupportedFeature {
+                            feature: "unknown struct field",
+                            span: value.span,
+                        });
+                    }
+                }
+                for fname in required_fields {
+                    if !seen.contains(&fname) {
+                        self.bag.push(TypeCheckError::UnsupportedFeature {
+                            feature: "missing struct field",
+                            span,
+                        });
+                    }
                 }
             }
             return ty;
@@ -878,9 +1136,21 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, TypeId>,
         TypeCheckBag,
         Vec<FunctionLayout>,
+        ProgramLayout,
     ) {
-        (self.types, self.expr_types, self.bag, self.functions)
+        (
+            self.types,
+            self.expr_types,
+            self.bag,
+            self.functions,
+            self.program_layout,
+        )
     }
+}
+
+/// Synthetic symbol for inherent impl receiver parameters (not a source name).
+fn impl_receiver_symbol() -> Symbol {
+    Symbol::from_raw(0x8000_0000)
 }
 
 /// Best-effort span for `break` / `continue` (statement nodes are not spanned in blocks).
@@ -900,7 +1170,7 @@ fn loop_control_stmt_span(stmt: &Stmt) -> Span {
 pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
     let mut checker = TypeChecker::new(resolved);
     checker.check_program();
-    let (types, expr_types, bag, functions) = checker.finish();
+    let (types, expr_types, bag, functions, layout) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
@@ -910,5 +1180,6 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         expr_types,
         functions,
         entry: resolved.main_fn,
+        layout,
     })
 }

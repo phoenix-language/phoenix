@@ -14,6 +14,10 @@ pub enum TypeKind {
     Float = 3,
     /// Boolean.
     Bool = 4,
+    /// User struct (aux: field metadata).
+    Struct = 5,
+    /// User enum (aux: variant metadata).
+    Enum = 6,
 }
 
 /// One type table record.
@@ -83,6 +87,8 @@ impl TypeTable {
                 2 => TypeKind::UnsignedInt,
                 3 => TypeKind::Float,
                 4 => TypeKind::Bool,
+                5 => TypeKind::Struct,
+                6 => TypeKind::Enum,
                 _ => return Err(TypeTableError::UnknownKind(kind_byte)),
             };
             records.push(TypeRecord {

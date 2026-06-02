@@ -55,8 +55,11 @@ impl Resolver<'_> {
             TopLevelDecl::Struct { name, .. } => {
                 self.define_type(name.symbol, span, DefKind::Struct);
             }
-            TopLevelDecl::Enum { name, .. } => {
+            TopLevelDecl::Enum { name, variants, .. } => {
                 self.define_type(name.symbol, span, DefKind::Enum);
+                for v in variants {
+                    self.define_value(v.name.symbol, name_span_type(&v.name), DefKind::EnumVariant);
+                }
             }
             TopLevelDecl::TypeAlias { name, .. } => {
                 self.define_type(name.symbol, span, DefKind::TypeAlias);
@@ -64,7 +67,12 @@ impl Resolver<'_> {
             TopLevelDecl::Trait { name, .. } => {
                 self.define_type(name.symbol, span, DefKind::Trait);
             }
-            TopLevelDecl::Impl { .. } => {}
+            TopLevelDecl::Impl { members, .. } => {
+                for member in members {
+                    let span = name_span_ident(&member.name);
+                    self.define_value(member.name.symbol, span, DefKind::Fn);
+                }
+            }
             TopLevelDecl::Function(f) => {
                 let id = self.define_value(f.name.symbol, span, DefKind::Fn);
                 if self.is_main_name(f.name.symbol) {
@@ -101,7 +109,6 @@ impl Resolver<'_> {
                 self.scopes.push();
                 self.resolve_generics(generics);
                 for v in variants {
-                    self.define_type(v.name.symbol, name_span_type(&v.name), DefKind::EnumVariant);
                     self.resolve_enum_variant_kind(&v.kind);
                 }
                 self.scopes.pop();
@@ -363,6 +370,15 @@ impl Resolver<'_> {
         }
     }
 
+    /// Resolves a `PascalCase` name in expression position (enum variant ctors before types).
+    fn resolve_type_or_value_name(&mut self, name: &TypeName, span: Span) {
+        if let Some(id) = self.scopes.lookup_value(name.symbol) {
+            self.record_resolution(span, name.symbol, Some(id));
+            return;
+        }
+        self.resolve_type_name(name, span);
+    }
+
     fn resolve_expr_node(&mut self, expr: &ExprNode) {
         self.resolve_expr(&expr.inner, expr.span);
     }
@@ -498,7 +514,7 @@ impl Resolver<'_> {
                 }
             }
             Pattern::Tuple { name, patterns } => {
-                self.resolve_type_name(name, span);
+                self.resolve_type_or_value_name(name, span);
                 for p in patterns {
                     self.resolve_pattern_node(p);
                 }
@@ -525,7 +541,7 @@ impl Resolver<'_> {
         }
         match &path.segments[0] {
             PathSegment::Ident(ident) => self.resolve_ident(ident, span),
-            PathSegment::Type(name) => self.resolve_type_name(name, span),
+            PathSegment::Type(name) => self.resolve_type_or_value_name(name, span),
         }
         if path.segments.len() > 1 {
             for seg in &path.segments[1..] {

@@ -1,22 +1,31 @@
 //! Lower expressions to IR instructions (stack-oriented).
 
-use phx_syntax::ast::expr::{BinOp, Expr, ExprNode, PostfixOp};
-use phx_syntax::ast::ident::{Ident, Path, PathSegment};
+use phx_syntax::Symbol;
+use phx_syntax::ast::expr::{BinOp, Expr, ExprNode, PostfixOp, StructFieldInit};
+use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::BlockNode;
 
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
-    LowerCtx, bool_ty, const_index_for_literal, lookup_resolution, slot_for_symbol, unit_ty,
+    LowerCtx, bool_ty, const_index_for_literal, lookup_resolution, named_def_for_ty,
+    slot_for_symbol, struct_def_by_name, unit_ty,
 };
 use crate::resolver::DefId;
-use crate::typeck::TypeId;
+use crate::typeck::{LocalSlot, TypeId, VariantKind};
 
 /// Lowers `expr` so its value is on the implicit stack.
 pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
     let ty = ctx.expr_ty();
     lower_expr_inner(ctx, &expr.inner, ty);
+}
+
+/// Lowers `expr` and returns its typeck-assigned type.
+fn lower_expr_typed(ctx: &mut LowerCtx<'_>, expr: &ExprNode) -> TypeId {
+    let ty = ctx.expr_ty();
+    lower_expr_inner(ctx, &expr.inner, ty);
+    ty
 }
 
 fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
@@ -55,16 +64,25 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
         } => lower_if(ctx, cond, then_block, else_ifs, else_block.as_ref()),
         Expr::Match { scrutinee, arms } => lower_match(ctx, scrutinee, arms),
         Expr::Block(block) => lower_block_expr(ctx, block),
-        Expr::StructLit { fields, .. } => {
-            for field in fields {
-                match field {
-                    phx_syntax::ast::expr::StructFieldInit::Field { value, .. } => {
-                        lower_expr(ctx, value);
+        Expr::StructLit { name, fields, .. } => {
+            if let Some(def) = struct_def_by_name(&ctx.typed.resolved, name.symbol) {
+                if let Some(sl) = ctx.typed.layout.structs.get(&def) {
+                    let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                    for (fname, _) in &sl.fields {
+                        if let Some(value) = fields.iter().find_map(|f| match f {
+                            StructFieldInit::Field { name: n, value } if n.symbol == *fname => {
+                                Some(value)
+                            }
+                            _ => None,
+                        }) {
+                            lower_expr(ctx, value);
+                        }
                     }
-                    phx_syntax::ast::expr::StructFieldInit::Spread(base) => {
-                        lower_expr(ctx, base);
-                    }
-                    _ => {}
+                    let field_count = u32::try_from(sl.fields.len()).unwrap_or(u32::MAX);
+                    ctx.emit(IrInst::MakeStruct {
+                        type_id,
+                        field_count,
+                    });
                 }
             }
         }
@@ -237,13 +255,33 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
 pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value: &ExprNode) {
     lower_assign_target(ctx, &target.inner);
     lower_expr(ctx, value);
-    if let Expr::Ident(ident) = &target.inner
-        && let Some(binding) = ctx.layout.binding(ident.symbol)
-    {
-        ctx.emit(IrInst::StoreLocal {
-            slot: binding.slot,
-            ty: binding.ty,
-        });
+    match &target.inner {
+        Expr::Ident(ident) => {
+            if let Some(binding) = ctx.layout.binding(ident.symbol) {
+                ctx.emit(IrInst::StoreLocal {
+                    slot: binding.slot,
+                    ty: binding.ty,
+                });
+            }
+        }
+        Expr::Postfix { base, ops } if ops.len() == 1 => {
+            if let PostfixOp::Field(field) = &ops[0] {
+                if let Some(def) = struct_def_from_base(ctx, base) {
+                    let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                    let field_index = ctx
+                        .typed
+                        .layout
+                        .struct_field_index(def, field.symbol)
+                        .unwrap_or(0);
+                    ctx.emit(IrInst::SetField {
+                        type_id,
+                        field_index,
+                    });
+                    store_base_local(ctx, base);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -270,29 +308,67 @@ fn lower_postfix_inner(
     ops: &[PostfixOp],
     result_ty: TypeId,
 ) {
-    lower_expr(ctx, base);
+    let mut receiver_ty = lower_expr_typed(ctx, base);
     for op in ops {
         match op {
-            PostfixOp::Field(_) => {}
-            PostfixOp::Method { args, .. } => {
-                for arg in args {
-                    lower_expr(ctx, arg);
+            PostfixOp::Field(field) => {
+                if let Some(def) = named_def_for_ty(ctx.typed, receiver_ty) {
+                    let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                    let field_index = ctx
+                        .typed
+                        .layout
+                        .struct_field_index(def, field.symbol)
+                        .unwrap_or(0);
+                    ctx.emit(IrInst::GetField {
+                        type_id,
+                        field_index,
+                        result: result_ty,
+                    });
+                }
+            }
+            PostfixOp::Method { name, args, .. } => {
+                if let Some(type_def) = named_def_for_ty(ctx.typed, receiver_ty) {
+                    if let Some(&callee) = ctx
+                        .typed
+                        .layout
+                        .inherent_methods
+                        .get(&(type_def, name.symbol))
+                    {
+                        for arg in args {
+                            lower_expr(ctx, arg);
+                        }
+                        ctx.emit(IrInst::Call {
+                            callee,
+                            ret: result_ty,
+                        });
+                    }
                 }
             }
             PostfixOp::Call(args) => {
-                let callee = if let Expr::Ident(ident) = &base.inner {
-                    lookup_resolution(&ctx.typed.resolved, base.span, ident.symbol)
-                        .unwrap_or(DefId::from_raw(0))
+                if let Some(variant_def) = resolve_variant_ctor(ctx, base) {
+                    if let Some(meta) = ctx.typed.layout.variants.get(&variant_def) {
+                        for arg in args {
+                            lower_expr(ctx, arg);
+                        }
+                        let type_id = ctx.typed.layout.type_id(meta.enum_def).unwrap_or(0);
+                        let payload_count = u32::try_from(args.len()).unwrap_or(u32::MAX);
+                        ctx.emit(IrInst::MakeEnum {
+                            type_id,
+                            variant_tag: meta.tag,
+                            payload_count,
+                        });
+                        receiver_ty = result_ty;
+                    }
                 } else {
-                    DefId::from_raw(0)
-                };
-                for arg in args {
-                    lower_expr(ctx, arg);
+                    let callee = resolve_call_callee(ctx, base);
+                    for arg in args {
+                        lower_expr(ctx, arg);
+                    }
+                    ctx.emit(IrInst::Call {
+                        callee,
+                        ret: result_ty,
+                    });
                 }
-                ctx.emit(IrInst::Call {
-                    callee,
-                    ret: result_ty,
-                });
             }
             PostfixOp::Index(idx) => {
                 lower_expr(ctx, idx);
@@ -300,6 +376,60 @@ fn lower_postfix_inner(
             PostfixOp::Try => {}
             _ => {}
         }
+    }
+}
+
+fn resolve_variant_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
+    let symbol = path_or_ident_symbol(&base.inner)?;
+    let def = lookup_resolution(&ctx.typed.resolved, base.span, symbol)?;
+    if ctx.typed.layout.variants.contains_key(&def) {
+        Some(def)
+    } else {
+        None
+    }
+}
+
+fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> DefId {
+    if let Some(symbol) = path_or_ident_symbol(&base.inner) {
+        lookup_resolution(&ctx.typed.resolved, base.span, symbol).unwrap_or(DefId::from_raw(0))
+    } else {
+        DefId::from_raw(0)
+    }
+}
+
+fn path_or_ident_symbol(expr: &Expr) -> Option<Symbol> {
+    match expr {
+        Expr::Ident(ident) => Some(ident.symbol),
+        Expr::Path(path) if path.segments.len() == 1 => match path.segments[0] {
+            PathSegment::Ident(ident) => Some(ident.symbol),
+            PathSegment::Type(TypeName { symbol, .. }) => Some(symbol),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn struct_def_from_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
+    if let Expr::Ident(ident) = &base.inner {
+        if let Some(binding) = ctx.layout.binding(ident.symbol) {
+            if let Some(def) = named_def_for_ty(ctx.typed, binding.ty) {
+                if ctx.typed.layout.structs.contains_key(&def) {
+                    return Some(def);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn store_base_local(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
+    if let Expr::Ident(ident) = &base.inner
+        && let Some(binding) = ctx.layout.binding(ident.symbol)
+    {
+        ctx.emit(IrInst::StoreLocal {
+            slot: binding.slot,
+            ty: binding.ty,
+        });
     }
 }
 
@@ -441,7 +571,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
         );
 
         ctx.set_current(body_blocks[i]);
-        bind_ident_pattern(ctx, &arm.pattern.inner, temp, temp_ty);
+        bind_match_pattern(ctx, &arm.pattern.inner, temp, temp_ty, false);
         if let Some(guard) = &arm.guard {
             let guarded_body = ctx.fresh_block();
             lower_expr(ctx, guard);
@@ -461,14 +591,32 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
 fn emit_arm_condition(
     ctx: &mut LowerCtx<'_>,
     pat: &Pattern,
-    temp: crate::typeck::LocalSlot,
+    temp: LocalSlot,
     temp_ty: TypeId,
     body_id: u32,
     fail_id: u32,
 ) {
     match pat {
-        Pattern::Wildcard | Pattern::Ident(_) => {
+        Pattern::Wildcard => {
             ctx.emit(IrInst::Jump { target: body_id });
+        }
+        Pattern::Ident(ident) => {
+            if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, ident.symbol) {
+                ctx.emit(IrInst::LoadLocal {
+                    slot: temp,
+                    ty: temp_ty,
+                });
+                ctx.emit(IrInst::MatchTag {
+                    type_id,
+                    variant_tag: tag,
+                });
+                ctx.emit(IrInst::JumpIf {
+                    then_block: body_id,
+                    else_block: fail_id,
+                });
+            } else {
+                ctx.emit(IrInst::Jump { target: body_id });
+            }
         }
         Pattern::Literal(lit) => {
             ctx.emit(IrInst::LoadLocal {
@@ -489,8 +637,26 @@ fn emit_arm_condition(
                 ctx.emit(IrInst::Jump { target: fail_id });
             }
         }
-        Pattern::Struct { .. } | Pattern::Tuple { .. } => {
-            ctx.emit(IrInst::Jump { target: fail_id });
+        Pattern::Struct { .. } => {
+            ctx.emit(IrInst::Jump { target: body_id });
+        }
+        Pattern::Tuple { name, .. } => {
+            if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, name.symbol) {
+                ctx.emit(IrInst::LoadLocal {
+                    slot: temp,
+                    ty: temp_ty,
+                });
+                ctx.emit(IrInst::MatchTag {
+                    type_id,
+                    variant_tag: tag,
+                });
+                ctx.emit(IrInst::JumpIf {
+                    then_block: body_id,
+                    else_block: fail_id,
+                });
+            } else {
+                ctx.emit(IrInst::Jump { target: fail_id });
+            }
         }
         _ => {
             ctx.emit(IrInst::Jump { target: fail_id });
@@ -498,24 +664,116 @@ fn emit_arm_condition(
     }
 }
 
-fn bind_ident_pattern(
+fn find_enum_variant_by_name(ctx: &LowerCtx<'_>, name: Symbol) -> Option<(u32, u32)> {
+    for (&enum_def, el) in &ctx.typed.layout.enums {
+        for v in &el.variants {
+            if v.name == name {
+                let type_id = ctx.typed.layout.type_id(enum_def)?;
+                return Some((type_id, v.tag));
+            }
+        }
+    }
+    None
+}
+
+fn bind_match_pattern(
     ctx: &mut LowerCtx<'_>,
     pat: &Pattern,
-    temp: crate::typeck::LocalSlot,
+    temp: LocalSlot,
     temp_ty: TypeId,
+    value_on_stack: bool,
 ) {
-    if let Pattern::Ident(ident) = pat
-        && let Some(binding) = ctx.layout.binding(ident.symbol)
-    {
-        ctx.emit(IrInst::LoadLocal {
-            slot: temp,
-            ty: temp_ty,
-        });
-        ctx.emit(IrInst::StoreLocal {
-            slot: binding.slot,
-            ty: temp_ty,
-        });
+    match pat {
+        Pattern::Ident(ident) => {
+            if find_enum_variant_by_name(ctx, ident.symbol).is_some() {
+                return;
+            }
+            if let Some(binding) = ctx.layout.binding(ident.symbol) {
+                if !value_on_stack {
+                    ctx.emit(IrInst::LoadLocal {
+                        slot: temp,
+                        ty: temp_ty,
+                    });
+                }
+                ctx.emit(IrInst::StoreLocal {
+                    slot: binding.slot,
+                    ty: binding.ty,
+                });
+            }
+        }
+        Pattern::Struct { name, fields } => {
+            if let Some(def) = struct_def_by_name(&ctx.typed.resolved, name.symbol) {
+                let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                for field in fields {
+                    let field_index = ctx
+                        .typed
+                        .layout
+                        .struct_field_index(def, field.name.symbol)
+                        .unwrap_or(0);
+                    ctx.emit(IrInst::LoadLocal {
+                        slot: temp,
+                        ty: temp_ty,
+                    });
+                    let result_ty = field_result_ty(ctx, def, field.name.symbol);
+                    ctx.emit(IrInst::GetField {
+                        type_id,
+                        field_index,
+                        result: result_ty,
+                    });
+                    if let Some(p) = &field.pattern {
+                        bind_match_pattern(ctx, &p.inner, temp, result_ty, true);
+                    } else if let Some(binding) = ctx.layout.binding(field.name.symbol) {
+                        ctx.emit(IrInst::StoreLocal {
+                            slot: binding.slot,
+                            ty: result_ty,
+                        });
+                    }
+                }
+            }
+        }
+        Pattern::Tuple { name, patterns } => {
+            for el in ctx.typed.layout.enums.values() {
+                if let Some(variant) = el.variants.iter().find(|v| v.name == name.symbol) {
+                    let type_id = ctx.typed.layout.type_id(el.enum_def).unwrap_or(0);
+                    if let VariantKind::Tuple(payload) = &variant.kind {
+                        for (i, p) in patterns.iter().enumerate() {
+                            ctx.emit(IrInst::LoadLocal {
+                                slot: temp,
+                                ty: temp_ty,
+                            });
+                            let result_ty = payload
+                                .get(i)
+                                .copied()
+                                .unwrap_or_else(|| unit_ty(ctx.typed));
+                            ctx.emit(IrInst::GetField {
+                                type_id,
+                                field_index: u32::try_from(i).unwrap_or(u32::MAX),
+                                result: result_ty,
+                            });
+                            bind_match_pattern(ctx, &p.inner, temp, result_ty, true);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        Pattern::Wildcard | Pattern::Literal(_) => {}
+        _ => {}
     }
+}
+
+fn field_result_ty(ctx: &LowerCtx<'_>, struct_def: DefId, field: Symbol) -> TypeId {
+    ctx.typed
+        .layout
+        .structs
+        .get(&struct_def)
+        .and_then(|sl| {
+            sl.fields
+                .iter()
+                .find(|(name, _)| *name == field)
+                .map(|(_, ty)| *ty)
+        })
+        .unwrap_or_else(|| unit_ty(ctx.typed))
 }
 
 fn lower_block_expr(ctx: &mut LowerCtx<'_>, block: &BlockNode) {

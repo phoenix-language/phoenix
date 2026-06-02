@@ -13,6 +13,7 @@ mod bindings;
 mod builtins;
 mod check;
 mod display;
+mod layout;
 mod lower_ty;
 mod ops;
 mod ownership;
@@ -21,6 +22,7 @@ mod unify;
 
 pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
+pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind, VariantMeta};
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::ResolvedProgram;
@@ -38,4 +40,6 @@ pub struct TypedProgram {
     pub functions: Vec<bindings::FunctionLayout>,
     /// `main` definition id when present.
     pub entry: Option<crate::resolver::DefId>,
+    /// Struct/enum layouts and bytecode type ids.
+    pub layout: ProgramLayout,
 }

@@ -57,11 +57,16 @@ fn find_function<'a>(
     typed: &TypedProgram,
 ) -> Option<&'a Function> {
     for item in items {
-        let TopLevelDecl::Function(f) = &item.inner.decl else {
-            continue;
-        };
-        if fn_def_id(typed, f) == Some(def) {
-            return Some(f);
+        match &item.inner.decl {
+            TopLevelDecl::Function(f) if fn_def_id(typed, f) == Some(def) => return Some(f),
+            TopLevelDecl::Impl { members, .. } => {
+                for m in members {
+                    if fn_def_id(typed, m) == Some(def) {
+                        return Some(m);
+                    }
+                }
+            }
+            _ => {}
         }
     }
     None
