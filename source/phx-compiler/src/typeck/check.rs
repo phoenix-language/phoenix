@@ -447,6 +447,7 @@ impl<'a> TypeChecker<'a> {
         self.fn_ret = Some(ret);
         self.ownership = OwnershipTracker::new();
         self.layout = Some(FunctionLayoutBuilder::new(def, ret));
+        let expr_start = self.next_expr;
         let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
         for p in &f.params {
             match p {
@@ -474,7 +475,8 @@ impl<'a> TypeChecker<'a> {
         if body_ty != ret {
             self.error_mismatch(ret, body_ty, f.body.span);
         }
-        if let Some(builder) = self.layout.take() {
+        if let Some(mut builder) = self.layout.take() {
+            builder.set_expr_range(expr_start, self.next_expr);
             self.functions.push(builder.finish());
         }
         self.fn_ret = None;

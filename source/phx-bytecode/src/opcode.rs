@@ -80,6 +80,12 @@ pub enum Opcode {
     Index = 36,
     /// Abort execution. Stack: `[] → []` (terminator)
     Trap = 37,
+    /// Allocate `size` bytes on the VM heap. Stack: `[] → [addr]` — operand: byte size.
+    Alloc = 38,
+    /// Load primitive at address. Stack: `[addr] → [value]` — operands: `size`, `signed` (0/1).
+    PtrLoad = 39,
+    /// Store primitive at address. Stack: `[addr, value] → []` — operands: `size`, `signed`.
+    PtrStore = 40,
 }
 
 impl Opcode {
@@ -128,6 +134,9 @@ impl Opcode {
             35 => Ok(Self::MakeArray),
             36 => Ok(Self::Index),
             37 => Ok(Self::Trap),
+            38 => Ok(Self::Alloc),
+            39 => Ok(Self::PtrLoad),
+            40 => Ok(Self::PtrStore),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

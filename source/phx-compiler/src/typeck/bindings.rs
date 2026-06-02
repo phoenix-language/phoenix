@@ -60,6 +60,10 @@ pub struct FunctionLayout {
     pub bindings: Vec<Binding>,
     /// Scrutinee temp slots for `match`, in source visit order.
     pub match_temp_slots: Vec<LocalSlot>,
+    /// First [`super::ExprId`] raw index assigned while checking this function body.
+    pub expr_start: u32,
+    /// One past the last expression id for this function (`expr_start` of the next function).
+    pub expr_end: u32,
 }
 
 impl FunctionLayout {
@@ -85,6 +89,8 @@ pub struct FunctionLayoutBuilder {
     next_slot: u32,
     match_temp_slots: Vec<LocalSlot>,
     match_temp_serial: u32,
+    expr_start: u32,
+    expr_end: u32,
 }
 
 impl FunctionLayoutBuilder {
@@ -98,7 +104,15 @@ impl FunctionLayoutBuilder {
             next_slot: 0,
             match_temp_slots: Vec::new(),
             match_temp_serial: 0,
+            expr_start: 0,
+            expr_end: 0,
         }
+    }
+
+    /// Records the expression id range checked for this function body.
+    pub fn set_expr_range(&mut self, start: u32, end: u32) {
+        self.expr_start = start;
+        self.expr_end = end;
     }
 
     /// Allocates a slot to hold one `match` scrutinee for lowering.
@@ -134,6 +148,8 @@ impl FunctionLayoutBuilder {
             return_type: self.return_type,
             bindings: self.bindings,
             match_temp_slots: self.match_temp_slots,
+            expr_start: self.expr_start,
+            expr_end: self.expr_end,
         }
     }
 }

@@ -9,11 +9,17 @@ use phx_syntax::ast::stmt::BlockNode;
 
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
-    LowerCtx, bool_ty, const_index_for_literal, lookup_resolution, named_def_for_ty,
+    LowerCtx, bool_ty, lookup_resolution, named_def_for_ty,
     slot_for_symbol, struct_def_by_name, unit_ty,
 };
 use crate::resolver::DefId;
-use crate::typeck::{LocalSlot, TypeId, VariantKind, primitive_kind_for_type};
+use crate::ir::IrConst;
+use crate::typeck::{
+    LocalSlot, TypeId, Ty, VariantKind, primitive_byte_size, primitive_kind_for_type,
+    primitive_load_signed,
+};
+use phx_bytecode::{PrimitiveKind, ScalarValue};
+use phx_syntax::token::IntegerSuffix;
 
 /// Lowers `expr` so its value is on the implicit stack.
 pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
@@ -60,6 +66,15 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 UnaryOp::BitNot => {
                     ctx.emit(IrInst::BitNot { result: result_ty });
                 }
+                UnaryOp::Deref => {
+                    if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, result_ty) {
+                        ctx.emit(IrInst::PtrLoad {
+                            byte_size: primitive_byte_size(kind),
+                            signed: primitive_load_signed(kind),
+                            result: result_ty,
+                        });
+                    }
+                }
                 _ => {}
             }
         }
@@ -101,19 +116,15 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
         Expr::Block(block) => lower_block_expr(ctx, block),
         Expr::StructLit { name, fields, .. } => {
             if let Some(def) = struct_def_by_name(&ctx.typed.resolved, name.symbol) {
-                if let Some(sl) = ctx.typed.layout.structs.get(&def) {
+                if ctx.typed.layout.structs.contains_key(&def) {
                     let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
-                    for (fname, _) in &sl.fields {
-                        if let Some(value) = fields.iter().find_map(|f| match f {
-                            StructFieldInit::Field { name: n, value } if n.symbol == *fname => {
-                                Some(value)
-                            }
-                            _ => None,
-                        }) {
+                    let mut field_count = 0u32;
+                    for field in fields {
+                        if let StructFieldInit::Field { value, .. } = field {
                             lower_expr(ctx, value);
+                            field_count = field_count.saturating_add(1);
                         }
                     }
-                    let field_count = u32::try_from(sl.fields.len()).unwrap_or(u32::MAX);
                     ctx.emit(IrInst::MakeStruct {
                         type_id,
                         field_count,
@@ -126,9 +137,52 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
     }
 }
 
+fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u32> {
+    match lit {
+        Literal::Int(i) => {
+            let Some(to) = primitive_kind_for_type(&ctx.typed.types, ty) else {
+                return None;
+            };
+            let from = if i.suffix == IntegerSuffix::Unsigned {
+                PrimitiveKind::U32
+            } else {
+                PrimitiveKind::S32
+            };
+            let raw = i64::try_from(i.value).unwrap_or_else(|_| {
+                if i.value < 0 {
+                    i64::MIN
+                } else {
+                    i64::MAX
+                }
+            });
+            let stored = PrimitiveKind::apply_cast(ScalarValue::Int(raw), from, to);
+            Some(match stored {
+                ScalarValue::Int(n) => ctx.intern_const(IrConst::Int(n)),
+                ScalarValue::Float(f) => ctx.intern_const(IrConst::Float(f)),
+            })
+        }
+        Literal::Float(f) => Some(ctx.intern_const(IrConst::Float(f.value))),
+        Literal::Bool(b) => Some(ctx.intern_const(IrConst::Bool(*b))),
+        Literal::ByteChar(_) | Literal::ByteString(_) => None,
+        _ => None,
+    }
+}
+
 fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
-    if let Some(index) = const_index_for_literal(lit) {
-        ctx.emit(IrInst::Const { index, ty });
+    let Some(index) = intern_literal(ctx, lit, ty) else {
+        return;
+    };
+    ctx.emit(IrInst::Const { index, ty });
+    if matches!(lit, Literal::Float(_))
+        && matches!(
+            ctx.typed.types.get(ty),
+            Ty::Primitive(phx_syntax::token::Keyword::F32)
+        )
+    {
+        ctx.emit(IrInst::Cast {
+            from_kind: PrimitiveKind::F64.as_u8(),
+            to_kind: PrimitiveKind::F32.as_u8(),
+        });
     }
 }
 
@@ -684,7 +738,7 @@ pub(crate) fn emit_arm_condition(
                 slot: temp,
                 ty: temp_ty,
             });
-            if let Some(index) = const_index_for_literal(lit) {
+            if let Some(index) = intern_literal(ctx, lit, temp_ty) {
                 ctx.emit(IrInst::Const { index, ty: temp_ty });
                 ctx.emit(IrInst::BinOp {
                     op: IrBinOp::Eq,

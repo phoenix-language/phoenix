@@ -2,6 +2,7 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode, PrimitiveKind,
+    ScalarValue,
 };
 
 use crate::VmError;
@@ -71,26 +72,26 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                     .ok_or(VmError::InvalidLocalSlot(slot as u32))?;
                 *local = v;
             }
-            Opcode::Add => binop_scalar(&mut machine.stack, |a, b| a.saturating_add(b))?,
-            Opcode::Sub => binop_scalar(&mut machine.stack, |a, b| a.saturating_sub(b))?,
-            Opcode::Mul => binop_scalar(&mut machine.stack, |a, b| a.saturating_mul(b))?,
+            Opcode::Add => binop_add(&mut machine.stack)?,
+            Opcode::Sub => binop_sub(&mut machine.stack)?,
+            Opcode::Mul => binop_mul(&mut machine.stack)?,
             Opcode::Div => binop_div(&mut machine.stack)?,
-            Opcode::Eq => binop_scalar(&mut machine.stack, |a, b| i64::from(a == b))?,
-            Opcode::Lt => binop_scalar(&mut machine.stack, |a, b| i64::from(a < b))?,
+            Opcode::Eq => binop_eq(&mut machine.stack)?,
+            Opcode::Lt => binop_lt(&mut machine.stack)?,
             Opcode::Jump => {
                 let target = inst.operands.first().copied().unwrap_or(0);
                 frame.pc = target;
             }
             Opcode::JumpIfTrue => {
                 let target = inst.operands.first().copied().unwrap_or(0);
-                let cond = pop_scalar(&mut machine.stack)?;
+                let cond = pop_scalar_int(&mut machine.stack)?;
                 if cond != 0 {
                     frame.pc = target;
                 }
             }
             Opcode::JumpIfFalse => {
                 let target = inst.operands.first().copied().unwrap_or(0);
-                let cond = pop_scalar(&mut machine.stack)?;
+                let cond = pop_scalar_int(&mut machine.stack)?;
                 if cond == 0 {
                     frame.pc = target;
                 }
@@ -103,7 +104,7 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 if machine.stack.len() < arity {
                     return Err(VmError::StackUnderflow);
                 }
-                let mut args = vec![Value::Scalar(0); arity];
+                let mut args = vec![Value::Scalar(ScalarValue::zero_int()); arity];
                 for i in (0..arity).rev() {
                     args[i] = machine.stack.pop().expect("checked len");
                 }
@@ -203,14 +204,16 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                     Some(Aggregate::Enum { tag, .. }) => *tag == expected,
                     _ => return Err(VmError::InvalidAggregate),
                 };
-                machine.stack.push(Value::Scalar(i64::from(matches)));
+                machine
+                    .stack
+                    .push(Value::Scalar(ScalarValue::Int(i64::from(matches))));
             }
             Opcode::Cast => {
                 let from_byte = inst.operands.first().copied().unwrap_or(0) as u8;
                 let to_byte = inst.operands.get(1).copied().unwrap_or(0) as u8;
                 let from = PrimitiveKind::from_u8(from_byte).ok_or(VmError::InvalidConstPayload)?;
                 let to = PrimitiveKind::from_u8(to_byte).ok_or(VmError::InvalidConstPayload)?;
-                let v = pop_scalar(&mut machine.stack)?;
+                let v = pop_scalar_value(&mut machine.stack)?;
                 machine
                     .stack
                     .push(Value::Scalar(PrimitiveKind::apply_cast(v, from, to)));
@@ -218,25 +221,39 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
             Opcode::Mod => binop_mod(&mut machine.stack)?,
             Opcode::Pow => binop_pow(&mut machine.stack)?,
             Opcode::Neg => {
-                let v = pop_scalar(&mut machine.stack)?;
-                machine.stack.push(Value::Scalar(v.wrapping_neg()));
+                let v = pop_scalar_value(&mut machine.stack)?;
+                let out = match v {
+                    ScalarValue::Int(n) => ScalarValue::Int(n.wrapping_neg()),
+                    ScalarValue::Float(f) => ScalarValue::Float(-f),
+                };
+                machine.stack.push(Value::Scalar(out));
             }
             Opcode::Not => {
-                let v = pop_scalar(&mut machine.stack)?;
-                machine.stack.push(Value::Scalar(i64::from(v == 0)));
+                let v = pop_scalar_value(&mut machine.stack)?;
+                let b = match v {
+                    ScalarValue::Int(n) => n != 0,
+                    ScalarValue::Float(f) => f != 0.0,
+                };
+                machine
+                    .stack
+                    .push(Value::Scalar(ScalarValue::Int(i64::from(b))));
             }
             Opcode::BitNot => {
-                let v = pop_scalar(&mut machine.stack)?;
-                machine.stack.push(Value::Scalar(!v));
+                let v = pop_scalar_int(&mut machine.stack)?;
+                machine.stack.push(Value::Scalar(ScalarValue::Int(!v)));
             }
-            Opcode::BitAnd => binop_scalar(&mut machine.stack, |a, b| a & b)?,
-            Opcode::BitOr => binop_scalar(&mut machine.stack, |a, b| a | b)?,
-            Opcode::BitXor => binop_scalar(&mut machine.stack, |a, b| a ^ b)?,
-            Opcode::Shl => binop_scalar(&mut machine.stack, |a, b| a.wrapping_shl(b as u32))?,
-            Opcode::Shr => binop_scalar(&mut machine.stack, |a, b| a.wrapping_shr(b as u32))?,
-            Opcode::Ne => binop_scalar(&mut machine.stack, |a, b| i64::from(a != b))?,
-            Opcode::Le => binop_scalar(&mut machine.stack, |a, b| i64::from(a <= b))?,
-            Opcode::Ge => binop_scalar(&mut machine.stack, |a, b| i64::from(a >= b))?,
+            Opcode::BitAnd => binop_int(&mut machine.stack, |a, b| a & b)?,
+            Opcode::BitOr => binop_int(&mut machine.stack, |a, b| a | b)?,
+            Opcode::BitXor => binop_int(&mut machine.stack, |a, b| a ^ b)?,
+            Opcode::Shl => binop_int(&mut machine.stack, |a, b| a.wrapping_shl(b as u32))?,
+            Opcode::Shr => binop_int(&mut machine.stack, |a, b| a.wrapping_shr(b as u32))?,
+            Opcode::Ne => binop_cmp(&mut machine.stack, |ord| i64::from(ord != std::cmp::Ordering::Equal))?,
+            Opcode::Le => binop_cmp(&mut machine.stack, |ord| {
+                i64::from(ord != std::cmp::Ordering::Greater)
+            })?,
+            Opcode::Ge => binop_cmp(&mut machine.stack, |ord| {
+                i64::from(ord != std::cmp::Ordering::Less)
+            })?,
             Opcode::MakeTuple => {
                 let arity = inst.operands.first().copied().unwrap_or(0) as usize;
                 let mut elems = Vec::with_capacity(arity);
@@ -257,8 +274,27 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 let handle = machine.push_aggregate(Aggregate::Array { elems });
                 machine.stack.push(handle);
             }
+            Opcode::Alloc => {
+                let size = inst.operands.first().copied().unwrap_or(0) as usize;
+                let addr = machine.alloc_bytes(size);
+                machine.stack.push(Value::Scalar(ScalarValue::Int(addr)));
+            }
+            Opcode::PtrLoad => {
+                let size = inst.operands.first().copied().unwrap_or(0) as u8;
+                let signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
+                let addr = pop_scalar_int(&mut machine.stack)? as usize;
+                let v = read_heap_scalar(&machine.heap, addr, size, signed)?;
+                machine.stack.push(Value::Scalar(v));
+            }
+            Opcode::PtrStore => {
+                let size = inst.operands.first().copied().unwrap_or(0) as u8;
+                let _signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
+                let val = pop_scalar_value(&mut machine.stack)?;
+                let addr = pop_scalar_int(&mut machine.stack)? as usize;
+                write_heap_scalar(&mut machine.heap, addr, size, val)?;
+            }
             Opcode::Index => {
-                let index = pop_scalar(&mut machine.stack)? as usize;
+                let index = pop_scalar_int(&mut machine.stack)? as usize;
                 let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
                 let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
                 let value = match machine.aggregate(handle) {
@@ -309,60 +345,222 @@ fn load_const(module: &BytecodeModule, index: usize) -> Result<Value, VmError> {
             let bytes: [u8; 8] = entry.payload[0..8]
                 .try_into()
                 .map_err(|_| VmError::InvalidConstPayload)?;
-            Ok(Value::Scalar(i64::from_le_bytes(bytes)))
+            Ok(Value::Scalar(ScalarValue::Int(i64::from_le_bytes(bytes))))
         }
         ConstTag::Bool => {
             let b = entry.payload.first().copied().unwrap_or(0);
-            Ok(Value::Scalar(i64::from(b != 0)))
+            Ok(Value::Scalar(ScalarValue::Int(i64::from(b != 0))))
         }
         ConstTag::UnsignedInt if entry.payload.len() >= 8 => {
             let bytes: [u8; 8] = entry.payload[0..8]
                 .try_into()
                 .map_err(|_| VmError::InvalidConstPayload)?;
-            Ok(Value::Scalar(i64::from_le_bytes(bytes)))
+            Ok(Value::Scalar(ScalarValue::Int(i64::from_le_bytes(bytes))))
+        }
+        ConstTag::Float32 if entry.payload.len() >= 4 => {
+            let bytes: [u8; 4] = entry.payload[0..4]
+                .try_into()
+                .map_err(|_| VmError::InvalidConstPayload)?;
+            let bits = u32::from_le_bytes(bytes);
+            Ok(Value::Scalar(ScalarValue::Float(f64::from(f32::from_bits(bits)))))
+        }
+        ConstTag::Float64 if entry.payload.len() >= 8 => {
+            let bytes: [u8; 8] = entry.payload[0..8]
+                .try_into()
+                .map_err(|_| VmError::InvalidConstPayload)?;
+            Ok(Value::Scalar(ScalarValue::Float(f64::from_le_bytes(bytes))))
         }
         _ => Err(VmError::InvalidConstPayload),
     }
 }
 
-fn pop_scalar(stack: &mut Vec<Value>) -> Result<i64, VmError> {
+fn pop_scalar_value(stack: &mut Vec<Value>) -> Result<ScalarValue, VmError> {
     match stack.pop().ok_or(VmError::StackUnderflow)? {
         Value::Scalar(v) => Ok(v),
         Value::Agg(_) => Err(VmError::ExpectedScalar),
     }
 }
 
-fn binop_scalar(stack: &mut Vec<Value>, f: fn(i64, i64) -> i64) -> Result<(), VmError> {
-    let b = pop_scalar(stack)?;
-    let a = pop_scalar(stack)?;
-    stack.push(Value::Scalar(f(a, b)));
+fn pop_scalar_int(stack: &mut Vec<Value>) -> Result<i64, VmError> {
+    pop_scalar_value(stack)?.as_int().ok_or(VmError::ExpectedScalar)
+}
+
+fn binop_int(stack: &mut Vec<Value>, f: fn(i64, i64) -> i64) -> Result<(), VmError> {
+    let b = pop_scalar_int(stack)?;
+    let a = pop_scalar_int(stack)?;
+    stack.push(Value::Scalar(ScalarValue::Int(f(a, b))));
+    Ok(())
+}
+
+fn binop_add(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    let out = match (a, b) {
+        (ScalarValue::Int(x), ScalarValue::Int(y)) => ScalarValue::Int(x.saturating_add(y)),
+        (ScalarValue::Float(x), ScalarValue::Float(y)) => ScalarValue::Float(x + y),
+        _ => return Err(VmError::ExpectedScalar),
+    };
+    stack.push(Value::Scalar(out));
+    Ok(())
+}
+
+fn binop_sub(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    let out = match (a, b) {
+        (ScalarValue::Int(x), ScalarValue::Int(y)) => ScalarValue::Int(x.saturating_sub(y)),
+        (ScalarValue::Float(x), ScalarValue::Float(y)) => ScalarValue::Float(x - y),
+        _ => return Err(VmError::ExpectedScalar),
+    };
+    stack.push(Value::Scalar(out));
+    Ok(())
+}
+
+fn binop_mul(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    let out = match (a, b) {
+        (ScalarValue::Int(x), ScalarValue::Int(y)) => ScalarValue::Int(x.saturating_mul(y)),
+        (ScalarValue::Float(x), ScalarValue::Float(y)) => ScalarValue::Float(x * y),
+        _ => return Err(VmError::ExpectedScalar),
+    };
+    stack.push(Value::Scalar(out));
     Ok(())
 }
 
 fn binop_div(stack: &mut Vec<Value>) -> Result<(), VmError> {
-    let b = pop_scalar(stack)?;
-    let a = pop_scalar(stack)?;
-    if b == 0 {
-        return Err(VmError::DivisionByZero);
-    }
-    stack.push(Value::Scalar(a / b));
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    let out = match (a, b) {
+        (ScalarValue::Int(x), ScalarValue::Int(y)) => {
+            if y == 0 {
+                return Err(VmError::DivisionByZero);
+            }
+            ScalarValue::Int(x / y)
+        }
+        (ScalarValue::Float(x), ScalarValue::Float(y)) => {
+            if y == 0.0 {
+                return Err(VmError::DivisionByZero);
+            }
+            ScalarValue::Float(x / y)
+        }
+        _ => return Err(VmError::ExpectedScalar),
+    };
+    stack.push(Value::Scalar(out));
     Ok(())
 }
 
 fn binop_mod(stack: &mut Vec<Value>) -> Result<(), VmError> {
-    let b = pop_scalar(stack)?;
-    let a = pop_scalar(stack)?;
+    let b = pop_scalar_int(stack)?;
+    let a = pop_scalar_int(stack)?;
     if b == 0 {
         return Err(VmError::DivisionByZero);
     }
-    stack.push(Value::Scalar(a % b));
+    stack.push(Value::Scalar(ScalarValue::Int(a % b)));
     Ok(())
 }
 
 fn binop_pow(stack: &mut Vec<Value>) -> Result<(), VmError> {
-    let exp = pop_scalar(stack)?;
-    let base = pop_scalar(stack)?;
-    stack.push(Value::Scalar(int_pow(base, exp)));
+    let exp = pop_scalar_int(stack)?;
+    let base = pop_scalar_int(stack)?;
+    stack.push(Value::Scalar(ScalarValue::Int(int_pow(base, exp))));
+    Ok(())
+}
+
+fn cmp_order(a: ScalarValue, b: ScalarValue) -> Result<std::cmp::Ordering, VmError> {
+    match (a, b) {
+        (ScalarValue::Int(x), ScalarValue::Int(y)) => Ok(x.cmp(&y)),
+        (ScalarValue::Float(x), ScalarValue::Float(y)) => Ok(x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)),
+        _ => Err(VmError::ExpectedScalar),
+    }
+}
+
+fn binop_eq(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    let eq = cmp_order(a, b)? == std::cmp::Ordering::Equal;
+    stack.push(Value::Scalar(ScalarValue::Int(i64::from(eq))));
+    Ok(())
+}
+
+fn binop_lt(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    let lt = cmp_order(a, b)? == std::cmp::Ordering::Less;
+    stack.push(Value::Scalar(ScalarValue::Int(i64::from(lt))));
+    Ok(())
+}
+
+fn binop_cmp(stack: &mut Vec<Value>, f: fn(std::cmp::Ordering) -> i64) -> Result<(), VmError> {
+    let b = pop_scalar_value(stack)?;
+    let a = pop_scalar_value(stack)?;
+    stack.push(Value::Scalar(ScalarValue::Int(f(cmp_order(a, b)?))));
+    Ok(())
+}
+
+fn read_heap_scalar(
+    heap: &[u8],
+    addr: usize,
+    size: u8,
+    signed: u8,
+) -> Result<ScalarValue, VmError> {
+    let end = addr.checked_add(usize::from(size)).ok_or(VmError::HeapOutOfBounds)?;
+    if end > heap.len() {
+        return Err(VmError::HeapOutOfBounds);
+    }
+    let slice = &heap[addr..end];
+    match size {
+        1 => {
+            let byte = slice[0];
+            if signed != 0 {
+                Ok(ScalarValue::Int(i8::from_ne_bytes([byte]) as i64))
+            } else {
+                Ok(ScalarValue::Int(i64::from(byte)))
+            }
+        }
+        2 => {
+            let bytes: [u8; 2] = slice.try_into().map_err(|_| VmError::InvalidConstPayload)?;
+            if signed != 0 {
+                Ok(ScalarValue::Int(i64::from(i16::from_le_bytes(bytes))))
+            } else {
+                Ok(ScalarValue::Int(i64::from(u16::from_le_bytes(bytes))))
+            }
+        }
+        4 => {
+            let bytes: [u8; 4] = slice.try_into().map_err(|_| VmError::InvalidConstPayload)?;
+            if signed != 0 {
+                Ok(ScalarValue::Int(i64::from(i32::from_le_bytes(bytes))))
+            } else {
+                let bits = u32::from_le_bytes(bytes);
+                Ok(ScalarValue::Int(i64::from(bits)))
+            }
+        }
+        8 => {
+            let bytes: [u8; 8] = slice.try_into().map_err(|_| VmError::InvalidConstPayload)?;
+            if signed != 0 {
+                Ok(ScalarValue::Int(i64::from_le_bytes(bytes)))
+            } else {
+                Ok(ScalarValue::Int(i64::from_le_bytes(bytes)))
+            }
+        }
+        _ => Err(VmError::InvalidConstPayload),
+    }
+}
+
+fn write_heap_scalar(heap: &mut Vec<u8>, addr: usize, size: u8, value: ScalarValue) -> Result<(), VmError> {
+    let end = addr.checked_add(usize::from(size)).ok_or(VmError::HeapOutOfBounds)?;
+    if end > heap.len() {
+        return Err(VmError::HeapOutOfBounds);
+    }
+    match (size, value) {
+        (1, ScalarValue::Int(v)) => heap[addr] = v as u8,
+        (2, ScalarValue::Int(v)) => heap[addr..end].copy_from_slice(&(v as i16).to_le_bytes()),
+        (4, ScalarValue::Int(v)) => heap[addr..end].copy_from_slice(&(v as i32).to_le_bytes()),
+        (8, ScalarValue::Int(v)) => heap[addr..end].copy_from_slice(&v.to_le_bytes()),
+        (4, ScalarValue::Float(f)) => heap[addr..end].copy_from_slice(&(f as f32).to_le_bytes()),
+        (8, ScalarValue::Float(f)) => heap[addr..end].copy_from_slice(&f.to_le_bytes()),
+        _ => return Err(VmError::InvalidConstPayload),
+    }
     Ok(())
 }
 

@@ -5,6 +5,7 @@
 
 mod cast;
 mod const_pool;
+mod scalar;
 mod function;
 mod header;
 mod instr;
@@ -16,6 +17,7 @@ mod types;
 mod verify;
 
 pub use cast::PrimitiveKind;
+pub use scalar::ScalarValue;
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
 pub use function::{FunctionRecord, FunctionTable};
 pub use header::{FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};

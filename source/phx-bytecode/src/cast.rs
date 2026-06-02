@@ -1,5 +1,7 @@
 //! Primitive cast targets shared by codegen and VM.
 
+use crate::scalar::ScalarValue;
+
 /// Wire encoding for explicit `as` cast operands (stable per format version).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -26,6 +28,10 @@ pub enum PrimitiveKind {
     U128 = 9,
     /// `bool`
     Bool = 10,
+    /// `f32`
+    F32 = 11,
+    /// `f64`
+    F64 = 12,
 }
 
 impl PrimitiveKind {
@@ -48,6 +54,8 @@ impl PrimitiveKind {
             8 => Some(Self::U64),
             9 => Some(Self::U128),
             10 => Some(Self::Bool),
+            11 => Some(Self::F32),
+            12 => Some(Self::F64),
             _ => None,
         }
     }
@@ -58,14 +66,20 @@ impl PrimitiveKind {
         self as u8
     }
 
+    /// Returns `true` for floating-point kinds.
+    #[must_use]
+    pub const fn is_float(self) -> bool {
+        matches!(self, Self::F32 | Self::F64)
+    }
+
     /// Bit width for integer kinds; `bool` is 1 bit stored as one byte.
     #[must_use]
     pub const fn bit_width(self) -> u32 {
         match self {
             Self::S8 | Self::U8 | Self::Bool => 8,
             Self::S16 | Self::U16 => 16,
-            Self::S32 | Self::U32 => 32,
-            Self::S64 | Self::U64 => 64,
+            Self::S32 | Self::U32 | Self::F32 => 32,
+            Self::S64 | Self::U64 | Self::F64 => 64,
             Self::S128 | Self::U128 => 128,
         }
     }
@@ -80,26 +94,72 @@ impl PrimitiveKind {
 
     /// Applies an explicit cast from `from` representation to `to`.
     #[must_use]
-    pub fn apply_cast(value: i64, from: Self, to: Self) -> i64 {
+    pub fn apply_cast(value: ScalarValue, from: Self, to: Self) -> ScalarValue {
         if from == to {
             return value;
         }
         if to == Self::Bool {
-            return i64::from(value != 0);
+            let n = match value {
+                ScalarValue::Int(v) => v != 0,
+                ScalarValue::Float(v) => v != 0.0,
+            };
+            return ScalarValue::Int(i64::from(n));
         }
         if from == Self::Bool {
-            return if value != 0 { 1 } else { 0 };
+            let raw = value.as_int().unwrap_or(0);
+            return Self::apply_cast(ScalarValue::Int(raw), Self::S32, to);
         }
-        let raw = if from.is_unsigned() {
-            mask_unsigned(value, from.bit_width()) as i64
+        if from.is_float() || to.is_float() {
+            let f = scalar_to_f64(value, from);
+            return scalar_from_f64(f, to);
+        }
+        let raw = value.as_int().unwrap_or(0);
+        let masked = if from.is_unsigned() {
+            mask_unsigned(raw, from.bit_width()) as i64
         } else {
-            sign_extend(trunc_bits(value, from.bit_width()), from.bit_width())
+            sign_extend(trunc_bits(raw, from.bit_width()), from.bit_width())
         };
         if to.is_unsigned() {
-            mask_unsigned(raw, to.bit_width()) as i64
+            ScalarValue::Int(mask_unsigned(masked, to.bit_width()) as i64)
         } else {
-            sign_extend(trunc_bits(raw, to.bit_width()), to.bit_width())
+            ScalarValue::Int(sign_extend(trunc_bits(masked, to.bit_width()), to.bit_width()))
         }
+    }
+}
+
+fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
+    match value {
+        ScalarValue::Float(v) => {
+            if from == PrimitiveKind::F32 {
+                (v as f32) as f64
+            } else {
+                v
+            }
+        }
+        ScalarValue::Int(v) => {
+            if from.is_unsigned() {
+                mask_unsigned(v, from.bit_width()) as f64
+            } else {
+                sign_extend(trunc_bits(v, from.bit_width()), from.bit_width()) as f64
+            }
+        }
+    }
+}
+
+fn scalar_from_f64(value: f64, to: PrimitiveKind) -> ScalarValue {
+    match to {
+        PrimitiveKind::F32 => ScalarValue::Float(f64::from(value as f32)),
+        PrimitiveKind::F64 => ScalarValue::Float(value),
+        PrimitiveKind::Bool => ScalarValue::Int(i64::from(value != 0.0)),
+        _ if to.is_unsigned() => {
+            let bits = if to.bit_width() >= 64 {
+                value as u64
+            } else {
+                (value as u64) & ((1u64 << to.bit_width()) - 1)
+            };
+            ScalarValue::Int(bits as i64)
+        }
+        _ => ScalarValue::Int(value as i64),
     }
 }
 
@@ -135,16 +195,44 @@ mod tests {
     #[test]
     fn cast_u32_to_u8_masks() {
         assert_eq!(
-            PrimitiveKind::apply_cast(300, PrimitiveKind::U32, PrimitiveKind::U8),
-            44
+            PrimitiveKind::apply_cast(
+                ScalarValue::Int(300),
+                PrimitiveKind::U32,
+                PrimitiveKind::U8
+            ),
+            ScalarValue::Int(44)
         );
     }
 
     #[test]
     fn cast_s32_to_s64_extends() {
         assert_eq!(
-            PrimitiveKind::apply_cast(-1, PrimitiveKind::S32, PrimitiveKind::S64),
-            -1
+            PrimitiveKind::apply_cast(
+                ScalarValue::Int(-1),
+                PrimitiveKind::S32,
+                PrimitiveKind::S64
+            ),
+            ScalarValue::Int(-1)
         );
+    }
+
+    #[test]
+    fn cast_int_to_float() {
+        let v = PrimitiveKind::apply_cast(
+            ScalarValue::Int(3),
+            PrimitiveKind::S32,
+            PrimitiveKind::F64,
+        );
+        assert_eq!(v, ScalarValue::Float(3.0));
+    }
+
+    #[test]
+    fn cast_float_to_int() {
+        let v = PrimitiveKind::apply_cast(
+            ScalarValue::Float(2.9),
+            PrimitiveKind::F64,
+            PrimitiveKind::S32,
+        );
+        assert_eq!(v, ScalarValue::Int(2));
     }
 }

@@ -68,6 +68,7 @@ fn encoded_size(inst: &IrInst) -> u32 {
             2
         }
         IrInst::Index { .. } => 2,
+        IrInst::PtrLoad { .. } => with_operands(2),
     }
 }
 
@@ -149,6 +150,9 @@ fn apply_ir_stack_effect(
         IrInst::Index { .. } => {
             let _ = apply_stack_effect(Opcode::Index, stack, None, none);
         }
+        IrInst::PtrLoad { .. } => {
+            let _ = apply_stack_effect(Opcode::PtrLoad, stack, None, none);
+        }
         IrInst::TrapGivenMismatch => {
             let _ = apply_stack_effect(Opcode::Trap, stack, None, none);
         }
@@ -207,7 +211,7 @@ fn emit_inst(
 ) {
     match inst {
         IrInst::Const { index, .. } => {
-            let pool_idx = pool.intern_raw(*index);
+            let pool_idx = pool.pool_index_for_literal(*index);
             out.extend(encode(Opcode::Const, &[pool_idx]));
         }
         IrInst::LoadLocal { slot, .. } => {
@@ -297,6 +301,16 @@ fn emit_inst(
         }
         IrInst::Index { .. } => {
             out.extend(encode(Opcode::Index, &[]));
+        }
+        IrInst::PtrLoad {
+            byte_size,
+            signed,
+            ..
+        } => {
+            out.extend(encode(
+                Opcode::PtrLoad,
+                &[u32::from(*byte_size), u32::from(*signed)],
+            ));
         }
         IrInst::TrapGivenMismatch => {
             out.extend(encode(Opcode::Trap, &[0]));

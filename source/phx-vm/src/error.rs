@@ -31,6 +31,8 @@ pub enum VmError {
     FieldOutOfRange,
     /// `given` pattern did not match scrutinee.
     GivenMismatch,
+    /// Pointer access outside the VM heap.
+    HeapOutOfBounds,
 }
 
 impl std::fmt::Display for VmError {
@@ -50,6 +52,7 @@ impl std::fmt::Display for VmError {
             Self::InvalidAggregate => write!(f, "invalid aggregate value"),
             Self::FieldOutOfRange => write!(f, "field index out of range"),
             Self::GivenMismatch => write!(f, "given pattern did not match"),
+            Self::HeapOutOfBounds => write!(f, "heap access out of bounds"),
         }
     }
 }

@@ -174,6 +174,15 @@ pub enum IrInst {
     },
     /// Runtime trap for non-exhaustive `given` / match failure.
     TrapGivenMismatch,
+    /// Load primitive through raw address. Stack: `[addr] → [value]`
+    PtrLoad {
+        /// Load width in bytes.
+        byte_size: u8,
+        /// `1` = signed integer load, `0` = unsigned/float.
+        signed: u8,
+        /// Result type.
+        result: TypeId,
+    },
 }
 
 /// Binary operators mirrored from type-checked expressions.

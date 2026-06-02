@@ -50,15 +50,26 @@ pub fn check_binary(
         phx_syntax::ast::expr::BinOp::Add
         | phx_syntax::ast::expr::BinOp::Sub
         | phx_syntax::ast::expr::BinOp::Mul
-        | phx_syntax::ast::expr::BinOp::Div
-        | phx_syntax::ast::expr::BinOp::Mod
-        | phx_syntax::ast::expr::BinOp::Pow
-        | phx_syntax::ast::expr::BinOp::BitOr
+        | phx_syntax::ast::expr::BinOp::Div => {
+            if is_numeric_primitive(ty) {
+                Some(BinOpResult { result: lhs })
+            } else {
+                None
+            }
+        }
+        phx_syntax::ast::expr::BinOp::Mod | phx_syntax::ast::expr::BinOp::Pow => {
+            if is_int_numeric_primitive(ty) {
+                Some(BinOpResult { result: lhs })
+            } else {
+                None
+            }
+        }
+        phx_syntax::ast::expr::BinOp::BitOr
         | phx_syntax::ast::expr::BinOp::BitXor
         | phx_syntax::ast::expr::BinOp::BitAnd
         | phx_syntax::ast::expr::BinOp::Shl
         | phx_syntax::ast::expr::BinOp::Shr => {
-            if is_numeric_primitive(ty) {
+            if is_int_numeric_primitive(ty) {
                 Some(BinOpResult { result: lhs })
             } else {
                 None
@@ -77,8 +88,15 @@ pub fn check_unary(
 ) -> Option<TypeId> {
     let ty = types.get(operand);
     match op {
-        phx_syntax::ast::expr::UnaryOp::Neg | phx_syntax::ast::expr::UnaryOp::BitNot => {
+        phx_syntax::ast::expr::UnaryOp::Neg => {
             if is_numeric_primitive(ty) {
+                Some(operand)
+            } else {
+                None
+            }
+        }
+        phx_syntax::ast::expr::UnaryOp::BitNot => {
+            if is_int_numeric_primitive(ty) {
                 Some(operand)
             } else {
                 None
@@ -144,7 +162,29 @@ fn primitive_cast_allowed(from: Keyword, to: Keyword) -> bool {
     if matches!(from, Keyword::Bool) || matches!(to, Keyword::Bool) {
         return false;
     }
-    is_int_keyword(from) && is_int_keyword(to)
+    let from_int = is_int_keyword(from);
+    let to_int = is_int_keyword(to);
+    let from_float = matches!(from, Keyword::F32 | Keyword::F64);
+    let to_float = matches!(to, Keyword::F32 | Keyword::F64);
+    (from_int && to_int) || (from_int && to_float) || (from_float && to_int) || (from_float && to_float)
+}
+
+fn is_int_numeric_primitive(ty: &Ty) -> bool {
+    matches!(
+        ty,
+        Ty::Primitive(
+            Keyword::S8
+                | Keyword::S16
+                | Keyword::S32
+                | Keyword::S64
+                | Keyword::S128
+                | Keyword::U8
+                | Keyword::U16
+                | Keyword::U32
+                | Keyword::U64
+                | Keyword::U128
+        )
+    )
 }
 
 fn is_int_keyword(kw: Keyword) -> bool {

@@ -152,6 +152,8 @@ fn codegen_struct_point_emits_make_struct() {
         .flat_map(|b| &b.insts)
         .any(|i| matches!(i, IrInst::GetField { .. }));
     assert!(has_get, "field read should emit GetField");
+    let module = codegen(&ir, &unit.typed.layout);
+    verify(&module).expect("struct_point bytecode should verify");
 }
 
 #[test]

@@ -453,6 +453,22 @@ fn verify_operands(
                 });
             }
         }
+        Opcode::Alloc => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::PtrLoad | Opcode::PtrStore => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
     }
     Ok(())
 }

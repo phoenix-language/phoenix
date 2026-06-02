@@ -1,13 +1,15 @@
 //! Call frames, operand stack, and aggregate storage.
 
-/// Runtime value: scalar integer or handle into the aggregate arena.
+use phx_bytecode::ScalarValue;
+
+/// Runtime value: scalar primitive or handle into the aggregate arena.
 ///
 /// MVP: aggregate handles are Copyable indices; arena is freed when the VM run ends.
 /// See Phase 2 memory lifecycle docs — not the long-term ownership model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
-    /// Numeric / bool-as-int slot (`s32`/`s64`/`bool` in Phoenix types).
-    Scalar(i64),
+    /// Numeric / bool primitive.
+    Scalar(ScalarValue),
     /// Index into [`Machine::aggregates`].
     Agg(u32),
 }
@@ -15,7 +17,7 @@ pub enum Value {
 impl Value {
     /// Returns the scalar payload or `None` for aggregates.
     #[must_use]
-    pub const fn as_scalar(self) -> Option<i64> {
+    pub const fn as_scalar(self) -> Option<ScalarValue> {
         match self {
             Self::Scalar(v) => Some(v),
             Self::Agg(_) => None,
@@ -74,7 +76,7 @@ pub struct Frame {
     pub locals: Vec<Value>,
 }
 
-/// Operand stack + call stack + aggregate arena.
+/// Operand stack + call stack + aggregate arena + linear heap for pointers.
 #[derive(Debug, Default)]
 pub struct Machine {
     /// Evaluation stack.
@@ -83,6 +85,8 @@ pub struct Machine {
     pub frames: Vec<Frame>,
     /// MVP arena: all aggregates; reclaimed when `Machine` is dropped.
     pub aggregates: Vec<Aggregate>,
+    /// Byte heap for `Alloc` / pointer loads (MVP; not GC).
+    pub heap: Vec<u8>,
 }
 
 impl Machine {
@@ -92,7 +96,7 @@ impl Machine {
         self.frames.push(Frame {
             function_id,
             pc: 0,
-            locals: vec![Value::Scalar(0); n],
+            locals: vec![Value::Scalar(ScalarValue::zero_int()); n],
         });
     }
 
@@ -116,5 +120,12 @@ impl Machine {
     /// Mutably borrows an aggregate by handle.
     pub fn aggregate_mut(&mut self, handle: u32) -> Option<&mut Aggregate> {
         self.aggregates.get_mut(handle as usize)
+    }
+
+    /// Allocates `size` zeroed bytes on the heap; returns the start offset as `i64`.
+    pub fn alloc_bytes(&mut self, size: usize) -> i64 {
+        let start = self.heap.len();
+        self.heap.resize(start.saturating_add(size), 0);
+        i64::try_from(start).unwrap_or(i64::MAX)
     }
 }

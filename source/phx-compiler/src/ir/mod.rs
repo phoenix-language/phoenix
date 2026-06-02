@@ -13,10 +13,12 @@
 //!   lowering must not re-allocate slots from the AST.
 
 mod block;
+mod const_lit;
 mod func;
 mod inst;
 
 pub use block::IrBasicBlock;
+pub use const_lit::IrConst;
 pub use func::IrFunction;
 pub use inst::{IrBinOp, IrFunctionId, IrInst, LocalSlot};
 
@@ -29,6 +31,8 @@ pub struct IrModule {
     pub functions: Vec<IrFunction>,
     /// [`DefId`] of `main`, if present.
     pub entry: Option<DefId>,
+    /// Module constant pool (indices used by [`IrInst::Const`]).
+    pub constants: Vec<IrConst>,
 }
 
 impl IrModule {
@@ -38,6 +42,7 @@ impl IrModule {
         Self {
             functions: Vec::new(),
             entry: None,
+            constants: Vec::new(),
         }
     }
 }

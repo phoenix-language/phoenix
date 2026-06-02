@@ -22,6 +22,7 @@ FIXTURES=(
   tuple_lit.phx
   given_struct.phx
   trait_eq.phx
+  primitives_float.phx
 )
 
 cd "${ROOT}"

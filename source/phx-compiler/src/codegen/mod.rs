@@ -80,6 +80,7 @@ pub fn codegen(ir: &IrModule, layout: &ProgramLayout) -> BytecodeModule {
         .collect();
 
     let mut pool = ConstPoolBuilder::new();
+    pool.fill_from_ir(&ir.constants);
     let mut code = Vec::new();
     let mut records = Vec::new();
 

@@ -2,14 +2,12 @@
 
 use phx_bytecode::{ConstEntry, ConstPool, ConstTag};
 
-use crate::ir::IrInst;
+use crate::ir::{IrConst, IrInst};
 
 /// Builder for a deduplicated [`ConstPool`].
 #[derive(Debug, Default)]
 pub struct ConstPoolBuilder {
     entries: Vec<ConstEntry>,
-    /// Maps raw IR const bits → pool index.
-    raw_to_pool: std::collections::HashMap<u32, u32>,
 }
 
 impl ConstPoolBuilder {
@@ -19,26 +17,22 @@ impl ConstPoolBuilder {
         Self::default()
     }
 
-    /// Returns pool index for an IR [`IrInst::Const`] raw `index` field.
-    #[must_use]
-    pub fn intern_raw(&mut self, raw: u32) -> u32 {
-        if let Some(&idx) = self.raw_to_pool.get(&raw) {
-            return idx;
+    /// Appends all literals from `constants` in order (index `i` → pool `i`).
+    pub fn fill_from_ir(&mut self, constants: &[IrConst]) {
+        for lit in constants {
+            self.entries.push(ir_const_to_entry(lit));
         }
-        let entry = raw_to_entry(raw);
-        let idx = u32::try_from(self.entries.len()).unwrap_or(u32::MAX);
-        self.entries.push(entry);
-        self.raw_to_pool.insert(raw, idx);
-        idx
     }
 
-    /// Collects all [`IrInst::Const`] from `insts`.
+    /// Pool index equals `constants` index when built via [`Self::fill_from_ir`].
+    #[must_use]
+    pub fn pool_index_for_literal(&self, literal_index: u32) -> u32 {
+        literal_index
+    }
+
+    /// Collects all [`IrInst::Const`] from `insts` (no-op when literals are pre-filled).
     pub fn collect_insts(&mut self, insts: &[IrInst]) {
-        for inst in insts {
-            if let IrInst::Const { index, .. } = inst {
-                let _ = self.intern_raw(*index);
-            }
-        }
+        let _ = insts;
     }
 
     /// Finishes the pool.
@@ -50,10 +44,19 @@ impl ConstPoolBuilder {
     }
 }
 
-fn raw_to_entry(raw: u32) -> ConstEntry {
-    let value = i64::from(raw.cast_signed());
-    ConstEntry {
-        tag: ConstTag::SignedInt,
-        payload: value.to_le_bytes().to_vec(),
+fn ir_const_to_entry(lit: &IrConst) -> ConstEntry {
+    match lit {
+        IrConst::Int(v) => ConstEntry {
+            tag: ConstTag::SignedInt,
+            payload: v.to_le_bytes().to_vec(),
+        },
+        IrConst::Float(v) => ConstEntry {
+            tag: ConstTag::Float64,
+            payload: v.to_le_bytes().to_vec(),
+        },
+        IrConst::Bool(b) => ConstEntry {
+            tag: ConstTag::Bool,
+            payload: vec![u8::from(*b)],
+        },
     }
 }

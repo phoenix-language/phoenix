@@ -3,7 +3,7 @@
 use phx_diagnostics::Span;
 use phx_syntax::Symbol;
 
-use crate::ir::{IrBasicBlock, IrInst};
+use crate::ir::{IrBasicBlock, IrConst, IrInst};
 use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
 use crate::typeck::{ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram};
 
@@ -37,22 +37,36 @@ pub struct LowerCtx<'a> {
     pub match_temp_index: usize,
     /// Loop exit blocks allocated after loop bodies (for `break` / `while` exit).
     pub pending_loop_exits: Vec<Option<u32>>,
+    /// Module constant literals (shared across functions).
+    pub constants: &'a mut Vec<IrConst>,
 }
 
 impl<'a> LowerCtx<'a> {
     /// Creates a context with a single empty entry block.
     #[must_use]
-    pub fn new(typed: &'a TypedProgram, layout: &'a FunctionLayout) -> Self {
+    pub fn new(
+        typed: &'a TypedProgram,
+        layout: &'a FunctionLayout,
+        constants: &'a mut Vec<IrConst>,
+    ) -> Self {
         Self {
             typed,
             layout,
-            next_expr: 0,
+            next_expr: layout.expr_start,
             blocks: vec![IrBasicBlock::new()],
             current: 0,
             loop_stack: Vec::new(),
             match_temp_index: 0,
             pending_loop_exits: Vec::new(),
+            constants,
         }
+    }
+
+    /// Appends a literal to the module pool and returns its index.
+    pub fn intern_const(&mut self, lit: IrConst) -> u32 {
+        let index = u32::try_from(self.constants.len()).unwrap_or(u32::MAX);
+        self.constants.push(lit);
+        index
     }
 
     /// Reserves a loop exit block id to patch after the loop body is lowered.
@@ -217,20 +231,6 @@ pub fn bool_ty(typed: &TypedProgram) -> TypeId {
     TypeId::from_raw(0)
 }
 
-/// Encodes an MVP literal into a [`IrInst::Const`] index (until module const pool exists).
-#[must_use]
-pub fn const_index_for_literal(lit: &phx_syntax::ast::lit::Literal) -> Option<u32> {
-    use phx_syntax::ast::lit::Literal;
-    match lit {
-        Literal::Int(i) => {
-            let v = i32::try_from(i.value).ok()?;
-            Some(v.cast_unsigned())
-        }
-        Literal::Bool(b) => Some(u32::from(*b)),
-        Literal::Float(_) | Literal::ByteChar(_) | Literal::ByteString(_) => None,
-        _ => None,
-    }
-}
 
 /// Maps slot for symbol in layout.
 #[must_use]

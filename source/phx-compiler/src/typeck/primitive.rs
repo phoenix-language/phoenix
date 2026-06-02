@@ -29,9 +29,41 @@ pub fn keyword_to_primitive_kind(kw: Keyword) -> Option<PrimitiveKind> {
         Keyword::U64 => PrimitiveKind::U64,
         Keyword::U128 => PrimitiveKind::U128,
         Keyword::Bool => PrimitiveKind::Bool,
-        Keyword::F32 | Keyword::F64 => return None,
+        Keyword::F32 => PrimitiveKind::F32,
+        Keyword::F64 => PrimitiveKind::F64,
         _ => return None,
     })
+}
+
+/// Byte size for pointer load/store of a primitive (`s128`/`u128` use 8 bytes in MVP VM).
+#[must_use]
+pub fn primitive_byte_size(kind: PrimitiveKind) -> u8 {
+    match kind {
+        PrimitiveKind::S8 | PrimitiveKind::U8 | PrimitiveKind::Bool => 1,
+        PrimitiveKind::S16 | PrimitiveKind::U16 => 2,
+        PrimitiveKind::S32 | PrimitiveKind::U32 | PrimitiveKind::F32 => 4,
+        PrimitiveKind::S64
+        | PrimitiveKind::U64
+        | PrimitiveKind::F64
+        | PrimitiveKind::S128
+        | PrimitiveKind::U128 => 8,
+    }
+}
+
+/// Returns `1` when the primitive is signed integer (not float/bool).
+#[must_use]
+pub fn primitive_load_signed(kind: PrimitiveKind) -> u8 {
+    match kind {
+        PrimitiveKind::Bool
+        | PrimitiveKind::U8
+        | PrimitiveKind::U16
+        | PrimitiveKind::U32
+        | PrimitiveKind::U64
+        | PrimitiveKind::U128
+        | PrimitiveKind::F32
+        | PrimitiveKind::F64 => 0,
+        _ => 1,
+    }
 }
 
 /// Returns `true` when `kw` is an MVP integer primitive (signed or unsigned).

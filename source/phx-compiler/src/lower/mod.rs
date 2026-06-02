@@ -31,9 +31,11 @@ use crate::typeck::TypedProgram;
 /// indices, and reads expression types from [`TypedProgram::expr_types`](crate::typeck::TypedProgram::expr_types).
 #[must_use]
 pub fn lower(typed: &TypedProgram) -> IrModule {
-    let functions = func::lower_functions(typed);
+    let mut constants = Vec::new();
+    let functions = func::lower_functions(typed, &mut constants);
     IrModule {
         functions,
         entry: typed.entry,
+        constants,
     }
 }

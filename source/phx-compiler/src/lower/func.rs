@@ -3,7 +3,7 @@
 use phx_syntax::ast::Node;
 use phx_syntax::ast::decl::{Function, TopLevelDecl, TopLevelItem};
 
-use crate::ir::{IrFunction, IrFunctionId};
+use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
 use crate::resolver::{DefId, DefKind};
@@ -11,12 +11,12 @@ use crate::typeck::{BindingKind, FunctionLayout, TypedProgram};
 
 /// Lowers all functions in `typed`.
 #[must_use]
-pub fn lower_functions(typed: &TypedProgram) -> Vec<IrFunction> {
+pub fn lower_functions(typed: &TypedProgram, constants: &mut Vec<IrConst>) -> Vec<IrFunction> {
     typed
         .functions
         .iter()
         .enumerate()
-        .filter_map(|(index, layout)| lower_one_function(typed, layout, index))
+        .filter_map(|(index, layout)| lower_one_function(typed, layout, index, constants))
         .collect()
 }
 
@@ -24,9 +24,10 @@ fn lower_one_function(
     typed: &TypedProgram,
     layout: &FunctionLayout,
     index: usize,
+    constants: &mut Vec<IrConst>,
 ) -> Option<IrFunction> {
     let source = find_function(&typed.resolved.program.items, layout.def, typed)?;
-    let mut ctx = LowerCtx::new(typed, layout);
+    let mut ctx = LowerCtx::new(typed, layout, constants);
     lower_block_value(&mut ctx, &source.body.inner);
     lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
 
