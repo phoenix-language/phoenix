@@ -1,0 +1,321 @@
+---
+description: Rust language standards — memory, unsafe, errors, types, and documentation
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust standards (Phoenix codebase)
+
+How to write **correct, explicit, low-level Rust** in this repo. Compiler layout, passes, and Phoenix semantics are **not** here — use `phoenix.mdc`, design docs, and the agent in-session for that.
+
+**Mindset:** Prefer code that makes wrong states unrepresentable. Optimize for readers and invariants, not cleverness. Measure before tuning hot paths.
+
+---
+
+## Project-enforced limits (Cargo.toml)
+
+These are fixed for this crate — do not fight them:
+
+| Rule | Detail |
+|---|---|
+| Dependencies | Stdlib only unless explicitly approved |
+| `unsafe` | **Allowed** where justified — see [unsafe](#unsafe-when-and-how); not banned by crate policy |
+| Panics in fallible code | `unwrap_used` / `expect_used` = **deny** (Clippy) |
+| Debug noise | `dbg!`, `print_stdout`, `print_stderr` = **deny** |
+| Public API docs | `missing_docs = "deny"` |
+| Edition | **2024** |
+
+---
+
+## Types: pick the right tool
+
+### Newtypes and invariants
+
+Wrap raw indices and IDs so they cannot be mixed:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LocalSlot(u32);
+```
+
+- Use **newtypes** for anything with domain meaning (`Symbol`, offsets, counts).
+- Keep validation at **construction boundaries** (parse, load, verify) — inner code assumes valid values.
+
+### `enum` vs `bool` + fields
+
+Prefer a single `enum` over multiple `bool`s or parallel `Option`s that must stay consistent:
+
+```rust
+// Prefer
+enum Phase { Lex, Parse, Done }
+
+// Avoid
+struct State { parsing: bool, done: bool }
+```
+
+Use `#[non_exhaustive]` on public enums that model extensible domains (language constructs, opcodes).
+
+### Collections and smart pointers
+
+| Need | Prefer | Avoid |
+|---|---|---|
+| Unique heap ownership | `Box<T>` | `Rc` unless shared |
+| Shared immutable (compiler, single-threaded) | Borrow `&T` | `Arc` “just in case” |
+| Shared across threads (VM runtime) | `Arc<T>` + documented `Send`/`Sync` | `Rc` across threads |
+| Growable buffer, one owner | `Vec<u8>` | Repeated `format!` in loops |
+| Maybe present | `Option<T>` | Sentinel `0`, `-1`, `""` |
+| Fallible operation | `Result<T, E>` | Panic on I/O or parse errors |
+| Cheap copy of small IDs | `Copy` newtypes | Cloning `String` for IDs |
+
+### Strings
+
+- **`&str`** at API boundaries when the caller owns storage.
+- **`String`** when you allocate or store.
+- **`Symbol` / interned IDs** for identifiers that are compared often — not raw `String` in hot structures.
+
+### Integer types
+
+- Use the **smallest type that fits the proven range** (`u8` for bytes, `u32` for file offsets if documented).
+- Cast with `try_from` / explicit `as` only when the conversion rule is documented; avoid silent truncation.
+- Prefer `usize` only for indexing/memory sizes tied to the host; use fixed-width types in file formats and wire layouts.
+
+---
+
+## Ownership and memory
+
+### Default moves
+
+- Pass **owned** data forward when a stage consumes it; borrow when multiple readers need the same snapshot.
+- **`clone` is a design smell** in hot paths — if you clone constantly, restructure ownership or use arenas/handles.
+
+### Buffers and allocation
+
+- **`Vec::with_capacity`** when upper bound is known (token count, section size).
+- **Reuse buffers** (`clear()` + refill) in lexer/serializer loops instead of allocating per token.
+- **Bulk allocation** (arenas) for many same-lifetime objects — one allocation, drop entire arena at once. Do not `Box` every AST/IR node individually when an arena fits the lifetime.
+
+### `std::mem` helpers
+
+- `take` / `replace` to move out of `&mut T` when you need owned value without cloning.
+- `size_of`, `align_of`, and layout docs when defining bytecode or VM value layouts.
+
+### Aliasing
+
+- **`&mut` is exclusive** — do not hold other references to the same data while `&mut` is live.
+- In `unsafe`, document **who may read/write** and for how long.
+
+---
+
+## `unsafe`: when and how
+
+Phoenix is a **language implementation**: VMs, bytecode, arenas, and value layouts routinely need the same kind of **raw memory control** as C++ — `unsafe` is a normal tool, not a last resort to hide in two files.
+
+**Policy:** default to **safe Rust**; use `unsafe` when it is the honest way to express memory, layout, or performance. What we avoid is *casual* unsafe and *leaky* abstractions — not `unsafe` itself.
+
+### Where `unsafe` commonly belongs
+
+- **VM heap / stack frames** — tagged values, call frames, inline storage.
+- **Bytecode and buffers** — `from_raw_parts` over verified sections; mmap-style views after bounds checks.
+- **Arenas and bump allocators** — obtaining `&mut [u8]` or typed slots from a chunk.
+- **Custom layouts** — `repr(C)` structs, unions, or pools matching the Phoenix ABI on the stack.
+- **Platform / syscalls** — when the safe std wrapper is insufficient (document platform assumptions).
+
+Front-end passes (lex/parse/typeck) can stay **entirely safe** most of the time; that is a convenience, not a rule. If a pass needs a zero-copy view of source bytes, encapsulate it in a small type with a safe API.
+
+Optional discipline: `#![forbid(unsafe_code)]` on a **single module** that you want to keep pure (e.g. diagnostics-only code) — never as a blanket ban on the whole crate.
+
+### Layering (like a C++ boundary)
+
+1. **Validate** at the edge (verifier, loader, span checks, length vs capacity).
+2. **`unsafe` core** — pointer ops, `from_raw_parts`, allocator internals.
+3. **Safe API outward** — callers see `&[u8]`, handles, `Result`, not `*mut u8`.
+
+Do not sprinkle `unsafe` through every caller; **concentrate** it behind types that enforce invariants (`ByteCodeSection`, `VmStack`, `Arena`).
+
+### Every `unsafe` block must have
+
+1. A **`// SAFETY:`** comment listing **all** preconditions (alignment, lifetime, initialization, aliasing, thread).
+2. The **smallest possible** scope — one operation per block when practical.
+3. For **public** `unsafe fn`, a **`# Safety`** section in rustdoc mirroring the comment.
+
+```rust
+/// # Safety
+///
+/// `ptr` must be non-null, aligned for `T`, and valid for reads of `len` elements
+/// for the lifetime `'a`.
+pub unsafe fn slice_from_parts<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
+    // SAFETY: caller upholds validity per function docs.
+    unsafe { std::slice::from_raw_parts(ptr, len) }
+}
+```
+
+### When to still prefer safe code
+
+- One-off bounds checks — use `.get()` / `get_unchecked` only after a single proof in the same function, or keep indexing safe until profiling says otherwise.
+- “I’m sure” on **user-controlled** lengths — validate, then unsafe; never the reverse.
+- **`unsafe` for speed** without measurements — profile first.
+
+Prefer **`checked_*` / `get` / `try_from`** in safe layers; centralize proofs once, then use `unsafe` in the memory layer they unlock.
+
+---
+
+## Panics: what to avoid and rare OK cases
+
+### Do not panic on
+
+- User source, bytecode from disk, network, env, or any **external input**.
+- `Option`/`Result` from fallible ops — use `?` or explicit `match`.
+- “Should never happen” in code paths that **can** see bad user data — return `Err`.
+
+### Acceptable panic (still minimize)
+
+- **`debug_assert!`** for invariants in tests/dev; use `debug_assert` not `assert` when release must not crash on bug.
+- **`unreachable!`** only after an exhaustive `match` the type system proves complete — prefer returning an internal error if a new enum variant could arrive from deserialization.
+- **Constructor invariants** on types only constructible through validated APIs (private fields + fallible `new`).
+
+### `expect` / `unwrap`
+
+- **Denied by Clippy** in this crate — use `match`, `if let`, or propagate `Result`.
+- For **tests only**, `unwrap` in `#[cfg(test)]` is fine.
+
+### Release profile
+
+`panic = "abort"` in release — panics are not for recoverable errors; design `Result` paths.
+
+---
+
+## Error API design
+
+### Layer errors by domain
+
+One error type (or small enum) per module: `LexError`, `LoadError`, `VmError`. Do not use one giant `Error` enum for the whole compiler unless you need it at the CLI boundary.
+
+```rust
+pub enum LoadError {
+    InvalidMagic { found: [u8; 4] },
+    SectionOutOfBounds { index: u32 },
+}
+
+impl std::fmt::Display for LoadError { /* ... */ }
+impl std::error::Error for LoadError {}
+```
+
+No external error crates unless approved — implement `Display` + `Error` manually.
+
+### `Result` API guidelines
+
+- Return **`Result<T, E>`** from any function that can fail for callers to handle.
+- Use **`#[must_use]`** on `Result` types and important outputs so failures are not dropped.
+- **`?`** inside functions that already return compatible `Result`.
+- Attach **context at the boundary** (which file, which pass) — avoid stringly “failed” deep in helpers; use structured fields.
+
+### Internal vs user-facing errors
+
+- **Internal bugs:** `Result` with a dedicated variant or `bug:` prefix in message — never panic to the user.
+- **User diagnostics:** stable codes/messages + source spans (compiler-specific shape decided in-session).
+- Do not leak **Rust backtraces** or `Debug` dumps of internal structs to end users.
+
+### `Option` vs `Result`
+
+| | Use |
+|---|---|
+| `Option` | Absence is normal (`peek`, cache miss) |
+| `Result` | Failure needs reporting or propagation |
+
+Do not use `Option` for error conditions you intend to diagnose.
+
+---
+
+## Control flow and exhaustiveness
+
+- **`match` exhaustively** on closed enums you own — avoid `_` on AST/token/opcode/IR enums so new variants force compile-time updates.
+- **`if let` / `while let`** for single-pattern cases.
+- **Explicit loops** in proven hot paths (lexer) when iterators obscure bounds checks or add cost — document why.
+- **`continue` / `break` / `return` early** to reduce nesting; one concept per function.
+
+---
+
+## API and module design (Rust-level)
+
+- **Private fields by default**; expose accessors only when part of a stable API.
+- **Struct methods** over free functions taking `&mut Self` when stateful.
+- **≤5 parameters**; otherwise a config/context struct.
+- **No global mutable state** — pass `&mut Ctx` explicitly.
+- **`impl Trait`** in arguments when it clarifies without naming a concrete type.
+- **`const` / `const fn`** for magic bytes, sizes, and opcode tags known at compile time.
+
+---
+
+## Performance (without sacrificing correctness)
+
+1. Make it **correct** and **clear**.
+2. **Profile** lexer, parser, VM dispatch before micro-optimizing.
+3. Then: capacity hints, buffer reuse, arena allocation, reduce branches in inner loops.
+4. Avoid **premature `unsafe`** for speed — often bounds-checked slice iteration is fast enough.
+
+- Do not publish benchmark numbers from `RUSTFLAGS=-C target-cpu=native` builds.
+- Run benchmarks **sequentially**, not in parallel jobs.
+
+---
+
+## Concurrency (when you touch threads)
+
+- Document **`Send` / `Sync`** on types that cross thread boundaries.
+- Prefer **message passing** (`mpsc`, channels) over shared mutable state.
+- **Do not hold locks** across I/O or long work.
+- `Arc<Mutex<T>>` is a last resort — justify why channels are insufficient.
+
+Compiler passes stay **single-threaded** unless explicitly designed otherwise.
+
+---
+
+## Documentation (rustdoc)
+
+Every **public** item needs a doc comment (`missing_docs` is denied).
+
+### Structure
+
+```rust
+/// Load a bytecode file from bytes.
+///
+/// Validates the header and section table before returning a [`Module`].
+///
+/// # Errors
+///
+/// Returns [`LoadError::InvalidMagic`] if the magic is not `PHX0`.
+///
+/// # Panics
+///
+/// Never panics on malformed input.
+pub fn load(bytes: &[u8]) -> Result<Module, LoadError>
+```
+
+| Section | When |
+|---|---|
+| Summary line | Always — what it does |
+| `# Errors` | Any `Result` return |
+| `# Panics` | Any panic path (prefer “never panics on …”) |
+| `# Safety` | Public `unsafe` functions |
+| Examples | Non-obvious safe APIs (` ``` ` fenced) |
+
+- Comments in code explain **why**, not **what** the next line does.
+- No committed `TODO` noise, prompts, or `println!` debugging.
+
+---
+
+## Testing Rust code
+
+- **`#[cfg(test)]`** modules next to the code they test.
+- Table-driven tests: `input`, `expected`, `name` per row.
+- Test **edge cases** (empty, max length, overflow) and **error paths**, not only happy paths.
+- **Arrange – Act – Assert**; one behavior per test when possible.
+- Property/invariant tests for parsers and serializers when cheap to add.
+
+---
+
+## Before you commit Rust changes
+
+- [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`
+- [ ] No `unwrap`/`expect`/`dbg!` on user-facing paths
+- [ ] Every `unsafe` has `// SAFETY:` and a narrow safe wrapper
+- [ ] Public items documented with `# Errors` / `# Panics` / `# Safety` as needed

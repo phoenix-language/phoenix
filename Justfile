@@ -1,35 +1,40 @@
 default:
     just --list
 
-run:
-    cargo run
-
 build:
-    cargo build --release
+    cargo build --workspace
+
+build-release:
+    cargo build --workspace --release
+
+run:
+    cargo run -p phx
 
 test:
-    cargo test
+    cargo test --workspace
+
+test-integration:
+    cargo test -p phx-integration-tests
+
+lint:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all --check
+
+doc:
+    cargo doc --workspace --no-deps
+
+check: fmt-check lint test build
 
 clean:
     cargo clean
 
-fmt:
-    cargo fmt
-
-fmt-check:
-    cargo fmt --check
-
-lint:
-    cargo clippy --all-targets -- -D warnings
-
-check: fmt-check lint test
-    cargo build --all-targets
-
-audit:
-    cargo audit
-
 update:
     cargo update
 
-doc:
-    cargo doc --no-deps
+audit:
+    cargo audit

@@ -1,0 +1,13 @@
+[package]
+name = "phx-compiler"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+phx-bytecode = { path = "../phx-bytecode" }
+phx-diagnostics = { path = "../phx-diagnostics" }
+phx-syntax = { path = "../phx-syntax" }

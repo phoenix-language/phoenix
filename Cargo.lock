@@ -3,5 +3,53 @@
 version = 4
 
 [[package]]
-name = "phoenix-compiler"
+name = "phx"
 version = "0.1.0"
+dependencies = [
+ "phx-compiler",
+ "phx-vm",
+]
+
+[[package]]
+name = "phx-bytecode"
+version = "0.1.0"
+dependencies = [
+ "phx-diagnostics",
+]
+
+[[package]]
+name = "phx-compiler"
+version = "0.1.0"
+dependencies = [
+ "phx-bytecode",
+ "phx-diagnostics",
+ "phx-syntax",
+]
+
+[[package]]
+name = "phx-diagnostics"
+version = "0.1.0"
+
+[[package]]
+name = "phx-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "phx-bytecode",
+ "phx-compiler",
+ "phx-vm",
+]
+
+[[package]]
+name = "phx-syntax"
+version = "0.1.0"
+dependencies = [
+ "phx-diagnostics",
+]
+
+[[package]]
+name = "phx-vm"
+version = "0.1.0"
+dependencies = [
+ "phx-bytecode",
+ "phx-diagnostics",
+]

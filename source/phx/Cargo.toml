@@ -1,0 +1,16 @@
+[package]
+name = "phx"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "phx"
+path = "src/main.rs"
+
+[dependencies]
+phx-compiler = { path = "../phx-compiler" }
+phx-vm = { path = "../phx-vm" }
