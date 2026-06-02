@@ -29,8 +29,8 @@ fn main() {
     }
 
     match check_file(Path::new(&path)) {
-        Ok(unit) => {
-            dbg!(unit);
+        Ok(_unit) => {
+            // dbg!(_unit);
         }
         Err(e) => {
             eprintln!("{e}");

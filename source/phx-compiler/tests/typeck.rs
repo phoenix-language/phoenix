@@ -60,6 +60,26 @@ fn use_after_move_error() {
 }
 
 #[test]
+fn function_trailing_expr_return_ok() {
+    ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
+}
+
+#[test]
+fn function_return_stmt_ok() {
+    ok("f :: () => s32 { return 1; }; main :: () => { };");
+}
+
+#[test]
+fn function_body_return_mismatch() {
+    let bag = typeck_err("f :: () => s32 { true }; main :: () => { };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+    );
+}
+
+#[test]
 fn invalid_cast() {
     let bag = typeck_err("main :: () => { const x = 1 as bool; };");
     assert!(

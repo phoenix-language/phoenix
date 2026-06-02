@@ -1,0 +1,4 @@
+// Should fail type-check: bool assigned to s32.
+main :: () => {
+  const x: s32 = true;
+};

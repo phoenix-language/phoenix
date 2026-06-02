@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# End-to-end test: `phx check` on a real .phx source file.
+# End-to-end tests: `phx check` on valid and invalid .phx fixtures.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FIXTURE="${ROOT}/tests/cli/fixtures/sample.phx"
+FIXTURE_OK="${ROOT}/tests/cli/fixtures/sample.phx"
+FIXTURE_ERR="${ROOT}/tests/cli/fixtures/bad_type.phx"
 PHX_BIN="${ROOT}/target/debug/phx"
 
 cd "${ROOT}"
 
-if [[ ! -f "${FIXTURE}" ]]; then
-  echo "missing fixture: ${FIXTURE}" >&2
-  exit 1
-fi
+for fixture in "${FIXTURE_OK}" "${FIXTURE_ERR}"; do
+  if [[ ! -f "${fixture}" ]]; then
+    echo "missing fixture: ${fixture}" >&2
+    exit 1
+  fi
+done
 
 echo "building phx CLI..."
 cargo build -q -p phx
@@ -21,10 +24,18 @@ if [[ ! -x "${PHX_BIN}" ]]; then
   exit 1
 fi
 
-echo "running: phx check ${FIXTURE}"
-if ! "${PHX_BIN}" check "${FIXTURE}"; then
-  echo "phx check failed for ${FIXTURE}" >&2
+echo "running: phx check ${FIXTURE_OK} (expect success)"
+if ! "${PHX_BIN}" check "${FIXTURE_OK}"; then
+  echo "phx check should succeed for ${FIXTURE_OK}" >&2
   exit 1
 fi
+echo "phx check passed (valid program)"
 
-echo "phx check passed"
+echo "running: phx check ${FIXTURE_ERR} (expect failure)"
+if "${PHX_BIN}" check "${FIXTURE_ERR}"; then
+  echo "phx check should fail for ${FIXTURE_ERR}" >&2
+  exit 1
+fi
+echo "phx check failed as expected (type error)"
+
+echo "all phx check CLI tests passed"

@@ -294,20 +294,61 @@ impl<'a> TypeChecker<'a> {
                 self.ownership.define(name.symbol, pty);
             }
         }
-        self.check_block(&f.body.inner);
+        let body_ty = self.check_block_value(&f.body.inner);
+        if body_ty != ret {
+            self.error_mismatch(ret, body_ty, f.body.span);
+        }
         self.fn_ret = None;
     }
 
     fn check_block(&mut self, block: &Block) {
+        let _ = self.check_block_value(block);
+    }
+
+    /// Type-checks `block` and returns the type of its last value-producing item.
+    fn check_block_value(&mut self, block: &Block) -> TypeId {
+        let mut last = self.unit;
         for item in &block.items {
-            match item {
-                BlockItem::Stmt(stmt) => self.check_stmt(stmt),
-                BlockItem::Expr(expr) => {
-                    let ty = self.check_expr_node(expr);
-                    self.check_discard(expr.span, ty);
-                }
-                _ => {}
+            last = match item {
+                BlockItem::Stmt(stmt) => self.check_block_stmt_value(stmt),
+                BlockItem::Expr(expr) => self.check_expr_node(expr),
+                _ => self.unit,
+            };
+        }
+        last
+    }
+
+    fn check_block_stmt_value(&mut self, stmt: &Stmt) -> TypeId {
+        match stmt {
+            Stmt::Expr(expr) => {
+                let ty = self.check_expr_node(expr);
+                self.check_discard(expr.span, ty);
+                ty
             }
+            Stmt::Return(expr) => self.check_return(expr.as_ref()),
+            other => {
+                self.check_stmt(other);
+                self.unit
+            }
+        }
+    }
+
+    fn check_return(&mut self, expr: Option<&ExprNode>) -> TypeId {
+        if let Some(e) = expr {
+            let got = self.check_expr_node(e);
+            if let Some(ret) = self.fn_ret {
+                if got != ret {
+                    self.error_mismatch(ret, got, e.span);
+                }
+            }
+            got
+        } else {
+            if let Some(ret) = self.fn_ret {
+                if ret != self.unit {
+                    self.error_mismatch(self.unit, ret, Span::new(0, 0));
+                }
+            }
+            self.unit
         }
     }
 
@@ -340,18 +381,7 @@ impl<'a> TypeChecker<'a> {
                 self.check_discard(expr.span, ty);
             }
             Stmt::Return(expr) => {
-                if let Some(e) = expr {
-                    let got = self.check_expr_node(e);
-                    if let Some(ret) = self.fn_ret {
-                        if got != ret {
-                            self.error_mismatch(ret, got, e.span);
-                        }
-                    }
-                } else if let Some(ret) = self.fn_ret {
-                    if ret != self.unit {
-                        self.error_mismatch(self.unit, ret, Span::new(0, 0));
-                    }
-                }
+                let _ = self.check_return(expr.as_ref());
             }
             Stmt::Break(_) | Stmt::Continue => {}
             Stmt::While { cond, body } => {
@@ -468,21 +498,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_block_expr(&mut self, block: &BlockNode) -> TypeId {
-        let mut last = self.unit;
-        for item in &block.inner.items {
-            match item {
-                BlockItem::Stmt(stmt) => match stmt {
-                    Stmt::Expr(expr) => last = self.check_expr_node(expr),
-                    other => {
-                        self.check_stmt(other);
-                        last = self.unit;
-                    }
-                },
-                BlockItem::Expr(expr) => last = self.check_expr_node(expr),
-                _ => {}
-            }
-        }
-        last
+        self.check_block_value(&block.inner)
     }
 
     fn check_literal(&mut self, lit: &Literal) -> TypeId {
