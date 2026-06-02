@@ -21,9 +21,11 @@
 | Issue | Impact |
 |-------|--------|
 | `i < n` / `c \|\| d {` before `{` | Parser ambiguity; parenthesize (`n > (i)`, `(c \|\| d)`) |
-| `match (x)` scrutinee | Use `match (ident)` not `match ident {` (struct-literal parse) |
+| `match ident {` scrutinee | Use `match (ident) {` not `match ident {` (struct-literal parse) |
+| `given pat = e { … }` before `{` body | Use `given pat = (e) { … }` when scrutinee is followed by `{` (struct-literal parse) |
 | Enum/struct `match` patterns | done for struct/tuple/unit enum arms; enum struct variants deferred |
-| VM aggregate model | `Value::Scalar` / `Value::Agg` arena handles; 20 opcodes including `MAKE_STRUCT`/`MAKE_ENUM`/`GET_FIELD`/`SET_FIELD`/`MATCH_TAG` |
+| Float VM | Int-only scalar model; `f32`/`f64` literals type-check but no float arithmetic opcodes yet |
+| VM value model | `Value::Scalar` / `Value::Agg` (struct/enum/tuple/array); 38 opcodes (0–37) |
 
 ---
 
@@ -39,11 +41,11 @@ A credible MVP demo `.phx` should be able to:
 - [x] Use `match` on `s32` / `bool` literals and `_` (with `match (expr)` syntax)
 - [x] Use short-circuit `&&` / `||` on `bool`
 - [x] Construct and use **user** `struct` / `enum` values with field/tag access at runtime
-- [ ] Explicit `expr as Type` casts where types differ (per [type-system.md](design/features/type-system.md))
+- [x] Explicit `expr as Type` casts where types differ (per [type-system.md](design/features/type-system.md))
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
 
-**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`, `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`.
+**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`, `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`, `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx`, `given_struct.phx`, `trait_eq.phx`.
 
 ---
 
@@ -70,11 +72,11 @@ A credible MVP demo `.phx` should be able to:
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
 | PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, 4 sections                                             | Round-trip test in `codegen.rs`                          |
 | Bytecode verifier                                                                | partial | `source/phx-bytecode/src/verify.rs`                    | Jump targets, stack depth, locals — for **implemented** opcodes only | `verify(&module)` on `sample.phx` output                 |
-| VM interpret verified module                                                     | partial | `source/phx-vm/src/interpreter.rs`                     | 15 opcodes; stack slots hold `s64` scalars (MVP)                       | `phx run tests/cli/fixtures/sample.phx` exits 0          |
+| VM interpret verified module                                                     | partial | `source/phx-vm/src/interpreter.rs`                     | 38 opcodes (0–37); int-only scalars + tuple/array/struct/enum aggs   | `tests/cli/run.sh` (16 fixtures) |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
-| Source-backed diagnostics in CLI                                                 | missing | `source/phx-diagnostics/src/lib.rs`                    | Display-only today; no caret rendering                               | `phx check` shows file line + underline for error span   |
-| `phx compile` / write `.phx0` to disk                                            | missing | `source/phx/src/main.rs`                               | Only `check` and `run`                                               | `phx compile foo.phx -o foo.phx0` writes verifiable file |
+| Source-backed diagnostics in CLI                                                 | done    | `source/phx-diagnostics/src/format.rs`                 | Line + caret for parse/type errors via `CompileError::format_with_source` | `phx check bad_type.phx` shows caret |
+| `phx compile` / write `.phx0` to disk                                            | done    | `source/phx/src/main.rs`                               | `phx compile -o` after verify                                        | `tests/cli/compile.sh` |
 
 
 ---
@@ -392,12 +394,15 @@ Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver 
 
 Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`; integration `run_aggregates.rs`.
 
-### Phase 3 — Bytecode completeness & tooling
+### Phase 3 — Bytecode completeness & tooling (done)
 
-1. **Remaining MVP opcodes** from [vm-linear.md](design/features/vm-linear.md): `MOD`, `NEG`, bitwise, `INDEX`, etc., as needed by typeck.
-2. **Float paths:** const pool `f32`/`f64` + VM arithmetic (or document MVP int-only demo).
-3. `**phx compile -o`** + optional disassembler.
-4. **Source diagnostics** in CLI.
+1. ~~**Remaining MVP opcodes:**~~ `Cast`, `Mod`, `Pow`, `Neg`, `Not`, bitwise, `Ne`/`Le`/`Ge`, `MakeTuple`, `MakeArray`, `Index`, `Trap`.
+2. ~~**Float paths:**~~ deferred — MVP VM uses `i64` scalars; int/bool casts only (`cast_width.phx`).
+3. ~~**`phx compile -o`**~~ — `tests/cli/compile.sh`.
+4. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
+5. ~~**Language surface:**~~ explicit casts, tuple/array runtime, `given`, trait dispatch, `self` in impl bodies.
+
+Fixtures: `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx`, `given_struct.phx`, `trait_eq.phx`; `run.sh` runs 16 programs.
 
 ### Phase 4 — Multi-file
 

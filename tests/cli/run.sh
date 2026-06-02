@@ -16,6 +16,12 @@ FIXTURES=(
   struct_assign.phx
   enum_match.phx
   struct_method.phx
+  cast_width.phx
+  mod_bitwise.phx
+  array_index.phx
+  tuple_lit.phx
+  given_struct.phx
+  trait_eq.phx
 )
 
 cd "${ROOT}"

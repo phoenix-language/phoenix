@@ -1,0 +1,5 @@
+main :: () => {
+    const arr: [s32; 3] = [10, 20, 30];
+    const v: s32 = arr[1];
+    const _ = v;
+};

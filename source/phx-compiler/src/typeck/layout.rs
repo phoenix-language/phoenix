@@ -80,6 +80,8 @@ pub struct ProgramLayout {
     pub variants: HashMap<DefId, VariantMeta>,
     /// Inherent impl methods: `(type_def, method_name) → fn_def`.
     pub inherent_methods: HashMap<(DefId, Symbol), DefId>,
+    /// Trait impl methods: `(type_def, trait_def, method_name) → fn_def`.
+    pub trait_methods: HashMap<(DefId, DefId, Symbol), DefId>,
 }
 
 impl ProgramLayout {

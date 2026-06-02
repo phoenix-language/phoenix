@@ -50,7 +50,7 @@ fn encoded_size(inst: &IrInst) -> u32 {
     }
     match inst {
         IrInst::JumpIf { .. } => with_operands(1).saturating_add(with_operands(1)),
-        IrInst::BinOp { .. } | IrInst::Return { .. } => 2,
+        IrInst::BinOp { .. } => 2,
         IrInst::Const { .. }
         | IrInst::LoadLocal { .. }
         | IrInst::StoreLocal { .. }
@@ -61,6 +61,13 @@ fn encoded_size(inst: &IrInst) -> u32 {
         }
         IrInst::MakeEnum { .. } => with_operands(3),
         IrInst::MatchTag { .. } => with_operands(2),
+        IrInst::Cast { .. } => with_operands(2),
+        IrInst::MakeTuple { .. } | IrInst::MakeArray { .. } => with_operands(1),
+        IrInst::TrapGivenMismatch => with_operands(1),
+        IrInst::Neg { .. } | IrInst::Not { .. } | IrInst::BitNot { .. } | IrInst::Return { .. } => {
+            2
+        }
+        IrInst::Index { .. } => 2,
     }
 }
 
@@ -94,8 +101,9 @@ fn apply_ir_stack_effect(
         IrInst::StoreLocal { .. } => {
             let _ = apply_stack_effect(Opcode::StoreLocal, stack, None, none);
         }
-        IrInst::BinOp { .. } => {
-            let _ = apply_stack_effect(Opcode::Add, stack, None, none);
+        IrInst::BinOp { op, .. } => {
+            let opcode = ir_binop_to_opcode(*op);
+            let _ = apply_stack_effect(opcode, stack, None, none);
         }
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
@@ -120,7 +128,52 @@ fn apply_ir_stack_effect(
         IrInst::MatchTag { .. } => {
             let _ = apply_stack_effect(Opcode::MatchTag, stack, None, none);
         }
+        IrInst::Cast { .. } => {
+            let _ = apply_stack_effect(Opcode::Cast, stack, None, none);
+        }
+        IrInst::Neg { .. } => {
+            let _ = apply_stack_effect(Opcode::Neg, stack, None, none);
+        }
+        IrInst::Not { .. } => {
+            let _ = apply_stack_effect(Opcode::Not, stack, None, none);
+        }
+        IrInst::BitNot { .. } => {
+            let _ = apply_stack_effect(Opcode::BitNot, stack, None, none);
+        }
+        IrInst::MakeTuple { arity } => {
+            let _ = apply_stack_effect(Opcode::MakeTuple, stack, None, Some(*arity));
+        }
+        IrInst::MakeArray { len } => {
+            let _ = apply_stack_effect(Opcode::MakeArray, stack, None, Some(*len));
+        }
+        IrInst::Index { .. } => {
+            let _ = apply_stack_effect(Opcode::Index, stack, None, none);
+        }
+        IrInst::TrapGivenMismatch => {
+            let _ = apply_stack_effect(Opcode::Trap, stack, None, none);
+        }
         IrInst::Return { .. } | IrInst::Jump { .. } => {}
+    }
+}
+
+fn ir_binop_to_opcode(op: IrBinOp) -> Opcode {
+    match op {
+        IrBinOp::Add => Opcode::Add,
+        IrBinOp::Sub => Opcode::Sub,
+        IrBinOp::Mul => Opcode::Mul,
+        IrBinOp::Div => Opcode::Div,
+        IrBinOp::Eq => Opcode::Eq,
+        IrBinOp::Lt => Opcode::Lt,
+        IrBinOp::Ne => Opcode::Ne,
+        IrBinOp::Le => Opcode::Le,
+        IrBinOp::Ge => Opcode::Ge,
+        IrBinOp::Mod => Opcode::Mod,
+        IrBinOp::Pow => Opcode::Pow,
+        IrBinOp::BitAnd => Opcode::BitAnd,
+        IrBinOp::BitOr => Opcode::BitOr,
+        IrBinOp::BitXor => Opcode::BitXor,
+        IrBinOp::Shl => Opcode::Shl,
+        IrBinOp::Shr => Opcode::Shr,
     }
 }
 
@@ -164,15 +217,7 @@ fn emit_inst(
             out.extend(encode(Opcode::StoreLocal, &[slot.index()]));
         }
         IrInst::BinOp { op, .. } => {
-            let opcode = match op {
-                IrBinOp::Add => Opcode::Add,
-                IrBinOp::Sub => Opcode::Sub,
-                IrBinOp::Mul => Opcode::Mul,
-                IrBinOp::Div => Opcode::Div,
-                IrBinOp::Eq => Opcode::Eq,
-                IrBinOp::Lt => Opcode::Lt,
-            };
-            out.extend(encode(opcode, &[]));
+            out.extend(encode(ir_binop_to_opcode(*op), &[]));
         }
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
@@ -228,6 +273,33 @@ fn emit_inst(
             variant_tag,
         } => {
             out.extend(encode(Opcode::MatchTag, &[*type_id, *variant_tag]));
+        }
+        IrInst::Cast { from_kind, to_kind } => {
+            out.extend(encode(
+                Opcode::Cast,
+                &[u32::from(*from_kind), u32::from(*to_kind)],
+            ));
+        }
+        IrInst::Neg { .. } => {
+            out.extend(encode(Opcode::Neg, &[]));
+        }
+        IrInst::Not { .. } => {
+            out.extend(encode(Opcode::Not, &[]));
+        }
+        IrInst::BitNot { .. } => {
+            out.extend(encode(Opcode::BitNot, &[]));
+        }
+        IrInst::MakeTuple { arity } => {
+            out.extend(encode(Opcode::MakeTuple, &[*arity]));
+        }
+        IrInst::MakeArray { len } => {
+            out.extend(encode(Opcode::MakeArray, &[*len]));
+        }
+        IrInst::Index { .. } => {
+            out.extend(encode(Opcode::Index, &[]));
+        }
+        IrInst::TrapGivenMismatch => {
+            out.extend(encode(Opcode::Trap, &[0]));
         }
     }
 }

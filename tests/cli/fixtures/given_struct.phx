@@ -1,0 +1,11 @@
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+main :: () => {
+    const p: Point = Point { x: 3, y: 4 };
+    given Point { x, y } = (p) {
+        x + y;
+    };
+};

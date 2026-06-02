@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 
 use phx_diagnostics::{Span, TypeCheckBag, TypeCheckError};
-use phx_syntax::Symbol;
 use phx_syntax::ast::decl::{
     Function, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
@@ -17,6 +16,7 @@ use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
+use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
@@ -295,15 +295,28 @@ impl<'a> TypeChecker<'a> {
                 self.collect_fn_sig(f);
             }
             TopLevelDecl::Impl {
-                type_name, members, ..
+                type_name,
+                trait_,
+                members,
+                ..
             } => {
                 if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
                     for m in members {
                         self.collect_fn_sig(m);
                         if let Some(fn_def) = self.find_def(m.name.symbol, DefKind::Fn) {
-                            self.program_layout
-                                .inherent_methods
-                                .insert((type_def, m.name.symbol), fn_def);
+                            if let Some(trait_name) = trait_ {
+                                if let Some(trait_def) =
+                                    self.type_defs.get(&trait_name.symbol).copied()
+                                {
+                                    self.program_layout
+                                        .trait_methods
+                                        .insert((type_def, trait_def, m.name.symbol), fn_def);
+                                }
+                            } else {
+                                self.program_layout
+                                    .inherent_methods
+                                    .insert((type_def, m.name.symbol), fn_def);
+                            }
                         }
                     }
                 } else {
@@ -768,6 +781,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_ident_inner(&mut self, ident: &Ident, span: Span, record_move: bool) -> TypeId {
+        if ident.symbol == impl_receiver_symbol() {
+            if let Some(ty) = self.ownership.binding_type(ident.symbol) {
+                return ty;
+            }
+        }
         if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
             self.bag.push(TypeCheckError::UseAfterMove {
                 symbol_index: ident.symbol.index(),
@@ -863,6 +881,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_field(&mut self, base: TypeId, field: &Ident, span: Span) -> TypeId {
+        let base = self.deref_for_field(base);
         if let Ty::Named { def, .. } = self.types.get(base) {
             let def = *def;
             if let Some(sf) = self.struct_fields.get(&def) {
@@ -877,6 +896,23 @@ impl<'a> TypeChecker<'a> {
             span,
         });
         self.unit
+    }
+
+    fn deref_for_field(&self, ty: TypeId) -> TypeId {
+        match self.types.get(ty) {
+            Ty::Ref { inner, .. } => *inner,
+            _ => ty,
+        }
+    }
+
+    fn method_receiver_matches(&self, param: TypeId, receiver: TypeId) -> bool {
+        if receiver == param {
+            return true;
+        }
+        if let Ty::Ref { inner, .. } = self.types.get(param) {
+            return receiver == *inner;
+        }
+        false
     }
 
     fn check_call(&mut self, callee: TypeId, args: &[ExprNode], span: Span) -> TypeId {
@@ -908,6 +944,7 @@ impl<'a> TypeChecker<'a> {
     fn check_index(&mut self, base: TypeId, span: Span) -> TypeId {
         match self.types.get(base) {
             Ty::Array { elem, .. } | Ty::Slice(elem) => *elem,
+            Ty::Tuple(elems) if !elems.is_empty() => elems[0],
             _ => {
                 self.bag
                     .push(TypeCheckError::InvalidOperator { op: "index", span });
@@ -925,14 +962,57 @@ impl<'a> TypeChecker<'a> {
     ) -> TypeId {
         if let Ty::Named { def, .. } = self.types.get(receiver) {
             let def = *def;
-            if let Some(&fn_def) = self
+            let fn_def = self
                 .program_layout
                 .inherent_methods
                 .get(&(def, name.symbol))
-            {
+                .copied()
+                .or_else(|| find_trait_method_def(&self.program_layout, def, name.symbol));
+            if let Some(fn_def) = fn_def {
                 if let Some(&fn_ty) = self.value_types.get(&fn_def) {
-                    return self.check_call(fn_ty, args, span);
+                    let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() else {
+                        return self.unit;
+                    };
+                    if params.is_empty() {
+                        return self.check_call(fn_ty, args, span);
+                    }
+                    if !self.method_receiver_matches(params[0], receiver) {
+                        self.error_mismatch(params[0], receiver, span);
+                    }
+                    let rest = &params[1..];
+                    if rest.len() != args.len() {
+                        self.bag.push(TypeCheckError::ArityMismatch {
+                            expected: rest.len(),
+                            found: args.len(),
+                            span,
+                        });
+                    }
+                    for (p, arg) in rest.iter().zip(args) {
+                        let got = self.check_expr_node(arg);
+                        if got != *p {
+                            self.error_mismatch(*p, got, arg.span);
+                        }
+                    }
+                    return ret;
                 }
+            }
+            let mut trait_matches: Vec<DefId> = self
+                .program_layout
+                .trait_methods
+                .iter()
+                .filter(|((type_def, _trait_def, method), _)| {
+                    *type_def == def && *method == name.symbol
+                })
+                .map(|(_, fn_def)| *fn_def)
+                .collect();
+            trait_matches.sort_by_key(|d| d.index());
+            trait_matches.dedup();
+            if trait_matches.len() > 1 {
+                self.bag.push(TypeCheckError::AmbiguousMethod {
+                    receiver: self.format_ty(receiver),
+                    method_index: name.symbol.index(),
+                    span,
+                });
             }
         }
         self.bag.push(TypeCheckError::UnresolvedMethod {
@@ -1148,17 +1228,27 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
-/// Synthetic symbol for inherent impl receiver parameters (not a source name).
-fn impl_receiver_symbol() -> Symbol {
-    Symbol::from_raw(0x8000_0000)
-}
-
-/// Best-effort span for `break` / `continue` (statement nodes are not spanned in blocks).
 fn loop_control_stmt_span(stmt: &Stmt) -> Span {
     match stmt {
         Stmt::Break(Some(e)) => e.span,
         Stmt::Break(None) | Stmt::Continue => Span::new(0, 0),
         _ => Span::new(0, 0),
+    }
+}
+
+fn find_trait_method_def(layout: &ProgramLayout, type_def: DefId, method: Symbol) -> Option<DefId> {
+    let mut matches: Vec<DefId> = layout
+        .trait_methods
+        .iter()
+        .filter(|((t, _, m), _)| *t == type_def && *m == method)
+        .map(|(_, f)| *f)
+        .collect();
+    matches.sort_by_key(|d| d.index());
+    matches.dedup();
+    if matches.len() == 1 {
+        Some(matches[0])
+    } else {
+        None
     }
 }
 

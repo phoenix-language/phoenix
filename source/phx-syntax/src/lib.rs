@@ -19,7 +19,7 @@ pub mod source_file;
 pub mod token;
 
 pub use ast::Program;
-pub use intern::{Interner, Symbol};
+pub use intern::{Interner, Symbol, impl_receiver_symbol};
 pub use lexer::{Lexer, lex};
 pub use parser::parse;
 pub use phx_diagnostics::{LexError, ParseError, Span};

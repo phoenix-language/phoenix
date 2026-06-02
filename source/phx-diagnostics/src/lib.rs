@@ -11,12 +11,14 @@
 //! - `resolve_error` — name resolution ([`ResolveError`], [`DiagnosticBag`]).
 //! - `type_error` — type checking ([`TypeCheckError`], [`TypeCheckBag`]).
 
+mod format;
 mod lex_error;
 mod parse_error;
 mod resolve_error;
 mod span;
 mod type_error;
 
+pub use format::format_span_message;
 pub use lex_error::LexError;
 pub use parse_error::{ExpectedToken, ParseError, ParseResult};
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};

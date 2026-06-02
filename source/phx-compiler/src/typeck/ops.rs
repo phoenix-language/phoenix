@@ -138,5 +138,15 @@ fn is_numeric_primitive(ty: &Ty) -> bool {
 }
 
 fn primitive_cast_allowed(from: Keyword, to: Keyword) -> bool {
-    from == to
+    if from == to {
+        return true;
+    }
+    if matches!(from, Keyword::Bool) || matches!(to, Keyword::Bool) {
+        return false;
+    }
+    is_int_keyword(from) && is_int_keyword(to)
+}
+
+fn is_int_keyword(kw: Keyword) -> bool {
+    crate::typeck::primitive::is_int_keyword(kw)
 }

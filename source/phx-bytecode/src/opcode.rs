@@ -44,6 +44,42 @@ pub enum Opcode {
     SetField = 18,
     /// Compare enum tag. Stack: `[agg] → [bool]`
     MatchTag = 19,
+    /// Explicit primitive cast. Stack: `[value] → [value]` — operands: `from_kind`, `to_kind`.
+    Cast = 20,
+    /// Modulo. Stack: `[a, b] → [rem]`
+    Mod = 21,
+    /// Integer power. Stack: `[a, b] → [pow]`
+    Pow = 22,
+    /// Negate. Stack: `[a] → [-a]`
+    Neg = 23,
+    /// Logical not. Stack: `[bool] → [bool]`
+    Not = 24,
+    /// Bitwise not. Stack: `[a] → [~a]`
+    BitNot = 25,
+    /// Bitwise and. Stack: `[a, b] → [a & b]`
+    BitAnd = 26,
+    /// Bitwise or. Stack: `[a, b] → [a | b]`
+    BitOr = 27,
+    /// Bitwise xor. Stack: `[a, b] → [a ^ b]`
+    BitXor = 28,
+    /// Shift left. Stack: `[a, b] → [a << b]`
+    Shl = 29,
+    /// Shift right. Stack: `[a, b] → [a >> b]`
+    Shr = 30,
+    /// Not equal. Stack: `[a, b] → [bool]`
+    Ne = 31,
+    /// Less or equal. Stack: `[a, b] → [bool]`
+    Le = 32,
+    /// Greater or equal. Stack: `[a, b] → [bool]`
+    Ge = 33,
+    /// Build tuple. Stack: `[elems…] → [agg]`
+    MakeTuple = 34,
+    /// Build fixed array. Stack: `[elems…] → [agg]`
+    MakeArray = 35,
+    /// Index tuple/array. Stack: `[agg, index] → [elem]`
+    Index = 36,
+    /// Abort execution. Stack: `[] → []` (terminator)
+    Trap = 37,
 }
 
 impl Opcode {
@@ -74,6 +110,24 @@ impl Opcode {
             17 => Ok(Self::GetField),
             18 => Ok(Self::SetField),
             19 => Ok(Self::MatchTag),
+            20 => Ok(Self::Cast),
+            21 => Ok(Self::Mod),
+            22 => Ok(Self::Pow),
+            23 => Ok(Self::Neg),
+            24 => Ok(Self::Not),
+            25 => Ok(Self::BitNot),
+            26 => Ok(Self::BitAnd),
+            27 => Ok(Self::BitOr),
+            28 => Ok(Self::BitXor),
+            29 => Ok(Self::Shl),
+            30 => Ok(Self::Shr),
+            31 => Ok(Self::Ne),
+            32 => Ok(Self::Le),
+            33 => Ok(Self::Ge),
+            34 => Ok(Self::MakeTuple),
+            35 => Ok(Self::MakeArray),
+            36 => Ok(Self::Index),
+            37 => Ok(Self::Trap),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

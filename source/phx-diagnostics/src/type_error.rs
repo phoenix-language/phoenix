@@ -51,6 +51,15 @@ pub enum TypeCheckError {
         /// Call site span.
         span: Span,
     },
+    /// Multiple trait impls provide the same method name.
+    AmbiguousMethod {
+        /// Receiver type description.
+        receiver: String,
+        /// Method name index.
+        method_index: u32,
+        /// Call site span.
+        span: Span,
+    },
     /// `if` or `match` arms do not unify to one type.
     NonUnifyingBranches {
         /// Branch span.
@@ -119,6 +128,7 @@ impl TypeCheckError {
             | Self::ArityMismatch { span, .. }
             | Self::NotCallable { span, .. }
             | Self::UnresolvedMethod { span, .. }
+            | Self::AmbiguousMethod { span, .. }
             | Self::NonUnifyingBranches { span }
             | Self::InvalidCast { span, .. }
             | Self::InvalidOperator { span, .. }
@@ -152,6 +162,14 @@ impl fmt::Display for TypeCheckError {
                 method_index,
                 ..
             } => write!(f, "no method sym#{method_index} on type `{receiver}`"),
+            Self::AmbiguousMethod {
+                receiver,
+                method_index,
+                ..
+            } => write!(
+                f,
+                "ambiguous method sym#{method_index} on type `{receiver}` (multiple trait impls)"
+            ),
             Self::NonUnifyingBranches { .. } => f.write_str("branch types do not unify"),
             Self::InvalidCast { from, to, .. } => {
                 write!(f, "invalid cast from `{from}` to `{to}`")

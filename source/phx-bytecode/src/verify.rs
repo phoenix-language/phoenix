@@ -306,6 +306,7 @@ fn verify_function_body(
         let field_count = match inst.opcode {
             Opcode::MakeStruct => Some(inst.operands.get(1).copied().unwrap_or(0)),
             Opcode::MakeEnum => Some(inst.operands.get(2).copied().unwrap_or(0)),
+            Opcode::MakeTuple | Opcode::MakeArray => inst.operands.first().copied(),
             _ => None,
         };
 
@@ -379,11 +380,49 @@ fn verify_operands(
         | Opcode::Sub
         | Opcode::Mul
         | Opcode::Div
+        | Opcode::Mod
+        | Opcode::Pow
         | Opcode::Eq
         | Opcode::Lt
+        | Opcode::Ne
+        | Opcode::Le
+        | Opcode::Ge
+        | Opcode::BitAnd
+        | Opcode::BitOr
+        | Opcode::BitXor
+        | Opcode::Shl
+        | Opcode::Shr
+        | Opcode::Neg
+        | Opcode::Not
+        | Opcode::BitNot
+        | Opcode::Index
         | Opcode::Pop
         | Opcode::Return => {
             if !inst.operands.is_empty() {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::Cast => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::MakeTuple | Opcode::MakeArray => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::Trap => {
+            if inst.operands.len() != 1 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,
                     offset,

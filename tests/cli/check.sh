@@ -32,9 +32,14 @@ if ! "${PHX_BIN}" check "${FIXTURE_OK}"; then
 fi
 echo "phx check passed (valid program)"
 
-echo "running: phx check ${FIXTURE_ERR} (expect failure)"
-if "${PHX_BIN}" check "${FIXTURE_ERR}"; then
+echo "running: phx check ${FIXTURE_ERR} (expect failure with caret)"
+if output="$("${PHX_BIN}" check "${FIXTURE_ERR}" 2>&1)"; then
   echo "phx check should fail for ${FIXTURE_ERR}" >&2
+  exit 1
+fi
+if [[ "${output}" != *"^"* ]] || [[ "${output}" != *"line"* ]]; then
+  echo "phx check should show source line and caret for type errors" >&2
+  echo "got: ${output}" >&2
   exit 1
 fi
 echo "phx check failed as expected (type error)"

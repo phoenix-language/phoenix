@@ -1,6 +1,8 @@
 //! Opcode interpreter for one PHX0 module.
 
-use phx_bytecode::{BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode};
+use phx_bytecode::{
+    BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode, PrimitiveKind,
+};
 
 use crate::VmError;
 use crate::frame::{Aggregate, Machine, Value};
@@ -163,6 +165,9 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                         .get(field_index)
                         .copied()
                         .ok_or(VmError::FieldOutOfRange)?,
+                    Some(Aggregate::Tuple { .. }) | Some(Aggregate::Array { .. }) => {
+                        return Err(VmError::InvalidAggregate);
+                    }
                     None => return Err(VmError::InvalidAggregate),
                 };
                 machine.stack.push(value);
@@ -183,7 +188,9 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                             .ok_or(VmError::FieldOutOfRange)?;
                         *slot = new_val;
                     }
-                    Aggregate::Enum { .. } => return Err(VmError::InvalidAggregate),
+                    Aggregate::Enum { .. } | Aggregate::Tuple { .. } | Aggregate::Array { .. } => {
+                        return Err(VmError::InvalidAggregate);
+                    }
                 }
                 machine.stack.push(agg);
             }
@@ -197,6 +204,80 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                     _ => return Err(VmError::InvalidAggregate),
                 };
                 machine.stack.push(Value::Scalar(i64::from(matches)));
+            }
+            Opcode::Cast => {
+                let from_byte = inst.operands.first().copied().unwrap_or(0) as u8;
+                let to_byte = inst.operands.get(1).copied().unwrap_or(0) as u8;
+                let from = PrimitiveKind::from_u8(from_byte).ok_or(VmError::InvalidConstPayload)?;
+                let to = PrimitiveKind::from_u8(to_byte).ok_or(VmError::InvalidConstPayload)?;
+                let v = pop_scalar(&mut machine.stack)?;
+                machine
+                    .stack
+                    .push(Value::Scalar(PrimitiveKind::apply_cast(v, from, to)));
+            }
+            Opcode::Mod => binop_mod(&mut machine.stack)?,
+            Opcode::Pow => binop_pow(&mut machine.stack)?,
+            Opcode::Neg => {
+                let v = pop_scalar(&mut machine.stack)?;
+                machine.stack.push(Value::Scalar(v.wrapping_neg()));
+            }
+            Opcode::Not => {
+                let v = pop_scalar(&mut machine.stack)?;
+                machine.stack.push(Value::Scalar(i64::from(v == 0)));
+            }
+            Opcode::BitNot => {
+                let v = pop_scalar(&mut machine.stack)?;
+                machine.stack.push(Value::Scalar(!v));
+            }
+            Opcode::BitAnd => binop_scalar(&mut machine.stack, |a, b| a & b)?,
+            Opcode::BitOr => binop_scalar(&mut machine.stack, |a, b| a | b)?,
+            Opcode::BitXor => binop_scalar(&mut machine.stack, |a, b| a ^ b)?,
+            Opcode::Shl => binop_scalar(&mut machine.stack, |a, b| a.wrapping_shl(b as u32))?,
+            Opcode::Shr => binop_scalar(&mut machine.stack, |a, b| a.wrapping_shr(b as u32))?,
+            Opcode::Ne => binop_scalar(&mut machine.stack, |a, b| i64::from(a != b))?,
+            Opcode::Le => binop_scalar(&mut machine.stack, |a, b| i64::from(a <= b))?,
+            Opcode::Ge => binop_scalar(&mut machine.stack, |a, b| i64::from(a >= b))?,
+            Opcode::MakeTuple => {
+                let arity = inst.operands.first().copied().unwrap_or(0) as usize;
+                let mut elems = Vec::with_capacity(arity);
+                for _ in 0..arity {
+                    elems.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
+                }
+                elems.reverse();
+                let handle = machine.push_aggregate(Aggregate::Tuple { elems });
+                machine.stack.push(handle);
+            }
+            Opcode::MakeArray => {
+                let len = inst.operands.first().copied().unwrap_or(0) as usize;
+                let mut elems = Vec::with_capacity(len);
+                for _ in 0..len {
+                    elems.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
+                }
+                elems.reverse();
+                let handle = machine.push_aggregate(Aggregate::Array { elems });
+                machine.stack.push(handle);
+            }
+            Opcode::Index => {
+                let index = pop_scalar(&mut machine.stack)? as usize;
+                let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
+                let value = match machine.aggregate(handle) {
+                    Some(Aggregate::Tuple { elems }) | Some(Aggregate::Array { elems }) => {
+                        elems.get(index).copied().ok_or(VmError::FieldOutOfRange)?
+                    }
+                    Some(Aggregate::Struct { .. }) | Some(Aggregate::Enum { .. }) => {
+                        return Err(VmError::InvalidAggregate);
+                    }
+                    None => return Err(VmError::InvalidAggregate),
+                };
+                machine.stack.push(value);
+            }
+            Opcode::Trap => {
+                let kind = inst.operands.first().copied().unwrap_or(0);
+                if kind == 0 {
+                    return Err(VmError::GivenMismatch);
+                }
+                return Err(VmError::UnsupportedOpcode(inst.opcode.as_u8()));
             }
         }
     }
@@ -266,4 +347,43 @@ fn binop_div(stack: &mut Vec<Value>) -> Result<(), VmError> {
     }
     stack.push(Value::Scalar(a / b));
     Ok(())
+}
+
+fn binop_mod(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let b = pop_scalar(stack)?;
+    let a = pop_scalar(stack)?;
+    if b == 0 {
+        return Err(VmError::DivisionByZero);
+    }
+    stack.push(Value::Scalar(a % b));
+    Ok(())
+}
+
+fn binop_pow(stack: &mut Vec<Value>) -> Result<(), VmError> {
+    let exp = pop_scalar(stack)?;
+    let base = pop_scalar(stack)?;
+    stack.push(Value::Scalar(int_pow(base, exp)));
+    Ok(())
+}
+
+fn int_pow(base: i64, exp: i64) -> i64 {
+    if exp < 0 {
+        return 0;
+    }
+    if exp == 0 {
+        return 1;
+    }
+    let mut result = 1i64;
+    let mut b = base;
+    let mut e = exp;
+    while e > 0 {
+        if e & 1 != 0 {
+            result = result.saturating_mul(b);
+        }
+        e >>= 1;
+        if e > 0 {
+            b = b.saturating_mul(b);
+        }
+    }
+    result
 }

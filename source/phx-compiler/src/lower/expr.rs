@@ -13,7 +13,7 @@ use crate::lower::ctx::{
     slot_for_symbol, struct_def_by_name, unit_ty,
 };
 use crate::resolver::DefId;
-use crate::typeck::{LocalSlot, TypeId, VariantKind};
+use crate::typeck::{LocalSlot, TypeId, VariantKind, primitive_kind_for_type};
 
 /// Lowers `expr` so its value is on the implicit stack.
 pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
@@ -37,14 +37,31 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
             for item in items {
                 lower_expr(ctx, item);
             }
+            let arity = u32::try_from(items.len()).unwrap_or(u32::MAX);
+            ctx.emit(IrInst::MakeTuple { arity });
         }
         Expr::Array(items) => {
             for item in items {
                 lower_expr(ctx, item);
             }
+            let len = u32::try_from(items.len()).unwrap_or(u32::MAX);
+            ctx.emit(IrInst::MakeArray { len });
         }
-        Expr::Unary { operand, .. } => {
+        Expr::Unary { op, operand } => {
+            use phx_syntax::ast::expr::UnaryOp;
             lower_expr(ctx, operand);
+            match op {
+                UnaryOp::Neg => {
+                    ctx.emit(IrInst::Neg { result: result_ty });
+                }
+                UnaryOp::Not => {
+                    ctx.emit(IrInst::Not { result: result_ty });
+                }
+                UnaryOp::BitNot => {
+                    ctx.emit(IrInst::BitNot { result: result_ty });
+                }
+                _ => {}
+            }
         }
         Expr::Binary { op, left, right } => {
             lower_binary(ctx, *op, left, right, result_ty);
@@ -53,7 +70,25 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
             lower_assign_expr(ctx, target, value);
         }
         Expr::Cast { expr, .. } => {
+            let from_id = crate::typeck::ExprId::from_raw(ctx.next_expr);
+            let from_ty = ctx
+                .typed
+                .expr_types
+                .get(&from_id)
+                .copied()
+                .unwrap_or(result_ty);
             lower_expr(ctx, expr);
+            if from_ty != result_ty {
+                if let (Some(from_k), Some(to_k)) = (
+                    primitive_kind_for_type(&ctx.typed.types, from_ty),
+                    primitive_kind_for_type(&ctx.typed.types, result_ty),
+                ) {
+                    ctx.emit(IrInst::Cast {
+                        from_kind: from_k.as_u8(),
+                        to_kind: to_k.as_u8(),
+                    });
+                }
+            }
         }
         Expr::Postfix { base, ops } => lower_postfix(ctx, base, ops, result_ty),
         Expr::If {
@@ -98,7 +133,8 @@ fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
 }
 
 fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
-    if let Some(slot) = slot_for_symbol(ctx.layout, ident.symbol) {
+    let symbol = ident.symbol;
+    if let Some(slot) = slot_for_symbol(ctx.layout, symbol) {
         ctx.emit(IrInst::LoadLocal { slot, ty });
     }
 }
@@ -128,10 +164,10 @@ fn lower_binary(
             });
         }
         BinOp::Ge => {
-            lower_expr(ctx, right);
             lower_expr(ctx, left);
+            lower_expr(ctx, right);
             ctx.emit(IrInst::BinOp {
-                op: IrBinOp::Lt,
+                op: IrBinOp::Ge,
                 result: result_ty,
             });
         }
@@ -139,7 +175,7 @@ fn lower_binary(
             lower_expr(ctx, left);
             lower_expr(ctx, right);
             ctx.emit(IrInst::BinOp {
-                op: IrBinOp::Lt,
+                op: IrBinOp::Le,
                 result: result_ty,
             });
         }
@@ -147,7 +183,7 @@ fn lower_binary(
             lower_expr(ctx, left);
             lower_expr(ctx, right);
             ctx.emit(IrInst::BinOp {
-                op: IrBinOp::Eq,
+                op: IrBinOp::Ne,
                 result: result_ty,
             });
         }
@@ -173,6 +209,12 @@ fn lower_binary(
         | BinOp::Pow => {
             lower_expr(ctx, left);
             lower_expr(ctx, right);
+            if let Some(ir_op) = binop_to_ir(op) {
+                ctx.emit(IrInst::BinOp {
+                    op: ir_op,
+                    result: result_ty,
+                });
+            }
         }
         _ => {
             lower_expr(ctx, left);
@@ -235,19 +277,17 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
         BinOp::Div => Some(IrBinOp::Div),
         BinOp::Eq => Some(IrBinOp::Eq),
         BinOp::Lt => Some(IrBinOp::Lt),
-        BinOp::Or
-        | BinOp::And
-        | BinOp::Gt
-        | BinOp::Ge
-        | BinOp::Le
-        | BinOp::Ne
-        | BinOp::BitOr
-        | BinOp::BitXor
-        | BinOp::BitAnd
-        | BinOp::Shl
-        | BinOp::Shr
-        | BinOp::Mod
-        | BinOp::Pow => None,
+        BinOp::Ne => Some(IrBinOp::Ne),
+        BinOp::Le => Some(IrBinOp::Le),
+        BinOp::Ge => Some(IrBinOp::Ge),
+        BinOp::Mod => Some(IrBinOp::Mod),
+        BinOp::Pow => Some(IrBinOp::Pow),
+        BinOp::BitOr => Some(IrBinOp::BitOr),
+        BinOp::BitXor => Some(IrBinOp::BitXor),
+        BinOp::BitAnd => Some(IrBinOp::BitAnd),
+        BinOp::Shl => Some(IrBinOp::Shl),
+        BinOp::Shr => Some(IrBinOp::Shr),
+        BinOp::Or | BinOp::And | BinOp::Gt => None,
         _ => None,
     }
 }
@@ -328,12 +368,14 @@ fn lower_postfix_inner(
             }
             PostfixOp::Method { name, args, .. } => {
                 if let Some(type_def) = named_def_for_ty(ctx.typed, receiver_ty) {
-                    if let Some(&callee) = ctx
+                    let callee = ctx
                         .typed
                         .layout
                         .inherent_methods
                         .get(&(type_def, name.symbol))
-                    {
+                        .copied()
+                        .or_else(|| find_trait_method(ctx, type_def, name.symbol));
+                    if let Some(callee) = callee {
                         for arg in args {
                             lower_expr(ctx, arg);
                         }
@@ -372,10 +414,29 @@ fn lower_postfix_inner(
             }
             PostfixOp::Index(idx) => {
                 lower_expr(ctx, idx);
+                ctx.emit(IrInst::Index { result: result_ty });
             }
             PostfixOp::Try => {}
             _ => {}
         }
+    }
+}
+
+fn find_trait_method(ctx: &LowerCtx<'_>, type_def: DefId, method: Symbol) -> Option<DefId> {
+    let mut matches: Vec<DefId> = ctx
+        .typed
+        .layout
+        .trait_methods
+        .iter()
+        .filter(|((t, _, m), _)| *t == type_def && *m == method)
+        .map(|(_, f)| *f)
+        .collect();
+    matches.sort_by_key(|d| d.index());
+    matches.dedup();
+    if matches.len() == 1 {
+        Some(matches[0])
+    } else {
+        None
     }
 }
 
@@ -588,7 +649,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
     ctx.set_current(merge_id);
 }
 
-fn emit_arm_condition(
+pub(crate) fn emit_arm_condition(
     ctx: &mut LowerCtx<'_>,
     pat: &Pattern,
     temp: LocalSlot,
@@ -676,7 +737,7 @@ fn find_enum_variant_by_name(ctx: &LowerCtx<'_>, name: Symbol) -> Option<(u32, u
     None
 }
 
-fn bind_match_pattern(
+pub(crate) fn bind_match_pattern(
     ctx: &mut LowerCtx<'_>,
     pat: &Pattern,
     temp: LocalSlot,

@@ -32,7 +32,7 @@ impl Value {
     }
 }
 
-/// Stored struct or enum payload in the MVP arena.
+/// Stored struct, enum, tuple, or array payload in the MVP arena.
 #[derive(Debug, Clone)]
 pub enum Aggregate {
     /// User struct instance.
@@ -50,6 +50,16 @@ pub enum Aggregate {
         tag: u32,
         /// Tuple-variant payload slots (empty for unit variants).
         payload: Vec<Value>,
+    },
+    /// Tuple value `(T, U, …)`.
+    Tuple {
+        /// Element values in order.
+        elems: Vec<Value>,
+    },
+    /// Fixed-size array `[T; N]`.
+    Array {
+        /// Element values in order.
+        elems: Vec<Value>,
     },
 }
 

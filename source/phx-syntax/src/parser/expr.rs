@@ -8,7 +8,9 @@ use phx_diagnostics::ExpectedToken;
 use crate::ast::Node;
 use crate::ast::TypeName;
 use crate::ast::expr::{AssignOp, BinOp, Expr, ExprNode, PostfixOp, StructFieldInit, UnaryOp};
+use crate::ast::ident::Ident;
 use crate::ast::lit::{FloatLit, IntLit, Literal};
+use crate::intern::impl_receiver_symbol;
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
@@ -348,6 +350,15 @@ impl Parser<'_> {
                 self.bump();
                 Ok(Node::new(
                     Expr::Ident(self.intern_ident(name)),
+                    self.span_from(start),
+                ))
+            }
+            TokenKind::Keyword(Keyword::SelfLower) => {
+                self.bump();
+                Ok(Node::new(
+                    Expr::Ident(Ident {
+                        symbol: impl_receiver_symbol(),
+                    }),
                     self.span_from(start),
                 ))
             }

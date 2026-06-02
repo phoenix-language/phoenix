@@ -7,7 +7,7 @@ use std::io;
 use std::path::Path;
 
 use phx_bytecode::BytecodeModule;
-use phx_diagnostics::{DiagnosticBag, ParseError, TypeCheckBag};
+use phx_diagnostics::{DiagnosticBag, ParseError, TypeCheckBag, format_span_message};
 use phx_syntax::parse;
 
 use crate::codegen::codegen;
@@ -27,6 +27,50 @@ pub enum CompileError {
     TypeCheck(TypeCheckBag),
     /// Failed to read source from disk.
     Io(io::Error),
+}
+
+impl CompileError {
+    /// Returns a user-facing message, optionally with source carets when `source` is provided.
+    #[must_use]
+    pub fn format_with_source(&self, source: Option<&str>) -> String {
+        match self {
+            Self::Parse(e) => format_parse_error(e, source),
+            Self::Resolve(bag) => format_resolve_bag(bag, source),
+            Self::TypeCheck(bag) => format_typecheck_bag(bag, source),
+            Self::Io(e) => format!("I/O error: {e}"),
+        }
+    }
+}
+
+fn format_parse_error(e: &ParseError, source: Option<&str>) -> String {
+    if let Some(src) = source {
+        if let Some(span) = e.span() {
+            return format_span_message(src, span, &e.to_string());
+        }
+    }
+    e.to_string()
+}
+
+fn format_resolve_bag(bag: &DiagnosticBag, source: Option<&str>) -> String {
+    if let Some(src) = source {
+        if let Some(err) = bag.errors().first() {
+            if let Some(span) = err.span() {
+                return format_span_message(src, span, &err.to_string());
+            }
+        }
+    }
+    bag.to_string()
+}
+
+fn format_typecheck_bag(bag: &TypeCheckBag, source: Option<&str>) -> String {
+    if let Some(src) = source {
+        if let Some(err) = bag.errors().first() {
+            if let Some(span) = err.span() {
+                return format_span_message(src, span, &err.to_string());
+            }
+        }
+    }
+    bag.to_string()
 }
 
 impl std::fmt::Display for CompileError {

@@ -135,6 +135,45 @@ pub enum IrInst {
         /// Expected variant tag.
         variant_tag: u32,
     },
+    /// Explicit primitive cast. Stack: `[value] → [value]`
+    Cast {
+        /// Source primitive kind wire byte.
+        from_kind: u8,
+        /// Target primitive kind wire byte.
+        to_kind: u8,
+    },
+    /// Unary negate. Stack: `[a] → [-a]`
+    Neg {
+        /// Result type.
+        result: TypeId,
+    },
+    /// Logical not. Stack: `[bool] → [bool]`
+    Not {
+        /// Result type.
+        result: TypeId,
+    },
+    /// Bitwise not. Stack: `[a] → [~a]`
+    BitNot {
+        /// Result type.
+        result: TypeId,
+    },
+    /// Build tuple. Stack: `[elems…] → [agg]`
+    MakeTuple {
+        /// Element count.
+        arity: u32,
+    },
+    /// Build fixed array. Stack: `[elems…] → [agg]`
+    MakeArray {
+        /// Element count.
+        len: u32,
+    },
+    /// Index tuple or array. Stack: `[agg, index] → [elem]`
+    Index {
+        /// Element result type.
+        result: TypeId,
+    },
+    /// Runtime trap for non-exhaustive `given` / match failure.
+    TrapGivenMismatch,
 }
 
 /// Binary operators mirrored from type-checked expressions.
@@ -153,4 +192,24 @@ pub enum IrBinOp {
     Eq,
     /// `<`
     Lt,
+    /// `!=`
+    Ne,
+    /// `<=`
+    Le,
+    /// `>=`
+    Ge,
+    /// `%`
+    Mod,
+    /// `**`
+    Pow,
+    /// `&`
+    BitAnd,
+    /// `|`
+    BitOr,
+    /// `^`
+    BitXor,
+    /// `<<`
+    Shl,
+    /// `>>`
+    Shr,
 }

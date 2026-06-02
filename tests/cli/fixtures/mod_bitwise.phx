@@ -1,0 +1,8 @@
+main :: () => {
+    const a: s32 = 10;
+    const b: s32 = 3;
+    const rem: s32 = a % b;
+    const masked: s32 = a & 7;
+    const neg: s32 = -a;
+    const _ = rem + masked + neg;
+};

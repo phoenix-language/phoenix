@@ -1,0 +1,21 @@
+PartialEq :: trait {
+    eq :: (self: Point, other: Point) => bool;
+};
+
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+Point :: impl for PartialEq {
+    eq :: (self: Point, other: Point) => bool {
+        self.x == other.x && self.y == other.y
+    };
+};
+
+main :: () => {
+    var p: Point = Point { x: 1, y: 2 };
+    var q: Point = Point { x: 1, y: 2 };
+    const same: bool = p.eq(q);
+    const _ = same;
+};

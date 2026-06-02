@@ -24,6 +24,12 @@ impl Symbol {
     }
 }
 
+/// Synthetic symbol for implicit `self` receiver parameters in impl methods.
+#[must_use]
+pub const fn impl_receiver_symbol() -> Symbol {
+    Symbol::from_raw(0x8000_0000)
+}
+
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "sym#{}", self.0)

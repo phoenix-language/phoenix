@@ -3,6 +3,7 @@
 //! Portable output of the compiler; consumed by [`phx_vm`] after the verifier pass.
 //! Format contract: `docs/design/features/vm-linear.md`.
 
+mod cast;
 mod const_pool;
 mod function;
 mod header;
@@ -14,6 +15,7 @@ mod stack_effect;
 mod types;
 mod verify;
 
+pub use cast::PrimitiveKind;
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
 pub use function::{FunctionRecord, FunctionTable};
 pub use header::{FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};

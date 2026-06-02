@@ -1,11 +1,15 @@
 //! Lower statements and blocks to IR control flow.
 
 use phx_syntax::ast::expr::Expr;
+use phx_syntax::ast::pat::PatternNode;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 
 use crate::ir::IrInst;
 use crate::lower::ctx::{LoopLabels, LowerCtx, unit_ty};
-use crate::lower::expr::{block_ends_with_unconditional_jump, lower_assign_expr, lower_expr};
+use crate::lower::expr::{
+    bind_match_pattern, block_ends_with_unconditional_jump, emit_arm_condition, lower_assign_expr,
+    lower_expr,
+};
 use crate::typeck::TypeId;
 
 /// Lowers `block` for its trailing value (expression body or last item).
@@ -46,16 +50,59 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
         Stmt::While { cond, body } => lower_while(ctx, cond, &body.inner),
         Stmt::Loop(body) => lower_loop(ctx, &body.inner),
         Stmt::Given {
-            scrutinee, body, ..
-        } => {
-            lower_expr(ctx, scrutinee);
-            lower_block_value(ctx, &body.inner);
-        }
+            pattern,
+            scrutinee,
+            body,
+            ..
+        } => lower_given(ctx, pattern, scrutinee, &body.inner),
         Stmt::Unsafe(body) => lower_block_value(ctx, &body.inner),
         Stmt::Break(expr) => lower_break(ctx, expr.as_ref()),
         Stmt::Continue => lower_continue(ctx),
         _ => {}
     }
+}
+
+/// Lowers `given pat = scrutinee { body }` as a single-arm match with trap on mismatch.
+fn lower_given(
+    ctx: &mut LowerCtx<'_>,
+    pattern: &PatternNode,
+    scrutinee: &phx_syntax::ast::ExprNode,
+    body: &Block,
+) {
+    let temp = ctx.next_match_temp();
+    let temp_ty = ctx
+        .layout
+        .bindings
+        .iter()
+        .find(|b| b.slot == temp)
+        .map(|b| b.ty)
+        .unwrap_or_else(|| unit_ty(ctx.typed));
+
+    lower_expr(ctx, scrutinee);
+    ctx.emit(IrInst::StoreLocal {
+        slot: temp,
+        ty: temp_ty,
+    });
+
+    let test_id = ctx.fresh_block();
+    let body_id = ctx.fresh_block();
+    let fail_id = ctx.fresh_block();
+    let after_id = ctx.fresh_block();
+
+    ctx.emit(IrInst::Jump { target: test_id });
+
+    ctx.set_current(test_id);
+    emit_arm_condition(ctx, &pattern.inner, temp, temp_ty, body_id, fail_id);
+
+    ctx.set_current(body_id);
+    bind_match_pattern(ctx, &pattern.inner, temp, temp_ty, false);
+    lower_block_value(ctx, body);
+    ctx.emit(IrInst::Jump { target: after_id });
+
+    ctx.set_current(fail_id);
+    ctx.emit(IrInst::TrapGivenMismatch);
+
+    ctx.set_current(after_id);
 }
 
 /// `while (cond) { body }` — header tests `cond`, body jumps back to header.

@@ -3,15 +3,16 @@
 //! Subcommands:
 //! - `help` — usage
 //! - `check <file>` — parse, resolve, and type-check
+//! - `compile <file> -o <out>` — emit verified PHX0 bytecode
 //! - `run <file>` — compile, verify bytecode, execute `main`
 
 use std::env;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use phx_bytecode::verify;
-use phx_compiler::{check_file, compile_to_module};
-use phx_vm::run;
+use phx_compiler::{CompileError, check_file, compile_to_module};
 
 fn print_usage() {
     eprintln!(
@@ -19,9 +20,18 @@ fn print_usage() {
          \n\
          usage:\n\
            phx help\n\
-           phx check <file.phx>   type-check only\n\
-           phx run <file.phx>     compile, verify bytecode, execute main"
+           phx check <file.phx>              type-check only\n\
+           phx compile <file.phx> -o <out>   emit PHX0 bytecode\n\
+           phx run <file.phx>                compile, verify bytecode, execute main"
     );
+}
+
+fn read_source(path: &Path) -> Result<String, CompileError> {
+    fs::read_to_string(path).map_err(CompileError::Io)
+}
+
+fn report_compile_error(err: &CompileError, source: Option<&str>) {
+    eprintln!("{}", err.format_with_source(source));
 }
 
 fn main() {
@@ -48,10 +58,50 @@ fn main() {
                 print_usage();
                 process::exit(1);
             }
-            match check_file(Path::new(&path)) {
+            let path = Path::new(&path);
+            let source = read_source(path).ok();
+            match check_file(path) {
                 Ok(_unit) => {}
                 Err(e) => {
-                    eprintln!("{e}");
+                    report_compile_error(&e, source.as_deref());
+                    process::exit(1);
+                }
+            }
+        }
+        "compile" => {
+            let Some(path) = args.next() else {
+                print_usage();
+                process::exit(1);
+            };
+            let mut out_path: Option<PathBuf> = None;
+            while let Some(arg) = args.next() {
+                if arg == "-o" {
+                    out_path = args.next().map(PathBuf::from);
+                } else {
+                    print_usage();
+                    process::exit(1);
+                }
+            }
+            let Some(out) = out_path else {
+                eprintln!("compile requires -o <output.phx0>");
+                process::exit(1);
+            };
+            let path = Path::new(&path);
+            let source = read_source(path).ok();
+            match compile_to_module(path) {
+                Ok(module) => {
+                    if let Err(e) = verify(&module) {
+                        eprintln!("verify error: {e}");
+                        process::exit(1);
+                    }
+                    let bytes = module.encode();
+                    if let Err(e) = fs::write(&out, bytes) {
+                        eprintln!("I/O error: {e}");
+                        process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    report_compile_error(&e, source.as_deref());
                     process::exit(1);
                 }
             }
@@ -66,19 +116,20 @@ fn main() {
                 process::exit(1);
             }
             let path = Path::new(&path);
+            let source = read_source(path).ok();
             match compile_to_module(path) {
                 Ok(module) => {
                     if let Err(e) = verify(&module) {
                         eprintln!("verify error: {e}");
                         process::exit(1);
                     }
-                    if let Err(e) = run(&module) {
+                    if let Err(e) = phx_vm::run(&module) {
                         eprintln!("runtime error: {e}");
                         process::exit(1);
                     }
                 }
                 Err(e) => {
-                    eprintln!("{e}");
+                    report_compile_error(&e, source.as_deref());
                     process::exit(1);
                 }
             }

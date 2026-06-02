@@ -9,15 +9,15 @@ pub enum StackEffectError {
     Underflow,
     /// [`Opcode::Call`] requires callee arity.
     MissingCallArity,
-    /// [`Opcode::MakeStruct`] / [`Opcode::MakeEnum`] require field/payload count.
+    /// [`Opcode::MakeStruct`] / [`Opcode::MakeEnum`] / tuple/array require element count.
     MissingFieldCount,
 }
 
 /// Applies MVP stack effect for `opcode` to `depth`.
 ///
 /// For [`Opcode::Call`], `call_arity` must be `Some(callee arity)`.
-/// For [`Opcode::MakeStruct`] / [`Opcode::MakeEnum`], `field_count` is the number of
-/// values popped from the stack (fields or payload slots).
+/// For [`Opcode::MakeStruct`] / [`Opcode::MakeEnum`] / [`Opcode::MakeTuple`] /
+/// [`Opcode::MakeArray`], `field_count` is the number of values popped from the stack.
 ///
 /// # Errors
 ///
@@ -37,8 +37,18 @@ pub fn apply_stack_effect(
         | Opcode::Sub
         | Opcode::Mul
         | Opcode::Div
+        | Opcode::Mod
+        | Opcode::Pow
         | Opcode::Eq
         | Opcode::Lt
+        | Opcode::Ne
+        | Opcode::Le
+        | Opcode::Ge
+        | Opcode::BitAnd
+        | Opcode::BitOr
+        | Opcode::BitXor
+        | Opcode::Shl
+        | Opcode::Shr
         | Opcode::JumpIfTrue
         | Opcode::JumpIfFalse
         | Opcode::Pop => {
@@ -46,6 +56,13 @@ pub fn apply_stack_effect(
                 return Err(StackEffectError::Underflow);
             }
             *depth -= 1;
+        }
+        Opcode::Index => {
+            if *depth < 2 {
+                return Err(StackEffectError::Underflow);
+            }
+            *depth -= 2;
+            *depth += 1;
         }
         Opcode::Call => {
             let arity = u32::from(call_arity.ok_or(StackEffectError::MissingCallArity)?);
@@ -55,7 +72,7 @@ pub fn apply_stack_effect(
             *depth -= arity;
             *depth += 1;
         }
-        Opcode::MakeStruct | Opcode::MakeEnum => {
+        Opcode::MakeStruct | Opcode::MakeEnum | Opcode::MakeTuple | Opcode::MakeArray => {
             let n = field_count.ok_or(StackEffectError::MissingFieldCount)?;
             if *depth < n {
                 return Err(StackEffectError::Underflow);
@@ -74,7 +91,8 @@ pub fn apply_stack_effect(
             }
             *depth -= 1;
         }
-        Opcode::Jump | Opcode::Return => {}
+        Opcode::Cast | Opcode::Neg | Opcode::Not | Opcode::BitNot => {}
+        Opcode::Jump | Opcode::Return | Opcode::Trap => {}
     }
     Ok(())
 }

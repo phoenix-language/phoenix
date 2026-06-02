@@ -14,7 +14,6 @@
 )]
 
 use phx_diagnostics::{InvalidMainReason, ResolveError, Span};
-use phx_syntax::Symbol;
 use phx_syntax::ast::decl::{
     Function, FunctionSig, Param, StructBody, TopLevelDecl, TraitItem, Variant,
 };
@@ -24,6 +23,7 @@ use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::{GenericParam, Type};
 use phx_syntax::ast::{BlockNode, ExprNode, Node, PatternNode};
+use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::Resolver;
 use super::def_id::DefKind;
@@ -135,11 +135,11 @@ impl Resolver<'_> {
                 self.scopes.push();
                 self.resolve_generics(generics);
                 for member in members {
-                    self.resolve_function(member);
+                    self.resolve_function(member, true);
                 }
                 self.scopes.pop();
             }
-            TopLevelDecl::Function(f) => self.resolve_function(f),
+            TopLevelDecl::Function(f) => self.resolve_function(f, false),
             TopLevelDecl::Const { ty, init, .. } => {
                 if let Some(t) = ty {
                     self.resolve_type_node(t);
@@ -213,9 +213,13 @@ impl Resolver<'_> {
         }
     }
 
-    fn resolve_function(&mut self, f: &Function) {
+    fn resolve_function(&mut self, f: &Function, in_impl: bool) {
         self.scopes.push();
         self.resolve_generics(&f.generics);
+        let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
+        if in_impl && !has_receiver {
+            self.define_value(impl_receiver_symbol(), Span::new(0, 0), DefKind::Param);
+        }
         self.resolve_params(&f.params);
         if let Some(ret) = &f.ret {
             self.resolve_type_node(ret);
@@ -241,6 +245,7 @@ impl Resolver<'_> {
         for param in params {
             match param {
                 Param::Receiver { ty, .. } => {
+                    self.define_value(impl_receiver_symbol(), Span::new(0, 0), DefKind::Param);
                     if let Some(t) = ty {
                         self.resolve_type_node(t);
                     }
@@ -510,6 +515,8 @@ impl Resolver<'_> {
                 for field in fields {
                     if let Some(p) = &field.pattern {
                         self.resolve_pattern_node(p);
+                    } else {
+                        self.define_value(field.name.symbol, span, DefKind::Local);
                     }
                 }
             }

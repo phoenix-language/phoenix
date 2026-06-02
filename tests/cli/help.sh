@@ -16,8 +16,8 @@ if [[ ! -x "${PHX_BIN}" ]]; then
 fi
 
 output="$("${PHX_BIN}" help 2>&1)" || true
-if [[ "${output}" != *"phx check"* ]] || [[ "${output}" != *"phx run"* ]]; then
-  echo "phx help should mention check and run subcommands" >&2
+if [[ "${output}" != *"phx check"* ]] || [[ "${output}" != *"phx run"* ]] || [[ "${output}" != *"phx compile"* ]]; then
+  echo "phx help should mention check, compile, and run subcommands" >&2
   echo "got: ${output}" >&2
   exit 1
 fi

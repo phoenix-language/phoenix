@@ -17,12 +17,14 @@ mod layout;
 mod lower_ty;
 mod ops;
 mod ownership;
+mod primitive;
 mod types;
 mod unify;
 
 pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind, VariantMeta};
+pub use primitive::{keyword_to_primitive_kind, primitive_kind_for_type};
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::ResolvedProgram;
