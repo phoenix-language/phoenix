@@ -12,7 +12,7 @@ fn codegen_sample_round_trip_and_verify() {
     let unit = compile_source(source, Some(Path::new("sample.phx")))
         .unwrap_or_else(|e| panic!("compile: {e}"));
     let ir = lower(&unit.typed);
-    let module = codegen(&ir, &unit.typed.layout);
+    let module = codegen(&ir, &unit.typed);
 
     assert_eq!(module.functions.functions.len(), 2);
     assert!(!module.code.is_empty());
@@ -48,13 +48,18 @@ fn codegen_sample_round_trip_and_verify() {
 fn codegen_constants_include_sample_literals() {
     let source = include_str!("../../../tests/cli/fixtures/sample.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed), &unit.typed.layout);
+    let module = codegen(&lower(&unit.typed), &unit.typed);
 
     let mut has_ten = false;
     let mut has_two = false;
     for entry in &module.constants.entries {
-        if entry.tag == ConstTag::SignedInt && entry.payload.len() >= 8 {
-            let v = i64::from_le_bytes(entry.payload[0..8].try_into().unwrap());
+        if entry.tag == ConstTag::SignedInt {
+            let v = match entry.payload.len() {
+                1 => i64::from(i8::from_ne_bytes([entry.payload[0]])),
+                4 => i64::from(i32::from_le_bytes(entry.payload[0..4].try_into().unwrap())),
+                8 => i64::from_le_bytes(entry.payload[0..8].try_into().unwrap()),
+                _ => continue,
+            };
             if v == 10 {
                 has_ten = true;
             }
@@ -71,7 +76,7 @@ fn continue_program_runs_on_vm() {
     let source =
         "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed), &unit.typed.layout);
+    let module = codegen(&lower(&unit.typed), &unit.typed);
     verify(&module).expect("verify continue program");
 }
 
@@ -129,7 +134,7 @@ fn lower_match_emits_eq_and_jump_if() {
 fn codegen_enum_match_verifies() {
     let source = include_str!("../../../tests/cli/fixtures/enum_match.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed), &unit.typed.layout);
+    let module = codegen(&lower(&unit.typed), &unit.typed);
     verify(&module).expect("enum_match bytecode should verify");
 }
 
@@ -152,7 +157,7 @@ fn codegen_struct_point_emits_make_struct() {
         .flat_map(|b| &b.insts)
         .any(|i| matches!(i, IrInst::GetField { .. }));
     assert!(has_get, "field read should emit GetField");
-    let module = codegen(&ir, &unit.typed.layout);
+    let module = codegen(&ir, &unit.typed);
     verify(&module).expect("struct_point bytecode should verify");
 }
 

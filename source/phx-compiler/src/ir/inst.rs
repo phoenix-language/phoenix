@@ -50,6 +50,8 @@ pub enum IrInst {
         index: u32,
         /// Result type.
         ty: TypeId,
+        /// Wire [`phx_bytecode::PrimitiveKind`] for scalar payloads.
+        prim_kind: u8,
     },
     /// Load local slot. Stack: `[] → [value]`
     LoadLocal {
@@ -57,6 +59,8 @@ pub enum IrInst {
         slot: LocalSlot,
         /// Slot type.
         ty: TypeId,
+        /// Wire primitive kind when scalar.
+        prim_kind: u8,
     },
     /// Pop value and store to local. Stack: `[value] → []`
     StoreLocal {
@@ -64,6 +68,8 @@ pub enum IrInst {
         slot: LocalSlot,
         /// Expected type.
         ty: TypeId,
+        /// Wire primitive kind when scalar.
+        prim_kind: u8,
     },
     /// Pop two values, push result. Stack: `[a, b] → [result]`
     BinOp {
@@ -71,6 +77,8 @@ pub enum IrInst {
         op: IrBinOp,
         /// Result type.
         result: TypeId,
+        /// Operand primitive kind.
+        prim_kind: u8,
     },
     /// Pop operands, call function. Stack: `[args…] → [ret]`
     Call {
@@ -146,16 +154,22 @@ pub enum IrInst {
     Neg {
         /// Result type.
         result: TypeId,
+        /// Operand primitive kind.
+        prim_kind: u8,
     },
     /// Logical not. Stack: `[bool] → [bool]`
     Not {
         /// Result type.
         result: TypeId,
+        /// Operand primitive kind (`bool`).
+        prim_kind: u8,
     },
     /// Bitwise not. Stack: `[a] → [~a]`
     BitNot {
         /// Result type.
         result: TypeId,
+        /// Operand primitive kind.
+        prim_kind: u8,
     },
     /// Build tuple. Stack: `[elems…] → [agg]`
     MakeTuple {
@@ -176,12 +190,22 @@ pub enum IrInst {
     TrapGivenMismatch,
     /// Load primitive through raw address. Stack: `[addr] → [value]`
     PtrLoad {
-        /// Load width in bytes.
-        byte_size: u8,
+        /// Result primitive wire kind.
+        prim_kind: u8,
         /// `1` = signed integer load, `0` = unsigned/float.
         signed: u8,
         /// Result type.
         result: TypeId,
+    },
+    /// Push address of local slot. Stack: `[] → [ptr]`
+    AddressOfLocal {
+        /// Local slot index.
+        slot: LocalSlot,
+    },
+    /// Build slice from array aggregate. Stack: `[array] → [slice]`
+    MakeSlice {
+        /// Element primitive wire kind (or `0xFF` for aggregates).
+        elem_kind: u8,
     },
 }
 

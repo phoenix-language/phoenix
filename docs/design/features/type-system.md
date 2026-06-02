@@ -53,6 +53,17 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 - Slices/views: `[T]`
 - Tuples: `(T1, T2, ...)`
 - Unit: `()`
+
+### Runtime storage (MVP VM)
+
+Each numeric primitive occupies **its declared width** in constants, local slots, and on the operand stack. There is no shared `i64` lane: `s32` values are 4-byte cells, `s128`/`u128` are 16-byte cells, and binary operators require **identical** primitive kinds unless an explicit `expr as Type` cast appears in source.
+
+`bool` is a 1-byte cell, not an integer alias. Raw pointers and borrow references are `u64` addresses at runtime; MVP does not enforce borrow exclusivity (see [ownership.md](ownership.md)).
+
+Byte string literals `b"…"` have type `[u8; N]` and lower to a fixed array of `u8` elements.
+
+Fixed arrays `[T; N]` may be explicitly cast to slices `[T]`; slice values are `(ptr, len)` views over existing array storage (no heap allocation in MVP).
+
 ---
 
 ## Deterministic MVP type rules

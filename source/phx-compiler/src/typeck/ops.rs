@@ -116,7 +116,17 @@ pub fn check_unary(
                 None
             }
         }
-        phx_syntax::ast::expr::UnaryOp::Ref | phx_syntax::ast::expr::UnaryOp::RefMut | _ => None,
+        phx_syntax::ast::expr::UnaryOp::Ref | phx_syntax::ast::expr::UnaryOp::RefMut => {
+            if matches!(ty, Ty::Named { .. } | Ty::Primitive(_) | Ty::Array { .. }) {
+                Some(types.intern(&Ty::Ref {
+                    mut_: matches!(op, phx_syntax::ast::expr::UnaryOp::RefMut),
+                    inner: operand,
+                }))
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -127,6 +137,7 @@ pub fn check_cast(types: &TypeInterner, from: TypeId, to: TypeId) -> bool {
     let t = types.get(to);
     match (f, t) {
         (Ty::Primitive(a), Ty::Primitive(b)) => primitive_cast_allowed(*a, *b),
+        (Ty::Array { elem, .. }, Ty::Slice(slice_elem)) => *elem == *slice_elem,
         _ => from == to,
     }
 }

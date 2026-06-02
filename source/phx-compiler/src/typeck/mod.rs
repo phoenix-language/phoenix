@@ -26,6 +26,7 @@ pub use check::type_check;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind, VariantMeta};
 pub use primitive::{
     keyword_to_primitive_kind, primitive_byte_size, primitive_kind_for_type, primitive_load_signed,
+    slot_kind_for_binding,
 };
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 

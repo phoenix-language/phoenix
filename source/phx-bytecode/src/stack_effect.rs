@@ -92,6 +92,14 @@ pub fn apply_stack_effect(
             *depth -= 1;
         }
         Opcode::Cast | Opcode::Neg | Opcode::Not | Opcode::BitNot => {}
+        Opcode::MakeSlice => {
+            if *depth == 0 {
+                return Err(StackEffectError::Underflow);
+            }
+        }
+        Opcode::AddressOfLocal => {
+            *depth = depth.saturating_add(1);
+        }
         Opcode::Alloc => {
             *depth = depth.saturating_add(1);
         }

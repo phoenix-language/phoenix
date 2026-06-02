@@ -1,6 +1,6 @@
 //! Call frames, operand stack, and aggregate storage.
 
-use phx_bytecode::ScalarValue;
+use phx_bytecode::{LocalLayoutTable, PrimitiveKind, ScalarValue};
 
 /// Runtime value: scalar primitive or handle into the aggregate arena.
 ///
@@ -34,7 +34,7 @@ impl Value {
     }
 }
 
-/// Stored struct, enum, tuple, or array payload in the MVP arena.
+/// Stored struct, enum, tuple, array, or slice payload in the MVP arena.
 #[derive(Debug, Clone)]
 pub enum Aggregate {
     /// User struct instance.
@@ -63,6 +63,15 @@ pub enum Aggregate {
         /// Element values in order.
         elems: Vec<Value>,
     },
+    /// Slice view (`ptr`, `len`); `elem_kind` is wire [`PrimitiveKind`] or `0xFF` for aggregates.
+    Slice {
+        /// Element primitive wire kind, or aggregate tag `0xFF`.
+        elem_kind: u8,
+        /// Data pointer (heap offset, local tag, or aggregate tag).
+        ptr: u64,
+        /// Element count.
+        len: u64,
+    },
 }
 
 /// One activation record.
@@ -90,13 +99,33 @@ pub struct Machine {
 }
 
 impl Machine {
-    /// Pushes a new frame with `local_count` zeroed locals.
-    pub fn push_frame(&mut self, function_id: u32, local_count: u16) {
+    /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
+    pub fn push_frame(
+        &mut self,
+        function_id: u32,
+        local_count: u16,
+        layouts: &LocalLayoutTable,
+    ) {
         let n = usize::from(local_count);
+        let mut locals = Vec::with_capacity(n);
+        if let Some(layout) = layouts.for_function(function_id) {
+            for slot_kind in layout.slots.iter().take(n) {
+                if slot_kind.is_aggregate() {
+                    locals.push(Value::Agg(0));
+                } else if let Some(kind) = slot_kind.primitive_kind() {
+                    locals.push(Value::Scalar(ScalarValue::zero(kind)));
+                } else {
+                    locals.push(Value::Scalar(ScalarValue::zero(PrimitiveKind::S32)));
+                }
+            }
+        }
+        while locals.len() < n {
+            locals.push(Value::Scalar(ScalarValue::zero(PrimitiveKind::S32)));
+        }
         self.frames.push(Frame {
             function_id,
             pc: 0,
-            locals: vec![Value::Scalar(ScalarValue::zero_int()); n],
+            locals,
         });
     }
 
@@ -122,10 +151,49 @@ impl Machine {
         self.aggregates.get_mut(handle as usize)
     }
 
-    /// Allocates `size` zeroed bytes on the heap; returns the start offset as `i64`.
-    pub fn alloc_bytes(&mut self, size: usize) -> i64 {
+    /// Allocates `size` zeroed bytes on the heap; returns the start offset.
+    pub fn alloc_bytes(&mut self, size: usize) -> u64 {
         let start = self.heap.len();
         self.heap.resize(start.saturating_add(size), 0);
-        i64::try_from(start).unwrap_or(i64::MAX)
+        u64::try_from(start).unwrap_or(u64::MAX)
     }
+
+    /// Reads primitive bytes from local `slot` for pointer loads.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::VmError::InvalidLocalSlot`] when `slot` is out of range or not a scalar.
+    pub fn local_scalar_bytes(
+        &self,
+        frame: &Frame,
+        slot: u32,
+        kind: PrimitiveKind,
+    ) -> Result<Vec<u8>, crate::VmError> {
+        let idx = usize::try_from(slot).map_err(|_| crate::VmError::InvalidLocalSlot(slot))?;
+        let local = frame
+            .locals
+            .get(idx)
+            .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
+        let scalar = local.as_scalar().ok_or(crate::VmError::ExpectedScalar)?;
+        Ok(scalar.to_le_bytes(kind))
+    }
+
+}
+
+/// Writes primitive bytes into `frame` local `slot`.
+pub fn store_local_scalar_bytes(
+    frame: &mut Frame,
+    slot: u32,
+    kind: PrimitiveKind,
+    bytes: &[u8],
+) -> Result<(), crate::VmError> {
+    let idx = usize::try_from(slot).map_err(|_| crate::VmError::InvalidLocalSlot(slot))?;
+    let local = frame
+        .locals
+        .get_mut(idx)
+        .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
+    let decoded = ScalarValue::from_le_bytes(kind, bytes)
+        .ok_or(crate::VmError::InvalidConstPayload)?;
+    *local = Value::Scalar(decoded);
+    Ok(())
 }

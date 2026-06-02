@@ -7,13 +7,14 @@ mod const_pool;
 mod emit;
 
 use phx_bytecode::{
-    BytecodeModule, FileHeader, FunctionRecord, FunctionTable, TypeKind, TypeRecord, TypeTable,
+    BytecodeModule, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable, LocalLayoutTable,
+    LocalSlotKind, TypeKind, TypeRecord, TypeTable,
 };
 use std::collections::HashMap;
 
 use crate::ir::IrModule;
 use crate::resolver::DefId;
-use crate::typeck::ProgramLayout;
+use crate::typeck::{ProgramLayout, TypedProgram, slot_kind_for_binding};
 
 pub use const_pool::ConstPoolBuilder;
 
@@ -65,7 +66,8 @@ pub fn build_type_table(layout: &ProgramLayout) -> TypeTable {
 
 /// Lowers `ir` to a [`BytecodeModule`] ready for [`phx_bytecode::verify`] and the VM.
 #[must_use]
-pub fn codegen(ir: &IrModule, layout: &ProgramLayout) -> BytecodeModule {
+pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
+    let layout = &typed.layout;
     let def_to_fn: HashMap<DefId, u32> =
         ir.functions.iter().map(|f| (f.def, f.id.index())).collect();
     let fn_arity: HashMap<u32, u16> = ir
@@ -108,15 +110,36 @@ pub fn codegen(ir: &IrModule, layout: &ProgramLayout) -> BytecodeModule {
         .unwrap_or(0);
 
     let constants = pool.finish();
+    let local_layouts = build_local_layouts(ir, typed);
     BytecodeModule {
         header: FileHeader {
             entry_function_id,
-            section_count: 4,
-            ..FileHeader::new(4, entry_function_id)
+            section_count: 5,
+            ..FileHeader::new(5, entry_function_id)
         },
         constants,
         types: build_type_table(layout),
         functions: FunctionTable { functions: records },
         code,
+        local_layouts,
     }
+}
+
+fn build_local_layouts(ir: &IrModule, typed: &TypedProgram) -> LocalLayoutTable {
+    let mut layouts = Vec::new();
+    for func in &ir.functions {
+        let Some(fl) = typed.functions.iter().find(|f| f.def == func.def) else {
+            continue;
+        };
+        let slots: Vec<LocalSlotKind> = fl
+            .bindings
+            .iter()
+            .map(|b| slot_kind_for_binding(&typed.types, b.ty))
+            .collect();
+        layouts.push(FunctionLocalLayout {
+            function_id: func.id.index(),
+            slots,
+        });
+    }
+    LocalLayoutTable { layouts }
 }

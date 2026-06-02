@@ -38,7 +38,7 @@ mod tests {
         code.extend(
             Instruction {
                 opcode: Opcode::Const,
-                operands: vec![0],
+                operands: vec![0, 2],
             }
             .encode(),
         );
@@ -51,7 +51,7 @@ mod tests {
         );
 
         let module = BytecodeModule {
-            header: FileHeader::new(4, 0),
+            header: FileHeader::new(5, 0),
             constants: ConstPool {
                 entries: vec![ConstEntry {
                     tag: ConstTag::SignedInt,
@@ -73,6 +73,7 @@ mod tests {
                 }],
             },
             code,
+            local_layouts: phx_bytecode::LocalLayoutTable::default(),
         };
         run(&module).expect("run");
     }

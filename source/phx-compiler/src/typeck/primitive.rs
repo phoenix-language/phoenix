@@ -1,6 +1,6 @@
 //! Maps typeck primitives to bytecode cast operands.
 
-use phx_bytecode::PrimitiveKind;
+use phx_bytecode::{LocalSlotKind, PrimitiveKind};
 use phx_syntax::token::Keyword;
 
 use super::types::{Ty, TypeId, TypeInterner};
@@ -63,6 +63,16 @@ pub fn primitive_load_signed(kind: PrimitiveKind) -> u8 {
         | PrimitiveKind::F32
         | PrimitiveKind::F64 => 0,
         _ => 1,
+    }
+}
+
+/// Maps a binding type to a bytecode local slot kind.
+#[must_use]
+pub fn slot_kind_for_binding(types: &TypeInterner, ty: TypeId) -> LocalSlotKind {
+    if let Some(kind) = primitive_kind_for_type(types, ty) {
+        LocalSlotKind::primitive(kind)
+    } else {
+        LocalSlotKind::aggregate()
     }
 }
 

@@ -5,7 +5,7 @@ use phx_syntax::ast::pat::PatternNode;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 
 use crate::ir::IrInst;
-use crate::lower::ctx::{LoopLabels, LowerCtx, unit_ty};
+use crate::lower::ctx::{LoopLabels, LowerCtx, prim_kind_byte, unit_ty};
 use crate::lower::expr::{
     bind_match_pattern, block_ends_with_unconditional_jump, emit_arm_condition, lower_assign_expr,
     lower_expr,
@@ -31,6 +31,7 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
                 ctx.emit(IrInst::StoreLocal {
                     slot: binding.slot,
                     ty: binding.ty,
+                    prim_kind: prim_kind_byte(ctx.typed, binding.ty),
                 });
             }
         }
@@ -82,6 +83,7 @@ fn lower_given(
     ctx.emit(IrInst::StoreLocal {
         slot: temp,
         ty: temp_ty,
+        prim_kind: prim_kind_byte(ctx.typed, temp_ty),
     });
 
     let test_id = ctx.fresh_block();

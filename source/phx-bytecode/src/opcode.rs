@@ -86,6 +86,10 @@ pub enum Opcode {
     PtrLoad = 39,
     /// Store primitive at address. Stack: `[addr, value] → []` — operands: `size`, `signed`.
     PtrStore = 40,
+    /// Build slice from array aggregate. Stack: `[array] → [slice]` — operand: element `prim_kind`.
+    MakeSlice = 41,
+    /// Push address of local slot. Stack: `[] → [ptr]` — operand: slot index.
+    AddressOfLocal = 42,
 }
 
 impl Opcode {
@@ -137,6 +141,8 @@ impl Opcode {
             38 => Ok(Self::Alloc),
             39 => Ok(Self::PtrLoad),
             40 => Ok(Self::PtrStore),
+            41 => Ok(Self::MakeSlice),
+            42 => Ok(Self::AddressOfLocal),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

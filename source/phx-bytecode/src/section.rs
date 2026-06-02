@@ -14,6 +14,8 @@ pub enum SectionKind {
     Code = 4,
     /// Debug symbols (optional).
     Symbols = 5,
+    /// Per-function local slot layout metadata.
+    LocalLayouts = 6,
 }
 
 impl SectionKind {
@@ -29,6 +31,7 @@ impl SectionKind {
             3 => Ok(Self::Functions),
             4 => Ok(Self::Code),
             5 => Ok(Self::Symbols),
+            6 => Ok(Self::LocalLayouts),
             _ => Err(SectionError::UnknownKind(tag)),
         }
     }

@@ -45,7 +45,7 @@ A credible MVP demo `.phx` should be able to:
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
 
-**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`, `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`, `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx`, `given_struct.phx`, `trait_eq.phx`.
+**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`, `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`, `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx`, `given_struct.phx`, `trait_eq.phx`, `primitives_float.phx`, `primitives_width.phx`, `primitives_i128.phx`, `byte_string.phx`, `ref_local.phx`, `deref_ptr.phx`, `slice_from_array.phx`.
 
 ---
 
@@ -132,7 +132,7 @@ A credible MVP demo `.phx` should be able to:
 | `while` / `loop` / `break` / `continue`    | done     | `typeck/check.rs`                 | `loop_depth`                                                                  | typeck tests + `control_flow.phx`                      |
 | Calls, arity, return types                 | done     | `typeck/check.rs`                 |                                                                               | `call_*` tests                                         |
 | `const` / `var` inference & assign         | done     | `typeck/check.rs`                 |                                                                               | assign tests                                           |
-| Index `[T; N]` / slice                     | partial  | `typeck/check.rs`                 | Typing only; no runtime slice value                                           | `index_array_ok`                                       |
+| Index `[T; N]` / slice                     | done     | `typeck/check.rs` + VM `Index`    | Array and slice index at runtime                                              | `array_index.phx`, `slice_from_array.phx`              |
 | Struct literals + fields                   | done     | `typeck/check.rs`, `layout.rs`    | Missing/unknown field errors; layout tables                                   | Struct lit + field read in `struct_point.phx`          |
 | Std ctors `Some`/`None`/`Ok`/`Err`         | deferred | —                                 | Lex as `TypeIdent`; resolve as unknown type until std prelude                 | `ok_ctor_unresolved_until_std`                         |
 | `Option`/`Result` types                    | deferred | —                                 | Lex as `TypeIdent` + generics; no compiler builtin                            | `result_type_unresolved_until_std`                     |
@@ -143,7 +143,7 @@ A credible MVP demo `.phx` should be able to:
 | `%` `**` bitwise shifts                    | partial  | `typeck/ops.rs`                   | Typed on numerics; **no codegen**                                             | Runtime test when VM supports                          |
 | Method calls `x.foo()`                     | partial  | `typeck/check.rs`, `lower/expr.rs` | Inherent impl dispatch; synthetic receiver param; `self.` in impl body parse gap | `struct_method.phx`                                    |
 | Trait / impl static resolution             | missing  | —                                 | Impl bodies type-checked; no trait constraint dispatch                        | `Point :: impl for Eq` call resolves to impl           |
-| Borrow `&T` / `&mut T` in types            | partial  | `typeck/lower_ty.rs`              | In type AST; no borrow checker                                                | Signatures parse+type; exclusivity post-MVP            |
+| Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
 | Raw pointers `*T`                          | partial  | `typeck/lower_ty.rs`              | Types only                                                                    | No VM `PTR_LOAD`                                       |
 | Generics on types                          | partial  | `typeck/lower_ty.rs`              | Named types + args scaffold                                                   | User generic fn typeck                                 |
 | Copyable inference                         | partial  | `typeck/builtins.rs`              | Primitives, tuples, arrays of Copyable                                        | User struct Copyable only when all fields Copyable     |
@@ -244,12 +244,12 @@ A credible MVP demo `.phx` should be able to:
 
 | Item                              | Status  | Where                        | Notes                               | Acceptance                |
 | --------------------------------- | ------- | ---------------------------- | ----------------------------------- | ------------------------- |
-| Numeric primitives (all keywords) | partial | typeck                       | Widening disallowed; MVP VM uses `s64` slots for all numeric ops | `u32` value correct in VM when implemented |
-| `bool`                            | partial | typeck + VM                  |                                     |                           |
+| Numeric primitives (all keywords) | done    | typeck + VM (`ScalarValue` width enum) | Widening disallowed; width-faithful stack/locals/consts | `primitives_width.phx`, `primitives_i128.phx` |
+| `bool`                            | done    | typeck + VM                  | 1-byte `Bool` cell, not integer alias | `match_bool.phx`          |
 | `()` unit                         | done    | typeck                       |                                     | `main :: () =>`           |
 | Tuples                            | partial | parse + typeck               | No `MAKE_TUPLE` VM                  | Tuple value in VM         |
-| Fixed arrays `[T; N]`             | partial | typeck                       | Literal typing; no heap array VM    | Index returns element     |
-| Slices `[T]`                      | partial | types only                   |                                     | Post-MVP runtime          |
+| Fixed arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
+| Slices `[T]`                      | partial | typeck + VM                  | Explicit cast from array; stack-backed only (no heap slice) | `slice_from_array.phx` |
 | Type aliases                      | partial | resolver + typeck            |                                     | Alias resolves            |
 | `struct` decl + literal           | partial | parse, typeck, partial lower | No field storage in VM              | Read `p.x` after lit      |
 | `enum` decl + ctors               | partial | parse, typeck                | No tag payload in VM                | `match` on enum tag       |

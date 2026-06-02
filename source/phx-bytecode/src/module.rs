@@ -4,6 +4,7 @@ use super::const_pool::ConstPool;
 use super::function::FunctionTable;
 use super::header::{FileHeader, HEADER_SIZE, HeaderError};
 use super::instr::Instruction;
+use super::local_layout::{LocalLayoutError, LocalLayoutTable};
 use super::section::{SectionEntry, SectionError, SectionKind};
 use super::types::TypeTable;
 
@@ -20,6 +21,8 @@ pub struct BytecodeModule {
     pub functions: FunctionTable,
     /// Raw code section bytes (instruction stream).
     pub code: Vec<u8>,
+    /// Per-function local slot layout metadata.
+    pub local_layouts: LocalLayoutTable,
 }
 
 impl BytecodeModule {
@@ -27,11 +30,12 @@ impl BytecodeModule {
     #[must_use]
     pub fn empty() -> Self {
         Self {
-            header: FileHeader::new(4, 0),
+            header: FileHeader::new(5, 0),
             constants: ConstPool::default(),
             types: TypeTable::default(),
             functions: FunctionTable::default(),
             code: Vec::new(),
+            local_layouts: LocalLayoutTable::default(),
         }
     }
 
@@ -42,8 +46,9 @@ impl BytecodeModule {
         let types = self.types.encode();
         let functions = self.functions.encode();
         let code = &self.code;
+        let local_layouts = self.local_layouts.encode();
 
-        let section_count = 4u32;
+        let section_count = 5u32;
         let table_size = usize::try_from(section_count).unwrap_or(0) * 12;
         let mut offset = HEADER_SIZE + table_size;
 
@@ -73,6 +78,13 @@ impl BytecodeModule {
             offset: u32::try_from(offset).unwrap_or(u32::MAX),
             length: u32::try_from(code.len()).unwrap_or(u32::MAX),
         };
+        offset = offset.saturating_add(code.len());
+
+        let local_layouts_entry = SectionEntry {
+            kind: SectionKind::LocalLayouts,
+            offset: u32::try_from(offset).unwrap_or(u32::MAX),
+            length: u32::try_from(local_layouts.len()).unwrap_or(u32::MAX),
+        };
 
         let header = FileHeader {
             section_count,
@@ -80,15 +92,26 @@ impl BytecodeModule {
             ..self.header
         };
 
-        let mut out = Vec::with_capacity(offset + code.len());
+        let mut out = Vec::with_capacity(
+            offset
+                .saturating_add(local_layouts.len())
+                .saturating_add(code.len()),
+        );
         out.extend_from_slice(&header.encode());
-        for entry in [constants_entry, types_entry, functions_entry, code_entry] {
+        for entry in [
+            constants_entry,
+            types_entry,
+            functions_entry,
+            code_entry,
+            local_layouts_entry,
+        ] {
             out.extend_from_slice(&entry.encode());
         }
         out.extend_from_slice(&constants);
         out.extend_from_slice(&types);
         out.extend_from_slice(&functions);
         out.extend_from_slice(code);
+        out.extend_from_slice(&local_layouts);
         out
     }
 
@@ -117,6 +140,7 @@ impl BytecodeModule {
         let mut types = TypeTable::default();
         let mut functions = FunctionTable::default();
         let mut code = Vec::new();
+        let mut local_layouts = LocalLayoutTable::default();
         for i in 0..header.section_count {
             let start = HEADER_SIZE + usize::try_from(i).unwrap_or(0).saturating_mul(12);
             let entry_bytes: &[u8; 12] = bytes[start..start + 12]
@@ -141,6 +165,10 @@ impl BytecodeModule {
                     functions = FunctionTable::decode(payload).map_err(ModuleError::Functions)?;
                 }
                 SectionKind::Code => code = payload.to_vec(),
+                SectionKind::LocalLayouts => {
+                    local_layouts =
+                        LocalLayoutTable::decode(payload).map_err(ModuleError::LocalLayouts)?;
+                }
                 SectionKind::Symbols => {}
             }
         }
@@ -150,6 +178,7 @@ impl BytecodeModule {
             types,
             functions,
             code,
+            local_layouts,
         })
     }
 
@@ -187,6 +216,8 @@ pub enum ModuleError {
     Types(super::types::TypeTableError),
     /// Functions section invalid.
     Functions(super::function::FunctionTableError),
+    /// Local layouts section invalid.
+    LocalLayouts(LocalLayoutError),
     /// Instruction stream invalid.
     Instruction(super::instr::InstrError),
 }

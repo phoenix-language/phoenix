@@ -23,6 +23,12 @@ FIXTURES=(
   given_struct.phx
   trait_eq.phx
   primitives_float.phx
+  primitives_width.phx
+  primitives_i128.phx
+  byte_string.phx
+  ref_local.phx
+  deref_ptr.phx
+  slice_from_array.phx
 )
 
 cd "${ROOT}"

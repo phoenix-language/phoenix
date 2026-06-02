@@ -9,16 +9,16 @@ use phx_syntax::ast::stmt::BlockNode;
 
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
-    LowerCtx, bool_ty, lookup_resolution, named_def_for_ty,
-    slot_for_symbol, struct_def_by_name, unit_ty,
+    LowerCtx, bool_ty, lookup_resolution, named_def_for_ty, prim_kind_byte, slot_for_symbol,
+    struct_def_by_name, unit_ty,
 };
 use crate::resolver::DefId;
 use crate::ir::IrConst;
 use crate::typeck::{
-    LocalSlot, TypeId, Ty, VariantKind, primitive_byte_size, primitive_kind_for_type,
+    LocalSlot, TypeId, Ty, VariantKind, primitive_kind_for_type,
     primitive_load_signed,
 };
-use phx_bytecode::{PrimitiveKind, ScalarValue};
+use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
 
 /// Lowers `expr` so its value is on the implicit stack.
@@ -55,21 +55,38 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
         }
         Expr::Unary { op, operand } => {
             use phx_syntax::ast::expr::UnaryOp;
+            if matches!(op, UnaryOp::Ref | UnaryOp::RefMut) {
+                if let Expr::Ident(ident) = &operand.inner {
+                    if let Some(slot) = slot_for_symbol(ctx.layout, ident.symbol) {
+                        ctx.emit(IrInst::AddressOfLocal { slot });
+                    }
+                }
+                return;
+            }
             lower_expr(ctx, operand);
             match op {
                 UnaryOp::Neg => {
-                    ctx.emit(IrInst::Neg { result: result_ty });
+                    ctx.emit(IrInst::Neg {
+                        result: result_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, result_ty),
+                    });
                 }
                 UnaryOp::Not => {
-                    ctx.emit(IrInst::Not { result: result_ty });
+                    ctx.emit(IrInst::Not {
+                        result: result_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, result_ty),
+                    });
                 }
                 UnaryOp::BitNot => {
-                    ctx.emit(IrInst::BitNot { result: result_ty });
+                    ctx.emit(IrInst::BitNot {
+                        result: result_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, result_ty),
+                    });
                 }
                 UnaryOp::Deref => {
                     if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, result_ty) {
                         ctx.emit(IrInst::PtrLoad {
-                            byte_size: primitive_byte_size(kind),
+                            prim_kind: kind.as_u8(),
                             signed: primitive_load_signed(kind),
                             result: result_ty,
                         });
@@ -94,7 +111,16 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 .unwrap_or(result_ty);
             lower_expr(ctx, expr);
             if from_ty != result_ty {
-                if let (Some(from_k), Some(to_k)) = (
+                if let (Ty::Array { elem, .. }, Ty::Slice(slice_elem)) =
+                    (ctx.typed.types.get(from_ty), ctx.typed.types.get(result_ty))
+                {
+                    if elem == slice_elem {
+                        let elem_kind = primitive_kind_for_type(&ctx.typed.types, *elem)
+                            .map(|k| k.as_u8())
+                            .unwrap_or(SLOT_KIND_AGG);
+                        ctx.emit(IrInst::MakeSlice { elem_kind });
+                    }
+                } else if let (Some(from_k), Some(to_k)) = (
                     primitive_kind_for_type(&ctx.typed.types, from_ty),
                     primitive_kind_for_type(&ctx.typed.types, result_ty),
                 ) {
@@ -140,39 +166,100 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
 fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u32> {
     match lit {
         Literal::Int(i) => {
-            let Some(to) = primitive_kind_for_type(&ctx.typed.types, ty) else {
-                return None;
-            };
+            let to = primitive_kind_for_type(&ctx.typed.types, ty)?;
             let from = if i.suffix == IntegerSuffix::Unsigned {
                 PrimitiveKind::U32
             } else {
                 PrimitiveKind::S32
             };
-            let raw = i64::try_from(i.value).unwrap_or_else(|_| {
+            let raw = i128::try_from(i.value).unwrap_or_else(|_| {
                 if i.value < 0 {
-                    i64::MIN
+                    i128::MIN
                 } else {
-                    i64::MAX
+                    i128::MAX
                 }
             });
-            let stored = PrimitiveKind::apply_cast(ScalarValue::Int(raw), from, to);
-            Some(match stored {
-                ScalarValue::Int(n) => ctx.intern_const(IrConst::Int(n)),
-                ScalarValue::Float(f) => ctx.intern_const(IrConst::Float(f)),
-            })
+            let stored = PrimitiveKind::apply_cast(
+                ScalarValue::I32(raw as i32),
+                from,
+                to,
+            );
+            let (value, kind) = scalar_to_ir_const(stored, to);
+            Some(ctx.intern_const(IrConst::Int(value, kind)))
         }
-        Literal::Float(f) => Some(ctx.intern_const(IrConst::Float(f.value))),
+        Literal::Float(f) => {
+            let kind = primitive_kind_for_type(&ctx.typed.types, ty).unwrap_or(PrimitiveKind::F64);
+            Some(ctx.intern_const(IrConst::Float(f.value, kind)))
+        }
         Literal::Bool(b) => Some(ctx.intern_const(IrConst::Bool(*b))),
-        Literal::ByteChar(_) | Literal::ByteString(_) => None,
+        Literal::ByteChar(c) => {
+            let u8_ty = primitive_kind_for_type(&ctx.typed.types, ty).unwrap_or(PrimitiveKind::U8);
+            Some(ctx.intern_const(IrConst::Int(i128::from(*c), u8_ty)))
+        }
+        Literal::ByteString(b) => Some(ctx.intern_const(IrConst::Bytes(b.clone()))),
         _ => None,
     }
 }
 
+fn scalar_to_ir_const(v: ScalarValue, kind: PrimitiveKind) -> (i128, PrimitiveKind) {
+    let n = match v {
+        ScalarValue::I8(x) => i128::from(x),
+        ScalarValue::I16(x) => i128::from(x),
+        ScalarValue::I32(x) => i128::from(x),
+        ScalarValue::I64(x) => i128::from(x),
+        ScalarValue::I128(x) => x,
+        ScalarValue::U8(x) => i128::from(x),
+        ScalarValue::U16(x) => i128::from(x),
+        ScalarValue::U32(x) => i128::from(x),
+        ScalarValue::U64(x) => i128::from(x),
+        ScalarValue::U128(x) => x as i128,
+        ScalarValue::F32(x) => return (i128::from(x as i32), kind),
+        ScalarValue::F64(x) => return (x as i128, kind),
+        ScalarValue::Bool(b) => i128::from(b),
+        ScalarValue::Ptr(p) => i128::try_from(p).unwrap_or(0),
+    };
+    (n, kind)
+}
+
+fn literal_prim_kind(ctx: &LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u8 {
+    if let Some(k) = primitive_kind_for_type(&ctx.typed.types, ty) {
+        return k.as_u8();
+    }
+    match lit {
+        Literal::Int(_) => PrimitiveKind::S32.as_u8(),
+        Literal::Float(_) => PrimitiveKind::F64.as_u8(),
+        Literal::Bool(_) => PrimitiveKind::Bool.as_u8(),
+        Literal::ByteChar(_) => PrimitiveKind::U8.as_u8(),
+        _ => SLOT_KIND_AGG,
+    }
+}
+
 fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
+    if let Literal::ByteString(b) = lit {
+        let elem_ty = match ctx.typed.types.get(ty) {
+            Ty::Array { elem, .. } => *elem,
+            _ => ty,
+        };
+        for &byte in b {
+            let idx = ctx.intern_const(IrConst::Int(i128::from(byte), PrimitiveKind::U8));
+            ctx.emit(IrInst::Const {
+                index: idx,
+                ty: elem_ty,
+                prim_kind: PrimitiveKind::U8.as_u8(),
+            });
+        }
+        let len = u32::try_from(b.len()).unwrap_or(0);
+        ctx.emit(IrInst::MakeArray { len });
+        return;
+    }
     let Some(index) = intern_literal(ctx, lit, ty) else {
         return;
     };
-    ctx.emit(IrInst::Const { index, ty });
+    ctx.emit(IrInst::Const {
+        index,
+        ty,
+        prim_kind: literal_prim_kind(ctx, lit, ty),
+    });
     if matches!(lit, Literal::Float(_))
         && matches!(
             ctx.typed.types.get(ty),
@@ -189,7 +276,11 @@ fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
 fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
     let symbol = ident.symbol;
     if let Some(slot) = slot_for_symbol(ctx.layout, symbol) {
-        ctx.emit(IrInst::LoadLocal { slot, ty });
+        ctx.emit(IrInst::LoadLocal {
+            slot,
+            ty,
+            prim_kind: prim_kind_byte(ctx.typed, ty),
+        });
     }
 }
 
@@ -215,6 +306,7 @@ fn lower_binary(
             ctx.emit(IrInst::BinOp {
                 op: IrBinOp::Lt,
                 result: result_ty,
+                prim_kind: prim_kind_byte(ctx.typed, result_ty),
             });
         }
         BinOp::Ge => {
@@ -223,6 +315,7 @@ fn lower_binary(
             ctx.emit(IrInst::BinOp {
                 op: IrBinOp::Ge,
                 result: result_ty,
+                prim_kind: prim_kind_byte(ctx.typed, result_ty),
             });
         }
         BinOp::Le => {
@@ -231,6 +324,7 @@ fn lower_binary(
             ctx.emit(IrInst::BinOp {
                 op: IrBinOp::Le,
                 result: result_ty,
+                prim_kind: prim_kind_byte(ctx.typed, result_ty),
             });
         }
         BinOp::Ne => {
@@ -239,6 +333,7 @@ fn lower_binary(
             ctx.emit(IrInst::BinOp {
                 op: IrBinOp::Ne,
                 result: result_ty,
+                prim_kind: prim_kind_byte(ctx.typed, result_ty),
             });
         }
         BinOp::Or | BinOp::And => {
@@ -251,6 +346,7 @@ fn lower_binary(
                 ctx.emit(IrInst::BinOp {
                     op: ir_op,
                     result: result_ty,
+                    prim_kind: prim_kind_byte(ctx.typed, result_ty),
                 });
             }
         }
@@ -267,6 +363,7 @@ fn lower_binary(
                 ctx.emit(IrInst::BinOp {
                     op: ir_op,
                     result: result_ty,
+                    prim_kind: prim_kind_byte(ctx.typed, result_ty),
                 });
             }
         }
@@ -309,10 +406,16 @@ fn lower_short_circuit_bool(
     }
 
     ctx.set_current(short_id);
-    let short_val = if op == BinOp::And { 0u32 } else { 1u32 };
+    let bool_ty_id = bool_ty(ctx.typed);
+    let short_val = if op == BinOp::And {
+        ctx.intern_const(IrConst::Bool(false))
+    } else {
+        ctx.intern_const(IrConst::Bool(true))
+    };
     ctx.emit(IrInst::Const {
         index: short_val,
-        ty: result_ty,
+        ty: bool_ty_id,
+        prim_kind: prim_kind_byte(ctx.typed, bool_ty_id),
     });
     ctx.emit(IrInst::Jump { target: merge_id });
 
@@ -355,6 +458,7 @@ pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value
                 ctx.emit(IrInst::StoreLocal {
                     slot: binding.slot,
                     ty: binding.ty,
+                    prim_kind: prim_kind_byte(ctx.typed, binding.ty),
                 });
             }
         }
@@ -544,6 +648,7 @@ fn store_base_local(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
         ctx.emit(IrInst::StoreLocal {
             slot: binding.slot,
             ty: binding.ty,
+            prim_kind: prim_kind_byte(ctx.typed, binding.ty),
         });
     }
 }
@@ -655,6 +760,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
     ctx.emit(IrInst::StoreLocal {
         slot: temp,
         ty: temp_ty,
+        prim_kind: prim_kind_byte(ctx.typed, temp_ty),
     });
 
     let mut test_blocks = Vec::with_capacity(arms.len());
@@ -720,6 +826,7 @@ pub(crate) fn emit_arm_condition(
                 ctx.emit(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
+                    prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                 });
                 ctx.emit(IrInst::MatchTag {
                     type_id,
@@ -737,12 +844,19 @@ pub(crate) fn emit_arm_condition(
             ctx.emit(IrInst::LoadLocal {
                 slot: temp,
                 ty: temp_ty,
+                prim_kind: prim_kind_byte(ctx.typed, temp_ty),
             });
             if let Some(index) = intern_literal(ctx, lit, temp_ty) {
-                ctx.emit(IrInst::Const { index, ty: temp_ty });
+                let bool_id = bool_ty(ctx.typed);
+                ctx.emit(IrInst::Const {
+                    index,
+                    ty: temp_ty,
+                    prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                });
                 ctx.emit(IrInst::BinOp {
                     op: IrBinOp::Eq,
-                    result: bool_ty(ctx.typed),
+                    result: bool_id,
+                    prim_kind: prim_kind_byte(ctx.typed, bool_id),
                 });
                 ctx.emit(IrInst::JumpIf {
                     then_block: body_id,
@@ -760,6 +874,7 @@ pub(crate) fn emit_arm_condition(
                 ctx.emit(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
+                    prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                 });
                 ctx.emit(IrInst::MatchTag {
                     type_id,
@@ -808,11 +923,13 @@ pub(crate) fn bind_match_pattern(
                     ctx.emit(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                     });
                 }
                 ctx.emit(IrInst::StoreLocal {
                     slot: binding.slot,
                     ty: binding.ty,
+                    prim_kind: prim_kind_byte(ctx.typed, binding.ty),
                 });
             }
         }
@@ -828,6 +945,7 @@ pub(crate) fn bind_match_pattern(
                     ctx.emit(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                     });
                     let result_ty = field_result_ty(ctx, def, field.name.symbol);
                     ctx.emit(IrInst::GetField {
@@ -841,6 +959,7 @@ pub(crate) fn bind_match_pattern(
                         ctx.emit(IrInst::StoreLocal {
                             slot: binding.slot,
                             ty: result_ty,
+                            prim_kind: prim_kind_byte(ctx.typed, result_ty),
                         });
                     }
                 }
@@ -855,6 +974,7 @@ pub(crate) fn bind_match_pattern(
                             ctx.emit(IrInst::LoadLocal {
                                 slot: temp,
                                 ty: temp_ty,
+                                prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                             });
                             let result_ty = payload
                                 .get(i)

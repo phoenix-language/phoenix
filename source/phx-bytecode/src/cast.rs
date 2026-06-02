@@ -34,12 +34,11 @@ pub enum PrimitiveKind {
     F64 = 12,
 }
 
+/// Wire tag for non-primitive local slots (aggregates).
+pub const SLOT_KIND_AGG: u8 = 0xFF;
+
 impl PrimitiveKind {
     /// Decodes a cast operand.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` for unrecognized bytes.
     #[must_use]
     pub fn from_u8(byte: u8) -> Option<Self> {
         match byte {
@@ -72,15 +71,28 @@ impl PrimitiveKind {
         matches!(self, Self::F32 | Self::F64)
     }
 
-    /// Bit width for integer kinds; `bool` is 1 bit stored as one byte.
+    /// Storage size in bytes for this primitive.
+    #[must_use]
+    pub const fn byte_size(self) -> u8 {
+        match self {
+            Self::Bool | Self::S8 | Self::U8 => 1,
+            Self::S16 | Self::U16 => 2,
+            Self::S32 | Self::U32 | Self::F32 => 4,
+            Self::S64 | Self::U64 | Self::F64 => 8,
+            Self::S128 | Self::U128 => 16,
+        }
+    }
+
+    /// Bit width for integer kinds.
     #[must_use]
     pub const fn bit_width(self) -> u32 {
-        match self {
-            Self::S8 | Self::U8 | Self::Bool => 8,
-            Self::S16 | Self::U16 => 16,
-            Self::S32 | Self::U32 | Self::F32 => 32,
-            Self::S64 | Self::U64 | Self::F64 => 64,
-            Self::S128 | Self::U128 => 128,
+        match self.byte_size() {
+            1 => 8,
+            2 => 16,
+            4 => 32,
+            8 => 64,
+            16 => 128,
+            _ => 0,
         }
     }
 
@@ -99,92 +111,71 @@ impl PrimitiveKind {
             return value;
         }
         if to == Self::Bool {
-            let n = match value {
-                ScalarValue::Int(v) => v != 0,
-                ScalarValue::Float(v) => v != 0.0,
-            };
-            return ScalarValue::Int(i64::from(n));
+            return ScalarValue::Bool(value.is_truthy());
         }
         if from == Self::Bool {
-            let raw = value.as_int().unwrap_or(0);
-            return Self::apply_cast(ScalarValue::Int(raw), Self::S32, to);
+            let b = value.is_truthy();
+            return Self::apply_cast(ScalarValue::I32(i32::from(b)), Self::S32, to);
         }
         if from.is_float() || to.is_float() {
             let f = scalar_to_f64(value, from);
             return scalar_from_f64(f, to);
         }
-        let raw = value.as_int().unwrap_or(0);
-        let masked = if from.is_unsigned() {
-            mask_unsigned(raw, from.bit_width()) as i64
-        } else {
-            sign_extend(trunc_bits(raw, from.bit_width()), from.bit_width())
-        };
-        if to.is_unsigned() {
-            ScalarValue::Int(mask_unsigned(masked, to.bit_width()) as i64)
-        } else {
-            ScalarValue::Int(sign_extend(trunc_bits(masked, to.bit_width()), to.bit_width()))
-        }
+        let wide = scalar_to_i128(value, from);
+        scalar_from_i128(wide, to)
+    }
+}
+
+fn scalar_to_i128(value: ScalarValue, _from: PrimitiveKind) -> i128 {
+    match value {
+        ScalarValue::I8(v) => i128::from(v),
+        ScalarValue::I16(v) => i128::from(v),
+        ScalarValue::I32(v) => i128::from(v),
+        ScalarValue::I64(v) => i128::from(v),
+        ScalarValue::I128(v) => v,
+        ScalarValue::U8(v) => i128::from(v),
+        ScalarValue::U16(v) => i128::from(v),
+        ScalarValue::U32(v) => i128::from(v),
+        ScalarValue::U64(v) => i128::from(v),
+        ScalarValue::U128(v) => v as i128,
+        ScalarValue::Bool(b) => i128::from(b),
+        ScalarValue::F32(v) => f64::from(v) as i128,
+        ScalarValue::F64(v) => v as i128,
+        ScalarValue::Ptr(p) => i128::try_from(p).unwrap_or(0),
     }
 }
 
 fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
     match value {
-        ScalarValue::Float(v) => {
-            if from == PrimitiveKind::F32 {
-                (v as f32) as f64
-            } else {
-                v
-            }
-        }
-        ScalarValue::Int(v) => {
-            if from.is_unsigned() {
-                mask_unsigned(v, from.bit_width()) as f64
-            } else {
-                sign_extend(trunc_bits(v, from.bit_width()), from.bit_width()) as f64
-            }
-        }
+        ScalarValue::F32(v) => f64::from(v),
+        ScalarValue::F64(v) => v,
+        other => scalar_to_i128(other, from) as f64,
+    }
+}
+
+fn scalar_from_i128(value: i128, to: PrimitiveKind) -> ScalarValue {
+    match to {
+        PrimitiveKind::S8 => ScalarValue::I8(value as i8),
+        PrimitiveKind::S16 => ScalarValue::I16(value as i16),
+        PrimitiveKind::S32 => ScalarValue::I32(value as i32),
+        PrimitiveKind::S64 => ScalarValue::I64(value as i64),
+        PrimitiveKind::S128 => ScalarValue::I128(value),
+        PrimitiveKind::U8 => ScalarValue::U8(value as u8),
+        PrimitiveKind::U16 => ScalarValue::U16(value as u16),
+        PrimitiveKind::U32 => ScalarValue::U32(value as u32),
+        PrimitiveKind::U64 => ScalarValue::U64(value as u64),
+        PrimitiveKind::U128 => ScalarValue::U128(value as u128),
+        PrimitiveKind::Bool => ScalarValue::Bool(value != 0),
+        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
+        PrimitiveKind::F64 => ScalarValue::F64(value as f64),
     }
 }
 
 fn scalar_from_f64(value: f64, to: PrimitiveKind) -> ScalarValue {
     match to {
-        PrimitiveKind::F32 => ScalarValue::Float(f64::from(value as f32)),
-        PrimitiveKind::F64 => ScalarValue::Float(value),
-        PrimitiveKind::Bool => ScalarValue::Int(i64::from(value != 0.0)),
-        _ if to.is_unsigned() => {
-            let bits = if to.bit_width() >= 64 {
-                value as u64
-            } else {
-                (value as u64) & ((1u64 << to.bit_width()) - 1)
-            };
-            ScalarValue::Int(bits as i64)
-        }
-        _ => ScalarValue::Int(value as i64),
-    }
-}
-
-const fn trunc_bits(value: i64, width: u32) -> u64 {
-    let mask = if width >= 64 {
-        u64::MAX
-    } else {
-        (1u64 << width) - 1
-    };
-    (value as u64) & mask
-}
-
-const fn mask_unsigned(value: i64, width: u32) -> u64 {
-    trunc_bits(value, width)
-}
-
-const fn sign_extend(value: u64, width: u32) -> i64 {
-    if width >= 64 {
-        return value as i64;
-    }
-    let sign = 1u64 << (width - 1);
-    if value & sign != 0 {
-        (value | (!0u64 << width)) as i64
-    } else {
-        value as i64
+        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
+        PrimitiveKind::F64 => ScalarValue::F64(value),
+        _ => scalar_from_i128(value as i128, to),
     }
 }
 
@@ -196,11 +187,11 @@ mod tests {
     fn cast_u32_to_u8_masks() {
         assert_eq!(
             PrimitiveKind::apply_cast(
-                ScalarValue::Int(300),
+                ScalarValue::U32(300),
                 PrimitiveKind::U32,
                 PrimitiveKind::U8
             ),
-            ScalarValue::Int(44)
+            ScalarValue::U8(44)
         );
     }
 
@@ -208,31 +199,18 @@ mod tests {
     fn cast_s32_to_s64_extends() {
         assert_eq!(
             PrimitiveKind::apply_cast(
-                ScalarValue::Int(-1),
+                ScalarValue::I32(-1),
                 PrimitiveKind::S32,
                 PrimitiveKind::S64
             ),
-            ScalarValue::Int(-1)
+            ScalarValue::I64(-1)
         );
     }
 
     #[test]
-    fn cast_int_to_float() {
-        let v = PrimitiveKind::apply_cast(
-            ScalarValue::Int(3),
-            PrimitiveKind::S32,
-            PrimitiveKind::F64,
-        );
-        assert_eq!(v, ScalarValue::Float(3.0));
-    }
-
-    #[test]
-    fn cast_float_to_int() {
-        let v = PrimitiveKind::apply_cast(
-            ScalarValue::Float(2.9),
-            PrimitiveKind::F64,
-            PrimitiveKind::S32,
-        );
-        assert_eq!(v, ScalarValue::Int(2));
+    fn cast_i128_roundtrip() {
+        let v = ScalarValue::I128(1_000_000_000_000_000_000);
+        let narrowed = PrimitiveKind::apply_cast(v, PrimitiveKind::S128, PrimitiveKind::S64);
+        assert_eq!(narrowed, ScalarValue::I64(1_000_000_000_000_000_000));
     }
 }

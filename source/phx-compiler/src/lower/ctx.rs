@@ -5,7 +5,8 @@ use phx_syntax::Symbol;
 
 use crate::ir::{IrBasicBlock, IrConst, IrInst};
 use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
-use crate::typeck::{ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram};
+use crate::typeck::{ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, primitive_kind_for_type};
+use phx_bytecode::SLOT_KIND_AGG;
 
 /// Jump target placeholder for a loop exit not yet allocated (`0xF000_0000 + slot`).
 pub const LOOP_EXIT_TARGET_BASE: u32 = 0xF000_0000;
@@ -231,6 +232,14 @@ pub fn bool_ty(typed: &TypedProgram) -> TypeId {
     TypeId::from_raw(0)
 }
 
+
+/// Wire primitive kind byte for `ty` (aggregate types use [`SLOT_KIND_AGG`]).
+#[must_use]
+pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
+    primitive_kind_for_type(&typed.types, ty)
+        .map(|k| k.as_u8())
+        .unwrap_or(SLOT_KIND_AGG)
+}
 
 /// Maps slot for symbol in layout.
 #[must_use]

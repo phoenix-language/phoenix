@@ -98,12 +98,49 @@ Constants payload begins with `u32 constant_count`, followed by entries:
 
 Constant tags:
 
-- `1`: signed integer (`s64` payload in MVP binary form)
-- `2`: unsigned integer (`u64` payload)
-- `3`: float32
-- `4`: float64
-- `5`: byte blob
-- `6`: bool (`u8` 0/1)
+- `1`: signed integer — payload length is **1, 2, 4, 8, or 16** bytes (little-endian), matching the source primitive width (`s8`…`s128`)
+- `2`: unsigned integer — payload length is **1, 2, 4, 8, or 16** bytes (`u8`…`u128`)
+- `3`: float32 — **4** bytes
+- `4`: float64 — **8** bytes
+- `5`: byte blob — raw bytes (used for `b"…"` lowering and future static data)
+- `6`: bool — **1** byte (`u8` 0/1)
+
+The verifier rejects constant entries whose payload length does not match the primitive kind recorded on the consuming `CONST` instruction operand.
+
+---
+
+## Local layouts section (format minor 1+)
+
+Section kind `6`. Per-function metadata for typed `LOAD_LOCAL` / `STORE_LOCAL`:
+
+Payload begins with `u32 layout_count`, then for each function:
+
+| Field | Size | Meaning |
+|---|---:|---|
+| function_id | 4 | owning function |
+| slot_count | 2 | number of local slots |
+| slot_kinds | N | one byte per slot: `0xFF` = aggregate slot; `0`–`12` = [`PrimitiveKind`](#primitive-kind-operands) wire byte |
+
+The verifier uses this table to validate local slot indices and optional stack-kind simulation.
+
+---
+
+## Runtime value model (MVP)
+
+Stack cells and local slots hold either:
+
+- **Width-faithful scalars** — each Phoenix primitive maps to a distinct storage width on the operand stack and in typed local slots (`s32` is 4 bytes, `s128` is 16 bytes, `bool` is 1 byte, `f32`/`f64` are 4/8 bytes). Binary arithmetic/compare opcodes carry a **`prim_kind` operand**; mixed-width stacks are rejected at runtime.
+- **Aggregate handles** — indices into the VM aggregate arena (struct, enum, tuple, fixed array, slice).
+
+Raw pointers (`*T`, `&T`, `&mut T`) are **`u64` addresses** with tagged high bits:
+
+- `0x8000…` — address of a local slot in the current frame
+- `0x4000…` — address of aggregate storage (for slice data pointers)
+- lower range — offset into the VM byte heap (`ALLOC`)
+
+`PTR_LOAD` / `PTR_STORE` dispatch on the tag and use the element **`prim_kind`** operand for width.
+
+Slice values are fat pointers `(data_ptr, len)` stored as an aggregate variant; `MAKE_SLICE` constructs a slice view over an existing fixed array (no heap allocation).
 
 ---
 
@@ -167,13 +204,27 @@ This fixed-width operand unit simplifies MVP decoding.
 | Compare | `EQ`, `NE`, `LT`, `LE`, `GT`, `GE` |
 | Control flow | `JUMP`, `JUMP_IF_TRUE`, `JUMP_IF_FALSE`, `RETURN` |
 | Calls | `CALL`, `CALL_INDIRECT` (optional), `RET` |
-| Data construction | `MAKE_TUPLE`, `MAKE_ARRAY`, `MAKE_STRUCT`, `MAKE_ENUM` |
+| Data construction | `MAKE_TUPLE`, `MAKE_ARRAY`, `MAKE_STRUCT`, `MAKE_ENUM`, `MAKE_SLICE` |
 | Data access | `GET_FIELD`, `SET_FIELD`, `INDEX` |
+| Addressing | `ADDRESS_OF_LOCAL` |
 | Pattern helpers | `MATCH_TAG`, `MATCH_INT_RANGE` |
 | Std Option/Result helpers (post-MVP) | `MAKE_SOME`, `MAKE_NONE`, `MAKE_OK`, `MAKE_ERR`, `TRY` — only if lowering needs dedicated opcodes after std enums exist |
 | Memory intrinsics | `ALLOC`, `PTR_LOAD`, `PTR_STORE` (unsafe boundary) |
 
 Exact opcode numeric assignments are VM-implementation-defined but must remain stable per file format version.
+
+### Primitive kind operands
+
+Several opcodes carry a **`prim_kind` wire byte** (`0`–`12`, see `PrimitiveKind` in the compiler/VM) as the final operand:
+
+| Opcode family | Extra operand | Purpose |
+|---|---|---|
+| `CONST` | `prim_kind` | Decode constant pool entry at the declared width |
+| `LOAD_LOCAL`, `STORE_LOCAL` | `prim_kind` or `0xFF` | Typed scalar load/store vs aggregate slot |
+| Arithmetic, bitwise, compare | `prim_kind` | Require matching stack cell widths |
+| `NEG`, `NOT`, `BIT_NOT` | `prim_kind` | Unary primitive width |
+| `PTR_LOAD`, `PTR_STORE` | `size`, `signed`, `prim_kind` | Memory access width |
+| `MAKE_SLICE` | `elem_prim_kind` | Element type of source array |
 
 ---
 

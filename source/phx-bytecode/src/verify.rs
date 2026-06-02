@@ -346,12 +346,24 @@ fn verify_operands(
     let function_id = func.function_id;
     match inst.opcode {
         Opcode::Const => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
             let index = inst.operands.first().copied().unwrap_or(0);
             if index >= const_count {
                 return Err(VerifyError::InvalidConstIndex { function_id, index });
             }
         }
         Opcode::LoadLocal | Opcode::StoreLocal => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
             let slot = inst.operands.first().copied().unwrap_or(0);
             if slot >= u32::from(func.local_count) {
                 return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
@@ -391,13 +403,23 @@ fn verify_operands(
         | Opcode::BitOr
         | Opcode::BitXor
         | Opcode::Shl
-        | Opcode::Shr
-        | Opcode::Neg
-        | Opcode::Not
-        | Opcode::BitNot
-        | Opcode::Index
-        | Opcode::Pop
-        | Opcode::Return => {
+        | Opcode::Shr => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::Neg | Opcode::Not | Opcode::BitNot => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::Index | Opcode::Pop | Opcode::Return => {
             if !inst.operands.is_empty() {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,
@@ -469,6 +491,26 @@ fn verify_operands(
                 });
             }
         }
+        Opcode::MakeSlice => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+        }
+        Opcode::AddressOfLocal => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+            let slot = inst.operands.first().copied().unwrap_or(0);
+            if slot >= u32::from(func.local_count) {
+                return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
+            }
+        }
     }
     Ok(())
 }
@@ -478,12 +520,12 @@ mod tests {
     use super::*;
     use crate::{
         ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable, Instruction,
-        Opcode, TypeTable,
+        LocalLayoutTable, Opcode, PrimitiveKind, TypeTable,
     };
 
     fn minimal_module(code: Vec<u8>, stack_max: u16, entry_arity: u16) -> BytecodeModule {
         BytecodeModule {
-            header: FileHeader::new(4, 0),
+            header: FileHeader::new(5, 0),
             constants: ConstPool {
                 entries: vec![ConstEntry {
                     tag: ConstTag::SignedInt,
@@ -505,6 +547,7 @@ mod tests {
                 }],
             },
             code,
+            local_layouts: LocalLayoutTable::default(),
         }
     }
 
@@ -513,7 +556,7 @@ mod tests {
         code.extend(
             Instruction {
                 opcode: Opcode::Const,
-                operands: vec![0],
+                operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
             .encode(),
         );
@@ -546,14 +589,14 @@ mod tests {
         code.extend(
             Instruction {
                 opcode: Opcode::Const,
-                operands: vec![0],
+                operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
             .encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::JumpIfTrue,
-                operands: vec![1],
+                operands: vec![99],
             }
             .encode(),
         );
@@ -571,7 +614,7 @@ mod tests {
         code.extend(
             Instruction {
                 opcode: Opcode::LoadLocal,
-                operands: vec![0],
+                operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
             .encode(),
         );

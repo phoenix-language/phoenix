@@ -5,6 +5,7 @@
 
 mod cast;
 mod const_pool;
+mod local_layout;
 mod scalar;
 mod function;
 mod header;
@@ -16,8 +17,9 @@ mod stack_effect;
 mod types;
 mod verify;
 
-pub use cast::PrimitiveKind;
-pub use scalar::ScalarValue;
+pub use cast::{PrimitiveKind, SLOT_KIND_AGG};
+pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
+pub use scalar::{ScalarValue, PTR_AGG_TAG, PTR_LOCAL_TAG};
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
 pub use function::{FunctionRecord, FunctionTable};
 pub use header::{FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};
@@ -38,7 +40,7 @@ mod tests {
         let module = BytecodeModule::empty();
         let bytes = module.encode();
         let decoded = BytecodeModule::decode(&bytes).expect("decode");
-        assert_eq!(decoded.header.section_count, 4);
+        assert_eq!(decoded.header.section_count, 5);
         assert!(matches!(
             verify(&decoded),
             Err(VerifyError::InvalidEntryFunction)

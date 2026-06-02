@@ -50,12 +50,17 @@ fn encoded_size(inst: &IrInst) -> u32 {
     }
     match inst {
         IrInst::JumpIf { .. } => with_operands(1).saturating_add(with_operands(1)),
-        IrInst::BinOp { .. } => 2,
-        IrInst::Const { .. }
-        | IrInst::LoadLocal { .. }
-        | IrInst::StoreLocal { .. }
-        | IrInst::Call { .. }
-        | IrInst::Jump { .. } => with_operands(1),
+        IrInst::BinOp { .. }
+        | IrInst::Neg { .. }
+        | IrInst::Not { .. }
+        | IrInst::BitNot { .. }
+        | IrInst::MakeSlice { .. } => with_operands(1),
+        IrInst::Const { .. } | IrInst::LoadLocal { .. } | IrInst::StoreLocal { .. } => {
+            with_operands(2)
+        }
+        IrInst::Call { .. } | IrInst::Jump { .. } | IrInst::AddressOfLocal { .. } => {
+            with_operands(1)
+        }
         IrInst::MakeStruct { .. } | IrInst::GetField { .. } | IrInst::SetField { .. } => {
             with_operands(2)
         }
@@ -64,10 +69,7 @@ fn encoded_size(inst: &IrInst) -> u32 {
         IrInst::Cast { .. } => with_operands(2),
         IrInst::MakeTuple { .. } | IrInst::MakeArray { .. } => with_operands(1),
         IrInst::TrapGivenMismatch => with_operands(1),
-        IrInst::Neg { .. } | IrInst::Not { .. } | IrInst::BitNot { .. } | IrInst::Return { .. } => {
-            2
-        }
-        IrInst::Index { .. } => 2,
+        IrInst::Return { .. } | IrInst::Index { .. } => 2,
         IrInst::PtrLoad { .. } => with_operands(2),
     }
 }
@@ -153,6 +155,12 @@ fn apply_ir_stack_effect(
         IrInst::PtrLoad { .. } => {
             let _ = apply_stack_effect(Opcode::PtrLoad, stack, None, none);
         }
+        IrInst::MakeSlice { .. } => {
+            let _ = apply_stack_effect(Opcode::MakeSlice, stack, None, none);
+        }
+        IrInst::AddressOfLocal { .. } => {
+            let _ = apply_stack_effect(Opcode::AddressOfLocal, stack, None, none);
+        }
         IrInst::TrapGivenMismatch => {
             let _ = apply_stack_effect(Opcode::Trap, stack, None, none);
         }
@@ -210,18 +218,30 @@ fn emit_inst(
     block_starts: &[u32],
 ) {
     match inst {
-        IrInst::Const { index, .. } => {
+        IrInst::Const { index, prim_kind, .. } => {
             let pool_idx = pool.pool_index_for_literal(*index);
-            out.extend(encode(Opcode::Const, &[pool_idx]));
+            out.extend(encode(
+                Opcode::Const,
+                &[pool_idx, u32::from(*prim_kind)],
+            ));
         }
-        IrInst::LoadLocal { slot, .. } => {
-            out.extend(encode(Opcode::LoadLocal, &[slot.index()]));
+        IrInst::LoadLocal { slot, prim_kind, .. } => {
+            out.extend(encode(
+                Opcode::LoadLocal,
+                &[slot.index(), u32::from(*prim_kind)],
+            ));
         }
-        IrInst::StoreLocal { slot, .. } => {
-            out.extend(encode(Opcode::StoreLocal, &[slot.index()]));
+        IrInst::StoreLocal { slot, prim_kind, .. } => {
+            out.extend(encode(
+                Opcode::StoreLocal,
+                &[slot.index(), u32::from(*prim_kind)],
+            ));
         }
-        IrInst::BinOp { op, .. } => {
-            out.extend(encode(ir_binop_to_opcode(*op), &[]));
+        IrInst::BinOp { op, prim_kind, .. } => {
+            out.extend(encode(
+                ir_binop_to_opcode(*op),
+                &[u32::from(*prim_kind)],
+            ));
         }
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
@@ -284,14 +304,14 @@ fn emit_inst(
                 &[u32::from(*from_kind), u32::from(*to_kind)],
             ));
         }
-        IrInst::Neg { .. } => {
-            out.extend(encode(Opcode::Neg, &[]));
+        IrInst::Neg { prim_kind, .. } => {
+            out.extend(encode(Opcode::Neg, &[u32::from(*prim_kind)]));
         }
-        IrInst::Not { .. } => {
-            out.extend(encode(Opcode::Not, &[]));
+        IrInst::Not { prim_kind, .. } => {
+            out.extend(encode(Opcode::Not, &[u32::from(*prim_kind)]));
         }
-        IrInst::BitNot { .. } => {
-            out.extend(encode(Opcode::BitNot, &[]));
+        IrInst::BitNot { prim_kind, .. } => {
+            out.extend(encode(Opcode::BitNot, &[u32::from(*prim_kind)]));
         }
         IrInst::MakeTuple { arity } => {
             out.extend(encode(Opcode::MakeTuple, &[*arity]));
@@ -303,14 +323,20 @@ fn emit_inst(
             out.extend(encode(Opcode::Index, &[]));
         }
         IrInst::PtrLoad {
-            byte_size,
+            prim_kind,
             signed,
             ..
         } => {
             out.extend(encode(
                 Opcode::PtrLoad,
-                &[u32::from(*byte_size), u32::from(*signed)],
+                &[u32::from(*prim_kind), u32::from(*signed)],
             ));
+        }
+        IrInst::AddressOfLocal { slot } => {
+            out.extend(encode(Opcode::AddressOfLocal, &[slot.index()]));
+        }
+        IrInst::MakeSlice { elem_kind } => {
+            out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)]));
         }
         IrInst::TrapGivenMismatch => {
             out.extend(encode(Opcode::Trap, &[0]));
