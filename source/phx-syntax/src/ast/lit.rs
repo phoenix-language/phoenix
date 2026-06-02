@@ -1,4 +1,6 @@
 //! Literal AST types.
+//!
+//! Literal values attached to expressions and patterns (numeric, bool, byte char/string).
 
 use crate::token::{FloatSuffix, IntegerSuffix};
 

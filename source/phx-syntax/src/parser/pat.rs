@@ -1,4 +1,6 @@
-//! Pattern parsing.
+//! Pattern parsing for `match`, `given`, and bindings.
+//!
+//! Covers wildcards, literals, ident bindings, struct/tuple patterns, and `Option`/`Result` ctors.
 
 use phx_diagnostics::ExpectedToken;
 
@@ -8,6 +10,7 @@ use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
+    /// Parses one [`Pattern`].
     pub(crate) fn parse_pattern(&mut self) -> Result<PatternNode, ParseError> {
         let start = self.pos;
         match self.peek_kind() {
@@ -57,6 +60,7 @@ impl Parser<'_> {
         }
     }
 
+    /// Parses `TypeName { … }` or `TypeName(…)` variant patterns.
     fn parse_type_pattern(&mut self, start: usize) -> Result<PatternNode, ParseError> {
         let name = self.parse_type_name()?;
         if self.eat_kind(&TokenKind::LBrace) {

@@ -1,4 +1,6 @@
 //! Lexer failure types.
+//!
+//! Returned from [`crate::LexError`] via [`phx_syntax::lex`] and the [`phx_syntax::Lexer`].
 
 use core::fmt;
 

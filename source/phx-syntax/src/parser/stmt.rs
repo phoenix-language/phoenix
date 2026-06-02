@@ -1,4 +1,7 @@
 //! Statement and block parsing.
+//!
+//! Blocks mix statements (with `;`) and optional trailing expressions. Control flow includes
+//! `if`/`match` as expressions via [`Parser::parse_expr_without_semi`].
 
 use phx_diagnostics::ExpectedToken;
 
@@ -8,6 +11,7 @@ use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
+    /// Parses `{ items… }` as a [`Block`].
     pub(crate) fn parse_block(&mut self) -> Result<BlockNode, ParseError> {
         let start = self.pos;
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
@@ -18,6 +22,7 @@ impl Parser<'_> {
         Ok(Node::new(Block { items }, self.span_from(start)))
     }
 
+    /// Parses one block item (stmt, trailing expr, or expr-as-stmt).
     fn parse_block_item(&mut self) -> Result<BlockItem, ParseError> {
         if self.is_block_expr_start() {
             let expr = self.parse_expr_without_semi()?;
@@ -36,6 +41,7 @@ impl Parser<'_> {
         Ok(BlockItem::Stmt(Stmt::Expr(expr)))
     }
 
+    /// Returns `true` when the next token starts a statement keyword or `#unsafe`.
     fn is_stmt_keyword(&self) -> bool {
         matches!(
             self.peek_kind(),
@@ -53,6 +59,7 @@ impl Parser<'_> {
         )
     }
 
+    /// Returns `true` when the next token can start a block-valued expression.
     fn is_block_expr_start(&self) -> bool {
         matches!(
             self.peek_kind(),
@@ -60,10 +67,12 @@ impl Parser<'_> {
         )
     }
 
+    /// Parses an expression that may end with `}` without a semicolon.
     fn parse_expr_without_semi(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_expr_or_block_value()
     }
 
+    /// Parses a single statement (must include `;` where required by grammar).
     pub(crate) fn parse_stmt(&mut self) -> Result<StmtNode, ParseError> {
         let start = self.pos;
         let stmt = match self.peek_kind() {

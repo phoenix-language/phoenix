@@ -1,6 +1,9 @@
 //! Parser failure types.
+//!
+//! Returned from [`ParseError`] via [`phx_syntax::parse`] and the internal [`phx_syntax::parser::Parser`].
 
 use core::fmt;
+use std::borrow::Cow;
 
 use crate::LexError;
 use crate::Span;
@@ -53,8 +56,8 @@ pub enum ParseError {
     UnexpectedToken {
         /// What the parser expected.
         expected: ExpectedToken,
-        /// Short description of what was found.
-        found: String,
+        /// Short description of what was found (borrowed when static, owned for dynamic lexemes).
+        found: Cow<'static, str>,
         /// Span of the unexpected token.
         span: Span,
     },

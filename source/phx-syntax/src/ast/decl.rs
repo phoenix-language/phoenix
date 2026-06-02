@@ -1,4 +1,6 @@
 //! Declaration AST.
+//!
+//! Top-level [`Program`] items, functions, user types, traits, impls, and `#import` metadata.
 
 use crate::ast::Node;
 use crate::ast::expr::ExprNode;

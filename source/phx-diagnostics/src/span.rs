@@ -1,4 +1,6 @@
 //! Byte-offset source spans for diagnostics.
+//!
+//! Spans index the same UTF-8 buffer passed to lex/parse; they are not line/column (yet).
 
 /// A half-open byte range `[start, end)` into UTF-8 source text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

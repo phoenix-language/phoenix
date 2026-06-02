@@ -1,4 +1,6 @@
 //! Statement and block AST.
+//!
+//! Statements inside blocks; blocks may end with a trailing expression value.
 
 use crate::ast::Node;
 use crate::ast::expr::ExprNode;

@@ -1,4 +1,7 @@
 //! Type expression parsing.
+//!
+//! Handles primitives, named types, generics, references, pointers, tuples, arrays, slices, and
+//! function types `:: (…) => T`.
 
 use phx_diagnostics::{ExpectedToken, ParseError};
 
@@ -8,6 +11,7 @@ use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
+    /// Parses a type expression (entry point for annotations and `as` casts).
     pub(crate) fn parse_type(&mut self) -> Result<Node<Type>, ParseError> {
         self.parse_type_expr()
     }
@@ -182,6 +186,7 @@ impl Parser<'_> {
         Ok(list)
     }
 
+    /// Parses `<T>` or `<T: Bound, …>` on declarations.
     pub(crate) fn parse_generic_params(&mut self) -> Result<Vec<GenericParam>, ParseError> {
         self.expect_kind(ExpectedToken::Punct("<"), &TokenKind::Lt)?;
         let mut params = vec![self.parse_generic_param()?];
@@ -211,6 +216,7 @@ impl Parser<'_> {
     }
 
     /// Parses comma-separated type arguments; the leading `<` must already be consumed.
+    /// Parses `<T, …>` type arguments (opening `<` already consumed).
     pub(crate) fn parse_generic_args(&mut self) -> Result<Vec<Node<Type>>, ParseError> {
         let mut args = vec![self.parse_type_expr()?];
         while self.eat_kind(&TokenKind::Comma) {

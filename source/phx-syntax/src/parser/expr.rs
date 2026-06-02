@@ -1,4 +1,7 @@
-//! Expression parsing.
+//! Expression parsing (precedence climbing).
+//!
+//! Precedence runs from low to high: assignment → logical → bitwise → arithmetic → unary →
+//! postfix → primary. Path and struct literal parsing borrow identifier text from tokens as `&str`.
 
 use phx_diagnostics::ExpectedToken;
 
@@ -10,10 +13,12 @@ use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
+    /// Parses an expression (assignment level and below).
     pub(crate) fn parse_expr(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_cast_expr()
     }
 
+    /// Parses assignment expressions with trailing `as Type` casts.
     fn parse_cast_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         let mut expr = self.parse_assign_expr()?;
@@ -31,6 +36,7 @@ impl Parser<'_> {
         Ok(expr)
     }
 
+    /// Parses `=` / `+=` / … assignment (right-associative).
     fn parse_assign_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         let left = self.parse_logical_or_expr()?;
@@ -51,14 +57,19 @@ impl Parser<'_> {
         Ok(left)
     }
 
+    // Precedence (low → high): `||`, `&&`, equality, relational, `|`, `^`, `&`, shifts, `+/-`, `*`, `**`.
+
+    /// Parses left-associative `||`.
     fn parse_logical_or_expr(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_binary_chain(Self::parse_logical_and_expr, BinOp::Or, &TokenKind::OrOr)
     }
 
+    /// Parses left-associative `&&`.
     fn parse_logical_and_expr(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_binary_chain(Self::parse_range_expr, BinOp::And, &TokenKind::AndAnd)
     }
 
+    /// Parses relational/equality level; rejects `..` range syntax (post-MVP).
     fn parse_range_expr(&mut self) -> Result<ExprNode, ParseError> {
         let expr = self.parse_equality_expr()?;
         if matches!(self.peek_kind(), TokenKind::DotDot | TokenKind::DotDotEq) {
@@ -247,6 +258,7 @@ impl Parser<'_> {
         self.parse_postfix_expr()
     }
 
+    /// Parses primary plus `.field`, calls, indexing, and `?`.
     fn parse_postfix_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         let base = self.parse_primary_expr()?;
@@ -308,6 +320,7 @@ impl Parser<'_> {
         ))
     }
 
+    /// Parses literals, paths, blocks, `if`/`match`, and parenthesized forms.
     fn parse_primary_expr(&mut self) -> Result<ExprNode, ParseError> {
         if matches!(
             self.peek_kind(),
@@ -398,19 +411,18 @@ impl Parser<'_> {
         Ok(Node::new(Expr::Array(elems), self.span_from(start)))
     }
 
+    /// Parses `Type { … }`, `a::b`, or a single-segment path/ident.
     fn parse_path_or_struct_literal(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         let (type_name, first_segment) = match self.peek_kind() {
             TokenKind::TypeIdent(n) => {
-                let s = n.to_owned();
                 self.bump();
-                let tn = self.intern_type_name(&s);
+                let tn = self.intern_type_name(n);
                 (tn, crate::ast::PathSegment::Type(tn))
             }
             TokenKind::Ident(n) => {
-                let s = n.to_owned();
                 self.bump();
-                let id = self.intern_ident(&s);
+                let id = self.intern_ident(n);
                 (
                     TypeName { symbol: id.symbol },
                     crate::ast::PathSegment::Ident(id),
@@ -437,14 +449,12 @@ impl Parser<'_> {
             loop {
                 match self.peek_kind() {
                     TokenKind::TypeIdent(seg) => {
-                        let s = seg.to_owned();
                         self.bump();
-                        segments.push(crate::ast::PathSegment::Type(self.intern_type_name(&s)));
+                        segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)));
                     }
                     TokenKind::Ident(seg) => {
-                        let s = seg.to_owned();
                         self.bump();
-                        segments.push(crate::ast::PathSegment::Ident(self.intern_ident(&s)));
+                        segments.push(crate::ast::PathSegment::Ident(self.intern_ident(seg)));
                     }
                     _ => break,
                 }
@@ -526,6 +536,7 @@ impl Parser<'_> {
         Ok(args)
     }
 
+    /// Parses `if` / `else if` / `else` as an expression.
     fn parse_if_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         self.eat_keyword(Keyword::If);
@@ -553,6 +564,7 @@ impl Parser<'_> {
         ))
     }
 
+    /// Parses `match scrutinee { arms… }`.
     fn parse_match_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         self.eat_keyword(Keyword::Match);

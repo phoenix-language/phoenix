@@ -1,4 +1,6 @@
 //! Identifier AST types.
+//!
+//! [`Ident`] and [`TypeName`] store [`Symbol`] indices; [`Path`] is a `::`-separated sequence.
 
 use crate::ast::Node;
 use crate::intern::Symbol;

@@ -1,4 +1,8 @@
 //! Recursive-descent parser for Phoenix source.
+//!
+//! The [`Parser`] holds the token cursor, source slice, and [`Interner`]. Submodules split the
+//! grammar by syntactic category (`decl`, `expr`, `stmt`, `pat`, `types`). Entry point:
+//! [`parse`].
 
 mod decl;
 mod expr;
@@ -6,22 +10,30 @@ mod pat;
 mod stmt;
 mod types;
 
+use std::borrow::Cow;
+
 use phx_diagnostics::{ExpectedToken, ParseError, Span};
 
 use crate::ast::Program;
 use crate::intern::Interner;
 use crate::lexer::lex;
+use crate::source_file::SourceFile;
 use crate::token::{Keyword, Token, TokenKind};
 
 /// Parser over a token stream and source text.
 pub(crate) struct Parser<'src> {
+    /// Original source buffer (for spans and literal text).
     pub(crate) source: &'src str,
+    /// Token stream from [`crate::lexer::lex`].
     pub(crate) tokens: &'src [Token<'src>],
+    /// Index of the current token in `tokens`.
     pub(crate) pos: usize,
+    /// Intern table filled while parsing identifiers.
     pub(crate) interner: Interner,
 }
 
 impl<'src> Parser<'src> {
+    /// Builds a parser over `tokens` borrowed from `source`.
     pub(crate) fn new(source: &'src str, tokens: &'src [Token<'src>]) -> Self {
         Self {
             source,
@@ -31,26 +43,31 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Interns `text` as a value identifier (`snake_case` name).
     pub(crate) fn intern_ident(&mut self, text: &str) -> crate::ast::Ident {
         crate::ast::Ident {
             symbol: self.interner.intern(text),
         }
     }
 
+    /// Interns `text` as a type identifier (`PascalCase` name).
     pub(crate) fn intern_type_name(&mut self, text: &str) -> crate::ast::TypeName {
         crate::ast::TypeName {
             symbol: self.interner.intern(text),
         }
     }
 
+    /// Returns `true` when the cursor is at EOF.
     pub(crate) fn at_end(&self) -> bool {
         self.pos >= self.tokens.len() || matches!(self.peek_kind(), TokenKind::Eof)
     }
 
+    /// Returns the current token without advancing.
     pub(crate) fn peek(&self) -> Option<&Token<'src>> {
         self.tokens.get(self.pos)
     }
 
+    /// Returns the kind of the current token (or [`TokenKind::Eof`]).
     pub(crate) fn peek_kind(&self) -> TokenKind<'src> {
         self.peek().map_or(TokenKind::Eof, |t| t.kind.clone())
     }
@@ -63,6 +80,7 @@ impl<'src> Parser<'src> {
             .map_or(TokenKind::Eof, |t| t.kind.clone())
     }
 
+    /// Consumes and returns the current token.
     pub(crate) fn bump(&mut self) -> Option<&Token<'src>> {
         if self.at_end() {
             return None;
@@ -72,6 +90,7 @@ impl<'src> Parser<'src> {
         Some(t)
     }
 
+    /// Span of the current token, or EOF position in `source`.
     pub(crate) fn current_span(&self) -> Span {
         self.peek().map_or_else(
             || {
@@ -82,6 +101,7 @@ impl<'src> Parser<'src> {
         )
     }
 
+    /// Span from token index `start` through the last consumed token.
     pub(crate) fn span_from(&self, start: usize) -> Span {
         let end = self.pos;
         let start_token = self.tokens.get(start).map(|t| t.span.start);
@@ -92,6 +112,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Builds [`ParseError::UnsupportedSyntax`] at the current location.
     pub(crate) fn reject_unsupported(&self, feature: &'static str) -> ParseError {
         ParseError::UnsupportedSyntax {
             feature,
@@ -99,6 +120,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Rejects post-MVP `@` / `#derive` directives at the current token.
     pub(crate) fn reject_deferred_directive(&self) -> ParseError {
         let feature = match self.peek_kind() {
             TokenKind::AtSpawn => "@spawn directive",
@@ -111,21 +133,26 @@ impl<'src> Parser<'src> {
         self.reject_unsupported(feature)
     }
 
-    pub(crate) fn found_description(kind: &TokenKind<'_>) -> String {
+    /// Human-readable label for a token kind in diagnostics.
+    ///
+    /// Uses [`Cow::Borrowed`] for fixed phrases; allocates only when the message embeds a
+    /// lexeme (`Ident`, `TypeIdent`, `Keyword`, etc.).
+    pub(crate) fn found_description(kind: &TokenKind<'_>) -> Cow<'static, str> {
         match kind {
-            TokenKind::Eof => "end of file".to_owned(),
-            TokenKind::Keyword(k) => format!("keyword `{k:?}`"),
-            TokenKind::Ident(s) => format!("identifier `{s}`"),
-            TokenKind::TypeIdent(s) => format!("type identifier `{s}`"),
-            TokenKind::Integer { .. } => "integer literal".to_owned(),
-            TokenKind::Float { .. } => "float literal".to_owned(),
-            TokenKind::Bool(b) => format!("boolean `{b}`"),
-            TokenKind::ByteChar(_) => "byte character literal".to_owned(),
-            TokenKind::ByteString(_) => "byte string literal".to_owned(),
-            other => format!("{other:?}"),
+            TokenKind::Eof => Cow::Borrowed("end of file"),
+            TokenKind::Keyword(k) => Cow::Owned(format!("keyword `{k:?}`")),
+            TokenKind::Ident(s) => Cow::Owned(format!("identifier `{s}`")),
+            TokenKind::TypeIdent(s) => Cow::Owned(format!("type identifier `{s}`")),
+            TokenKind::Integer { .. } => Cow::Borrowed("integer literal"),
+            TokenKind::Float { .. } => Cow::Borrowed("float literal"),
+            TokenKind::Bool(b) => Cow::Owned(format!("boolean `{b}`")),
+            TokenKind::ByteChar(_) => Cow::Borrowed("byte character literal"),
+            TokenKind::ByteString(_) => Cow::Borrowed("byte string literal"),
+            other => Cow::Owned(format!("{other:?}")),
         }
     }
 
+    /// Builds an unexpected-token or unexpected-EOF error at the cursor.
     pub(crate) fn error_unexpected(&self, expected: ExpectedToken) -> ParseError {
         if self.at_end() {
             return ParseError::UnexpectedEof {
@@ -146,6 +173,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Consumes a token only if its kind equals `kind`.
     pub(crate) fn expect_kind(
         &mut self,
         expected: ExpectedToken,
@@ -171,6 +199,7 @@ impl<'src> Parser<'src> {
         })
     }
 
+    /// Parses a `snake_case` identifier.
     pub(crate) fn parse_ident(&mut self) -> Result<crate::ast::Ident, ParseError> {
         match self.peek_kind() {
             TokenKind::Ident(name) => {
@@ -181,6 +210,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Parses a `PascalCase` type name (or keyword `Self`).
     pub(crate) fn parse_type_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
         match self.peek_kind() {
             TokenKind::TypeIdent(name) => {
@@ -195,6 +225,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Requires a trailing `;`.
     pub(crate) fn expect_semi(&mut self) -> Result<(), ParseError> {
         if self.eat_kind(&TokenKind::Semicolon) {
             Ok(())
@@ -214,6 +245,7 @@ impl<'src> Parser<'src> {
         Ok(token.span)
     }
 
+    /// Consumes `kw` when the next token is that keyword.
     pub(crate) fn eat_keyword(&mut self, kw: Keyword) -> bool {
         if matches!(self.peek_kind(), TokenKind::Keyword(k) if k == kw) {
             self.bump();
@@ -223,6 +255,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Consumes the next token when its kind equals `kind`.
     pub(crate) fn eat_kind(&mut self, kind: &TokenKind<'src>) -> bool {
         if self.peek_kind() == *kind {
             self.bump();
@@ -232,6 +265,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Parses imports then top-level items until EOF.
     fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut imports = Vec::new();
         while matches!(self.peek_kind(), TokenKind::HashImport) {
@@ -248,13 +282,15 @@ impl<'src> Parser<'src> {
     }
 }
 
-/// Parses `source` into a [`Program`] AST.
+/// Parses `source` into a [`SourceFile`] (program + interner).
 ///
 /// # Errors
 ///
 /// Returns [`ParseError`] on lexical or syntactic failure.
-pub fn parse(source: &str) -> Result<Program, ParseError> {
+pub fn parse(source: &str) -> Result<SourceFile, ParseError> {
     let tokens = lex(source).map_err(ParseError::Lex)?;
     let mut parser = Parser::new(source, &tokens);
-    parser.parse_program()
+    let program = parser.parse_program()?;
+    let interner = parser.interner;
+    Ok(SourceFile::new(program, interner))
 }

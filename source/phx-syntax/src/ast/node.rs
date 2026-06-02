@@ -1,4 +1,6 @@
 //! AST node wrapper with source span.
+//!
+//! Every syntactic construct that needs diagnostics is wrapped in [`Node<T>`] with a [`Span`].
 
 use phx_diagnostics::Span;
 

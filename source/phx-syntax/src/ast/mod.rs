@@ -1,4 +1,17 @@
 //! Phoenix abstract syntax tree.
+//!
+//! Nodes are plain data with [`Node`] spans. Identifiers use [`crate::Symbol`], not `String`.
+//!
+//! ## Submodules
+//!
+//! - [`decl`] — `Program`, functions, structs, enums, traits, impls, imports.
+//! - [`expr`] — expressions, operators, struct literals, `if`/`match`.
+//! - [`stmt`] — statements and [`Block`] items.
+//! - [`pat`] — `match` / `given` patterns and arms.
+//! - [`types`] — type expressions and generic parameters.
+//! - [`ident`] — [`Ident`], [`TypeName`], and [`Path`] segments.
+//! - [`lit`] — literal payloads (int, float, bool, byte string).
+//! - [`node`] — [`Node<T>`] span wrapper.
 
 pub mod decl;
 pub mod expr;

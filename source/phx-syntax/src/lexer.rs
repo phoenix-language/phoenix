@@ -1,4 +1,7 @@
 //! Phoenix lexer — source text to token stream.
+//!
+//! Tokens borrow lexeme text from the source (`Token<'src>`). Numeric lexing may allocate when
+//! stripping underscores ([`strip_underscores`]); byte string payloads use `Vec<u8>`.
 
 use phx_diagnostics::{LexError, Span};
 
@@ -847,6 +850,7 @@ fn hex_value(b: u8) -> u8 {
     }
 }
 
+/// Removes numeric separators; allocates because the result may be shorter than `s`.
 fn strip_underscores(s: &str) -> String {
     s.chars().filter(|c| *c != '_').collect()
 }

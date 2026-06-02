@@ -1,4 +1,6 @@
 //! Type expression AST.
+//!
+//! Surface types: primitives, named types, generics, refs, pointers, tuples, arrays, slices, fn types.
 
 use crate::ast::Node;
 use crate::ast::ident::{Ident, TypeName};

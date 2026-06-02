@@ -1,4 +1,6 @@
 //! Exhaustive parser integration tests — one case per MVP grammar / [`ParseError`] path.
+//!
+//! Crate: [`phx_syntax`] — entry [`phx_syntax::parse`].
 
 #![allow(
     clippy::approx_constant,
@@ -37,7 +39,9 @@ mod support {
     }
 
     pub fn parse_ok(source: &str) -> Program {
-        parse(source).unwrap_or_else(|e| panic!("expected parse ok for:\n{source}\nerror: {e}"))
+        parse(source)
+            .map(|sf| sf.program)
+            .unwrap_or_else(|e| panic!("expected parse ok for:\n{source}\nerror: {e}"))
     }
 
     pub fn parse_err(source: &str) -> ParseError {

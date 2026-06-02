@@ -1,4 +1,6 @@
 //! Expression AST.
+//!
+//! Covers literals through assignment, casts, postfix chains, and control-flow expressions.
 
 use crate::ast::Node;
 use crate::ast::ident::{Ident, Path, TypeName};

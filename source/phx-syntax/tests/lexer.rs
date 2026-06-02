@@ -1,4 +1,6 @@
 //! Exhaustive lexer integration tests — one case per [`TokenKind`] / [`LexError`] path.
+//!
+//! Crate: [`phx_syntax`] — entry [`phx_syntax::lex`].
 
 #![allow(
     clippy::approx_constant,

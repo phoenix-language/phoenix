@@ -1,4 +1,8 @@
 //! Identifier interning for AST nodes.
+//!
+//! AST nodes store [`Symbol`] indices, not `String`. The [`Interner`] owns one heap-allocated
+//! copy of each distinct identifier for the compilation unit (`Vec<String>` is required so
+//! symbols outlive the original source borrows and deduplication is stable).
 
 use core::fmt;
 
@@ -27,8 +31,12 @@ impl fmt::Display for Symbol {
 }
 
 /// Stores unique identifier strings for the duration of a compilation unit.
-#[derive(Debug, Default)]
+///
+/// Each new spelling is stored once in `strings`; later [`intern`](Self::intern) calls reuse
+/// the same [`Symbol`].
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Interner {
+    /// Owned spellings indexed by [`Symbol::index`].
     strings: Vec<String>,
 }
 
@@ -46,6 +54,7 @@ impl Interner {
             return Symbol(u32::try_from(index).unwrap_or(u32::MAX));
         }
         let index = self.strings.len();
+        // Own the spelling: AST and diagnostics may outlive the source `&str` buffer.
         self.strings.push(text.to_owned());
         Symbol(u32::try_from(index).unwrap_or(u32::MAX))
     }
