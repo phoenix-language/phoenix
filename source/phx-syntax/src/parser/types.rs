@@ -51,9 +51,6 @@ impl Parser<'_> {
                     },
                     span,
                 ),
-                Type::Primitive(k) if k == Keyword::Option || k == Keyword::Result => {
-                    Node::new(Type::Generic { name: k, args }, span)
-                }
                 _ => return Err(self.error_unexpected(ExpectedToken::Type)),
             };
         }
@@ -68,19 +65,6 @@ impl Parser<'_> {
             TokenKind::Keyword(k) if is_primitive_keyword(k) => {
                 self.bump();
                 Ok(Node::new(Type::Primitive(k), self.span_from(start)))
-            }
-            TokenKind::Keyword(Keyword::Option | Keyword::Result) => {
-                let TokenKind::Keyword(k) = self.peek_kind() else {
-                    unreachable!();
-                };
-                self.bump();
-                let mut node = Node::new(Type::Primitive(k), self.span_from(start));
-                if self.eat_kind(&TokenKind::Lt) {
-                    let args = self.parse_generic_args()?;
-                    let span = self.span_from(start);
-                    node = Node::new(Type::Generic { name: k, args }, span);
-                }
-                Ok(node)
             }
             TokenKind::TypeIdent(name) => {
                 self.bump();

@@ -355,29 +355,6 @@ impl Parser<'_> {
                 let block = self.parse_block()?;
                 Ok(Node::new(Expr::Block(block), self.span_from(start)))
             }
-            TokenKind::Keyword(Keyword::None) => {
-                self.bump();
-                Ok(Node::new(
-                    Expr::EnumCtor {
-                        variant: Keyword::None,
-                        inner: None,
-                    },
-                    self.span_from(start),
-                ))
-            }
-            TokenKind::Keyword(k @ (Keyword::Some | Keyword::Ok | Keyword::Err)) => {
-                self.bump();
-                self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
-                let inner = self.parse_expr()?;
-                self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
-                Ok(Node::new(
-                    Expr::EnumCtor {
-                        variant: k,
-                        inner: Some(Box::new(inner)),
-                    },
-                    self.span_from(start),
-                ))
-            }
             TokenKind::Keyword(Keyword::If) => self.parse_if_expr(),
             TokenKind::Keyword(Keyword::Match) => self.parse_match_expr(),
             TokenKind::HashUnsafe => {

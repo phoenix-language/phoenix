@@ -43,10 +43,6 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
         Expr::Assign { target, value, .. } => {
             lower_assign_expr(ctx, target, value);
         }
-        Expr::EnumCtor {
-            inner: Some(inner), ..
-        } => lower_expr(ctx, inner),
-        Expr::EnumCtor { inner: None, .. } => {}
         Expr::Cast { expr, .. } => {
             lower_expr(ctx, expr);
         }
@@ -259,7 +255,7 @@ fn lower_assign_target(ctx: &mut LowerCtx<'_>, target: &Expr) {
                 lower_expr(ctx, base);
             }
         }
-        Expr::Literal(_) | Expr::Path(_) | Expr::EnumCtor { .. } => {}
+        Expr::Literal(_) | Expr::Path(_) => {}
         _ => {}
     }
 }
@@ -493,7 +489,7 @@ fn emit_arm_condition(
                 ctx.emit(IrInst::Jump { target: fail_id });
             }
         }
-        Pattern::Struct { .. } | Pattern::Tuple { .. } | Pattern::EnumCtor { .. } => {
+        Pattern::Struct { .. } | Pattern::Tuple { .. } => {
             ctx.emit(IrInst::Jump { target: fail_id });
         }
         _ => {

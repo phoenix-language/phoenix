@@ -678,23 +678,23 @@ fn keyword_self_upper() {
 }
 
 #[test]
-fn keyword_some() {
-    assert_tokens("Some", &[Expect::Kw(Keyword::Some)]);
+fn type_ident_some() {
+    assert_tokens("Some", &[Expect::TypeIdent("Some")]);
 }
 
 #[test]
-fn keyword_none() {
-    assert_tokens("None", &[Expect::Kw(Keyword::None)]);
+fn type_ident_none() {
+    assert_tokens("None", &[Expect::TypeIdent("None")]);
 }
 
 #[test]
-fn keyword_ok() {
-    assert_tokens("Ok", &[Expect::Kw(Keyword::Ok)]);
+fn type_ident_ok() {
+    assert_tokens("Ok", &[Expect::TypeIdent("Ok")]);
 }
 
 #[test]
-fn keyword_err() {
-    assert_tokens("Err", &[Expect::Kw(Keyword::Err)]);
+fn type_ident_err() {
+    assert_tokens("Err", &[Expect::TypeIdent("Err")]);
 }
 
 #[test]
@@ -763,26 +763,26 @@ fn keyword_f64() {
 }
 
 #[test]
-fn keyword_option() {
-    assert_tokens("Option", &[Expect::Kw(Keyword::Option)]);
+fn type_ident_option() {
+    assert_tokens("Option", &[Expect::TypeIdent("Option")]);
 }
 
 #[test]
-fn keyword_result() {
-    assert_tokens("Result", &[Expect::Kw(Keyword::Result)]);
+fn type_ident_result() {
+    assert_tokens("Result", &[Expect::TypeIdent("Result")]);
 }
 
 #[test]
 fn keyword_all_reserved_in_one_pass() {
     let source = "const var if else match given while for loop break continue return \
                   struct enum type pub trait impl as in mut self Self \
-                  Some None Ok Err bool \
-                  s8 s16 s32 s64 s128 u8 u16 u32 u64 u128 f32 f64 Option Result";
+                  bool \
+                  s8 s16 s32 s64 s128 u8 u16 u32 u64 u128 f32 f64";
     let all = tokens(source);
     let got = without_eof(&all);
     assert_eq!(
         got.len(),
-        42,
+        36,
         "every Keyword variant should lex as one token"
     );
     for token in got {

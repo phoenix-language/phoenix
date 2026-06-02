@@ -89,3 +89,53 @@ fn main_non_unit_return_invalid() {
             .any(|e| matches!(e, ResolveError::InvalidMainSignature { .. }))
     );
 }
+
+#[test]
+fn ok_ctor_unresolved_until_std() {
+    let bag = resolve_err("main :: () => { Ok(1); };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+    );
+}
+
+#[test]
+fn result_type_unresolved_until_std() {
+    let bag = resolve_err("main :: () => { const x: Result<s32, s32> = Ok(1); };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+    );
+}
+
+#[test]
+fn some_ctor_unresolved_until_std() {
+    let bag = resolve_err("main :: () => { const x: Option<s32> = Some(1); };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+    );
+}
+
+#[test]
+fn err_ctor_unresolved_until_std() {
+    let bag = resolve_err("main :: () => { const x: Result<s32, s32> = Err(1); };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+    );
+}
+
+#[test]
+fn none_ctor_unresolved_until_std() {
+    let bag = resolve_err("main :: () => { const x: Option<s32> = None; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+    );
+}

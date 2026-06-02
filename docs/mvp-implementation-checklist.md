@@ -13,7 +13,7 @@
 | Control flow E2E + `continue` in `if` | `control_flow.phx`, `continue_in_if.phx`, deferred loop exit blocks, `var` assign `StoreLocal` |
 | Short-circuit `&&` / `\|\|` | `lower_short_circuit_bool`, `logical.phx` |
 | `match` on literals / wildcard | `match_int.phx`, `match_bool.phx`, `run_match.rs` |
-| Option/Result not MVP | `Ty::Option`/`Ty::Result` removed; typeck `UnsupportedFeature`; `mvp.md` defers std |
+| Option/Result not MVP | No lexer keywords; parse as `TypeIdent`; resolve fails until std prelude |
 | CLI `run.sh` | Runs 6 fixtures (sample, control_flow, continue_in_if, logical, match_*) |
 
 ### Known gaps (do not assume done)
@@ -132,9 +132,9 @@ A credible MVP demo `.phx` should be able to:
 | `const` / `var` inference & assign         | done     | `typeck/check.rs`                 |                                                                               | assign tests                                           |
 | Index `[T; N]` / slice                     | partial  | `typeck/check.rs`                 | Typing only; no runtime slice value                                           | `index_array_ok`                                       |
 | Struct literals + fields                   | partial  | `typeck/check.rs`                 | Field types checked; patterns not                                             | Struct lit in typeck test via move tests               |
-| Std ctors `Some`/`None`/`Ok`/`Err`         | deferred | parser only                       | Typeck: `UnsupportedFeature`                                                  | `ok_ctor_unsupported_in_mvp`                           |
-| `Option`/`Result` types                    | deferred | parser only                       | Typeck rejects std types                                                      | `result_type_unsupported_in_mvp`                       |
-| `?`                                        | deferred | parser only                       | Typeck rejects until std                                                      | `question_mark_unsupported_in_mvp`                     |
+| Std ctors `Some`/`None`/`Ok`/`Err`         | deferred | —                                 | Lex as `TypeIdent`; resolve as unknown type until std prelude                 | `ok_ctor_unresolved_until_std`                         |
+| `Option`/`Result` types                    | deferred | —                                 | Lex as `TypeIdent` + generics; no compiler builtin                            | `result_type_unresolved_until_std`                     |
+| `?`                                        | deferred | `typeck/check.rs`                 | Postfix `?` rejected until std                                                | `question_mark_unsupported_in_mvp`                     |
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
 | `match` / `given` pattern checking         | partial  | `typeck/check.rs`                 | `check_pattern`: wildcard/literal/ident only; struct/tuple/enum pat **no-op** | Enum pattern mismatch errors                           |
 | `&&` / `||` on `bool`                      | done     | `typeck/ops.rs`                   |                                                                               | Typeck accepts                                         |
@@ -275,8 +275,8 @@ A credible MVP demo `.phx` should be able to:
 | Item                                   | Status  | Where             | Notes                      | Acceptance                   |
 | -------------------------------------- | ------- | ----------------- | -------------------------- | ---------------------------- |
 | Std `Option`/`Result` as generic enums | missing | std crate         | Not compiler builtins      | `#import` + prelude          |
-| Parse `Option`/`Result`/ctors/`?`      | done    | `phx-syntax`      | Forward-compatible grammar | Parser tests                 |
-| MVP typeck policy                      | done    | `typeck/check.rs` | `UnsupportedFeature`       | `*_unsupported_in_mvp` tests |
+| Surface syntax (`Option<T>`, ctors)    | done    | `phx-syntax`      | Same as user `TypeIdent` / enum patterns — no reserved keywords | Parser tests                 |
+| Unknown until std prelude              | done    | `resolver/walk.rs`| `UnresolvedType` for undefined names | `*_unresolved_until_std` tests |
 | `?` lowering + runtime                 | missing | lower + VM        | After std types exist      | Early return propagates      |
 | `match` on std enums                   | missing | typeck + lower    | After std + aggregates     | Runtime unwrap arms          |
 

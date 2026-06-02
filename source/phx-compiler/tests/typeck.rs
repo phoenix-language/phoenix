@@ -213,36 +213,6 @@ fn assign_moves_non_copyable() {
 }
 
 #[test]
-fn ok_ctor_unsupported_in_mvp() {
-    let bag = typeck_err("main :: () => { Ok(1); };");
-    assert!(has_unsupported(&bag, "Result"));
-}
-
-#[test]
-fn result_type_unsupported_in_mvp() {
-    let bag = typeck_err("main :: () => { const x: Result<s32, s32> = Ok(1); };");
-    assert!(has_unsupported(&bag, "Option"));
-}
-
-#[test]
-fn some_ctor_unsupported_in_mvp() {
-    let bag = typeck_err("main :: () => { const x: Option<s32> = Some(1); };");
-    assert!(has_unsupported(&bag, "Option"));
-}
-
-#[test]
-fn err_ctor_unsupported_in_mvp() {
-    let bag = typeck_err("main :: () => { const x: Result<s32, s32> = Err(1); };");
-    assert!(has_unsupported(&bag, "Result"));
-}
-
-#[test]
-fn none_ctor_unsupported_in_mvp() {
-    let bag = typeck_err("main :: () => { const x: Option<s32> = None; };");
-    assert!(has_unsupported(&bag, "Option"));
-}
-
-#[test]
 fn index_array_ok() {
     ok("main :: () => { const a: [s32; 2] = [1, 2]; const x: s32 = a[0]; };");
 }

@@ -196,13 +196,6 @@ pub enum Expr {
     },
     /// `#unsafe` block expression.
     Unsafe(BlockNode),
-    /// `Some(x)`, `None`, `Ok(x)`, `Err(x)` constructor expression.
-    EnumCtor {
-        /// `Some`, `None`, `Ok`, or `Err`.
-        variant: crate::token::Keyword,
-        /// Inner expression for `Some`/`Ok`/`Err`; `None` has no inner.
-        inner: Option<Box<ExprNode>>,
-    },
 }
 
 /// Struct literal field `field: expr` or `..base`.

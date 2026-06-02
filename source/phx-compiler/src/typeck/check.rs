@@ -15,16 +15,13 @@ use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
-use phx_syntax::token::Keyword;
 
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, u8_type, unit,
 };
 use super::display::format_type;
-use super::lower_ty::{
-    TypeDefMap, build_type_def_map, is_post_mvp_std_type, lower_type, push_generics,
-};
+use super::lower_ty::{TypeDefMap, build_type_def_map, lower_type, push_generics};
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
@@ -130,27 +127,12 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
-        if is_post_mvp_std_type(&ty.inner) {
-            self.bag.push(TypeCheckError::UnsupportedFeature {
-                feature: "std `Option` / `Result` types",
-                span: ty.span,
-            });
-            return self.unit;
-        }
         lower_type(&mut self.types, type_defs, &ty.inner)
     }
 
     fn lower_ast_type(&mut self, ty: &Node<Type>) -> TypeId {
         let type_defs = self.type_defs.clone();
         self.lower_ast_type_with_defs(ty, &type_defs)
-    }
-
-    const fn std_ctor_feature(variant: Keyword) -> &'static str {
-        match variant {
-            Keyword::Some | Keyword::None => "std `Option` constructors",
-            Keyword::Ok | Keyword::Err => "std `Result` constructors",
-            _ => "enum constructor",
-        }
     }
 
     fn find_def(&self, name: Symbol, kind: DefKind) -> Option<DefId> {
@@ -581,16 +563,6 @@ impl<'a> TypeChecker<'a> {
                     })
             }
             Expr::Assign { target, value, .. } => self.check_assign_expr(target, value, span),
-            Expr::EnumCtor { variant, inner } => {
-                if let Some(inner_expr) = inner {
-                    let _ = self.check_expr_node(inner_expr);
-                }
-                self.bag.push(TypeCheckError::UnsupportedFeature {
-                    feature: Self::std_ctor_feature(*variant),
-                    span,
-                });
-                self.unit
-            }
             Expr::Cast { expr, ty } => {
                 let from = self.check_expr_node(expr);
                 let td = self.type_defs.clone();
@@ -858,7 +830,7 @@ impl<'a> TypeChecker<'a> {
             Pattern::Ident(ident) => {
                 self.define_local(ident.symbol, scrutinee, BindingKind::Var);
             }
-            Pattern::Struct { .. } | Pattern::Tuple { .. } | Pattern::EnumCtor { .. } => {}
+            Pattern::Struct { .. } | Pattern::Tuple { .. } => {}
             _ => {}
         }
     }

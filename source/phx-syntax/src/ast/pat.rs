@@ -31,13 +31,6 @@ pub enum Pattern {
         /// Inner patterns.
         patterns: Vec<Node<Pattern>>,
     },
-    /// `Some(p)`, `None`, `Ok(p)`, `Err(p)`.
-    EnumCtor {
-        /// `Some`, `None`, `Ok`, or `Err`.
-        variant: crate::token::Keyword,
-        /// Inner pattern for `Some`/`Ok`/`Err`; `None` has no inner.
-        inner: Option<Box<Node<Pattern>>>,
-    },
 }
 
 /// Field in a struct pattern.

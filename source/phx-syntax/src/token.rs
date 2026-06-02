@@ -76,14 +76,6 @@ pub enum Keyword {
     SelfLower,
     /// `Self`
     SelfUpper,
-    /// `Some`
-    Some,
-    /// `None`
-    None,
-    /// `Ok`
-    Ok,
-    /// `Err`
-    Err,
     /// `bool`
     Bool,
     /// `s8`
@@ -110,10 +102,6 @@ pub enum Keyword {
     F32,
     /// `f64`
     F64,
-    /// `Option`
-    Option,
-    /// `Result`
-    Result,
 }
 
 impl Keyword {
@@ -147,10 +135,6 @@ impl Keyword {
             "mut" => Self::Mut,
             "self" => Self::SelfLower,
             "Self" => Self::SelfUpper,
-            "Some" => Self::Some,
-            "None" => Self::None,
-            "Ok" => Self::Ok,
-            "Err" => Self::Err,
             "bool" => Self::Bool,
             "s8" => Self::S8,
             "s16" => Self::S16,
@@ -164,8 +148,6 @@ impl Keyword {
             "u128" => Self::U128,
             "f32" => Self::F32,
             "f64" => Self::F64,
-            "Option" => Self::Option,
-            "Result" => Self::Result,
             _ => return None,
         })
     }

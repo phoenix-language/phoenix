@@ -20,13 +20,6 @@ pub enum Type {
         /// Generic arguments, if any.
         generics: Option<Vec<Node<Type>>>,
     },
-    /// `Option<T>` or `Result<T, E>`.
-    Generic {
-        /// `Option` or `Result`.
-        name: Keyword,
-        /// Type arguments.
-        args: Vec<Node<Type>>,
-    },
     /// Function type `:: (…) => T`.
     Function {
         /// Parameter types.

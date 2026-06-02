@@ -330,11 +330,6 @@ impl Resolver<'_> {
                     }
                 }
             }
-            Type::Generic { args, .. } => {
-                for arg in args {
-                    self.resolve_type_node(arg);
-                }
-            }
             Type::Function { params, ret } => {
                 for p in params {
                     self.resolve_type_node(p);
@@ -505,11 +500,6 @@ impl Resolver<'_> {
             Pattern::Tuple { name, patterns } => {
                 self.resolve_type_name(name, span);
                 for p in patterns {
-                    self.resolve_pattern_node(p);
-                }
-            }
-            Pattern::EnumCtor { inner, .. } => {
-                if let Some(p) = inner {
                     self.resolve_pattern_node(p);
                 }
             }

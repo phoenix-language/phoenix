@@ -1,6 +1,6 @@
 //! Pattern parsing for `match`, `given`, and bindings.
 //!
-//! Covers wildcards, literals, ident bindings, struct/tuple patterns, and `Option`/`Result` ctors.
+//! Covers wildcards, literals, ident bindings, struct/tuple patterns, and enum variant patterns.
 
 use phx_diagnostics::ExpectedToken;
 
@@ -25,29 +25,6 @@ impl Parser<'_> {
             | TokenKind::ByteString(_) => {
                 let lit = self.parse_literal()?;
                 Ok(Node::new(Pattern::Literal(lit), self.span_from(start)))
-            }
-            TokenKind::Keyword(Keyword::None) => {
-                self.bump();
-                Ok(Node::new(
-                    Pattern::EnumCtor {
-                        variant: Keyword::None,
-                        inner: None,
-                    },
-                    self.span_from(start),
-                ))
-            }
-            TokenKind::Keyword(k @ (Keyword::Some | Keyword::Ok | Keyword::Err)) => {
-                self.bump();
-                self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
-                let inner = self.parse_pattern()?;
-                self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
-                Ok(Node::new(
-                    Pattern::EnumCtor {
-                        variant: k,
-                        inner: Some(Box::new(inner)),
-                    },
-                    self.span_from(start),
-                ))
             }
             TokenKind::TypeIdent(_) => self.parse_type_pattern(start),
             TokenKind::Ident(_) => {
