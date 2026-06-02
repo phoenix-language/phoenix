@@ -9,13 +9,16 @@
 //! - `lex_error` — lexer failures ([`LexError`]).
 //! - `parse_error` — parser failures ([`ParseError`], [`ExpectedToken`]).
 //! - `resolve_error` — name resolution ([`ResolveError`], [`DiagnosticBag`]).
+//! - `type_error` — type checking ([`TypeCheckError`], [`TypeCheckBag`]).
 
 mod lex_error;
 mod parse_error;
 mod resolve_error;
 mod span;
+mod type_error;
 
 pub use lex_error::LexError;
 pub use parse_error::{ExpectedToken, ParseError, ParseResult};
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};
 pub use span::Span;
+pub use type_error::{TypeCheckBag, TypeCheckError, TypeCheckResult};

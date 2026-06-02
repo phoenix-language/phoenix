@@ -1,0 +1,13 @@
+// Minimal program with arithmetic, control flow, and a function definition.
+
+add :: (a: s32, b: s32) => s32 {
+    a + b
+};
+
+main :: () => {
+  const base: s32 = 10;
+  const step: s32 = 2;
+  const sum: s32 = add(base, step);
+  const ok: bool = { if sum > 0 { true } else { false } };
+  const _ = ok;
+};

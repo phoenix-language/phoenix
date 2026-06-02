@@ -1,0 +1,35 @@
+//! Type checking for a resolved Phoenix program.
+#![allow(
+    clippy::collapsible_if,
+    clippy::map_unwrap_or,
+    clippy::match_same_arms,
+    clippy::ref_option,
+    clippy::trivially_copy_pass_by_ref
+)] // `#[non_exhaustive]` AST enums need fallback `_` arms; MVP checker favors clarity
+//!
+//! Consumes [`ResolvedProgram`] and produces [`TypedProgram`] with interned types per expression.
+
+mod builtins;
+mod check;
+mod display;
+mod lower_ty;
+mod ops;
+mod ownership;
+mod types;
+mod unify;
+
+pub use check::type_check;
+pub use types::{ExprId, Ty, TypeId, TypeInterner};
+
+use crate::resolver::ResolvedProgram;
+
+/// Result of type-checking a [`ResolvedProgram`].
+#[derive(Debug, Clone)]
+pub struct TypedProgram {
+    /// Resolved input (AST + defs).
+    pub resolved: ResolvedProgram,
+    /// Interned types for the unit.
+    pub types: TypeInterner,
+    /// Expression types by [`ExprId`].
+    pub expr_types: std::collections::HashMap<ExprId, TypeId>,
+}

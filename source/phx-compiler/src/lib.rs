@@ -11,8 +11,10 @@
 
 mod compile;
 mod resolver;
+mod typeck;
 mod unit;
 
 pub use compile::{CompileError, check_file, compile_source};
 pub use resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram, resolve};
+pub use typeck::{ExprId, Ty, TypeId, TypeInterner, TypedProgram, type_check};
 pub use unit::CompilationUnit;

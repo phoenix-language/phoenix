@@ -16,6 +16,9 @@ test:
 test-integration:
     cargo test -p phx-integration-tests
 
+test-cli:
+    tests/cli/check.sh
+
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 

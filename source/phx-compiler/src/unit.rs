@@ -5,15 +5,15 @@
 
 use std::path::PathBuf;
 
-use crate::resolver::ResolvedProgram;
+use crate::typeck::TypedProgram;
 
 /// A fully parsed and resolved Phoenix source file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct CompilationUnit {
     /// Source path when loaded from disk.
     pub path: Option<PathBuf>,
     /// Owned copy of the Phoenix source (required after `read_to_string` / for stable lifetimes).
     pub source: String,
-    /// Resolved program and definitions.
-    pub resolved: ResolvedProgram,
+    /// Type-checked program (resolved AST, defs, interned types, expression types).
+    pub typed: TypedProgram,
 }
