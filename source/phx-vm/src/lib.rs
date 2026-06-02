@@ -26,8 +26,8 @@ pub fn run(module: &BytecodeModule) -> Result<(), VmError> {
 #[cfg(test)]
 mod tests {
     use phx_bytecode::{
-        BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord,
-        FunctionTable, Instruction, Opcode, TypeTable,
+        BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
+        Instruction, Opcode, TypeTable,
     };
 
     use super::run;

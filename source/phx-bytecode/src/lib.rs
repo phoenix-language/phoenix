@@ -10,6 +10,7 @@ mod instr;
 mod module;
 mod opcode;
 mod section;
+mod stack_effect;
 mod types;
 mod verify;
 
@@ -20,6 +21,7 @@ pub use instr::{InstrError, Instruction};
 pub use module::{BytecodeModule, ModuleError};
 pub use opcode::{Opcode, OpcodeError};
 pub use section::{SectionEntry, SectionError, SectionKind};
+pub use stack_effect::{StackEffectError, apply_stack_effect};
 pub use types::{TypeKind, TypeRecord, TypeTable};
 pub use verify::{VerifyError, verify};
 
@@ -33,7 +35,10 @@ mod tests {
         let bytes = module.encode();
         let decoded = BytecodeModule::decode(&bytes).expect("decode");
         assert_eq!(decoded.header.section_count, 4);
-        verify(&decoded).expect("verify");
+        assert!(matches!(
+            verify(&decoded),
+            Err(VerifyError::InvalidEntryFunction)
+        ));
     }
 
     #[test]

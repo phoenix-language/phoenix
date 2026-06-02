@@ -7,8 +7,9 @@ build:
 build-release:
     cargo build --workspace --release
 
-run:
-    cargo run -p phx
+# Compile, verify, and execute a Phoenix source file via the CLI.
+run file:
+    cargo run -p phx -- run {{file}}
 
 test:
     cargo test --workspace
@@ -18,6 +19,8 @@ test-integration:
 
 test-cli:
     tests/cli/check.sh
+    tests/cli/run.sh
+    tests/cli/help.sh
 
 lint:
     cargo clippy --workspace --all-targets -- -D warnings

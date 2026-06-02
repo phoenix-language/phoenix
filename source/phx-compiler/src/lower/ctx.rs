@@ -107,9 +107,7 @@ pub fn unit_ty(typed: &TypedProgram) -> TypeId {
 
 /// Encodes an MVP literal into a [`IrInst::Const`] index (until module const pool exists).
 #[must_use]
-pub fn const_index_for_literal(
-    lit: &phx_syntax::ast::lit::Literal,
-) -> Option<u32> {
+pub fn const_index_for_literal(lit: &phx_syntax::ast::lit::Literal) -> Option<u32> {
     use phx_syntax::ast::lit::Literal;
     match lit {
         Literal::Int(i) => {

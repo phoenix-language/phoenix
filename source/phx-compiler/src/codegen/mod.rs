@@ -17,11 +17,8 @@ pub use const_pool::ConstPoolBuilder;
 /// Lowers `ir` to a [`BytecodeModule`] ready for [`phx_bytecode::verify`] and the VM.
 #[must_use]
 pub fn codegen(ir: &IrModule) -> BytecodeModule {
-    let def_to_fn: HashMap<DefId, u32> = ir
-        .functions
-        .iter()
-        .map(|f| (f.def, f.id.index()))
-        .collect();
+    let def_to_fn: HashMap<DefId, u32> =
+        ir.functions.iter().map(|f| (f.def, f.id.index())).collect();
     let fn_arity: HashMap<u32, u16> = ir
         .functions
         .iter()

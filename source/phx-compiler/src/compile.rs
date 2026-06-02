@@ -1,4 +1,4 @@
-//! Compile driver: parse, resolve, then type-check.
+//! Compile driver: parse, resolve, type-check, lower, and codegen.
 //!
 //! [`compile_source`] keeps an owned [`String`](crate::unit::CompilationUnit::source) so the
 //! resulting [`CompilationUnit`] is independent of the caller's buffer.
@@ -6,9 +6,12 @@
 use std::io;
 use std::path::Path;
 
+use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{DiagnosticBag, ParseError, TypeCheckBag};
 use phx_syntax::parse;
 
+use crate::codegen::codegen;
+use crate::lower::lower;
 use crate::resolver::resolve;
 use crate::typeck::type_check;
 use crate::unit::CompilationUnit;
@@ -72,4 +75,14 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
 pub fn check_file(path: &Path) -> Result<CompilationUnit, CompileError> {
     let source = std::fs::read_to_string(path).map_err(CompileError::Io)?;
     compile_source(&source, Some(path))
+}
+
+/// Reads `path`, type-checks, lowers, and emits bytecode ready for verify/run.
+///
+/// # Errors
+///
+/// Same as [`check_file`].
+pub fn compile_to_module(path: &Path) -> Result<BytecodeModule, CompileError> {
+    let unit = check_file(path)?;
+    Ok(codegen(&lower(&unit.typed)))
 }

@@ -7,7 +7,7 @@ use phx_syntax::ast::pat::MatchArm;
 use phx_syntax::ast::stmt::BlockNode;
 
 use crate::ir::{IrBinOp, IrInst};
-use crate::lower::ctx::{const_index_for_literal, lookup_resolution, slot_for_symbol, LowerCtx};
+use crate::lower::ctx::{LowerCtx, const_index_for_literal, lookup_resolution, slot_for_symbol};
 use crate::resolver::DefId;
 use crate::typeck::TypeId;
 
@@ -88,12 +88,20 @@ fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
 }
 
 fn lower_path(ctx: &mut LowerCtx<'_>, path: &Path, ty: TypeId) {
-    if path.segments.len() == 1 && let PathSegment::Ident(ident) = path.segments[0] {
+    if path.segments.len() == 1
+        && let PathSegment::Ident(ident) = path.segments[0]
+    {
         lower_ident(ctx, ident, ty);
     }
 }
 
-fn lower_binary(ctx: &mut LowerCtx<'_>, op: BinOp, left: &ExprNode, right: &ExprNode, result_ty: TypeId) {
+fn lower_binary(
+    ctx: &mut LowerCtx<'_>,
+    op: BinOp,
+    left: &ExprNode,
+    right: &ExprNode,
+    result_ty: TypeId,
+) {
     match op {
         BinOp::Gt => {
             lower_expr(ctx, right);
@@ -127,7 +135,13 @@ fn lower_binary(ctx: &mut LowerCtx<'_>, op: BinOp, left: &ExprNode, right: &Expr
                 result: result_ty,
             });
         }
-        BinOp::Or | BinOp::And | BinOp::Eq | BinOp::Lt | BinOp::Add | BinOp::Sub | BinOp::Mul
+        BinOp::Or
+        | BinOp::And
+        | BinOp::Eq
+        | BinOp::Lt
+        | BinOp::Add
+        | BinOp::Sub
+        | BinOp::Mul
         | BinOp::Div => {
             lower_expr(ctx, left);
             lower_expr(ctx, right);
@@ -163,8 +177,18 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
         BinOp::Div => Some(IrBinOp::Div),
         BinOp::Eq => Some(IrBinOp::Eq),
         BinOp::Lt => Some(IrBinOp::Lt),
-        BinOp::Or | BinOp::And | BinOp::Gt | BinOp::Ge | BinOp::Le | BinOp::Ne
-        | BinOp::BitOr | BinOp::BitXor | BinOp::BitAnd | BinOp::Shl | BinOp::Shr | BinOp::Mod
+        BinOp::Or
+        | BinOp::And
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::Le
+        | BinOp::Ne
+        | BinOp::BitOr
+        | BinOp::BitXor
+        | BinOp::BitAnd
+        | BinOp::Shl
+        | BinOp::Shr
+        | BinOp::Mod
         | BinOp::Pow => None,
         _ => None,
     }
@@ -192,7 +216,12 @@ fn lower_postfix(ctx: &mut LowerCtx<'_>, base: &ExprNode, ops: &[PostfixOp], res
     lower_postfix_inner(ctx, base, ops, result_ty);
 }
 
-fn lower_postfix_inner(ctx: &mut LowerCtx<'_>, base: &ExprNode, ops: &[PostfixOp], result_ty: TypeId) {
+fn lower_postfix_inner(
+    ctx: &mut LowerCtx<'_>,
+    base: &ExprNode,
+    ops: &[PostfixOp],
+    result_ty: TypeId,
+) {
     lower_expr(ctx, base);
     for op in ops {
         match op {

@@ -1,7 +1,7 @@
 //! Lower function definitions to [`IrFunction`](crate::ir::IrFunction).
 
-use phx_syntax::ast::decl::{Function, TopLevelDecl, TopLevelItem};
 use phx_syntax::ast::Node;
+use phx_syntax::ast::decl::{Function, TopLevelDecl, TopLevelItem};
 
 use crate::ir::{IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;

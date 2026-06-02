@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use phx_compiler::{compile_source, lower, IrBinOp, IrInst};
+use phx_compiler::{IrBinOp, IrInst, compile_source, lower};
 
 #[test]
 fn lower_sample_produces_ir() {
@@ -56,5 +56,8 @@ fn lower_sample_produces_ir() {
     assert!(any_const, "expected literal Const instructions");
     assert!(any_jump_if, "expected if expr JumpIf in main");
     assert!(store_count >= 4, "const bindings should StoreLocal");
-    assert!(max_locals >= 5, "main has params/locals for base, step, sum, ok, _");
+    assert!(
+        max_locals >= 5,
+        "main has params/locals for base, step, sum, ok, _"
+    );
 }

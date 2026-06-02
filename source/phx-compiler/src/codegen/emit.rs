@@ -5,7 +5,7 @@
 //! Operands are evaluated left-to-right (bottom = left, top = right). Binary ops pop `b`,
 //! then `a`, and push `op(a, b)`. Call leaves `arity` arguments on the stack (bottom = first param).
 
-use phx_bytecode::{Instruction, Opcode};
+use phx_bytecode::{Instruction, Opcode, apply_stack_effect};
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
 use crate::resolver::DefId;
@@ -46,9 +46,7 @@ impl ConstPoolBuilder {
 
 fn encoded_size(inst: &IrInst) -> u32 {
     match inst {
-        IrInst::JumpIf { .. } => {
-            (2 + 4) * 2
-        }
+        IrInst::JumpIf { .. } => (2 + 4) * 2,
         IrInst::BinOp { .. } | IrInst::Return { .. } => 2,
         IrInst::Const { .. }
         | IrInst::LoadLocal { .. }
@@ -71,22 +69,32 @@ fn compute_block_starts(func: &IrFunction) -> Vec<u32> {
     starts
 }
 
-fn apply_stack_effect(
+fn apply_ir_stack_effect(
     inst: &IrInst,
     stack: &mut u32,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
 ) {
     match inst {
-        IrInst::Const { .. } | IrInst::LoadLocal { .. } => *stack += 1,
-        IrInst::StoreLocal { .. } | IrInst::BinOp { .. } | IrInst::JumpIf { .. } => {
-            *stack = stack.saturating_sub(1);
+        IrInst::Const { .. } => {
+            let _ = apply_stack_effect(Opcode::Const, stack, None);
+        }
+        IrInst::LoadLocal { .. } => {
+            let _ = apply_stack_effect(Opcode::LoadLocal, stack, None);
+        }
+        IrInst::StoreLocal { .. } => {
+            let _ = apply_stack_effect(Opcode::StoreLocal, stack, None);
+        }
+        IrInst::BinOp { .. } => {
+            let _ = apply_stack_effect(Opcode::Add, stack, None);
         }
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
-            let arity = u32::from(*fn_arity.get(&fn_id).unwrap_or(&0));
-            *stack = stack.saturating_sub(arity);
-            *stack += 1;
+            let arity = *fn_arity.get(&fn_id).unwrap_or(&0);
+            let _ = apply_stack_effect(Opcode::Call, stack, Some(arity));
+        }
+        IrInst::JumpIf { .. } => {
+            let _ = apply_stack_effect(Opcode::JumpIfTrue, stack, None);
         }
         IrInst::Return { .. } | IrInst::Jump { .. } => {}
     }
@@ -104,7 +112,7 @@ fn emit_blocks(
     let mut stack = 0u32;
     for block in &func.blocks {
         for inst in &block.insts {
-            apply_stack_effect(inst, &mut stack, def_to_fn, fn_arity);
+            apply_ir_stack_effect(inst, &mut stack, def_to_fn, fn_arity);
             max_stack = max_stack.max(stack);
             emit_inst(&mut out, inst, pool, def_to_fn, block_starts);
         }
@@ -153,15 +161,12 @@ fn emit_inst(
             let off = block_starts.get(*target as usize).copied().unwrap_or(0);
             out.extend(encode(Opcode::Jump, &[off]));
         }
-        IrInst::JumpIf { then_block, else_block } => {
-            let then_off = block_starts
-                .get(*then_block as usize)
-                .copied()
-                .unwrap_or(0);
-            let else_off = block_starts
-                .get(*else_block as usize)
-                .copied()
-                .unwrap_or(0);
+        IrInst::JumpIf {
+            then_block,
+            else_block,
+        } => {
+            let then_off = block_starts.get(*then_block as usize).copied().unwrap_or(0);
+            let else_off = block_starts.get(*else_block as usize).copied().unwrap_or(0);
             out.extend(encode(Opcode::JumpIfTrue, &[then_off]));
             out.extend(encode(Opcode::Jump, &[else_off]));
         }

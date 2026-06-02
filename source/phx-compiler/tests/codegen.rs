@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
+use phx_bytecode::verify;
 use phx_bytecode::{BytecodeModule, ConstTag, Opcode};
 use phx_compiler::{codegen, compile_source, lower};
-use phx_bytecode::verify;
 
 #[test]
 fn codegen_sample_round_trip_and_verify() {
@@ -39,8 +39,8 @@ fn codegen_sample_round_trip_and_verify() {
         .expect("add");
     assert_eq!(add_rec.arity, 2);
 
-    let add_code = &module.code[add_rec.code_offset as usize
-        ..add_rec.code_offset as usize + add_rec.code_len as usize];
+    let add_code = &module.code
+        [add_rec.code_offset as usize..add_rec.code_offset as usize + add_rec.code_len as usize];
     assert!(add_code.contains(&Opcode::Add.as_u8()));
 }
 

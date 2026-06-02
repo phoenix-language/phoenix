@@ -12,5 +12,6 @@ name = "phx"
 path = "src/main.rs"
 
 [dependencies]
+phx-bytecode = { path = "../phx-bytecode" }
 phx-compiler = { path = "../phx-compiler" }
 phx-vm = { path = "../phx-vm" }

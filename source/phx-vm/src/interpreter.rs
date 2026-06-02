@@ -1,11 +1,9 @@
 //! Opcode interpreter for one PHX0 module.
 
-use phx_bytecode::{
-    BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode,
-};
+use phx_bytecode::{BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode};
 
-use crate::frame::{Machine, Value};
 use crate::VmError;
+use crate::frame::{Machine, Value};
 
 /// Runs `module` starting at `entry` until `main` returns.
 ///
@@ -151,9 +149,9 @@ fn load_const(module: &BytecodeModule, index: usize) -> Result<Value, VmError> {
         .ok_or(VmError::InvalidConstIndex(index as u32))?;
     match entry.tag {
         ConstTag::SignedInt if entry.payload.len() >= 8 => {
-            let bytes: [u8; 8] = entry.payload[0..8].try_into().map_err(|_| {
-                VmError::InvalidConstPayload
-            })?;
+            let bytes: [u8; 8] = entry.payload[0..8]
+                .try_into()
+                .map_err(|_| VmError::InvalidConstPayload)?;
             Ok(i64::from_le_bytes(bytes))
         }
         ConstTag::Bool => {
@@ -161,9 +159,9 @@ fn load_const(module: &BytecodeModule, index: usize) -> Result<Value, VmError> {
             Ok(i64::from(b != 0))
         }
         ConstTag::UnsignedInt if entry.payload.len() >= 8 => {
-            let bytes: [u8; 8] = entry.payload[0..8].try_into().map_err(|_| {
-                VmError::InvalidConstPayload
-            })?;
+            let bytes: [u8; 8] = entry.payload[0..8]
+                .try_into()
+                .map_err(|_| VmError::InvalidConstPayload)?;
             Ok(i64::from_le_bytes(bytes))
         }
         _ => Err(VmError::InvalidConstPayload),

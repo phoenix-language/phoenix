@@ -6,6 +6,7 @@ version = 4
 name = "phx"
 version = "0.1.0"
 dependencies = [
+ "phx-bytecode",
  "phx-compiler",
  "phx-vm",
 ]

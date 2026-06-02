@@ -4,7 +4,7 @@ use phx_syntax::ast::expr::Expr;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 
 use crate::ir::IrInst;
-use crate::lower::ctx::{unit_ty, LowerCtx};
+use crate::lower::ctx::{LowerCtx, unit_ty};
 use crate::lower::expr::{lower_assign_expr, lower_expr};
 use crate::typeck::TypeId;
 
@@ -48,7 +48,9 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
             lower_block_value(ctx, &body.inner);
         }
         Stmt::Loop(body) => lower_block_value(ctx, &body.inner),
-        Stmt::Given { scrutinee, body, .. } => {
+        Stmt::Given {
+            scrutinee, body, ..
+        } => {
             lower_expr(ctx, scrutinee);
             lower_block_value(ctx, &body.inner);
         }
