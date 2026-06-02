@@ -1,4 +1,11 @@
 //! AST-to-IR lowering.
+#![allow(
+    clippy::collapsible_if,
+    clippy::match_same_arms,
+    clippy::needless_pass_by_value,
+    clippy::manual_let_else,
+    unreachable_patterns
+)] // `#[non_exhaustive]` AST enums need fallback `_` arms
 //!
 //! Consumes a [`TypedProgram`](crate::typeck::TypedProgram) and produces an [`IrModule`](crate::ir::IrModule).
 //! Does not read source text or build types — type checking must run first.
@@ -9,6 +16,7 @@
 //! - [`expr`] — expression trees → instruction streams
 //! - [`stmt`] — statements, bindings, control flow
 
+mod ctx;
 mod expr;
 mod func;
 mod stmt;
@@ -18,12 +26,14 @@ use crate::typeck::TypedProgram;
 
 /// Lowers `typed` to IR.
 ///
-/// MVP stub: returns an empty [`IrModule`]. Implementation will walk typed AST nodes,
-/// read [`TypedProgram::functions`](crate::typeck::TypedProgram::functions) for [`LocalSlot`](crate::typeck::LocalSlot)
-/// indices, reuse [`ExprId`](crate::typeck::ExprId) → [`TypeId`](crate::typeck::TypeId) from typeck,
-/// and emit [`IrInst`](crate::ir::IrInst) into [`IrBasicBlock`](crate::ir::IrBasicBlock)s.
+/// Walks typed AST nodes in the same expression order as typeck, uses
+/// [`TypedProgram::functions`](crate::typeck::TypedProgram::functions) for [`LocalSlot`](crate::typeck::LocalSlot)
+/// indices, and reads expression types from [`TypedProgram::expr_types`](crate::typeck::TypedProgram::expr_types).
 #[must_use]
 pub fn lower(typed: &TypedProgram) -> IrModule {
-    let _functions = func::lower_functions(typed);
-    IrModule::empty()
+    let functions = func::lower_functions(typed);
+    IrModule {
+        functions,
+        entry: typed.entry,
+    }
 }
