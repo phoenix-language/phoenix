@@ -1,4 +1,7 @@
-//! Phoenix diagnostics — spans, labels, and user-facing error reporting (scaffold).
+//! Phoenix diagnostics — spans, labels, and user-facing error reporting.
 
-/// Workspace link stub; remove when the crate exports real API.
-pub const WORKSPACE: () = ();
+mod lex_error;
+mod span;
+
+pub use lex_error::LexError;
+pub use span::Span;

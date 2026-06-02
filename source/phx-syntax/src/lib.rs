@@ -1,4 +1,8 @@
-//! Phoenix syntax — lexer, parser, and AST (scaffold).
+//! Phoenix syntax — lexer, parser, and AST.
 
-/// Workspace link stub; remove when the crate exports real API.
-pub const WORKSPACE: () = ();
+pub mod lexer;
+pub mod token;
+
+pub use lexer::{Lexer, lex};
+pub use phx_diagnostics::{LexError, Span};
+pub use token::{FloatSuffix, IntegerSuffix, Keyword, Token, TokenKind};
