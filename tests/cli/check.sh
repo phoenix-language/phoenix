@@ -5,11 +5,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_OK="${ROOT}/tests/cli/fixtures/sample.phx"
 FIXTURE_ERR="${ROOT}/tests/cli/fixtures/bad_type.phx"
+FIXTURE_RESOLVE_ERR="${ROOT}/tests/cli/fixtures/missing_main.phx"
 PHX_BIN="${ROOT}/target/debug/phx"
 
 cd "${ROOT}"
 
-for fixture in "${FIXTURE_OK}" "${FIXTURE_ERR}"; do
+for fixture in "${FIXTURE_OK}" "${FIXTURE_ERR}" "${FIXTURE_RESOLVE_ERR}"; do
   if [[ ! -f "${fixture}" ]]; then
     echo "missing fixture: ${fixture}" >&2
     exit 1
@@ -37,5 +38,12 @@ if "${PHX_BIN}" check "${FIXTURE_ERR}"; then
   exit 1
 fi
 echo "phx check failed as expected (type error)"
+
+echo "running: phx check ${FIXTURE_RESOLVE_ERR} (expect resolve failure)"
+if "${PHX_BIN}" check "${FIXTURE_RESOLVE_ERR}"; then
+  echo "phx check should fail for ${FIXTURE_RESOLVE_ERR}" >&2
+  exit 1
+fi
+echo "phx check failed as expected (missing main)"
 
 echo "all phx check CLI tests passed"

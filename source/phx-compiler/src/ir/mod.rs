@@ -9,6 +9,8 @@
 //!   or a typed local slot.
 //! - Control flow is explicit in [`IrBasicBlock`] terminators.
 //! - The entry function for executables is `main :: () => ()` (resolved before lowering).
+//! - Local slot indices must come from [`TypedProgram::functions`](crate::typeck::TypedProgram::functions);
+//!   lowering must not re-allocate slots from the AST.
 
 mod block;
 mod func;

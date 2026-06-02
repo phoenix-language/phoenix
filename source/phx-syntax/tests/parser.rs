@@ -937,6 +937,13 @@ fn stmt_expr() {
     assert_ok(&in_main("f();"));
 }
 
+#[test]
+fn expr_enum_ctor_ok_err_some_none() {
+    assert_ok(&in_main(
+        "const a = Ok(1); const b = Err(2); const c = Some(3); const d = None;",
+    ));
+}
+
 // -----------------------------------------------------------------------------
 // Block trailing expression
 // -----------------------------------------------------------------------------

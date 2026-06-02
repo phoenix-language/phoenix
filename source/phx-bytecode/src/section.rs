@@ -1,0 +1,85 @@
+//! Section table entries for PHX0 modules.
+
+/// Section kind tags (MVP).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum SectionKind {
+    /// Constants pool.
+    Constants = 1,
+    /// Type records.
+    Types = 2,
+    /// Function metadata.
+    Functions = 3,
+    /// Instruction bytecode.
+    Code = 4,
+    /// Debug symbols (optional).
+    Symbols = 5,
+}
+
+impl SectionKind {
+    /// Decodes a section kind from its wire tag.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SectionError::UnknownKind`] for unrecognized tags.
+    pub fn from_u16(tag: u16) -> Result<Self, SectionError> {
+        match tag {
+            1 => Ok(Self::Constants),
+            2 => Ok(Self::Types),
+            3 => Ok(Self::Functions),
+            4 => Ok(Self::Code),
+            5 => Ok(Self::Symbols),
+            _ => Err(SectionError::UnknownKind(tag)),
+        }
+    }
+
+    /// Returns the wire tag.
+    #[must_use]
+    pub const fn as_u16(self) -> u16 {
+        self as u16
+    }
+}
+
+/// One row in the section table (12 bytes on disk).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SectionEntry {
+    /// Payload kind.
+    pub kind: SectionKind,
+    /// Byte offset from file start to payload.
+    pub offset: u32,
+    /// Payload length in bytes.
+    pub length: u32,
+}
+
+impl SectionEntry {
+    /// Encodes one section table entry (12 bytes).
+    #[must_use]
+    pub fn encode(&self) -> [u8; 12] {
+        let mut out = [0u8; 12];
+        out[0..2].copy_from_slice(&self.kind.as_u16().to_le_bytes());
+        out[4..8].copy_from_slice(&self.offset.to_le_bytes());
+        out[8..12].copy_from_slice(&self.length.to_le_bytes());
+        out
+    }
+
+    /// Decodes one section table entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SectionError`] when the kind tag is unknown.
+    pub fn decode(bytes: &[u8; 12]) -> Result<Self, SectionError> {
+        let tag = u16::from_le_bytes([bytes[0], bytes[1]]);
+        Ok(Self {
+            kind: SectionKind::from_u16(tag)?,
+            offset: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+            length: u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
+        })
+    }
+}
+
+/// Section table decode errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionError {
+    /// Unrecognized `section_kind` tag.
+    UnknownKind(u16),
+}

@@ -8,7 +8,7 @@ How Phoenix divides compiler-known types from library-defined behavior, and the 
 
 | Layer | Purpose | Examples |
 |---|---|---|
-| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, arrays, slices, tuples, `()`, `Option`, `Result`, `Name :: struct`, `Name :: enum` |
+| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, arrays, slices, tuples, `()`, `Name :: struct`, `Name :: enum`; `Option`/`Result` are **MVP bootstrap only** (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
 | VM runtime primitives | Scheduler-owned execution machinery (not user-declared types) | execution context, schedulable-I/O markers in std signatures, mailbox registration (post-MVP) |
 | Compile-time directives | Compiler behavior controls | `#import`, `#inline`, `#cold`, `#unsafe` |
 | Runtime directives | Opt-in explicit actor/message operations | `@spawn`, `@send`, `@receive`, `@reply` (post-MVP) |
@@ -53,7 +53,7 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 - Slices/views: `[T]`
 - Tuples: `(T1, T2, ...)`
 - Unit: `()`
-- Built-in generics: `Option<T>`, `Result<T, E>`
+- Bootstrap generics (temporary): `Option<T>`, `Result<T, E>` — compiler-known until std ships; see [Phased: Option and Result](#phased-option-and-result-language--std)
 
 ---
 
@@ -73,13 +73,13 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 
 ---
 
-## Built-in generic types
+## Built-in generic types (MVP bootstrap)
 
-Phoenix has no `null`.
+Phoenix has no `null`. Until std defines these enums, the compiler treats `Option` and `Result` as known generic types so `?` and error handling work without a library tree.
 
 ```phoenix
-Option<T>      // Some(T) | None
-Result<T, E>   // Ok(T) | Err(E)
+Option<T>      // Some(T) | None  — MVP: compiler bootstrap; target: std enum
+Result<T, E>   // Ok(T) | Err(E) — MVP: compiler bootstrap; target: std enum
 ```
 
 ```phoenix
@@ -89,6 +89,41 @@ const miss: Option<u32> = None;
 const ok: Result<s32, ParseError> = Ok(1);
 const err: Result<s32, ParseError> = Err(ParseError::BadInput);
 ```
+
+Long-term definitions belong in std (ordinary `enum` + generics), not as permanent language primitives:
+
+```phoenix
+pub Option :: enum<Type> {
+  None,
+  Some(Type),
+}
+```
+
+---
+
+## Phased: Option and Result (language → std)
+
+**Target architecture (same path as Rust):**
+
+| Layer | What belongs there |
+|---|---|
+| **Language** | Syntax and analysis: `struct`, `enum`, `trait`, `impl`, generics, `match`, `if`, moves/`Copyable`, primitive types, explicit casts; **sugar** such as `?` that lowers against std-defined types |
+| **Std** | `Option`, `Result`, `Clone`, `Copyable`, collections, text helpers, I/O, formatting — behavior users import via `#import` / prelude |
+| **VM intrinsics** | Small opcode/kernel surface only (`ALLOC`, pointer ops, scheduler hooks) — not user-facing rich APIs |
+
+**What stays out of the language core:** strings as a primitive, collections, filesystem/network APIs, derive codegen, and most “standard library” behavior.
+
+**MVP exception (bootstrap):** With no std crate yet, `Option<T>` and `Result<T, E>` are compiler-known so MVP can enforce errors-as-values (`?`, discard rules, ctor syntax for `Some`/`None`/`Ok`/`Err`). This is an implementation shortcut, not the long-term model.
+
+**Migration when std exists:**
+
+1. Define `Option` and `Result` in std as public generic enums (as in the example above).
+2. Optional small **prelude** re-exports common std types (not auto-import of all of std).
+3. Retain `?` and ctor **surface syntax** as compiler sugar lowering to those std types (same as today’s desugaring direction in [error-handling.md](error-handling.md)).
+4. Remove special `Ty::Option` / `Ty::Result` cases from the type checker in favor of ordinary enum typing + trait or name-based hooks for `?`.
+5. Keep VM helper opcodes only if still needed for efficient lowering; they target std type layouts, not ad hoc language types.
+
+**Already aligned with this policy:** `Clone` lives in std ([traits.md](traits.md), [ownership.md](ownership.md)); **`Copyable` uses the same language → std phased path** ([Phased: Copyable](ownership.md#phased-copyable-language--std), [traits.md](traits.md#phased-copyable-language--std)); no primitive `string`; collections and I/O are post-MVP std ([mvp.md](../mvp.md)).
 
 ---
 
@@ -106,10 +141,11 @@ const pair: (s32, u8) = (1, 2u);
 
 ## Core vs std policy
 
-- Core types are available in every module by default.
+- Core types are available in every module by default (primitives, `()`, tuples, pointers, arrays, slices, and user `struct`/`enum` declarations).
 - Std traits and functions are not all auto-imported.
-- A small future prelude may include only common traits.
+- A small future prelude may re-export only common std items (e.g. `Option`, `Result`, core traits) — not the whole library.
 - Most high-level behavior should live in std traits and `impl`s, not new compiler primitives.
+- Do not add new compiler builtins for features that can be expressed as std `enum`/`trait`/`impl` once the std pipeline exists.
 
 ---
 

@@ -167,7 +167,7 @@ Multiple bounds use `+`, for example `<T: PartialOrd + Copyable>` or `<T: Partia
 
 ## Clone and Copyable
 
-`Copyable` (or `Copy`, naming decision pending) represents implicit bitwise copy semantics for small value types.
+**Copyable** is the Phoenix name for implicit bitwise copy on assign and pass-by-value (not Rust’s `Copy` in diagnostics). **MVP:** compiler-known for primitives and eligible types. **Target:** std empty marker trait with compiler special-casing — see [Phased: Copyable (language → std)](#phased-copyable-language--std) and [ownership.md](ownership.md#phased-copyable-language--std).
 
 **Clone** is a **standard library** trait for explicit duplication (may allocate):
 
@@ -179,6 +179,30 @@ Clone :: trait
 ```
 
 Use `T: Clone` when explicit duplication is required. Use `T: Copyable` for implicit by-value copies.
+
+---
+
+## Phased: Copyable (language → std)
+
+**Target architecture (aligned with [Option / Result](type-system.md#phased-option-and-result-language--std)):**
+
+| Layer | What belongs there |
+|---|---|
+| **Language** | Syntax for trait bounds (`T: Copyable`); move/copy and use-after-move analysis |
+| **Std** | `Copyable :: trait { }` — empty marker, like `Clone` but for implicit eligibility |
+| **Compiler** | Recognizes `Copyable` impls and applies implicit bitwise copy without invoking trait methods |
+
+**MVP exception (bootstrap):** `Copyable` behaves like today’s compiler-known marker so MVP move/copy rules and generic bounds work before std ships.
+
+**Migration when std exists:**
+
+1. Add `Copyable` to std (empty trait); document opt-in / derive for eligible structs and enums.
+2. Prelude or `#import` exposes `Copyable` next to `Clone`.
+3. Compiler retains intrinsic copy-on-assign/pass-by-value for `T: Copyable` (Rust `Copy` model).
+4. Drop language-only Copyable type flags; use ordinary trait bound checking plus eligibility validation.
+5. Keep **Copyable** as the user-facing name in errors and docs ([ownership.md](ownership.md#copyable-vs-clone)).
+
+**Pairing with Clone:** `Clone` remains the only path for explicit `.clone()` duplication; types may implement both when bitwise copy is safe and explicit clone is still useful for generic APIs.
 
 ---
 

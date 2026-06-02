@@ -4,6 +4,7 @@
 //! assigned during codegen.
 
 use crate::resolver::DefId;
+pub use crate::typeck::LocalSlot;
 use crate::typeck::TypeId;
 
 /// Dense index of a function in an [`IrModule`](super::IrModule).
@@ -24,25 +25,22 @@ impl IrFunctionId {
     }
 }
 
-/// Operand local slot in a function.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LocalSlot(u32);
-
-impl LocalSlot {
-    /// Creates a slot from a raw index.
-    #[must_use]
-    pub const fn from_raw(index: u32) -> Self {
-        Self(index)
-    }
-
-    /// Returns the raw index.
-    #[must_use]
-    pub const fn index(self) -> u32 {
-        self.0
-    }
-}
+// `LocalSlot` is defined in typeck (`FunctionLayout`); IR uses the same indices.
 
 /// One IR instruction with documented stack effect (MVP subset).
+///
+/// ## Opcode mapping (MVP)
+///
+/// | [`IrInst`] | [`phx_bytecode::Opcode`] |
+/// |---|---|
+/// | `Const` | `Const` |
+/// | `LoadLocal` | `LoadLocal` |
+/// | `StoreLocal` | `StoreLocal` |
+/// | `BinOp::Add` etc. | `Add`, `Sub`, `Mul`, `Div`, `Eq`, `Lt` |
+/// | `Call` | `Call` |
+/// | `Return` | `Return` |
+/// | `Jump` | `Jump` |
+/// | `JumpIf` | `JumpIfTrue` / `JumpIfFalse` |
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum IrInst {

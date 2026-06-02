@@ -171,8 +171,10 @@ Do not implement in the compiler/VM until MVP checklist passes:
 
 ## Built-ins and std (design direction)
 
-- The compiler needs a **small intrinsic kernel** (types, operators, alloc) known at compile time before a full std exists.
-- Higher-level APIs (text, collections, I/O) are library/post-MVP unless listed in MVP.
+- The compiler needs a **small intrinsic kernel** (primitives, operators, alloc) known at compile time before a full std exists.
+- **Language core:** `struct`, `enum`, `trait`, `impl`, generics, control flow, `Copyable`, primitives — not rich std APIs.
+- **`Option` / `Result`:** MVP treats them as compiler bootstrap only; long-term they are **std generic enums** (see `type-system.md` § Phased: Option and Result). Do not add more permanent language builtins where std + sugar suffices.
+- Higher-level APIs (text, collections, I/O, `Clone`) are std/post-MVP unless listed as MVP bootstrap.
 - Packaging/modules: follow `modules.md`; Odin-style “file = module” and package layout may evolve — do not invent a second module system in code without updating docs.
 
 ---

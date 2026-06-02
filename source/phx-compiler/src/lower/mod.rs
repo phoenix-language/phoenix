@@ -19,7 +19,8 @@ use crate::typeck::TypedProgram;
 /// Lowers `typed` to IR.
 ///
 /// MVP stub: returns an empty [`IrModule`]. Implementation will walk typed AST nodes,
-/// reuse [`ExprId`](crate::typeck::ExprId) → [`TypeId`](crate::typeck::TypeId) from typeck,
+/// read [`TypedProgram::functions`](crate::typeck::TypedProgram::functions) for [`LocalSlot`](crate::typeck::LocalSlot)
+/// indices, reuse [`ExprId`](crate::typeck::ExprId) → [`TypeId`](crate::typeck::TypeId) from typeck,
 /// and emit [`IrInst`](crate::ir::IrInst) into [`IrBasicBlock`](crate::ir::IrBasicBlock)s.
 #[must_use]
 pub fn lower(typed: &TypedProgram) -> IrModule {

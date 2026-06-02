@@ -38,6 +38,8 @@ pub struct ResolvedProgram {
     pub defs: Vec<Def>,
     /// Resolved uses keyed by span + symbol.
     pub resolutions: HashMap<ResolutionKey, DefId>,
+    /// Definition id of `main` when present and valid.
+    pub main_fn: Option<DefId>,
 }
 
 /// Resolves names in `source` (single file, no `#import` loading).
@@ -63,6 +65,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         interner: source.interner.clone(),
         defs: resolver.defs,
         resolutions: resolver.resolutions,
+        main_fn: resolver.main_fn,
     })
 }
 

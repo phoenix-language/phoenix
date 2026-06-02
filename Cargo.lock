@@ -13,9 +13,6 @@ dependencies = [
 [[package]]
 name = "phx-bytecode"
 version = "0.1.0"
-dependencies = [
- "phx-diagnostics",
-]
 
 [[package]]
 name = "phx-compiler"

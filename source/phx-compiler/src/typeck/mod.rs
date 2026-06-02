@@ -9,15 +9,18 @@
 //!
 //! Consumes [`ResolvedProgram`] and produces [`TypedProgram`] with interned types per expression.
 
+mod bindings;
 mod builtins;
 mod check;
 mod display;
 mod lower_ty;
 mod ops;
+mod option_result;
 mod ownership;
 mod types;
 mod unify;
 
+pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
@@ -32,4 +35,8 @@ pub struct TypedProgram {
     pub types: TypeInterner,
     /// Expression types by [`ExprId`].
     pub expr_types: std::collections::HashMap<ExprId, TypeId>,
+    /// Per-function local layouts for lowering.
+    pub functions: Vec<bindings::FunctionLayout>,
+    /// `main` definition id when present.
+    pub entry: Option<crate::resolver::DefId>,
 }

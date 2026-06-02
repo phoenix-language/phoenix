@@ -15,6 +15,7 @@ use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::{BlockNode, ExprNode};
 
+use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, is_result_or_option, u8_type,
     unit,
@@ -22,6 +23,7 @@ use super::builtins::{
 use super::display::format_type;
 use super::lower_ty::{TypeDefMap, build_type_def_map, lower_type, push_generics};
 use super::ops::{check_binary, check_cast, check_unary};
+use super::option_result::{EnumCtorContext, check_enum_ctor_with_inner_ty};
 use super::ownership::OwnershipTracker;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
 use super::unify::unify_branch;
@@ -48,6 +50,9 @@ pub struct TypeChecker<'a> {
     ownership: OwnershipTracker,
     unit: TypeId,
     bool_ty: TypeId,
+    functions: Vec<FunctionLayout>,
+    layout: Option<FunctionLayoutBuilder>,
+    ctor_expected: Option<TypeId>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -68,6 +73,20 @@ impl<'a> TypeChecker<'a> {
             ownership: OwnershipTracker::new(),
             unit,
             bool_ty,
+            functions: Vec::new(),
+            layout: None,
+            ctor_expected: None,
+        }
+    }
+
+    fn fn_def_for(&self, f: &Function) -> Option<DefId> {
+        self.find_def(f.name.symbol, DefKind::Fn)
+    }
+
+    fn define_local(&mut self, symbol: phx_syntax::Symbol, ty: TypeId, kind: BindingKind) {
+        self.ownership.define(symbol, ty);
+        if let Some(layout) = &mut self.layout {
+            let _ = layout.alloc(symbol, ty, kind);
         }
     }
 
@@ -286,17 +305,22 @@ impl<'a> TypeChecker<'a> {
             .as_ref()
             .map(|r| lower_type(&mut self.types, &self.type_defs, &r.inner))
             .unwrap_or(self.unit);
+        let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
         self.fn_ret = Some(ret);
         self.ownership = OwnershipTracker::new();
+        self.layout = Some(FunctionLayoutBuilder::new(def, ret));
         for p in &f.params {
             if let Param::Named { name, ty, .. } = p {
                 let pty = lower_type(&mut self.types, &self.type_defs, &ty.inner);
-                self.ownership.define(name.symbol, pty);
+                self.define_local(name.symbol, pty, BindingKind::Param);
             }
         }
         let body_ty = self.check_block_value(&f.body.inner);
         if body_ty != ret {
             self.error_mismatch(ret, body_ty, f.body.span);
+        }
+        if let Some(builder) = self.layout.take() {
+            self.functions.push(builder.finish());
         }
         self.fn_ret = None;
     }
@@ -321,6 +345,10 @@ impl<'a> TypeChecker<'a> {
     fn check_block_stmt_value(&mut self, stmt: &Stmt) -> TypeId {
         match stmt {
             Stmt::Expr(expr) => {
+                if let Expr::Assign { target, value, .. } = &expr.inner {
+                    let _ = self.check_assign_expr(target, value, expr.span);
+                    return self.unit;
+                }
                 let ty = self.check_expr_node(expr);
                 self.check_discard(expr.span, ty);
                 ty
@@ -355,14 +383,18 @@ impl<'a> TypeChecker<'a> {
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Const { name, ty, init } => {
+                let expected = ty
+                    .as_ref()
+                    .map(|t| lower_type(&mut self.types, &self.type_defs, &t.inner));
+                self.ctor_expected = expected;
                 let got = self.check_expr_node(init);
-                if let Some(t) = ty {
-                    let expected = lower_type(&mut self.types, &self.type_defs, &t.inner);
+                self.ctor_expected = None;
+                if let Some(expected) = expected {
                     if got != expected {
                         self.error_mismatch(expected, got, init.span);
                     }
                 }
-                self.ownership.define(name.symbol, got);
+                self.define_local(name.symbol, got, BindingKind::Const);
             }
             Stmt::Var { name, ty, init } => {
                 let expected = lower_type(&mut self.types, &self.type_defs, &ty.inner);
@@ -371,14 +403,20 @@ impl<'a> TypeChecker<'a> {
                     self.error_mismatch(expected, got, init.span);
                 }
                 self.move_if_non_copyable(init, got);
-                self.ownership.define(name.symbol, expected);
+                self.define_local(name.symbol, expected, BindingKind::Var);
             }
             Stmt::Assign { expr } => {
-                let _ = self.check_expr_node(expr);
+                if let Expr::Assign { target, value, .. } = &expr.inner {
+                    let _ = self.check_assign_expr(target, value, expr.span);
+                }
             }
             Stmt::Expr(expr) => {
-                let ty = self.check_expr_node(expr);
-                self.check_discard(expr.span, ty);
+                if let Expr::Assign { target, value, .. } = &expr.inner {
+                    let _ = self.check_assign_expr(target, value, expr.span);
+                } else {
+                    let ty = self.check_expr_node(expr);
+                    self.check_discard(expr.span, ty);
+                }
             }
             Stmt::Return(expr) => {
                 let _ = self.check_return(expr.as_ref());
@@ -403,6 +441,52 @@ impl<'a> TypeChecker<'a> {
             }
             Stmt::Unsafe(body) => self.check_block(&body.inner),
             _ => {}
+        }
+    }
+
+    fn check_assign_expr(&mut self, target: &ExprNode, value: &ExprNode, span: Span) -> TypeId {
+        let lhs = self.check_assign_target(target);
+        let rhs = self.check_expr_node(value);
+        if lhs != rhs {
+            self.error_mismatch(lhs, rhs, span);
+        }
+        if let Expr::Ident(ident) = &value.inner {
+            if !is_copyable(&self.types, rhs) {
+                self.ownership.move_binding(ident.symbol, value.span);
+            }
+        }
+        rhs
+    }
+
+    fn check_assign_target(&mut self, target: &ExprNode) -> TypeId {
+        match &target.inner {
+            Expr::Ident(ident) => {
+                if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
+                    self.bag
+                        .push(TypeCheckError::MovedAssignTarget { span: target.span });
+                    let _ = move_span;
+                }
+                self.check_ident(ident, target.span)
+            }
+            Expr::Postfix { base, ops } if ops.len() == 1 => {
+                let base_ty = self.check_expr_node(base);
+                if let PostfixOp::Field(field) = &ops[0] {
+                    self.check_field(base_ty, field, target.span)
+                } else {
+                    self.bag.push(TypeCheckError::InvalidOperator {
+                        op: "assign target",
+                        span: target.span,
+                    });
+                    self.unit
+                }
+            }
+            _ => {
+                self.bag.push(TypeCheckError::InvalidOperator {
+                    op: "assign target",
+                    span: target.span,
+                });
+                self.unit
+            }
         }
     }
 
@@ -465,9 +549,17 @@ impl<'a> TypeChecker<'a> {
                         self.unit
                     })
             }
-            Expr::Assign { target, value, .. } => {
-                let _t = self.check_expr_node(target);
-                self.check_expr_node(value)
+            Expr::Assign { target, value, .. } => self.check_assign_expr(target, value, span),
+            Expr::EnumCtor { variant, inner } => {
+                let inner_ty = inner.as_ref().map(|e| self.check_expr_node(e));
+                let mut ctx = EnumCtorContext {
+                    types: &mut self.types,
+                    bag: &mut self.bag,
+                    interner: &self.resolved.interner,
+                    defs: &self.resolved.defs,
+                    expected: self.ctor_expected,
+                };
+                check_enum_ctor_with_inner_ty(&mut ctx, *variant, inner_ty, span)
             }
             Expr::Cast { expr, ty } => {
                 let from = self.check_expr_node(expr);
@@ -575,7 +667,7 @@ impl<'a> TypeChecker<'a> {
                 PostfixOp::Call(args) => self.check_call(ty, args, span),
                 PostfixOp::Index(idx) => {
                     let _ = self.check_expr_node(idx);
-                    ty
+                    self.check_index(ty, span)
                 }
                 PostfixOp::Try => self.check_try(ty, span),
                 _ => self.unit,
@@ -627,6 +719,17 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn check_index(&mut self, base: TypeId, span: Span) -> TypeId {
+        match self.types.get(base) {
+            Ty::Array { elem, .. } | Ty::Slice(elem) => *elem,
+            _ => {
+                self.bag
+                    .push(TypeCheckError::InvalidOperator { op: "index", span });
+                self.unit
+            }
+        }
+    }
+
     fn check_method_call(
         &mut self,
         receiver: TypeId,
@@ -634,12 +737,10 @@ impl<'a> TypeChecker<'a> {
         args: &[ExprNode],
         span: Span,
     ) -> TypeId {
-        if let Ty::Named { def, .. } = self.types.get(receiver) {
-            let type_sym = self.resolved.defs[def.index() as usize].name;
-            if let Some(fn_def) = self.find_method_def(type_sym, name.symbol) {
-                if let Some(&fn_ty) = self.value_types.get(&fn_def) {
-                    return self.check_call(fn_ty, args, span);
-                }
+        let _ = receiver;
+        if let Some(def) = self.lookup_resolution(span, name.symbol) {
+            if let Some(&fn_ty) = self.value_types.get(&def) {
+                return self.check_call(fn_ty, args, span);
             }
         }
         self.bag.push(TypeCheckError::UnresolvedMethod {
@@ -650,50 +751,38 @@ impl<'a> TypeChecker<'a> {
         self.unit
     }
 
-    fn find_method_def(&self, type_sym: Symbol, method: Symbol) -> Option<DefId> {
-        for item in &self.resolved.program.items {
-            if let TopLevelDecl::Impl {
-                type_name, members, ..
-            } = &item.inner.decl
-            {
-                if type_name.symbol == type_sym {
-                    for m in members {
-                        if m.name.symbol == method {
-                            return self.find_def(method, DefKind::Fn);
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-
     fn check_try(&mut self, operand: TypeId, span: Span) -> TypeId {
         let Some(ret) = self.fn_ret else {
             self.bag.push(TypeCheckError::InvalidQuestionMark { span });
             return self.unit;
         };
-        match self.types.get(operand) {
-            Ty::Result { ok, .. } => {
-                if let Ty::Result {
+        let operand_ty = self.types.get(operand).clone();
+        let ret_ty = self.types.get(ret).clone();
+        match (operand_ty, ret_ty) {
+            (
+                Ty::Result { ok, err },
+                Ty::Result {
                     ok: ret_ok,
                     err: ret_err,
-                } = self.types.get(ret)
-                {
-                    let _ = (ret_ok, ret_err);
-                    return *ok;
+                },
+            ) => {
+                if err != ret_err {
+                    self.error_mismatch(ret_err, err, span);
                 }
-                if let Ty::Option(_) = self.types.get(ret) {
-                    self.bag.push(TypeCheckError::InvalidQuestionMark { span });
+                if ok != ret_ok {
+                    self.error_mismatch(ret_ok, ok, span);
                 }
-                *ok
+                ok
             }
-            Ty::Option(inner) => {
-                if let Ty::Option(_) = self.types.get(ret) {
-                    return *inner;
+            (Ty::Option(inner), Ty::Option(ret_inner)) => {
+                if inner != ret_inner {
+                    self.error_mismatch(ret_inner, inner, span);
                 }
+                inner
+            }
+            (Ty::Result { .. } | Ty::Option(_), _) => {
                 self.bag.push(TypeCheckError::InvalidQuestionMark { span });
-                *inner
+                self.unit
             }
             _ => {
                 self.bag.push(TypeCheckError::InvalidQuestionMark { span });
@@ -768,7 +857,7 @@ impl<'a> TypeChecker<'a> {
         match pat {
             Pattern::Wildcard | Pattern::Literal(_) => {}
             Pattern::Ident(ident) => {
-                self.ownership.define(ident.symbol, scrutinee);
+                self.define_local(ident.symbol, scrutinee, BindingKind::Var);
             }
             Pattern::Struct { .. } | Pattern::Tuple { .. } | Pattern::EnumCtor { .. } => {}
             _ => {}
@@ -811,8 +900,15 @@ impl<'a> TypeChecker<'a> {
         self.unit
     }
 
-    fn finish(self) -> (TypeInterner, HashMap<ExprId, TypeId>, TypeCheckBag) {
-        (self.types, self.expr_types, self.bag)
+    fn finish(
+        self,
+    ) -> (
+        TypeInterner,
+        HashMap<ExprId, TypeId>,
+        TypeCheckBag,
+        Vec<FunctionLayout>,
+    ) {
+        (self.types, self.expr_types, self.bag, self.functions)
     }
 }
 
@@ -824,7 +920,7 @@ impl<'a> TypeChecker<'a> {
 pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
     let mut checker = TypeChecker::new(resolved);
     checker.check_program();
-    let (types, expr_types, bag) = checker.finish();
+    let (types, expr_types, bag, functions) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
@@ -832,5 +928,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         resolved: resolved.clone(),
         types,
         expr_types,
+        functions,
+        entry: resolved.main_fn,
     })
 }

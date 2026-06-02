@@ -26,7 +26,9 @@ After a move, the previous binding is invalid (use-after-move is a compile error
 
 Phoenix splits implicit cheap duplication from explicit expensive duplication. This is **not** a copy of Rust’s surface API — the language uses the name **Copyable** for the implicit case; **Clone** lives in the standard library as a trait.
 
-### Copyable (language marker)
+### Copyable (MVP bootstrap)
+
+**MVP:** The compiler treats Copyable as a known property for primitives and eligible user types — no std import required. **Target:** `Copyable` is a std empty marker trait; the compiler still special-cases implicit bitwise copy on assign and pass-by-value (Rust `Copy` model). See [Phased: Copyable (language → std)](#phased-copyable-language--std) and [traits.md](traits.md#phased-copyable-language--std).
 
 **Copyable** types are duplicated implicitly on assignment, pass-by-value, and `@send` when the message type is Copyable. Duplication is always a **bitwise copy** of the value representation (no user-defined logic, no heap duplication of owned buffers).
 
@@ -84,6 +86,32 @@ use(again);
 Generic bounds: prefer **`T: Copyable`** when the algorithm only needs cheap duplicates; use **`T: Clone`** when the body calls `.clone()` or must duplicate non-Copyable types.
 
 `Clone` is **not** required for `Option`, `Result`, or `@send` at the language level — only where your code or std explicitly needs duplication.
+
+---
+
+## Phased: Copyable (language → std)
+
+**Target architecture (same path as [Option / Result](type-system.md#phased-option-and-result-language--std)):**
+
+| Layer | What belongs there |
+|---|---|
+| **Language** | Move vs copy analysis, use-after-move, borrows; generic bounds written as `T: Copyable` |
+| **Std** | `Copyable` empty marker trait (parallel to `Clone`); opt-in / derive for eligible user types |
+| **Compiler** | Special-case: implicit bitwise copy when `T: Copyable` — no trait method dispatch |
+
+**What stays implicit:** assignment and pass-by-value copy eligible values without calling a method (contrast with explicit `.clone()` via `Clone`).
+
+**MVP exception (bootstrap):** With no std crate yet, Copyable is compiler-known so move/copy diagnostics and bounds like `T: Copyable` work without `#import`.
+
+**Migration when std exists:**
+
+1. Define `Copyable` in std as a public empty marker trait.
+2. Optional prelude re-export alongside `Clone`, `Option`, `Result` ([type-system.md](type-system.md#phased-option-and-result-language--std)).
+3. Keep implicit copy semantics in the compiler — analysis keyed off `T: Copyable`, not user-defined copy hooks.
+4. Remove ad hoc language-only Copyable flags from the type checker in favor of ordinary trait bound checking plus compiler eligibility rules for derived/opt-in types.
+5. User-facing diagnostics remain **Copyable**, not Rust’s `Copy` name.
+
+**Already distinct:** `Clone` stays std-only for explicit duplication — see [Clone and Copyable](traits.md#clone-and-copyable).
 
 ---
 
@@ -187,4 +215,5 @@ Unsafe is for intra-context low-level work — not for bypassing explicit actor 
 | Actor runtime design | [concurrency.md](concurrency.md) |
 | `#unsafe` forms | [compiler-directives.md](compiler-directives.md) |
 | VM move/borrow opcodes | [vm-linear.md](vm-linear.md) |
-| std `Clone` trait | [traits.md](traits.md#clone-and-copyable) |
+| std `Clone` / phased `Copyable` | [traits.md](traits.md#clone-and-copyable), [Phased: Copyable](traits.md#phased-copyable-language--std) |
+| `Option` / `Result` bootstrap | [type-system.md](type-system.md#phased-option-and-result-language--std) |
