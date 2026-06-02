@@ -4,7 +4,7 @@ use std::path::Path;
 
 use phx_bytecode::verify;
 use phx_bytecode::{BytecodeModule, ConstTag, Opcode};
-use phx_compiler::{codegen, compile_source, lower};
+use phx_compiler::{IrBinOp, IrInst, codegen, compile_source, lower};
 
 #[test]
 fn codegen_sample_round_trip_and_verify() {
@@ -67,9 +67,75 @@ fn codegen_constants_include_sample_literals() {
 }
 
 #[test]
-fn continue_program_verifies() {
-    let source = "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
+fn continue_program_runs_on_vm() {
+    let source =
+        "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
     let unit = compile_source(source, None).unwrap();
     let module = codegen(&lower(&unit.typed));
     verify(&module).expect("verify continue program");
+}
+
+#[test]
+fn lower_logical_short_circuit_emits_jump_if() {
+    let source = "main :: () => { const a: bool = true && false; const b: bool = true || false; const c: bool = a || b; const _ = c; };";
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed);
+    let mut jump_if_count = 0u32;
+    for f in &ir.functions {
+        for block in &f.blocks {
+            for inst in &block.insts {
+                if matches!(inst, IrInst::JumpIf { .. }) {
+                    jump_if_count += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        jump_if_count >= 2,
+        "&& and || should lower to at least two JumpIf terminators"
+    );
+}
+
+#[test]
+fn lower_match_emits_eq_and_jump_if() {
+    let source = "main :: () => { var i: s32 = 1; const x: s32 = { match (i) { 0 => 10; _ => 20; } }; const _ = x; };";
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed);
+    let mut eq_count = 0u32;
+    let mut jump_if_count = 0u32;
+    for f in &ir.functions {
+        for block in &f.blocks {
+            for inst in &block.insts {
+                if matches!(
+                    inst,
+                    IrInst::BinOp {
+                        op: IrBinOp::Eq,
+                        ..
+                    }
+                ) {
+                    eq_count += 1;
+                }
+                if matches!(inst, IrInst::JumpIf { .. }) {
+                    jump_if_count += 1;
+                }
+            }
+        }
+    }
+    assert!(eq_count >= 1, "literal match arm should compare with Eq");
+    assert!(jump_if_count >= 1, "match should branch with JumpIf");
+}
+
+#[test]
+fn assign_to_var_emits_store_local() {
+    let source = "main :: () => { var i: s32 = 0; i = i + 1; const _ = i; };";
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed);
+    let stores = ir
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.insts)
+        .filter(|inst| matches!(inst, IrInst::StoreLocal { .. }))
+        .count();
+    assert!(stores >= 2, "var init and assign should both StoreLocal");
 }

@@ -38,13 +38,16 @@ fn lower_one_function(
         .collect();
 
     let ir_index = u32::try_from(index).unwrap_or(u32::MAX);
+    let pending_exits = ctx.pending_loop_exits.clone();
+    let mut blocks = ctx.into_blocks();
+    LowerCtx::patch_loop_exit_targets(&mut blocks, &pending_exits);
     Some(IrFunction {
         id: IrFunctionId::from_raw(ir_index),
         def: layout.def,
         params,
         return_type: layout.return_type,
         local_count: layout.local_count(),
-        blocks: ctx.into_blocks(),
+        blocks,
     })
 }
 

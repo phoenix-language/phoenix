@@ -88,8 +88,9 @@ fn lower_control_flow_emits_loops() {
 }
 
 #[test]
-fn continue_merge_block_has_no_loop_back_edge() {
-    let source = "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
+fn loop_back_edge_on_body_tail_not_header() {
+    let source =
+        "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
     let unit = compile_source(source, None).unwrap();
     let ir = lower(&unit.typed);
     let main = ir
@@ -97,25 +98,28 @@ fn continue_merge_block_has_no_loop_back_edge() {
         .iter()
         .find(|f| Some(f.def) == ir.entry)
         .expect("main");
-    let merge = main
+    let header = &main.blocks[1];
+    assert!(
+        !header
+            .insts
+            .iter()
+            .any(|i| matches!(i, IrInst::Jump { target: 1 })),
+        "loop header must not contain the back-edge jump"
+    );
+    let tail = main
         .blocks
         .iter()
         .find(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::Jump { target: 2 }))
+                .any(|i| matches!(i, IrInst::Jump { target: 1 }))
+                && !b.insts.iter().any(|i| matches!(i, IrInst::JumpIf { .. }))
         })
-        .expect("merge with break");
+        .expect("body tail merge block should jump back to header");
     assert!(
-        !merge
-            .insts
-            .iter()
-            .any(|i| matches!(i, IrInst::Jump { target: 1 })),
-        "loop back-edge must not be emitted on the if merge block"
-    );
-    let header = &main.blocks[1];
-    assert!(
-        header.insts.last().is_some_and(|i| matches!(i, IrInst::Jump { target: 1 })),
-        "loop header block should end with back-edge jump"
+        tail.insts
+            .last()
+            .is_some_and(|i| matches!(i, IrInst::Jump { target: 1 })),
+        "back-edge must be the tail block terminator"
     );
 }

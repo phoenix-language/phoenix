@@ -1,4 +1,4 @@
-// Exercises while, loop, break, and if-in-loop (continue is typeck/lowering-tested separately).
+// Exercises while, loop, break, continue-in-if, and if-in-loop.
 
 main :: () => {
   var i: s32 = 0;
@@ -8,9 +8,9 @@ main :: () => {
   loop {
     if 10 > (i) {
       i = i + 1;
-    } else {
-      break;
+      continue;
     }
+    break;
   };
   const _ = i;
 };

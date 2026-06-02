@@ -32,6 +32,8 @@ pub enum BindingKind {
     Const,
     /// `var` binding.
     Var,
+    /// Anonymous slot holding a `match` scrutinee (not a source name).
+    MatchTemp,
 }
 
 /// One local binding with slot and type.
@@ -56,6 +58,8 @@ pub struct FunctionLayout {
     pub return_type: TypeId,
     /// All bindings in slot order.
     pub bindings: Vec<Binding>,
+    /// Scrutinee temp slots for `match`, in source visit order.
+    pub match_temp_slots: Vec<LocalSlot>,
 }
 
 impl FunctionLayout {
@@ -79,6 +83,8 @@ pub struct FunctionLayoutBuilder {
     return_type: TypeId,
     bindings: Vec<Binding>,
     next_slot: u32,
+    match_temp_slots: Vec<LocalSlot>,
+    match_temp_serial: u32,
 }
 
 impl FunctionLayoutBuilder {
@@ -90,7 +96,20 @@ impl FunctionLayoutBuilder {
             return_type,
             bindings: Vec::new(),
             next_slot: 0,
+            match_temp_slots: Vec::new(),
+            match_temp_serial: 0,
         }
+    }
+
+    /// Allocates a slot to hold one `match` scrutinee for lowering.
+    #[must_use]
+    pub fn alloc_match_scrutinee_temp(&mut self, ty: TypeId) -> LocalSlot {
+        let serial = self.match_temp_serial;
+        self.match_temp_serial += 1;
+        let symbol = Symbol::from_raw(0x9000_0000 | serial);
+        let slot = self.alloc(symbol, ty, BindingKind::MatchTemp);
+        self.match_temp_slots.push(slot);
+        slot
     }
 
     /// Allocates a slot and records `symbol` with `ty` and `kind`.
@@ -114,6 +133,7 @@ impl FunctionLayoutBuilder {
             def: self.def,
             return_type: self.return_type,
             bindings: self.bindings,
+            match_temp_slots: self.match_temp_slots,
         }
     }
 }

@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# End-to-end test: `phx run` on a valid sample program.
+# End-to-end test: `phx run` on valid Phoenix programs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FIXTURE_OK="${ROOT}/tests/cli/fixtures/sample.phx"
-FIXTURE_LOOPS="${ROOT}/tests/cli/fixtures/control_flow.phx"
 PHX_BIN="${ROOT}/target/debug/phx"
 
-cd "${ROOT}"
+FIXTURES=(
+  sample.phx
+  control_flow.phx
+  continue_in_if.phx
+  logical.phx
+  match_int.phx
+  match_bool.phx
+)
 
-if [[ ! -f "${FIXTURE_OK}" ]]; then
-  echo "missing fixture: ${FIXTURE_OK}" >&2
-  exit 1
-fi
+cd "${ROOT}"
 
 echo "building phx CLI..."
 cargo build -q -p phx
@@ -22,23 +24,17 @@ if [[ ! -x "${PHX_BIN}" ]]; then
   exit 1
 fi
 
-echo "running: phx run ${FIXTURE_OK} (expect success)"
-if ! "${PHX_BIN}" run "${FIXTURE_OK}"; then
-  echo "phx run should succeed for ${FIXTURE_OK}" >&2
-  exit 1
-fi
-echo "phx run passed (valid program)"
-
-if [[ ! -f "${FIXTURE_LOOPS}" ]]; then
-  echo "missing fixture: ${FIXTURE_LOOPS}" >&2
-  exit 1
-fi
-
-echo "running: phx run ${FIXTURE_LOOPS} (expect success)"
-if ! "${PHX_BIN}" run "${FIXTURE_LOOPS}"; then
-  echo "phx run should succeed for ${FIXTURE_LOOPS}" >&2
-  exit 1
-fi
-echo "phx run passed (control flow)"
+for name in "${FIXTURES[@]}"; do
+  path="${ROOT}/tests/cli/fixtures/${name}"
+  if [[ ! -f "${path}" ]]; then
+    echo "missing fixture: ${path}" >&2
+    exit 1
+  fi
+  echo "running: phx run ${path} (expect success)"
+  if ! "${PHX_BIN}" run "${path}"; then
+    echo "phx run should succeed for ${path}" >&2
+    exit 1
+  fi
+done
 
 echo "all phx run CLI tests passed"

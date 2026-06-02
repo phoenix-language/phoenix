@@ -3,11 +3,13 @@
 use phx_syntax::ast::expr::{BinOp, Expr, ExprNode, PostfixOp};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment};
 use phx_syntax::ast::lit::Literal;
-use phx_syntax::ast::pat::MatchArm;
+use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::BlockNode;
 
 use crate::ir::{IrBinOp, IrInst};
-use crate::lower::ctx::{LowerCtx, const_index_for_literal, lookup_resolution, slot_for_symbol};
+use crate::lower::ctx::{
+    LowerCtx, bool_ty, const_index_for_literal, lookup_resolution, slot_for_symbol, unit_ty,
+};
 use crate::resolver::DefId;
 use crate::typeck::TypeId;
 
@@ -135,14 +137,10 @@ fn lower_binary(
                 result: result_ty,
             });
         }
-        BinOp::Or
-        | BinOp::And
-        | BinOp::Eq
-        | BinOp::Lt
-        | BinOp::Add
-        | BinOp::Sub
-        | BinOp::Mul
-        | BinOp::Div => {
+        BinOp::Or | BinOp::And => {
+            lower_short_circuit_bool(ctx, op, left, right, result_ty);
+        }
+        BinOp::Eq | BinOp::Lt | BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
             lower_expr(ctx, left);
             lower_expr(ctx, right);
             if let Some(ir_op) = binop_to_ir(op) {
@@ -167,6 +165,52 @@ fn lower_binary(
             lower_expr(ctx, right);
         }
     }
+}
+
+fn lower_short_circuit_bool(
+    ctx: &mut LowerCtx<'_>,
+    op: BinOp,
+    left: &ExprNode,
+    right: &ExprNode,
+    result_ty: TypeId,
+) {
+    let entry = ctx.current;
+    lower_expr(ctx, left);
+
+    let rhs_id = ctx.fresh_block();
+    let short_id = ctx.fresh_block();
+    let merge_id = ctx.fresh_block();
+
+    ctx.set_current(entry);
+    match op {
+        BinOp::And => {
+            ctx.emit(IrInst::JumpIf {
+                then_block: rhs_id,
+                else_block: short_id,
+            });
+        }
+        BinOp::Or => {
+            ctx.emit(IrInst::JumpIf {
+                then_block: short_id,
+                else_block: rhs_id,
+            });
+        }
+        _ => return,
+    }
+
+    ctx.set_current(short_id);
+    let short_val = if op == BinOp::And { 0u32 } else { 1u32 };
+    ctx.emit(IrInst::Const {
+        index: short_val,
+        ty: result_ty,
+    });
+    ctx.emit(IrInst::Jump { target: merge_id });
+
+    ctx.set_current(rhs_id);
+    lower_expr(ctx, right);
+    ctx.emit(IrInst::Jump { target: merge_id });
+
+    ctx.set_current(merge_id);
 }
 
 fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
@@ -197,6 +241,14 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
 pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value: &ExprNode) {
     lower_assign_target(ctx, &target.inner);
     lower_expr(ctx, value);
+    if let Expr::Ident(ident) = &target.inner
+        && let Some(binding) = ctx.layout.binding(ident.symbol)
+    {
+        ctx.emit(IrInst::StoreLocal {
+            slot: binding.slot,
+            ty: binding.ty,
+        });
+    }
 }
 
 fn lower_assign_target(ctx: &mut LowerCtx<'_>, target: &Expr) {
@@ -295,7 +347,7 @@ fn lower_if(
 }
 
 /// True when `block` ends with an unconditional branch (no fall-through to merge).
-fn block_ends_with_unconditional_jump(ctx: &LowerCtx<'_>, block: u32) -> bool {
+pub(crate) fn block_ends_with_unconditional_jump(ctx: &LowerCtx<'_>, block: u32) -> bool {
     let idx = usize::try_from(block).ok();
     let Some(b) = idx.and_then(|i| ctx.blocks.get(i)) else {
         return false;
@@ -345,12 +397,128 @@ fn lower_else_if_chain(
 }
 
 fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) {
+    if arms.is_empty() {
+        return;
+    }
+
+    let temp = ctx.next_match_temp();
+    let temp_ty = ctx
+        .layout
+        .bindings
+        .iter()
+        .find(|b| b.slot == temp)
+        .map(|b| b.ty)
+        .unwrap_or_else(|| unit_ty(ctx.typed));
+
     lower_expr(ctx, scrutinee);
-    for arm in arms {
+    ctx.emit(IrInst::StoreLocal {
+        slot: temp,
+        ty: temp_ty,
+    });
+
+    let mut test_blocks = Vec::with_capacity(arms.len());
+    let mut body_blocks = Vec::with_capacity(arms.len());
+    for _ in arms {
+        test_blocks.push(ctx.fresh_block());
+        body_blocks.push(ctx.fresh_block());
+    }
+    let merge_id = ctx.fresh_block();
+
+    ctx.emit(IrInst::Jump {
+        target: test_blocks[0],
+    });
+
+    for (i, arm) in arms.iter().enumerate() {
+        let fail_id = if i + 1 == arms.len() {
+            merge_id
+        } else {
+            test_blocks[i + 1]
+        };
+        ctx.set_current(test_blocks[i]);
+        emit_arm_condition(
+            ctx,
+            &arm.pattern.inner,
+            temp,
+            temp_ty,
+            body_blocks[i],
+            fail_id,
+        );
+
+        ctx.set_current(body_blocks[i]);
+        bind_ident_pattern(ctx, &arm.pattern.inner, temp, temp_ty);
         if let Some(guard) = &arm.guard {
+            let guarded_body = ctx.fresh_block();
             lower_expr(ctx, guard);
+            ctx.emit(IrInst::JumpIf {
+                then_block: guarded_body,
+                else_block: fail_id,
+            });
+            ctx.set_current(guarded_body);
         }
         lower_expr(ctx, &arm.body);
+        ctx.emit(IrInst::Jump { target: merge_id });
+    }
+
+    ctx.set_current(merge_id);
+}
+
+fn emit_arm_condition(
+    ctx: &mut LowerCtx<'_>,
+    pat: &Pattern,
+    temp: crate::typeck::LocalSlot,
+    temp_ty: TypeId,
+    body_id: u32,
+    fail_id: u32,
+) {
+    match pat {
+        Pattern::Wildcard | Pattern::Ident(_) => {
+            ctx.emit(IrInst::Jump { target: body_id });
+        }
+        Pattern::Literal(lit) => {
+            ctx.emit(IrInst::LoadLocal {
+                slot: temp,
+                ty: temp_ty,
+            });
+            if let Some(index) = const_index_for_literal(lit) {
+                ctx.emit(IrInst::Const { index, ty: temp_ty });
+                ctx.emit(IrInst::BinOp {
+                    op: IrBinOp::Eq,
+                    result: bool_ty(ctx.typed),
+                });
+                ctx.emit(IrInst::JumpIf {
+                    then_block: body_id,
+                    else_block: fail_id,
+                });
+            } else {
+                ctx.emit(IrInst::Jump { target: fail_id });
+            }
+        }
+        Pattern::Struct { .. } | Pattern::Tuple { .. } | Pattern::EnumCtor { .. } => {
+            ctx.emit(IrInst::Jump { target: fail_id });
+        }
+        _ => {
+            ctx.emit(IrInst::Jump { target: fail_id });
+        }
+    }
+}
+
+fn bind_ident_pattern(
+    ctx: &mut LowerCtx<'_>,
+    pat: &Pattern,
+    temp: crate::typeck::LocalSlot,
+    temp_ty: TypeId,
+) {
+    if let Pattern::Ident(ident) = pat
+        && let Some(binding) = ctx.layout.binding(ident.symbol)
+    {
+        ctx.emit(IrInst::LoadLocal {
+            slot: temp,
+            ty: temp_ty,
+        });
+        ctx.emit(IrInst::StoreLocal {
+            slot: binding.slot,
+            ty: temp_ty,
+        });
     }
 }
 

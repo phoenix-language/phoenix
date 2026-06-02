@@ -4,7 +4,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ConstTag {
-    /// Signed integer (`i64` payload).
+    /// Signed integer (`s64` wire payload per `vm-linear.md`).
     SignedInt = 1,
     /// Unsigned integer (`u64` payload).
     UnsignedInt = 2,

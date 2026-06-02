@@ -1,0 +1,7 @@
+// match on bool (via if-style literals in arms).
+
+main :: () => {
+  const flag: bool = { if 1 == 1 { true } else { false } };
+  const x: s32 = { match (flag) { true => 1; false => 0; _ => 2; } };
+  const _ = x;
+};

@@ -1,6 +1,8 @@
 //! Call frames and operand stack.
 
-/// MVP value representation (primitives and bool as 0/1).
+/// MVP runtime scalar: one signed 64-bit integer slot (`s64` in Phoenix types).
+///
+/// Rust uses `i64` as the host representation; language docs and diagnostics use `s32` / `s64` / `u32`, not `i32` / `i64`.
 pub type Value = i64;
 
 /// One activation record.

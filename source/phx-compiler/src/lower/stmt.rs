@@ -5,7 +5,7 @@ use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 
 use crate::ir::IrInst;
 use crate::lower::ctx::{LoopLabels, LowerCtx, unit_ty};
-use crate::lower::expr::{lower_assign_expr, lower_expr};
+use crate::lower::expr::{block_ends_with_unconditional_jump, lower_assign_expr, lower_expr};
 use crate::typeck::TypeId;
 
 /// Lowers `block` for its trailing value (expression body or last item).
@@ -62,11 +62,11 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
 fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &Block) {
     let header = ctx.fresh_block();
     let body_id = ctx.fresh_block();
-    let exit = ctx.fresh_block();
+    let exit_slot = ctx.alloc_loop_exit_slot();
 
     ctx.emit(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
-        exit,
+        exit_slot,
         continue_target: header,
     });
 
@@ -74,35 +74,41 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
     lower_expr(ctx, cond);
     ctx.emit(IrInst::JumpIf {
         then_block: body_id,
-        else_block: exit,
+        else_block: LowerCtx::loop_exit_target(exit_slot),
     });
 
     ctx.set_current(body_id);
     lower_block_value(ctx, body);
-    ctx.set_current(header);
-    ctx.emit(IrInst::Jump { target: header });
+    if !block_ends_with_unconditional_jump(ctx, ctx.current) {
+        ctx.emit(IrInst::Jump { target: header });
+    }
 
     ctx.pop_loop();
+    let exit = ctx.fresh_block();
+    ctx.pending_loop_exits[exit_slot] = Some(exit);
     ctx.set_current(exit);
 }
 
 /// `loop { body }` — body repeats until `break` (or `return`).
 fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
     let header = ctx.fresh_block();
-    let exit = ctx.fresh_block();
+    let exit_slot = ctx.alloc_loop_exit_slot();
 
     ctx.emit(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
-        exit,
+        exit_slot,
         continue_target: header,
     });
 
     ctx.set_current(header);
     lower_block_value(ctx, body);
-    ctx.set_current(header);
-    ctx.emit(IrInst::Jump { target: header });
+    if !block_ends_with_unconditional_jump(ctx, ctx.current) {
+        ctx.emit(IrInst::Jump { target: header });
+    }
 
     ctx.pop_loop();
+    let exit = ctx.fresh_block();
+    ctx.pending_loop_exits[exit_slot] = Some(exit);
     ctx.set_current(exit);
 }
 
@@ -112,7 +118,7 @@ fn lower_break(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>)
     }
     if let Some(labels) = ctx.innermost_loop() {
         ctx.emit(IrInst::Jump {
-            target: labels.exit,
+            target: LowerCtx::loop_exit_target(labels.exit_slot),
         });
     }
 }

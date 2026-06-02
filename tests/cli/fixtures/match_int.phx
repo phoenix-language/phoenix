@@ -1,0 +1,7 @@
+// match on s32 with literal and wildcard arms.
+
+main :: () => {
+  var n: s32 = 2;
+  const x: s32 = { match (n) { 1 => 10; 2 => 20; _ => 30; } };
+  const _ = x;
+};

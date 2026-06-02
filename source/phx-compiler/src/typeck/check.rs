@@ -828,6 +828,9 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> TypeId {
         let s = self.check_expr_node(scrutinee);
+        if let Some(layout) = &mut self.layout {
+            let _ = layout.alloc_match_scrutinee_temp(s);
+        }
         let mut acc: Option<TypeId> = None;
         for arm in arms {
             self.check_pattern(&arm.pattern.inner, s);

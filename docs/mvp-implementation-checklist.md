@@ -10,18 +10,20 @@
 
 | Change | Evidence |
 |--------|----------|
-| Control flow E2E | `control_flow.phx`, `run_control_flow.rs`, `lower_control_flow_emits_loops` |
+| Control flow E2E + `continue` in `if` | `control_flow.phx`, `continue_in_if.phx`, deferred loop exit blocks, `var` assign `StoreLocal` |
+| Short-circuit `&&` / `\|\|` | `lower_short_circuit_bool`, `logical.phx` |
+| `match` on literals / wildcard | `match_int.phx`, `match_bool.phx`, `run_match.rs` |
 | Option/Result not MVP | `Ty::Option`/`Ty::Result` removed; typeck `UnsupportedFeature`; `mvp.md` defers std |
-| CLI `run.sh` | Runs `sample.phx` + `control_flow.phx` |
+| CLI `run.sh` | Runs 6 fixtures (sample, control_flow, continue_in_if, logical, match_*) |
 
 ### Known gaps (do not assume done)
 
 | Issue | Impact |
 |-------|--------|
-| `continue` inside `if` in a loop | IR verifies; **VM may hang** — fixture uses `if … else { break; }` instead |
-| `i < n` in conditions | Parser reads as struct literal; use `n > (i)` with parens |
-| `match` / `given` | Typeck only; lowering runs all arms sequentially |
-| VM `Value = i64` | No struct/enum/tuple runtime representation |
+| `i < n` / `c \|\| d {` before `{` | Parser ambiguity; parenthesize (`n > (i)`, `(c \|\| d)`) |
+| `match (x)` scrutinee | Use `match (ident)` not `match ident {` (struct-literal parse) |
+| Enum/struct `match` patterns | Lowering defers to fail arm; Phase 2 aggregates |
+| VM scalar model (`Value` = one `s64` slot) | No struct/enum/tuple runtime representation |
 
 ---
 
@@ -33,15 +35,15 @@ A credible MVP demo `.phx` should be able to:
 - [x] Declare top-level functions and call them with typed parameters
 - [x] Use `const` / `var`, assignment, and `s32` arithmetic (`+`, `-`, `*`, `/`, comparisons)
 - [x] Use `if` / `else` as expressions with unified branch types
-- [x] Use `while`, `loop`, `break`, `return` (see known gap for `continue` in `if`)
-- [ ] Use `continue` reliably at runtime in all loop shapes
-- [ ] Use `match` / `given` with correct runtime behavior (not just parse/typeck)
+- [x] Use `while`, `loop`, `break`, `continue`, `return`
+- [x] Use `match` on `s32` / `bool` literals and `_` (with `match (expr)` syntax)
+- [x] Use short-circuit `&&` / `||` on `bool`
 - [ ] Construct and use **user** `struct` / `enum` values with field/tag access at runtime
 - [ ] Explicit `expr as Type` casts where types differ (per [type-system.md](design/features/type-system.md))
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
 
-**Reference fixtures today:** `tests/cli/fixtures/sample.phx` (arithmetic + `if` + call), `tests/cli/fixtures/control_flow.phx` (loops; no `continue` in fixture).
+**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`.
 
 ---
 
@@ -68,7 +70,7 @@ A credible MVP demo `.phx` should be able to:
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
 | PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, 4 sections                                             | Round-trip test in `codegen.rs`                          |
 | Bytecode verifier                                                                | partial | `source/phx-bytecode/src/verify.rs`                    | Jump targets, stack depth, locals — for **implemented** opcodes only | `verify(&module)` on `sample.phx` output                 |
-| VM interpret verified module                                                     | partial | `source/phx-vm/src/interpreter.rs`                     | 15 opcodes; `Value = i64`                                            | `phx run tests/cli/fixtures/sample.phx` exits 0          |
+| VM interpret verified module                                                     | partial | `source/phx-vm/src/interpreter.rs`                     | 15 opcodes; stack slots hold `s64` scalars (MVP)                       | `phx run tests/cli/fixtures/sample.phx` exits 0          |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
 | Source-backed diagnostics in CLI                                                 | missing | `source/phx-diagnostics/src/lib.rs`                    | Display-only today; no caret rendering                               | `phx check` shows file line + underline for error span   |
@@ -156,13 +158,13 @@ A credible MVP demo `.phx` should be able to:
 | --------------------------------------------- | ------- | ------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------- |
 | Literals, locals, const pool                  | done    | `lower/expr.rs`, `ctx.rs` |                                                                                    | IR const/load/store                      |
 | Binary `+ - * / == <` (+ `>` via swapped `<`) | done    | `lower/expr.rs`           | `IrBinOp`                                                                          | Add in `add()` IR                        |
-| `&&` `||`                                     | missing | `lower/expr.rs`           | `binop_to_ir` returns `None`                                                       | Short-circuit or bool binops in bytecode |
+| `&&` `||`                                     | done    | `lower/expr.rs`           | Short-circuit via `JumpIf` + `Const` 0/1                                           | `logical.phx` |
 | `%` `**` bitwise                              | missing | `lower/expr.rs`           | Operands lowered, no op                                                            | VM tests                                 |
 | `if` / else-if chain                          | done    | `lower/expr.rs`           | `JumpIf`, merge block                                                              | `JumpIf` in sample IR                    |
 | `while` / `loop` / `break` / `continue`       | done    | `lower/stmt.rs`           |                                                                                    | `lower_control_flow_emits_loops`         |
 | `return`                                      | done    | `lower/stmt.rs`           |                                                                                    |                                          |
 | Function calls                                | done    | `lower/expr.rs`           | `IrInst::Call`                                                                     | Call in sample IR                        |
-| `match`                                       | partial | `lower/expr.rs`           | `lower_match`: evaluates scrutinee + **every arm body sequentially** — no branches | `match` test: only one arm runs          |
+| `match`                                       | partial | `lower/expr.rs`           | Literal / `_` / ident arms; if-else-if chain; `match (scrutinee)` syntax | `match_int.phx`, `match_bool.phx` |
 | `given`                                       | partial | `lower/stmt.rs`           | Scrutinee + body; no pattern dispatch                                              | Runtime `given` test                     |
 | `?`                                           | deferred  | `lower/expr.rs`           | `PostfixOp::Try => {}`; post-MVP std only                                          | After std: early-return lowering         |
 | Struct / enum value construction              | partial | `lower/expr.rs`           | Fields evaluated; no aggregate IR                                                  | `MAKE_STRUCT` / `MAKE_ENUM` path         |
@@ -195,7 +197,7 @@ A credible MVP demo `.phx` should be able to:
 | Item                        | Status  | Where                        | Notes                                 | Acceptance                                |
 | --------------------------- | ------- | ---------------------------- | ------------------------------------- | ----------------------------------------- |
 | Stack machine + call frames | done    | `frame.rs`, `interpreter.rs` |                                       | Nested `CALL` works                       |
-| `Value` model               | partial | `frame.rs`                   | **All values are `i64`**; bool as 0/1 | Struct/enum need tagged values or handles |
+| `Value` model               | partial | `frame.rs`                   | **All stack/locals are `s64` scalars**; `bool` as 0/1 | Struct/enum need tagged values or handles |
 | Opcode interpreter          | partial | `interpreter.rs`             | Matches MVP opcode enum only          | Unsupported opcode → clean error          |
 | Deterministic run           | done    | `interpreter.rs`             | No I/O                                | Same bytecode → same result               |
 | Division by zero            | done    | `interpreter.rs`             | `VmError::DivisionByZero`             | Test / fixture                            |
@@ -211,7 +213,7 @@ A credible MVP demo `.phx` should be able to:
 | Integer `+ - * /`                      | done    | typeck → lower → VM |                                    | `sample.phx`              |
 | Comparisons `== <` (and `>` via lower) | done    | same                | `Eq`, `Lt` opcodes                 | `if sum > 0` in sample    |
 | `==` chained with bool                 | partial | lower               | `Ne`/`Le`/… partial in lower       | Full comparison set in VM |
-| Logical `&&` `||`                      | partial | typeck only         | No lowering                        | E2E bool logic            |
+| Logical `&&` `||`                      | done    | typeck → lower → VM       | Short-circuit branch lowering                                      | `logical.phx`             |
 | Unary `-` / `!`                        | partial | typeck              | Lowering drops unary in some paths | Tests                     |
 | `bool` literals                        | partial | typeck + VM         |                                    | `const ok: bool = …` runs |
 
@@ -226,7 +228,8 @@ A credible MVP demo `.phx` should be able to:
 | `if` expression               | done    | full pipeline           |       | sample.phx                     |
 | `while`                       | done    | full pipeline           |       | `control_flow.phx` + `phx run` |
 | `loop` / `break`              | done    | full pipeline           |       | `control_flow.phx`             |
-| `continue`                    | partial | lower + VM              | Top-level `continue` ok; **`continue` in `if` may hang** | `continue_program_verifies` codegen test |
+| `continue`                    | done    | full pipeline              |       | `continue_in_if.phx`                   |
+| `match` (primitive arms)      | partial | full pipeline              |       | `match_int.phx`, `match_bool.phx`      |
 | `return`                      | done    | stmt lower + VM         |       | `function_return_stmt_ok`      |
 | `match`                       | partial | typeck done; lower stub |       | Runtime selects arm            |
 | `given`                       | partial | typeck; lower stub      |       | Runtime `given`                |
@@ -239,7 +242,7 @@ A credible MVP demo `.phx` should be able to:
 
 | Item                              | Status  | Where                        | Notes                               | Acceptance                |
 | --------------------------------- | ------- | ---------------------------- | ----------------------------------- | ------------------------- |
-| Numeric primitives (all keywords) | partial | typeck                       | Widening disallowed; runtime is i64 | `u32` value correct in VM |
+| Numeric primitives (all keywords) | partial | typeck                       | Widening disallowed; MVP VM uses `s64` slots for all numeric ops | `u32` value correct in VM when implemented |
 | `bool`                            | partial | typeck + VM                  |                                     |                           |
 | `()` unit                         | done    | typeck                       |                                     | `main :: () =>`           |
 | Tuples                            | partial | parse + typeck               | No `MAKE_TUPLE` VM                  | Tuple value in VM         |
@@ -347,7 +350,7 @@ A credible MVP demo `.phx` should be able to:
 | CLI shell tests                           | done    | `tests/cli/*.sh`                        | sample, bad_type, missing_main, control_flow        | CI runs scripts                                      |
 | Integration `run_sample`                  | done    | `tests/integration/tests/run_sample.rs` |                                                     |                                                      |
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |
-| Corpus of `.phx` programs                 | partial | `tests/cli/fixtures/`                   | **4** files                                         | `tests/phoenix/*.phx` or expand fixtures per feature |
+| Corpus of `.phx` programs                 | partial | `tests/cli/fixtures/`                   | **8** files (6 run via `run.sh`)                    | Expand per feature |
 | Negative diagnostics fixtures             | partial | `bad_type.phx`, `missing_main.phx`      |                                                     | Expected-error sidecars                              |
 
 
@@ -373,12 +376,12 @@ Per [mvp.md](design/mvp.md) and [grammar-deferred.md](design/features/grammar-de
 
 Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver → typeck → IR → codegen → verifier → VM → tests):
 
-### Phase 1 — Credible demo on current VM (i64)
+### Phase 1 — Credible demo on current VM (`s64` scalar stack)
 
-1. **Fix `continue` in `if`:** VM or lowering fall-through so `loop { if c { continue; } break; }` terminates.
-2. **Logical ops:** lower `&&`/`||` (short-circuit) → bool opcodes or branch lowering; VM if needed.
-3. **Match lowering:** branch on scrutinee (compare+jump for int/bool first); then enum tags when aggregates exist.
-4. **E2E fixtures:** `match` on primitives; expand beyond `sample.phx` / `control_flow.phx`.
+1. ~~Fix `continue` in `if`~~ — done (loop exit placement + `var` assign `StoreLocal`).
+2. ~~Logical ops~~ — done (`&&` / `||` short-circuit).
+3. ~~Match lowering (primitives)~~ — done for literal / `_` / ident; enum/struct patterns Phase 2.
+4. ~~E2E fixtures~~ — `run.sh` runs 6 programs; `run_match.rs` integration tests.
 
 ### Phase 2 — User-defined aggregates
 
@@ -411,7 +414,7 @@ Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver 
   → phx-compiler/lower → ir    [control flow ok; match/?/aggregates weak]
   → phx-compiler/codegen       [PHX0 subset]
   → phx-bytecode/verify        [matches subset]
-  → phx-vm/interpreter         [i64 stack; 15 opcodes]
+  → phx-vm/interpreter         [`s64` scalar stack; 15 opcodes]
 ```
 
 ---
