@@ -1,7 +1,7 @@
 //! Phoenix compiler — resolve, type-check, lower, and codegen to bytecode.
 //!
 //! MVP pipeline wired today: [`compile_source`] runs parse → resolve → typeck.
-//! [`lower::lower`] and codegen are scaffolded; bytecode execution is not wired yet.
+//! [`lower::lower`] and [`codegen::codegen`] produce bytecode; VM execution is not wired in `compile_source` yet.
 //!
 //! ## Modules
 //!
@@ -11,7 +11,9 @@
 //! - [`typeck`] — type checking → [`TypedProgram`].
 //! - [`ir`] — intermediate representation.
 //! - [`lower`] — [`TypedProgram`] → [`IrModule`].
+//! - [`codegen`] — [`IrModule`] → [`phx_bytecode::BytecodeModule`].
 
+mod codegen;
 mod compile;
 mod ir;
 mod lower;
@@ -19,7 +21,9 @@ mod resolver;
 mod typeck;
 mod unit;
 
+pub use codegen::codegen;
 pub use compile::{CompileError, check_file, compile_source};
+pub use phx_bytecode::BytecodeModule;
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use lower::lower;
 pub use resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram, resolve};
