@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use phx_diagnostics::{DiagnosticBag, ResolveError, Span};
 use phx_syntax::Interner;
-use phx_syntax::ast::decl::{ImportDirective, ImportItem};
-use phx_syntax::ast::ident::PathSegment;
+use phx_syntax::ast::decl::ImportDirective;
 
 use super::loader::{LoadedModule, ModuleId};
 use super::path::ModulePath;
@@ -50,23 +49,6 @@ fn topo_sort_inner(
         return None;
     }
     Some(order)
-}
-
-/// Topological order; reports [`ResolveError::CircularImport`] on failure.
-pub(crate) fn topo_sort(
-    module_count: usize,
-    edges: &[(ModuleId, ModuleId)],
-    roots: ModuleId,
-    bag: &mut DiagnosticBag,
-) -> Option<Vec<ModuleId>> {
-    let _ = roots;
-    topo_sort_inner(module_count, edges).or_else(|| {
-        bag.push(ResolveError::CircularImport {
-            span: Span::new(0, 0),
-            cycle: "module graph cycle".to_owned(),
-        });
-        None
-    })
 }
 
 /// Topological order, or cycle escape when every cyclic module has a fresh `.pxi`.
@@ -130,7 +112,6 @@ fn cycle_modules_have_fresh_pxi(
 }
 
 /// Resolves import directive to target module path.
-/// Resolves import directive to target module path.
 pub fn import_target_module(
     import: &ImportDirective,
     interner: &Interner,
@@ -141,15 +122,6 @@ pub fn import_target_module(
         let (module, _) = ModulePath::split_import_target(&import.path, interner);
         module
     }
-}
-
-/// Maps logical module path → `ModuleId`.
-pub(crate) fn build_path_index(paths: &[ModulePath]) -> HashMap<String, ModuleId> {
-    let mut map = HashMap::new();
-    for (i, p) in paths.iter().enumerate() {
-        map.insert(p.display(), ModuleId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)));
-    }
-    map
 }
 
 /// Collects import edges from parsed import lists.

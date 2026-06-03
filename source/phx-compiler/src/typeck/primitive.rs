@@ -36,6 +36,7 @@ pub fn keyword_to_primitive_kind(kw: Keyword) -> Option<PrimitiveKind> {
 }
 
 /// Byte size for pointer load/store of a primitive (`s128`/`u128` use 8 bytes in MVP VM).
+#[allow(dead_code)]
 #[must_use]
 pub fn primitive_byte_size(kind: PrimitiveKind) -> u8 {
     match kind {

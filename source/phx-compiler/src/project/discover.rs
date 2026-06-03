@@ -1,6 +1,6 @@
 //! Locate `phoenix.toml` by walking parent directories.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::config::{ProjectConfig, ProjectError};
 

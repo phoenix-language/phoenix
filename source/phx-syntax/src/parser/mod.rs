@@ -33,11 +33,6 @@ pub(crate) struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
-    /// Builds a parser over `tokens` borrowed from `source`.
-    pub(crate) fn new(source: &'src str, tokens: &'src [Token<'src>]) -> Self {
-        Self::with_interner(source, tokens, Interner::new())
-    }
-
     /// Builds a parser that interns identifiers into `interner`.
     pub(crate) fn with_interner(
         source: &'src str,

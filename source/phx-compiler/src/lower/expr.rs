@@ -395,7 +395,7 @@ fn lower_short_circuit_bool(
     op: BinOp,
     left: &ExprNode,
     right: &ExprNode,
-    result_ty: TypeId,
+    _result_ty: TypeId,
 ) {
     let entry = ctx.current;
     lower_expr(ctx, left);

@@ -96,14 +96,6 @@ impl PrimitiveKind {
         }
     }
 
-    #[must_use]
-    const fn is_unsigned(self) -> bool {
-        matches!(
-            self,
-            Self::U8 | Self::U16 | Self::U32 | Self::U64 | Self::U128
-        )
-    }
-
     /// Applies an explicit cast from `from` representation to `to`.
     #[must_use]
     pub fn apply_cast(value: ScalarValue, from: Self, to: Self) -> ScalarValue {

@@ -19,6 +19,7 @@ impl ModulePath {
     }
 
     /// Returns path segments.
+    #[cfg(test)]
     #[must_use]
     pub fn segments(&self) -> &[String] {
         &self.segments
@@ -126,7 +127,6 @@ fn segment_to_string(seg: &PathSegment, interner: &Interner) -> Option<String> {
     let sym = match seg {
         PathSegment::Ident(i) => i.symbol,
         PathSegment::Type(t) => t.symbol,
-        _ => return None,
     };
     Some(interner.resolve(sym).to_owned())
 }

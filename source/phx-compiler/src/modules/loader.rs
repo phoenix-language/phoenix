@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use phx_diagnostics::{DiagnosticBag, ResolveError};
-use phx_syntax::{Interner, Program, SourceFile, parse_with_interner};
+use phx_syntax::{Interner, Program, parse_with_interner};
 
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
 use crate::project::BuildLayout;

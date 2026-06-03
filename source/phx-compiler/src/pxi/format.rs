@@ -128,6 +128,7 @@ impl PxiFile {
     }
 
     /// Digest of this file's canonical JSON (for dependency tracking).
+    #[allow(dead_code)]
     #[must_use]
     pub fn self_hash(&self) -> String {
         digest_bytes(self.to_json().as_bytes())

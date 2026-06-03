@@ -39,15 +39,15 @@ impl Value {
 pub enum Aggregate {
     /// User struct instance.
     Struct {
-        /// Bytecode type table id.
-        type_id: u32,
+        /// Bytecode type table id (reserved for future layout checks).
+        _type_id: u32,
         /// Field values in declaration order.
         fields: Vec<Value>,
     },
     /// User enum instance.
     Enum {
-        /// Bytecode type table id.
-        type_id: u32,
+        /// Bytecode type table id (reserved for future layout checks).
+        _type_id: u32,
         /// Variant discriminant.
         tag: u32,
         /// Tuple-variant payload slots (empty for unit variants).

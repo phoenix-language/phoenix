@@ -6,4 +6,4 @@ mod layout;
 
 pub use config::{ProjectConfig, ProjectError};
 pub use discover::{discover_project, resolve_project};
-pub use layout::{BuildLayout, ModuleArtifacts};
+pub use layout::BuildLayout;

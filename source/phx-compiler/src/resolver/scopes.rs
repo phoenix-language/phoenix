@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use phx_diagnostics::{DiagnosticBag, ResolveError, Span};
 use phx_syntax::Symbol;
 
-use super::def_id::{Def, DefId, DefKind};
+use super::def_id::{Def, DefId};
 
 /// One lexical scope layer.
 #[derive(Debug, Default)]

@@ -135,11 +135,9 @@ pub fn link_modules(inputs: &[LinkInput], entry_function_id: u32) -> Result<Byte
             });
         }
 
-        for layout in &m.local_layouts.layouts {
-            let mut l = layout.clone();
-            l.function_id = l.function_id;
-            merged_layouts.layouts.push(l);
-        }
+        merged_layouts
+            .layouts
+            .extend(m.local_layouts.layouts.iter().cloned());
     }
 
     if !merged_functions

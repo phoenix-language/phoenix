@@ -183,7 +183,10 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                     fields.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
                 }
                 fields.reverse();
-                let handle = machine.push_aggregate(Aggregate::Struct { type_id, fields });
+                let handle = machine.push_aggregate(Aggregate::Struct {
+                    _type_id: type_id,
+                    fields,
+                });
                 machine.stack.push(handle);
             }
             Opcode::MakeEnum => {
@@ -196,7 +199,7 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 }
                 payload.reverse();
                 let handle = machine.push_aggregate(Aggregate::Enum {
-                    type_id,
+                    _type_id: type_id,
                     tag,
                     payload,
                 });
