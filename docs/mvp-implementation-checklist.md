@@ -4,9 +4,73 @@
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
-**Last surveyed:** `trunk` @ `5f4a146` ([vm]: width-faithful primitives, slices, refs, byte strings). **`cargo test --workspace`:** all crates green. **`tests/cli/run.sh`:** 27 fixtures.
+**Last surveyed:** working tree @ `53beb46`. **`cargo test --workspace`:** all crates green. **`tests/cli/run.sh`:** 26 single-file fixtures + 1 multi-file module run.
 
-### Runtime snapshot (current VM)
+---
+
+## MVP audit matrix
+
+High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design/features/type-system.md). Labels: **pass** = end-to-end or spec-aligned; **partial** = implemented with known gaps; **missing** = not started; **deferred** = intentionally post-MVP.
+
+### [mvp.md](design/mvp.md) — in scope
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Pipeline: parse → typeck → lower → bytecode → VM | **pass** | Full driver in `compile.rs`; verifier before run |
+| `main :: () =>` required | **pass** | `ResolveError::MissingMain` / `InvalidMainSignature` |
+| Declarations (`const`, `var`, functions) | **pass** | CLI + unit tests |
+| Numeric primitives, `bool`, `()`, tuples | **pass** | Width-faithful VM; `primitives_*.phx` fixtures |
+| Raw pointers, `&T` / `&mut T` in signatures | **partial** | Address-of + deref; no borrow checker |
+| Fixed arrays, slices | **partial** | Arrays + stack-backed slice views; no heap slices |
+| User `struct` / `enum` / type aliases | **pass** | Type aliases resolve + unify (`typeck.rs` tests) |
+| Traits: parse + `Type :: impl :: Trait` | **pass** | Static dispatch; `trait_eq.phx` |
+| Control flow (`if`, `match`, loops, `return`, `given`) | **partial** | `given` lowers without full pattern dispatch |
+| Expressions + explicit `as` casts | **partial** | Casts: same primitive kind only today |
+| Modules `#import` + `pub` (M1) | **pass** | `--module-src` / `check_file_with_module_path` |
+| M2 project build (`phoenix.toml`, linker) | **pass** | `build.sh`, `run_build.rs`, `run_dep_build.rs` |
+| CLI (`phx check`, `run`, `compile`, `build`) | **pass** | CI runs `check.sh` + `run.sh` |
+| Use-after-move (MVP ownership) | **pass** | Move-site `note:` in `use_after_move.phx` |
+
+### [mvp.md](design/mvp.md) — out of scope (correctly absent)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Scheduler, actors, `@spawn` / mailboxes | **deferred** | Parse-rejected or documented only |
+| Full borrow checker | **deferred** | MVP: use-after-move only |
+| Std I/O, networking, collections | **deferred** | No std I/O in VM |
+| JIT, hot reload, `#derive` codegen | **deferred** | — |
+| Primitive `string` | **deferred** | Byte-first: `u8`, arrays, slices, `b"…"` |
+
+**Rough in-scope pass rate:** ~12 **pass**, ~4 **partial**, 0 **missing** on MVP-required surface (excluding deferred rows).
+
+### [type-system.md](design/features/type-system.md) — deterministic rules
+
+| Rule | Status | Notes |
+|------|--------|-------|
+| 1–2. Literal defaults (`s32`, `u`→`u32`, `f32`) | **pass** | `typeck/builtins.rs` |
+| 3. No implicit numeric widening | **pass** | `mixed_width.phx` fails check |
+| 4–6. Inference, explicit params, default ret `()` | **pass** | Tests + fixtures |
+| 7. `if` / `match` branch unification | **pass** | `unify.rs` |
+| 8. `return;` only for `()` | **pass** | typeck tests |
+| 9. Operators on primitives / `bool` only | **pass** | User types rejected for ops |
+| 10. Generic inference local only | **partial** | Named types + args scaffold |
+| Option / Result / `?` rejected until std | **pass** | `*_unresolved_until_std` tests |
+| Enum `match` exhaustiveness | **pass** | `NonExhaustiveMatch`; struct variants covered |
+| Type aliases | **pass** | `type_alias_*` tests in `typeck.rs` |
+
+**Type-system rule pass rate:** 10 **pass**, 1 **partial** (generics).
+
+### Known gaps (do not assume done)
+
+| Issue | Impact |
+|-------|--------|
+| `#import` without module context | `compile_source` / bare `phx check file.phx` → `ImportNotSupported`; use `--module-src` or project build |
+| Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
+| Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
+| Cross-width `as` casts | Same primitive keyword family only (`primitive_cast_allowed`) |
+| CI scope | `build.sh` / `compile.sh` not in GitHub Actions (local `just test-cli`) |
+
+---
 
 | Area | State |
 |------|--------|
@@ -22,10 +86,11 @@
 
 | Issue | Impact |
 |-------|--------|
-| Enum struct-payload `match` exhaustiveness | No unreachable-arm warnings yet |
-| `#import` / multi-file | M1 whole-program + M2 `phx build` → `build/` (`.pxi`, `.phx0`, `build/bin`) |
-| Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD after modules |
+| `#import` without module context | Bare `phx check` / `compile_source` → `ImportNotSupported`; use `--module-src` or `phoenix.toml` project |
+| Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
+| Cross-width `as` casts | Same primitive keyword family only today |
+| Unreachable `match` arms | No warning for dead arms (exhaustiveness errors only) |
 
 ---
 
@@ -45,7 +110,7 @@ A credible MVP demo `.phx` should be able to:
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
 
-**Reference fixtures today:** `sample.phx`, `control_flow.phx`, `continue_in_if.phx`, `logical.phx`, `match_int.phx`, `match_bool.phx`, `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_method.phx`, `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx`, `given_struct.phx`, `trait_eq.phx`, `primitives_float.phx`, `primitives_width.phx`, `primitives_i128.phx`, `byte_string.phx`, `ref_local.phx`, `deref_ptr.phx`, `slice_from_array.phx`.
+**Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **`run.sh`:** 26 programs + `modules/main.phx`.
 
 ---
 
@@ -72,7 +137,7 @@ A credible MVP demo `.phx` should be able to:
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
 | PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, **5** sections (incl. local layouts), minor v1           | Round-trip test in `codegen.rs`                          |
 | Bytecode verifier                                                                | partial | `source/phx-bytecode/src/verify.rs`                    | Jump targets, stack depth, locals — for **implemented** opcodes only | `verify(&module)` on `sample.phx` output                 |
-| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (27 fixtures) |
+| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (26 + modules) |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
 | Source-backed diagnostics in CLI                                                 | done    | `source/phx-diagnostics/src/format.rs`                 | Line + caret for parse/type errors via `CompileError::format_with_source` | `phx check bad_type.phx` shows caret |
@@ -114,7 +179,7 @@ A credible MVP demo `.phx` should be able to:
 | Block scopes, resolve exprs/pats    | done    | `resolver/walk.rs`              |                             |                                                       |
 | Enforce `main` present              | done    | `resolver/walk.rs`              | `ResolveError::MissingMain` | `missing_main` fixture fails `phx check`              |
 | Enforce `main :: () => …` signature | done    | `resolver/walk.rs`              | `InvalidMainSignature`      | resolve tests                                         |
-| `#import`                           | done    | `modules/loader.rs`, `resolve_crate.rs` | `compile_source` still `ImportNotSupported` | `tests/cli/fixtures/modules/` + `run_modules.rs` |
+| `#import`                           | done    | `modules/loader.rs`, `resolve_crate.rs` | Bare `compile_source` / no `--module-src` → `ImportNotSupported` with module-root hint | `tests/cli/fixtures/modules/` + `run_modules.rs` |
 | `pub` / cross-module visibility     | done    | `resolver/walk.rs`, `resolve_crate.rs` | Export map + import preface | Private import fails; `pub` export works across files |
 
 
@@ -139,11 +204,11 @@ A credible MVP demo `.phx` should be able to:
 | `Option`/`Result` types                    | deferred | —                                 | Lex as `TypeIdent` + generics; no compiler builtin                            | `result_type_unresolved_until_std`                     |
 | `?`                                        | deferred | `typeck/check.rs`                 | Postfix `?` rejected until std                                                | `question_mark_unsupported_in_mvp`                     |
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
-| `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns                                               | `enum_match.phx`                                       |
+| `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns; enum exhaustiveness                      | `enum_match.phx`, `enum_match_non_exhaustive` test     |
 | `&&` / `||` on `bool`                      | done     | `typeck/ops.rs`                   |                                                                               | Typeck accepts                                         |
 | `%` `**` bitwise shifts                    | done     | `typeck/ops.rs`, lower, VM        |                                                                               | `mod_bitwise.phx`                                      |
-| Method calls `x.foo()`                     | partial  | `typeck/check.rs`, `lower/expr.rs` | Inherent impl dispatch; synthetic receiver param; `self.` in impl body parse gap | `struct_method.phx`                                    |
-| Trait / impl static resolution             | missing  | —                                 | Impl bodies type-checked; no trait constraint dispatch                        | `Point :: impl :: Eq` call resolves to impl            |
+| Method calls `x.foo()`                     | done     | `typeck/check.rs`, `lower/expr.rs` | Inherent + trait impl dispatch                                          | `struct_method.phx`, `trait_eq.phx`                    |
+| Trait / impl static resolution             | done     | `typeck/check.rs`                  | `Type :: impl :: Trait`; ambiguous impls diagnosed                      | `trait_eq.phx`                                         |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
 | Raw pointers `*T`                          | partial  | `typeck/ops.rs`, VM `PtrLoad`/`PtrStore` | Deref on primitives; full pointer surface TBD                          | `deref_ptr.phx`                                        |
 | Generics on types                          | partial  | `typeck/lower_ty.rs`              | Named types + args scaffold                                                   | User generic fn typeck                                 |
@@ -200,7 +265,7 @@ A credible MVP demo `.phx` should be able to:
 | Item                        | Status  | Where                        | Notes                                 | Acceptance                                |
 | --------------------------- | ------- | ---------------------------- | ------------------------------------- | ----------------------------------------- |
 | Stack machine + call frames | done    | `frame.rs`, `interpreter.rs` |                                       | Nested `CALL` works                       |
-| `Value` model               | done    | `frame.rs`                   | `Scalar` (width-faithful) + `Agg` arena; slice aggregate | 25 CLI fixtures                           |
+| `Value` model               | done    | `frame.rs`                   | `Scalar` (width-faithful) + `Agg` arena; slice aggregate | 26 CLI run fixtures                       |
 | Opcode interpreter          | done    | `interpreter.rs`             | 43 opcodes; `prim_kind` on scalar ops | Unsupported opcode → clean error          |
 | Deterministic run           | done    | `interpreter.rs`             | No I/O                                | Same bytecode → same result               |
 | Division by zero            | done    | `interpreter.rs`             | `VmError::DivisionByZero`             | Test / fixture                            |
@@ -233,10 +298,9 @@ A credible MVP demo `.phx` should be able to:
 | `while`                       | done    | full pipeline           |       | `control_flow.phx` + `phx run` |
 | `loop` / `break`              | done    | full pipeline           |       | `control_flow.phx`             |
 | `continue`                    | done    | full pipeline              |       | `continue_in_if.phx`                   |
-| `match` (primitive arms)      | partial | full pipeline              |       | `match_int.phx`, `match_bool.phx`      |
+| `match` (primitives + enum/struct) | done    | full pipeline              |       | `match_int.phx`, `enum_match_struct.phx` |
 | `return`                      | done    | stmt lower + VM         |       | `function_return_stmt_ok`      |
-| `match`                       | partial | typeck done; lower stub |       | Runtime selects arm            |
-| `given`                       | partial | typeck; lower stub      |       | Runtime `given`                |
+| `given`                       | partial | typeck; lower partial   |       | `given_struct.phx` runs        |
 
 
 ---
@@ -252,7 +316,7 @@ A credible MVP demo `.phx` should be able to:
 | Tuples                            | done    | parse + typeck + VM          | `MakeTuple`                         | `tuple_lit.phx`           |
 | Fixed arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
 | Slices `[T]`                      | partial | typeck + VM                  | Explicit cast from array; stack-backed only (no heap slice) | `slice_from_array.phx` |
-| Type aliases                      | partial | resolver + typeck            |                                     | Alias resolves            |
+| Type aliases                      | done    | resolver + typeck + unify  | Expand aliases in unify; assignability tests | `type_alias_*` in `typeck.rs` |
 | `struct` decl + literal           | done    | parse, typeck, lower, VM     | Arena struct aggregates             | `struct_point.phx`        |
 | `enum` decl + ctors               | done    | parse, typeck, lower, VM     | Tag + payload in arena              | `enum_match.phx`          |
 
@@ -268,7 +332,7 @@ A credible MVP demo `.phx` should be able to:
 | Trailing expr return             | done    | typeck         |                              | `function_trailing_expr_return_ok` |
 | `return expr;`                   | done    | lower + VM     |                              |                                    |
 | Recursion                        | partial | VM `CALL`      | Should work if typeck passes | Recursive factorial .phx           |
-| Methods / receiver               | missing | typeck partial | No `self` lowering           | `Point :: impl { fn …(self) }`     |
+| Methods / receiver               | done    | typeck + lower | Synthetic receiver param; inherent + trait dispatch | `struct_method.phx`, `trait_eq.phx` |
 
 
 ---
@@ -293,7 +357,7 @@ A credible MVP demo `.phx` should be able to:
 | Item                                  | Status  | Where                | Notes                                                     | Acceptance                        |
 | ------------------------------------- | ------- | -------------------- | --------------------------------------------------------- | --------------------------------- |
 | Move on assign/call for non-Copyable  | done    | typeck               | Structs non-Copyable                                      | move tests                        |
-| Use-after-move diagnostic + move site | partial | typeck               | Tracker has span; diagnostic uses symbol index            | Message cites move span in source |
+| Use-after-move diagnostic + move site | done     | `typeck/ownership.rs`, `format.rs` | Secondary `note:` at move span                                            | `use_after_move.phx` + `use_after_move_error`          |
 | Copyable primitives / tuples / arrays | done    | `typeck/builtins.rs` |                                                           | `const b = a` for `s32`           |
 | Full borrow checker                   | missing | —                    | Post-MVP per [ownership.md](design/features/ownership.md) | —                                 |
 
@@ -308,8 +372,8 @@ A credible MVP demo `.phx` should be able to:
 | Parse `trait` / `impl` / `impl ::`    | done    | parser   | Rejects legacy `impl for`                                 | Parser tests                        |
 | Resolve trait/impl names              | done    | resolver |                                                          |                                     |
 | Type-check impl methods               | done    | typeck   | Members as functions                                     |                                     |
-| Static method resolution to impl      | missing | typeck   | No trait vtable; methods not looked up via receiver type | Call trait method on typed receiver |
-| Inherent vs trait impl disambiguation | missing | —        |                                                          |                                     |
+| Static method resolution to impl      | done    | typeck   | Lookup via `inherent_methods` / `trait_methods`          | `trait_eq.phx`                      |
+| Inherent vs trait impl disambiguation | partial | typeck   | Ambiguous trait impls diagnosed; inherent wins first     | Multiple trait impls same method  |
 | `#derive` codegen                     | missing | deferred |                                                          | —                                   |
 
 
@@ -353,7 +417,7 @@ A credible MVP demo `.phx` should be able to:
 | `phx build <file>`               | done    | `build/driver.rs`        | Requires `phoenix.toml`     | `tests/cli/build.sh` |
 | `phx run <file>`                 | done    | project build or M1 path | `build/bin` when project    | `tests/cli/build.sh` |
 | `phx compile -o`                 | done    | same                     | M1 path; optional project   | `tests/cli/compile.sh` |
-| Pretty diagnostics (span labels) | missing | `phx-diagnostics`        | Comment: "later formatting" |                      |
+| Pretty diagnostics (span labels) | done    | `phx-diagnostics/format.rs` | Line + caret; move-site notes | `check.sh` caret + `use_after_move` note |
 
 
 ---
@@ -367,11 +431,12 @@ A credible MVP demo `.phx` should be able to:
 | Parser unit tests                         | done    | `source/phx-syntax/tests/parser.rs`     | Includes deferred=unsupported                       |                                                      |
 | Resolver / typeck / lower / codegen tests | done    | `source/phx-compiler/tests/`            |                                                     |                                                      |
 | Verifier tests                            | done    | `source/phx-bytecode/src/verify.rs`     | `#[cfg(test)]`                                      |                                                      |
-| CLI shell tests                           | done    | `tests/cli/*.sh`                        | sample, bad_type, missing_main, control_flow        | CI runs scripts                                      |
+| CLI shell tests                           | done    | `tests/cli/*.sh`                        | check, run, build, compile, help                  | CI: `check.sh` + `run.sh`                            |
 | Integration `run_sample`                  | done    | `tests/integration/tests/run_sample.rs` |                                                     |                                                      |
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |
-| Corpus of `.phx` programs                 | partial | `tests/cli/fixtures/`                   | **8** files (6 run via `run.sh`)                    | Expand per feature |
-| Negative diagnostics fixtures             | partial | `bad_type.phx`, `missing_main.phx`      |                                                     | Expected-error sidecars                              |
+| Integration semantics                       | done    | `tests/integration/run_semantics.rs`    | Asserts computed locals                             | `sample_arithmetic_computes_sum`, etc.               |
+| Corpus of `.phx` programs                 | done    | `tests/cli/fixtures/`                   | 26 run + modules + project + app_dep                | [tests/cli/README.md](../tests/cli/README.md)        |
+| Negative diagnostics fixtures             | done    | `check.sh`                              | `bad_type`, `missing_main`, `use_after_move`, `mixed_width`, module errors | Substring + caret assertions                         |
 
 
 ---
@@ -421,16 +486,19 @@ Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_met
 5. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
 6. ~~**Language surface:**~~ explicit casts, tuple/array/slice runtime, `given`, trait impl dispatch, `b"…"`, frame refs.
 
-Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program) list; `run.sh` runs **27** programs.
+Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **26** programs + modules.
 
-### Phase 4 — Polish (next, before modules)
+### Phase 4 — Polish (mostly done)
 
-1. Parser ergonomics for known ambiguities (parenthesis rules or grammar fixes).
-2. Checklist/table hygiene and negative fixtures (e.g. `s32 + s64` without `as`).
-3. Use-after-move diagnostics cite **source span** at move site.
-4. ~~Enum struct-variant `match` arms~~ — `enum_match_struct.phx`.
+1. Parser ergonomics for known ambiguities (parenthesis rules or grammar fixes) — open.
+2. ~~Checklist/table hygiene and negative fixtures~~ — `mixed_width.phx`, fixture inventory in `tests/cli/README.md`.
+3. ~~Use-after-move diagnostics cite source span at move site~~ — `format.rs` + `use_after_move.phx`.
+4. ~~Enum struct-variant `match` arms + exhaustiveness~~ — `enum_match_struct.phx`, `NonExhaustiveMatch`.
+5. ~~Type aliases~~ — `type_alias_*` tests.
+6. ~~Trait `Type :: impl :: Trait` dispatch~~ — `trait_eq.phx`.
+7. ~~Semantic integration tests~~ — `run_semantics.rs`.
 
-### Phase 5 — Modules (`#import`)
+### Phase 5 — Modules (`#import`) (done)
 
 1. ~~**Module graph (M1):**~~ load multiple files, `::` paths, `pub` visibility ([modules.md](design/features/modules.md)).
 2. ~~**M2 build pipeline:**~~ `phoenix.toml`, `build/`, `.pxi`, linker, incremental manifest.
@@ -471,8 +539,8 @@ Do not implement scheduler/actors/std I/O until the memory model and module stor
 ```text
 .phx source
   → phx-syntax (lex/parse)     [strong]
-  → phx-compiler/resolver      [single-file; import blocked]
-  → phx-compiler/typeck        [MVP rules + aggregate layouts/patterns]
+  → phx-compiler/resolver      [single-file or multi-file via --module-src / project build]
+  → phx-compiler/typeck        [MVP rules + aggregate layouts/patterns/exhaustiveness]
   → phx-compiler/lower → ir    [control flow + struct/enum aggregates]
   → phx-compiler/codegen       [PHX0 + types section metadata]
   → phx-bytecode/verify        [scalar + aggregate opcode rules; local layouts]
@@ -486,11 +554,11 @@ Do not implement scheduler/actors/std I/O until the memory model and module stor
 
 | Status      | Count |
 | ----------- | ----- |
-| **done**    | 74    |
-| **partial** | 43    |
-| **missing** | 22    |
+| **done**    | ~82   |
+| **partial** | ~35   |
+| **missing** | ~18   |
 | **deferred** (post-MVP std) | 4 |
-| **Total**   | 143   |
+| **Total**   | ~139  |
 
 
 *(Counts are table rows in this file, not git issues. Includes `done (reject)` parser rows. **deferred** = intentionally not MVP.)*

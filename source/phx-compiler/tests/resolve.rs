@@ -63,10 +63,14 @@ fn unresolved_ident() {
 #[test]
 fn import_not_supported() {
     let bag = resolve_err("#import std::io; main :: () => { };");
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(e, ResolveError::ImportNotSupported { .. }))
+        .expect("ImportNotSupported");
     assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(e, ResolveError::ImportNotSupported { .. }))
+        err.to_string().contains("module root"),
+        "expected module-root hint, got: {err}"
     );
 }
 

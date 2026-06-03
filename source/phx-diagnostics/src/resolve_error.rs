@@ -52,7 +52,7 @@ pub enum ResolveError {
         /// Span of the duplicate.
         span: Span,
     },
-    /// `#import` is not supported until multi-file loading exists.
+    /// `#import` used without a module root (single-file `compile_source` / `phx check` with no `--module-src`).
     ImportNotSupported {
         /// Span of the import directive.
         span: Span,
@@ -174,7 +174,9 @@ impl fmt::Display for ResolveError {
                 write!(f, "duplicate definition of sym#{symbol_index}")
             }
             Self::ImportNotSupported { .. } => {
-                f.write_str("#import is not supported yet (multi-file modules are not implemented)")
+                f.write_str(
+                    "#import requires a module root; use `phx check --module-src <dir> <file>` or `phx build` from a project with `phoenix.toml`",
+                )
             }
             Self::ModuleNotFound { path, .. } => write!(f, "module not found: `{path}`"),
             Self::ModuleIo { path, message, .. } => {

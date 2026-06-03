@@ -247,9 +247,11 @@ fn struct_lit_unknown_field() {
     let bag = typeck_err(
         "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point { x: 1, z: 2 }; };",
     );
-    assert!(bag.errors().iter().any(|e| {
-        matches!(e, TypeCheckError::UnknownStructField { name, .. } if name == "z")
-    }));
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(e, TypeCheckError::UnknownStructField { name, .. } if name == "z")
+        })
+    );
 }
 
 #[test]
@@ -257,9 +259,11 @@ fn struct_lit_missing_field() {
     let bag = typeck_err(
         "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point { x: 1 }; };",
     );
-    assert!(bag.errors().iter().any(|e| {
-        matches!(e, TypeCheckError::MissingStructField { name, .. } if name == "y")
-    }));
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(e, TypeCheckError::MissingStructField { name, .. } if name == "y")
+        })
+    );
 }
 
 #[test]
