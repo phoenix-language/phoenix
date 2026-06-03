@@ -4,17 +4,19 @@
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
-**Last surveyed:** working tree on `trunk` (last commit `1ea58a0`; **uncommitted** changes include control flow, Option/Result policy, this checklist). **`cargo test --workspace`:** 188 tests passing.
+**Last surveyed:** `trunk` @ `5f4a146` ([vm]: width-faithful primitives, slices, refs, byte strings). **`cargo test --workspace`:** all crates green. **`tests/cli/run.sh`:** 25 fixtures.
 
-### Landed since `1ea58a0` (verify in working tree, not necessarily committed)
+### Runtime snapshot (current VM)
 
-| Change | Evidence |
-|--------|----------|
-| Control flow E2E + `continue` in `if` | `control_flow.phx`, `continue_in_if.phx`, deferred loop exit blocks, `var` assign `StoreLocal` |
-| Short-circuit `&&` / `\|\|` | `lower_short_circuit_bool`, `logical.phx` |
-| `match` on literals / wildcard | `match_int.phx`, `match_bool.phx`, `run_match.rs` |
-| Option/Result not MVP | No lexer keywords; parse as `TypeIdent`; resolve fails until std prelude |
-| CLI `run.sh` | Runs 10 fixtures including struct/enum aggregates |
+| Area | State |
+|------|--------|
+| Scalars | Width-faithful `ScalarValue` (`Bool`, `I8`…`I128`, `U8`…`U128`, `F32`, `F64`, `Ptr`) — not a shared integer lane |
+| Locals / stack | Typed slots; `prim_kind` operands on const, load/store, and arithmetic |
+| Aggregates | Arena handles: struct, enum, tuple, fixed array, **slice** `(ptr, len)` |
+| PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
+| Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (internal) |
+| Lifetime / drop | **Not implemented** — values live until frame/arena teardown; see [Roadmap](#roadmap-beyond-single-file-mvp) |
+| Text | **No primitive `string`** — `[u8; N]`, `b"…"`, slices; std will own a string-like type over bytes |
 
 ### Known gaps (do not assume done)
 
@@ -23,9 +25,10 @@
 | `i < n` / `c \|\| d {` before `{` | Parser ambiguity; parenthesize (`n > (i)`, `(c \|\| d)`) |
 | `match ident {` scrutinee | Use `match (ident) {` not `match ident {` (struct-literal parse) |
 | `given pat = e { … }` before `{` body | Use `given pat = (e) { … }` when scrutinee is followed by `{` (struct-literal parse) |
-| Enum/struct `match` patterns | done for struct/tuple/unit enum arms; enum struct variants deferred |
-| Float VM | Int-only scalar model; `f32`/`f64` literals type-check but no float arithmetic opcodes yet |
-| VM value model | `Value::Scalar` / `Value::Agg` (struct/enum/tuple/array); 38 opcodes (0–37) |
+| Enum/struct `match` patterns | Struct/tuple/unit enum arms work; enum **struct payload** variants deferred |
+| `#import` / multi-file | Resolver returns `ImportNotSupported`; single compilation unit only |
+| Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD after modules |
+| Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
 
 ---
 
@@ -70,13 +73,14 @@ A credible MVP demo `.phx` should be able to:
 | Compile driver: parse → resolve → typeck                                         | done    | `source/phx-compiler/src/compile.rs`                   | `compile_source`, `check_file`                                       | `compile_source("main :: () => { };", None)` ok          |
 | Lower → IR                                                                       | done    | `source/phx-compiler/src/lower/`                       | CFG blocks, `IrInst`                                                 | `lower_sample_produces_ir` test                          |
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
-| PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, 4 sections                                             | Round-trip test in `codegen.rs`                          |
+| PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, **5** sections (incl. local layouts), minor v1           | Round-trip test in `codegen.rs`                          |
 | Bytecode verifier                                                                | partial | `source/phx-bytecode/src/verify.rs`                    | Jump targets, stack depth, locals — for **implemented** opcodes only | `verify(&module)` on `sample.phx` output                 |
-| VM interpret verified module                                                     | partial | `source/phx-vm/src/interpreter.rs`                     | 38 opcodes (0–37); int-only scalars + tuple/array/struct/enum aggs   | `tests/cli/run.sh` (16 fixtures) |
+| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (25 fixtures) |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
 | Source-backed diagnostics in CLI                                                 | done    | `source/phx-diagnostics/src/format.rs`                 | Line + caret for parse/type errors via `CompileError::format_with_source` | `phx check bad_type.phx` shows caret |
 | `phx compile` / write `.phx0` to disk                                            | done    | `source/phx/src/main.rs`                               | `phx compile -o` after verify                                        | `tests/cli/compile.sh` |
+| Width-faithful primitives + slices/refs/byte strings                             | done    | `phx-bytecode`, `phx-vm`, `phx-compiler`               | See runtime snapshot above                                           | `primitives_width.phx`, `slice_from_array.phx`, etc. |
 
 
 ---
@@ -140,11 +144,11 @@ A credible MVP demo `.phx` should be able to:
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
 | `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns                                               | `enum_match.phx`                                       |
 | `&&` / `||` on `bool`                      | done     | `typeck/ops.rs`                   |                                                                               | Typeck accepts                                         |
-| `%` `**` bitwise shifts                    | partial  | `typeck/ops.rs`                   | Typed on numerics; **no codegen**                                             | Runtime test when VM supports                          |
+| `%` `**` bitwise shifts                    | done     | `typeck/ops.rs`, lower, VM        |                                                                               | `mod_bitwise.phx`                                      |
 | Method calls `x.foo()`                     | partial  | `typeck/check.rs`, `lower/expr.rs` | Inherent impl dispatch; synthetic receiver param; `self.` in impl body parse gap | `struct_method.phx`                                    |
 | Trait / impl static resolution             | missing  | —                                 | Impl bodies type-checked; no trait constraint dispatch                        | `Point :: impl for Eq` call resolves to impl           |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
-| Raw pointers `*T`                          | partial  | `typeck/lower_ty.rs`              | Types only                                                                    | No VM `PTR_LOAD`                                       |
+| Raw pointers `*T`                          | partial  | `typeck/ops.rs`, VM `PtrLoad`/`PtrStore` | Deref on primitives; full pointer surface TBD                          | `deref_ptr.phx`                                        |
 | Generics on types                          | partial  | `typeck/lower_ty.rs`              | Named types + args scaffold                                                   | User generic fn typeck                                 |
 | Copyable inference                         | partial  | `typeck/builtins.rs`              | Primitives, tuples, arrays of Copyable                                        | User struct Copyable only when all fields Copyable     |
 | Use-after-move (MVP ownership)             | done     | `typeck/ownership.rs`, `check.rs` | Non-Copyable moves                                                            | `use_after_move_error`                                 |
@@ -161,7 +165,7 @@ A credible MVP demo `.phx` should be able to:
 | Literals, locals, const pool                  | done    | `lower/expr.rs`, `ctx.rs` |                                                                                    | IR const/load/store                      |
 | Binary `+ - * / == <` (+ `>` via swapped `<`) | done    | `lower/expr.rs`           | `IrBinOp`                                                                          | Add in `add()` IR                        |
 | `&&` `||`                                     | done    | `lower/expr.rs`           | Short-circuit via `JumpIf` + `Const` 0/1                                           | `logical.phx` |
-| `%` `**` bitwise                              | missing | `lower/expr.rs`           | Operands lowered, no op                                                            | VM tests                                 |
+| `%` `**` bitwise                              | done    | `lower/expr.rs`, VM         |                                                                                    | `mod_bitwise.phx`                        |
 | `if` / else-if chain                          | done    | `lower/expr.rs`           | `JumpIf`, merge block                                                              | `JumpIf` in sample IR                    |
 | `while` / `loop` / `break` / `continue`       | done    | `lower/stmt.rs`           |                                                                                    | `lower_control_flow_emits_loops`         |
 | `return`                                      | done    | `lower/stmt.rs`           |                                                                                    |                                          |
@@ -184,7 +188,7 @@ A credible MVP demo `.phx` should be able to:
 | MVP opcode set (20 opcodes)                                                                                        | partial | `phx-bytecode/src/opcode.rs`     | Includes aggregate opcodes 15–19                           | Documented subset stable     |
 | `CONST` / locals / arithmetic / compare / jumps / `CALL` / `RETURN`                                                | done    | `opcode.rs`, `emit.rs`           |                                                          | Verified sample module       |
 | `POP`, `MOD`, `NEG`, bitwise, `MAKE_*`, `GET_FIELD`, `INDEX`, `MATCH_*`, `MAKE_SOME/OK/…`, `TRY`, `ALLOC`, ptr ops | partial | `opcode.rs`, `emit.rs`, VM       | Aggregate `MAKE_*`/`GET_FIELD`/`SET_FIELD`/`MATCH_TAG` done | Aggregate fixtures verify    |
-| Constants: `s64` / `u64` / `bool` tags                                                                             | partial | `const_pool.rs`, VM `load_const` | Float/blob tags exist in spec; VM rejects most           | `f32` literal runs           |
+| Constants: width-native tags (1–16 byte ints, f32/f64, bool, blob)                                                 | done    | `const_pool.rs`, VM `load_const` | `prim_kind` on `CONST`                                   | `primitives_float.phx`, `byte_string.phx` |
 | Types section metadata                                                                                             | done    | `codegen/mod.rs`, `types.rs`     | Struct/enum aux from typeck layout tables                | Types round-trip in module   |
 | Symbols / debug section                                                                                            | missing | spec § symbols                   | Optional in MVP                                          | —                            |
 | Stack depth / `stack_max`                                                                                          | done    | `emit.rs`, `stack_effect.rs`     |                                                          | Verifier `StackExceedsMax`   |
@@ -199,10 +203,11 @@ A credible MVP demo `.phx` should be able to:
 | Item                        | Status  | Where                        | Notes                                 | Acceptance                                |
 | --------------------------- | ------- | ---------------------------- | ------------------------------------- | ----------------------------------------- |
 | Stack machine + call frames | done    | `frame.rs`, `interpreter.rs` |                                       | Nested `CALL` works                       |
-| `Value` model               | partial | `frame.rs`                   | **All stack/locals are `s64` scalars**; `bool` as 0/1 | Struct/enum need tagged values or handles |
-| Opcode interpreter          | partial | `interpreter.rs`             | Matches MVP opcode enum only          | Unsupported opcode → clean error          |
+| `Value` model               | done    | `frame.rs`                   | `Scalar` (width-faithful) + `Agg` arena; slice aggregate | 25 CLI fixtures                           |
+| Opcode interpreter          | done    | `interpreter.rs`             | 43 opcodes; `prim_kind` on scalar ops | Unsupported opcode → clean error          |
 | Deterministic run           | done    | `interpreter.rs`             | No I/O                                | Same bytecode → same result               |
 | Division by zero            | done    | `interpreter.rs`             | `VmError::DivisionByZero`             | Test / fixture                            |
+| Scope-end drop / RAII       | missing | —                            | Post-import memory model (see roadmap) | Explicit deallocation at scope end        |
 
 
 ---
@@ -247,12 +252,12 @@ A credible MVP demo `.phx` should be able to:
 | Numeric primitives (all keywords) | done    | typeck + VM (`ScalarValue` width enum) | Widening disallowed; width-faithful stack/locals/consts | `primitives_width.phx`, `primitives_i128.phx` |
 | `bool`                            | done    | typeck + VM                  | 1-byte `Bool` cell, not integer alias | `match_bool.phx`          |
 | `()` unit                         | done    | typeck                       |                                     | `main :: () =>`           |
-| Tuples                            | partial | parse + typeck               | No `MAKE_TUPLE` VM                  | Tuple value in VM         |
+| Tuples                            | done    | parse + typeck + VM          | `MakeTuple`                         | `tuple_lit.phx`           |
 | Fixed arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
 | Slices `[T]`                      | partial | typeck + VM                  | Explicit cast from array; stack-backed only (no heap slice) | `slice_from_array.phx` |
 | Type aliases                      | partial | resolver + typeck            |                                     | Alias resolves            |
-| `struct` decl + literal           | partial | parse, typeck, partial lower | No field storage in VM              | Read `p.x` after lit      |
-| `enum` decl + ctors               | partial | parse, typeck                | No tag payload in VM                | `match` on enum tag       |
+| `struct` decl + literal           | done    | parse, typeck, lower, VM     | Arena struct aggregates             | `struct_point.phx`        |
+| `enum` decl + ctors               | done    | parse, typeck, lower, VM     | Tag + payload in arena              | `enum_match.phx`          |
 
 
 ---
@@ -364,7 +369,7 @@ Per [mvp.md](design/mvp.md) and [grammar-deferred.md](design/features/grammar-de
 
 - M:N scheduler, actors, mailboxes, supervision (`@spawn`, `@send`, …)
 - Std I/O, networking, collections, formatting APIs
-- Primitive `string` type
+- Primitive `string` type (std owns byte-backed string-like types only)
 - Full borrow checker / lifetimes / exclusivity of `&mut`
 - JIT, hot reload, `#derive` / `@derive` semantic codegen
 - `for` loops, range literals, closures/lambdas (parse rejected today)
@@ -378,12 +383,12 @@ Per [mvp.md](design/mvp.md) and [grammar-deferred.md](design/features/grammar-de
 
 Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver → typeck → IR → codegen → verifier → VM → tests):
 
-### Phase 1 — Credible demo on current VM (`s64` scalar stack)
+### Phase 1 — Credible demo (done)
 
 1. ~~Fix `continue` in `if`~~ — done (loop exit placement + `var` assign `StoreLocal`).
 2. ~~Logical ops~~ — done (`&&` / `||` short-circuit).
 3. ~~Match lowering (primitives)~~ — done for literal / `_` / ident; enum/struct patterns Phase 2.
-4. ~~E2E fixtures~~ — `run.sh` runs 6 programs; `run_match.rs` integration tests.
+4. ~~E2E fixtures~~ — `run.sh` + integration tests.
 
 ### Phase 2 — User-defined aggregates (done)
 
@@ -396,18 +401,54 @@ Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_met
 
 ### Phase 3 — Bytecode completeness & tooling (done)
 
-1. ~~**Remaining MVP opcodes:**~~ `Cast`, `Mod`, `Pow`, `Neg`, `Not`, bitwise, `Ne`/`Le`/`Ge`, `MakeTuple`, `MakeArray`, `Index`, `Trap`.
-2. ~~**Float paths:**~~ deferred — MVP VM uses `i64` scalars; int/bool casts only (`cast_width.phx`).
-3. ~~**`phx compile -o`**~~ — `tests/cli/compile.sh`.
-4. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
-5. ~~**Language surface:**~~ explicit casts, tuple/array runtime, `given`, trait dispatch, `self` in impl bodies.
+1. ~~**Remaining MVP opcodes:**~~ `Cast`, `Mod`, `Pow`, `Neg`, `Not`, bitwise, `Ne`/`Le`/`Ge`, `MakeTuple`, `MakeArray`, `Index`, `Trap`, ptr ops, `MakeSlice`, `AddressOfLocal`.
+2. ~~**Float paths:**~~ `F32`/`F64` width-faithful scalars (`primitives_float.phx`).
+3. ~~**Width-faithful integers:**~~ `s8`…`s128` / `u8`…`u128` (`primitives_width.phx`, `primitives_i128.phx`).
+4. ~~**`phx compile -o`**~~ — `tests/cli/compile.sh`.
+5. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
+6. ~~**Language surface:**~~ explicit casts, tuple/array/slice runtime, `given`, trait impl dispatch, `b"…"`, frame refs.
 
-Fixtures: `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx`, `given_struct.phx`, `trait_eq.phx`; `run.sh` runs 16 programs.
+Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program) list; `run.sh` runs **25** programs.
 
-### Phase 4 — Multi-file
+### Phase 4 — Polish (next, before modules)
 
-1. `**#import`:** module graph, file path → `::` path, `pub` visibility.
-2. **Std + prelude:** define `Option`/`Result` as generic enums; then `?` sugar and discard rules.
+1. Parser ergonomics for known ambiguities (parenthesis rules or grammar fixes).
+2. Checklist/table hygiene and negative fixtures (e.g. `s32 + s64` without `as`).
+3. Use-after-move diagnostics cite **source span** at move site.
+4. Optional: enum struct-variant `match` arms.
+
+### Phase 5 — Modules (`#import`)
+
+1. **Module graph:** load multiple files, `::` paths, `pub` visibility ([modules.md](design/features/modules.md)).
+2. **Std + prelude (minimal):** `Option`/`Result` as generic enums in library; then `?` — not compiler builtins.
+
+### Phase 6 — Memory model & lifetimes (after modules; before scheduler/std I/O)
+
+**Goal:** No GC — explicit rules for allocation, scope, and deallocation tied to the type system ([ownership.md](design/features/ownership.md)).
+
+| Topic | Direction (design TBD) |
+|-------|-------------------------|
+| Stack vs heap | Most locals/aggregates in frame + arena today; heap via intrinsics/`Alloc` only internally until surface syntax is designed |
+| Scope end | Block `{ … }` should imply drop of owned non-`Copyable` values (Rust-like); compiler inserts drop/dealloc opcodes at scope exit |
+| Heap ownership | Likely explicit owning types (e.g. box/alloc handle) rather than implicit GC; syntax and `Copyable`/`Clone` interaction TBD |
+| Borrow checker | Full `&` / `&mut` exclusivity and lifetimes — builds on address-of + `PtrLoad` already in MVP |
+| Strings | **Never** a primitive `string`; core = `[u8]`, `b"…"`, pointers; std provides string-like struct over bytes |
+
+**Deferred (post memory model + MVP acceptance):** M:N scheduler, actors (`@spawn`), mailboxes, std I/O, networking, `#derive` codegen, JIT.
+
+---
+
+## Roadmap beyond single-file MVP
+
+Product order agreed for post-demo work (not all MVP-blocking):
+
+1. **Single-file polish** — parser/diagnostic gaps above.
+2. **`#import` + `pub`** — real modules; then minimal std prelude.
+3. **Memory model** — scoped drop, heap ownership surface, borrow rules documented and enforced in typeck + codegen (no GC).
+4. **Std library breadth** — string struct, collections, I/O (schedulable-I/O types when runtime exists).
+5. **Runtime** — scheduler, actors, supervision ([runtime-transparency.md](design/features/runtime-transparency.md), [concurrency.md](design/features/concurrency.md)).
+
+Do not implement scheduler/actors/std I/O until the memory model and module story are credible.
 
 ---
 
@@ -420,8 +461,8 @@ Fixtures: `cast_width.phx`, `mod_bitwise.phx`, `array_index.phx`, `tuple_lit.phx
   → phx-compiler/typeck        [MVP rules + aggregate layouts/patterns]
   → phx-compiler/lower → ir    [control flow + struct/enum aggregates]
   → phx-compiler/codegen       [PHX0 + types section metadata]
-  → phx-bytecode/verify        [scalar + aggregate opcode rules]
-  → phx-vm/interpreter         [scalar + arena aggregate handles; 20 opcodes]
+  → phx-bytecode/verify        [scalar + aggregate opcode rules; local layouts]
+  → phx-vm/interpreter         [width-faithful scalars + arena + slices; 43 opcodes]
 ```
 
 ---

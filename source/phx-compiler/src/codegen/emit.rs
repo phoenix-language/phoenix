@@ -218,30 +218,30 @@ fn emit_inst(
     block_starts: &[u32],
 ) {
     match inst {
-        IrInst::Const { index, prim_kind, .. } => {
+        IrInst::Const {
+            index, prim_kind, ..
+        } => {
             let pool_idx = pool.pool_index_for_literal(*index);
-            out.extend(encode(
-                Opcode::Const,
-                &[pool_idx, u32::from(*prim_kind)],
-            ));
+            out.extend(encode(Opcode::Const, &[pool_idx, u32::from(*prim_kind)]));
         }
-        IrInst::LoadLocal { slot, prim_kind, .. } => {
+        IrInst::LoadLocal {
+            slot, prim_kind, ..
+        } => {
             out.extend(encode(
                 Opcode::LoadLocal,
                 &[slot.index(), u32::from(*prim_kind)],
             ));
         }
-        IrInst::StoreLocal { slot, prim_kind, .. } => {
+        IrInst::StoreLocal {
+            slot, prim_kind, ..
+        } => {
             out.extend(encode(
                 Opcode::StoreLocal,
                 &[slot.index(), u32::from(*prim_kind)],
             ));
         }
         IrInst::BinOp { op, prim_kind, .. } => {
-            out.extend(encode(
-                ir_binop_to_opcode(*op),
-                &[u32::from(*prim_kind)],
-            ));
+            out.extend(encode(ir_binop_to_opcode(*op), &[u32::from(*prim_kind)]));
         }
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
@@ -323,9 +323,7 @@ fn emit_inst(
             out.extend(encode(Opcode::Index, &[]));
         }
         IrInst::PtrLoad {
-            prim_kind,
-            signed,
-            ..
+            prim_kind, signed, ..
         } => {
             out.extend(encode(
                 Opcode::PtrLoad,

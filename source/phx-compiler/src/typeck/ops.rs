@@ -177,7 +177,10 @@ fn primitive_cast_allowed(from: Keyword, to: Keyword) -> bool {
     let to_int = is_int_keyword(to);
     let from_float = matches!(from, Keyword::F32 | Keyword::F64);
     let to_float = matches!(to, Keyword::F32 | Keyword::F64);
-    (from_int && to_int) || (from_int && to_float) || (from_float && to_int) || (from_float && to_float)
+    (from_int && to_int)
+        || (from_int && to_float)
+        || (from_float && to_int)
+        || (from_float && to_float)
 }
 
 fn is_int_numeric_primitive(ty: &Ty) -> bool {

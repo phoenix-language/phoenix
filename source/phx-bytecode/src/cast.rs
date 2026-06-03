@@ -186,11 +186,7 @@ mod tests {
     #[test]
     fn cast_u32_to_u8_masks() {
         assert_eq!(
-            PrimitiveKind::apply_cast(
-                ScalarValue::U32(300),
-                PrimitiveKind::U32,
-                PrimitiveKind::U8
-            ),
+            PrimitiveKind::apply_cast(ScalarValue::U32(300), PrimitiveKind::U32, PrimitiveKind::U8),
             ScalarValue::U8(44)
         );
     }
@@ -198,11 +194,7 @@ mod tests {
     #[test]
     fn cast_s32_to_s64_extends() {
         assert_eq!(
-            PrimitiveKind::apply_cast(
-                ScalarValue::I32(-1),
-                PrimitiveKind::S32,
-                PrimitiveKind::S64
-            ),
+            PrimitiveKind::apply_cast(ScalarValue::I32(-1), PrimitiveKind::S32, PrimitiveKind::S64),
             ScalarValue::I64(-1)
         );
     }

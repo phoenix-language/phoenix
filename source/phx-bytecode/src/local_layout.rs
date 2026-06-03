@@ -86,21 +86,16 @@ impl LocalLayoutTable {
             if pos + 6 > bytes.len() {
                 return Err(LocalLayoutError::Truncated);
             }
-            let function_id = u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]);
+            let function_id =
+                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]);
             let slot_count = u16::from_le_bytes([bytes[pos + 4], bytes[pos + 5]]) as usize;
             pos += 6;
             let end = pos.saturating_add(slot_count);
             if end > bytes.len() {
                 return Err(LocalLayoutError::Truncated);
             }
-            let slots = bytes[pos..end]
-                .iter()
-                .map(|&b| LocalSlotKind(b))
-                .collect();
-            layouts.push(FunctionLocalLayout {
-                function_id,
-                slots,
-            });
+            let slots = bytes[pos..end].iter().map(|&b| LocalSlotKind(b)).collect();
+            layouts.push(FunctionLocalLayout { function_id, slots });
             pos = end;
         }
         Ok(Self { layouts })
@@ -109,9 +104,7 @@ impl LocalLayoutTable {
     /// Looks up layout for `function_id`.
     #[must_use]
     pub fn for_function(&self, function_id: u32) -> Option<&FunctionLocalLayout> {
-        self.layouts
-            .iter()
-            .find(|l| l.function_id == function_id)
+        self.layouts.iter().find(|l| l.function_id == function_id)
     }
 }
 

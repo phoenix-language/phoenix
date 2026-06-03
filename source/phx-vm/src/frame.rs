@@ -100,12 +100,7 @@ pub struct Machine {
 
 impl Machine {
     /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
-    pub fn push_frame(
-        &mut self,
-        function_id: u32,
-        local_count: u16,
-        layouts: &LocalLayoutTable,
-    ) {
+    pub fn push_frame(&mut self, function_id: u32, local_count: u16, layouts: &LocalLayoutTable) {
         let n = usize::from(local_count);
         let mut locals = Vec::with_capacity(n);
         if let Some(layout) = layouts.for_function(function_id) {
@@ -177,7 +172,6 @@ impl Machine {
         let scalar = local.as_scalar().ok_or(crate::VmError::ExpectedScalar)?;
         Ok(scalar.to_le_bytes(kind))
     }
-
 }
 
 /// Writes primitive bytes into `frame` local `slot`.
@@ -192,8 +186,8 @@ pub fn store_local_scalar_bytes(
         .locals
         .get_mut(idx)
         .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
-    let decoded = ScalarValue::from_le_bytes(kind, bytes)
-        .ok_or(crate::VmError::InvalidConstPayload)?;
+    let decoded =
+        ScalarValue::from_le_bytes(kind, bytes).ok_or(crate::VmError::InvalidConstPayload)?;
     *local = Value::Scalar(decoded);
     Ok(())
 }

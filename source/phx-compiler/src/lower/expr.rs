@@ -7,16 +7,15 @@ use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::BlockNode;
 
+use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
     LowerCtx, bool_ty, lookup_resolution, named_def_for_ty, prim_kind_byte, slot_for_symbol,
     struct_def_by_name, unit_ty,
 };
 use crate::resolver::DefId;
-use crate::ir::IrConst;
 use crate::typeck::{
-    LocalSlot, TypeId, Ty, VariantKind, primitive_kind_for_type,
-    primitive_load_signed,
+    LocalSlot, Ty, TypeId, VariantKind, primitive_kind_for_type, primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -172,18 +171,9 @@ fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u
             } else {
                 PrimitiveKind::S32
             };
-            let raw = i128::try_from(i.value).unwrap_or_else(|_| {
-                if i.value < 0 {
-                    i128::MIN
-                } else {
-                    i128::MAX
-                }
-            });
-            let stored = PrimitiveKind::apply_cast(
-                ScalarValue::I32(raw as i32),
-                from,
-                to,
-            );
+            let raw = i128::try_from(i.value)
+                .unwrap_or_else(|_| if i.value < 0 { i128::MIN } else { i128::MAX });
+            let stored = PrimitiveKind::apply_cast(ScalarValue::I32(raw as i32), from, to);
             let (value, kind) = scalar_to_ir_const(stored, to);
             Some(ctx.intern_const(IrConst::Int(value, kind)))
         }

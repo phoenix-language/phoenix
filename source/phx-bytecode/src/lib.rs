@@ -5,27 +5,27 @@
 
 mod cast;
 mod const_pool;
-mod local_layout;
-mod scalar;
 mod function;
 mod header;
 mod instr;
+mod local_layout;
 mod module;
 mod opcode;
+mod scalar;
 mod section;
 mod stack_effect;
 mod types;
 mod verify;
 
 pub use cast::{PrimitiveKind, SLOT_KIND_AGG};
-pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
-pub use scalar::{ScalarValue, PTR_AGG_TAG, PTR_LOCAL_TAG};
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
 pub use function::{FunctionRecord, FunctionTable};
 pub use header::{FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};
 pub use instr::{InstrError, Instruction};
+pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
 pub use module::{BytecodeModule, ModuleError};
 pub use opcode::{Opcode, OpcodeError};
+pub use scalar::{PTR_AGG_TAG, PTR_LOCAL_TAG, ScalarValue};
 pub use section::{SectionEntry, SectionError, SectionKind};
 pub use stack_effect::{StackEffectError, apply_stack_effect};
 pub use types::{TypeKind, TypeRecord, TypeTable};

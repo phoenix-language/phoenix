@@ -1,8 +1,8 @@
 //! Opcode interpreter for one PHX0 module.
 
 use phx_bytecode::{
-    BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode, PrimitiveKind,
-    PTR_AGG_TAG, PTR_LOCAL_TAG, ScalarValue,
+    BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode, PTR_AGG_TAG,
+    PTR_LOCAL_TAG, PrimitiveKind, ScalarValue,
 };
 
 use crate::VmError;
@@ -50,12 +50,11 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
             frame.pc = u32::try_from(next_pc).unwrap_or(u32::MAX);
         }
 
-        fn operand_prim_kind(inst: &Instruction, operand_index: usize) -> Result<PrimitiveKind, VmError> {
-            let byte = inst
-                .operands
-                .get(operand_index)
-                .copied()
-                .unwrap_or(0) as u8;
+        fn operand_prim_kind(
+            inst: &Instruction,
+            operand_index: usize,
+        ) -> Result<PrimitiveKind, VmError> {
+            let byte = inst.operands.get(operand_index).copied().unwrap_or(0) as u8;
             PrimitiveKind::from_u8(byte).ok_or(VmError::InvalidConstPayload)
         }
 
@@ -87,12 +86,36 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                     .ok_or(VmError::InvalidLocalSlot(slot))?;
                 *local = v;
             }
-            Opcode::Add => binop_arith(&mut machine.stack, operand_prim_kind(&inst, 0)?, ArithOp::Add)?,
-            Opcode::Sub => binop_arith(&mut machine.stack, operand_prim_kind(&inst, 0)?, ArithOp::Sub)?,
-            Opcode::Mul => binop_arith(&mut machine.stack, operand_prim_kind(&inst, 0)?, ArithOp::Mul)?,
-            Opcode::Div => binop_arith(&mut machine.stack, operand_prim_kind(&inst, 0)?, ArithOp::Div)?,
-            Opcode::Mod => binop_arith(&mut machine.stack, operand_prim_kind(&inst, 0)?, ArithOp::Mod)?,
-            Opcode::Pow => binop_arith(&mut machine.stack, operand_prim_kind(&inst, 0)?, ArithOp::Pow)?,
+            Opcode::Add => binop_arith(
+                &mut machine.stack,
+                operand_prim_kind(&inst, 0)?,
+                ArithOp::Add,
+            )?,
+            Opcode::Sub => binop_arith(
+                &mut machine.stack,
+                operand_prim_kind(&inst, 0)?,
+                ArithOp::Sub,
+            )?,
+            Opcode::Mul => binop_arith(
+                &mut machine.stack,
+                operand_prim_kind(&inst, 0)?,
+                ArithOp::Mul,
+            )?,
+            Opcode::Div => binop_arith(
+                &mut machine.stack,
+                operand_prim_kind(&inst, 0)?,
+                ArithOp::Div,
+            )?,
+            Opcode::Mod => binop_arith(
+                &mut machine.stack,
+                operand_prim_kind(&inst, 0)?,
+                ArithOp::Mod,
+            )?,
+            Opcode::Pow => binop_arith(
+                &mut machine.stack,
+                operand_prim_kind(&inst, 0)?,
+                ArithOp::Pow,
+            )?,
             Opcode::Eq => binop_cmp(&mut machine.stack, operand_prim_kind(&inst, 0)?, CmpOp::Eq)?,
             Opcode::Lt => binop_cmp(&mut machine.stack, operand_prim_kind(&inst, 0)?, CmpOp::Lt)?,
             Opcode::Ne => binop_cmp(&mut machine.stack, operand_prim_kind(&inst, 0)?, CmpOp::Ne)?,
@@ -193,7 +216,9 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                         .get(field_index)
                         .copied()
                         .ok_or(VmError::FieldOutOfRange)?,
-                    Some(Aggregate::Tuple { .. }) | Some(Aggregate::Array { .. }) | Some(Aggregate::Slice { .. }) => {
+                    Some(Aggregate::Tuple { .. })
+                    | Some(Aggregate::Array { .. })
+                    | Some(Aggregate::Slice { .. }) => {
                         return Err(VmError::InvalidAggregate);
                     }
                     None => return Err(VmError::InvalidAggregate),
@@ -264,9 +289,15 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 let v = pop_scalar(&mut machine.stack)?;
                 machine.stack.push(Value::Scalar(bitnot_scalar(v, kind)));
             }
-            Opcode::BitAnd => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::And)?,
-            Opcode::BitOr => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Or)?,
-            Opcode::BitXor => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Xor)?,
+            Opcode::BitAnd => {
+                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::And)?
+            }
+            Opcode::BitOr => {
+                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Or)?
+            }
+            Opcode::BitXor => {
+                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Xor)?
+            }
             Opcode::Shl => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Shl)?,
             Opcode::Shr => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Shr)?,
             Opcode::MakeTuple => {
@@ -321,9 +352,7 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
                 let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
                 let len = match machine.aggregate(handle) {
-                    Some(Aggregate::Array { elems }) => {
-                        u64::try_from(elems.len()).unwrap_or(0)
-                    }
+                    Some(Aggregate::Array { elems }) => u64::try_from(elems.len()).unwrap_or(0),
                     _ => return Err(VmError::InvalidAggregate),
                 };
                 let ptr = PTR_AGG_TAG | u64::from(handle);
@@ -351,7 +380,11 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                         Aggregate::Tuple { elems } | Aggregate::Array { elems } => {
                             elems.get(idx).copied().ok_or(VmError::FieldOutOfRange)?
                         }
-                        Aggregate::Slice { elem_kind, ptr, len } => {
+                        Aggregate::Slice {
+                            elem_kind,
+                            ptr,
+                            len,
+                        } => {
                             if idx >= usize::try_from(*len).unwrap_or(0) {
                                 return Err(VmError::FieldOutOfRange);
                             }
@@ -390,7 +423,11 @@ fn function_code<'a>(module: &'a BytecodeModule, rec: &FunctionRecord) -> &'a [u
     module.code.get(start..end).unwrap_or(&[])
 }
 
-fn load_const(module: &BytecodeModule, index: usize, kind: PrimitiveKind) -> Result<Value, VmError> {
+fn load_const(
+    module: &BytecodeModule,
+    index: usize,
+    kind: PrimitiveKind,
+) -> Result<Value, VmError> {
     let entry = module
         .constants
         .entries
@@ -455,7 +492,10 @@ fn ptr_load(
     let size = kind.byte_size();
     if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
         let slot = ScalarValue::local_slot_from_ptr(ptr).ok_or(VmError::InvalidConstPayload)?;
-        let frame = machine.frames.last().ok_or(VmError::InvalidLocalSlot(slot))?;
+        let frame = machine
+            .frames
+            .last()
+            .ok_or(VmError::InvalidLocalSlot(slot))?;
         let bytes = machine.local_scalar_bytes(frame, slot, kind)?;
         return ScalarValue::from_le_bytes(kind, &bytes).ok_or(VmError::InvalidConstPayload);
     }
@@ -477,7 +517,10 @@ fn ptr_store(
     let bytes = value.to_le_bytes(kind);
     if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
         let slot = ScalarValue::local_slot_from_ptr(ptr).ok_or(VmError::InvalidConstPayload)?;
-        let frame = machine.frames.last_mut().ok_or(VmError::InvalidLocalSlot(slot))?;
+        let frame = machine
+            .frames
+            .last_mut()
+            .ok_or(VmError::InvalidLocalSlot(slot))?;
         return crate::frame::store_local_scalar_bytes(frame, slot, kind, &bytes);
     }
     if ptr & PTR_AGG_TAG == PTR_AGG_TAG {
@@ -499,10 +542,7 @@ fn slice_elem_load(
         if elem_kind == phx_bytecode::SLOT_KIND_AGG {
             let agg = machine.aggregate(handle).ok_or(VmError::InvalidAggregate)?;
             if let Aggregate::Array { elems } = agg {
-                return elems
-                    .get(index)
-                    .copied()
-                    .ok_or(VmError::FieldOutOfRange);
+                return elems.get(index).copied().ok_or(VmError::FieldOutOfRange);
             }
             return Err(VmError::InvalidAggregate);
         }
@@ -544,7 +584,9 @@ fn slice_elem_store(
     index: usize,
     value: ScalarValue,
 ) -> Result<(), VmError> {
-    let agg = machine.aggregate_mut(handle).ok_or(VmError::InvalidAggregate)?;
+    let agg = machine
+        .aggregate_mut(handle)
+        .ok_or(VmError::InvalidAggregate)?;
     let slot = match agg {
         Aggregate::Array { elems } => elems.get_mut(index).ok_or(VmError::FieldOutOfRange)?,
         _ => return Err(VmError::InvalidAggregate),
@@ -605,7 +647,12 @@ fn read_heap_scalar(
     ScalarValue::from_le_bytes(kind, slice).ok_or(VmError::InvalidConstPayload)
 }
 
-fn write_heap_scalar(heap: &mut Vec<u8>, addr: usize, size: u8, bytes: &[u8]) -> Result<(), VmError> {
+fn write_heap_scalar(
+    heap: &mut Vec<u8>,
+    addr: usize,
+    size: u8,
+    bytes: &[u8],
+) -> Result<(), VmError> {
     let end = addr
         .checked_add(usize::from(size))
         .ok_or(VmError::HeapOutOfBounds)?;
@@ -633,7 +680,12 @@ fn binop_arith(stack: &mut Vec<Value>, kind: PrimitiveKind, op: ArithOp) -> Resu
     Ok(())
 }
 
-fn arith_scalar(a: ScalarValue, b: ScalarValue, kind: PrimitiveKind, op: ArithOp) -> Result<ScalarValue, VmError> {
+fn arith_scalar(
+    a: ScalarValue,
+    b: ScalarValue,
+    kind: PrimitiveKind,
+    op: ArithOp,
+) -> Result<ScalarValue, VmError> {
     if kind.is_float() {
         let af = scalar_as_f64(a, kind);
         let bf = scalar_as_f64(b, kind);

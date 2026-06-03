@@ -7,8 +7,8 @@ mod const_pool;
 mod emit;
 
 use phx_bytecode::{
-    BytecodeModule, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable, LocalLayoutTable,
-    LocalSlotKind, TypeKind, TypeRecord, TypeTable,
+    BytecodeModule, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable,
+    LocalLayoutTable, LocalSlotKind, TypeKind, TypeRecord, TypeTable,
 };
 use std::collections::HashMap;
 
