@@ -219,7 +219,9 @@ fn assign_moves_non_copyable() {
 
 #[test]
 fn enum_struct_variant_match_ok() {
-    ok(include_str!("../../../tests/cli/fixtures/enum_match_struct.phx"));
+    ok(include_str!(
+        "../../../tests/cli/fixtures/enum_match_struct.phx"
+    ));
 }
 
 #[test]
@@ -241,4 +243,33 @@ fn index_non_indexable_error() {
             .iter()
             .any(|e| matches!(e, TypeCheckError::InvalidOperator { .. }))
     );
+}
+
+#[test]
+fn enum_pattern_on_non_enum_scrutinee() {
+    let bag = typeck_err(
+        "Maybe :: enum { None, Some(s32), }; main :: () => { const _ = match 0 { None => 0; _ => 1; }; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+    );
+}
+
+#[test]
+fn enum_tuple_pattern_on_non_enum_scrutinee() {
+    let bag = typeck_err(
+        "Maybe :: enum { None, Some(s32), }; main :: () => { const _ = match 0 { Some(x) => x; _ => 0; }; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+    );
+}
+
+#[test]
+fn enum_match_user_enum_ok() {
+    ok(include_str!("../../../tests/cli/fixtures/enum_match.phx"));
 }

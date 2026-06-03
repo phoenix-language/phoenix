@@ -206,7 +206,8 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
-                if let Some(def) = self.find_def(self.current_module,name.symbol, DefKind::Struct) {
+                if let Some(def) = self.find_def(self.current_module, name.symbol, DefKind::Struct)
+                {
                     let mut fields_map = HashMap::new();
                     let mut ordered = Vec::new();
                     if let StructBody::Fields(fs) = body {
@@ -233,7 +234,9 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
-                if let Some(enum_def) = self.find_def(self.current_module,name.symbol, DefKind::Enum) {
+                if let Some(enum_def) =
+                    self.find_def(self.current_module, name.symbol, DefKind::Enum)
+                {
                     let enum_ty = self.types.intern(&Ty::Named {
                         def: enum_def,
                         args: vec![],
@@ -244,7 +247,8 @@ impl<'a> TypeChecker<'a> {
                     let mut variant_layouts = Vec::new();
                     for (tag, v) in variants.iter().enumerate() {
                         let tag = u32::try_from(tag).unwrap_or(u32::MAX);
-                        let variant_def = self.find_def(self.current_module,v.name.symbol, DefKind::EnumVariant);
+                        let variant_def =
+                            self.find_def(self.current_module, v.name.symbol, DefKind::EnumVariant);
                         let (payload_types, kind) = match &v.kind {
                             Variant::Unit => (vec![], VariantKind::Unit),
                             Variant::Tuple(ts) => {
@@ -258,14 +262,10 @@ impl<'a> TypeChecker<'a> {
                                 let fields: Vec<(Symbol, TypeId)> = fs
                                     .iter()
                                     .map(|f| {
-                                        (
-                                            f.name.symbol,
-                                            self.lower_ast_type_with_defs(&f.ty, &td),
-                                        )
+                                        (f.name.symbol, self.lower_ast_type_with_defs(&f.ty, &td))
                                     })
                                     .collect();
-                                let pts: Vec<TypeId> =
-                                    fields.iter().map(|(_, ty)| *ty).collect();
+                                let pts: Vec<TypeId> = fields.iter().map(|(_, ty)| *ty).collect();
                                 (pts, VariantKind::Struct(fields))
                             }
                             _ => (vec![], VariantKind::Unit),
@@ -305,7 +305,9 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::TypeAlias { name, generics, ty } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
-                if let Some(def) = self.find_def(self.current_module,name.symbol, DefKind::TypeAlias) {
+                if let Some(def) =
+                    self.find_def(self.current_module, name.symbol, DefKind::TypeAlias)
+                {
                     let lowered = self.lower_ast_type_with_defs(ty, &td);
                     self.value_types.insert(def, lowered);
                 }
@@ -322,7 +324,9 @@ impl<'a> TypeChecker<'a> {
                 if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
                     for m in members {
                         self.collect_fn_sig(m);
-                        if let Some(fn_def) = self.find_def(self.current_module,m.name.symbol, DefKind::Fn) {
+                        if let Some(fn_def) =
+                            self.find_def(self.current_module, m.name.symbol, DefKind::Fn)
+                        {
                             if let Some(trait_name) = trait_ {
                                 if let Some(trait_def) =
                                     self.type_defs.get(&trait_name.symbol).copied()
@@ -352,15 +356,16 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             TopLevelDecl::Const { name, ty, .. } => {
-                if let (Some(def), Some(t)) =
-                    (self.find_def(self.current_module,name.symbol, DefKind::Const), ty.as_ref())
-                {
+                if let (Some(def), Some(t)) = (
+                    self.find_def(self.current_module, name.symbol, DefKind::Const),
+                    ty.as_ref(),
+                ) {
                     let tid = self.lower_ast_type(t);
                     self.value_types.insert(def, tid);
                 }
             }
             TopLevelDecl::Var { name, ty, .. } => {
-                if let Some(def) = self.find_def(self.current_module,name.symbol, DefKind::Var) {
+                if let Some(def) = self.find_def(self.current_module, name.symbol, DefKind::Var) {
                     let tid = self.lower_ast_type(ty);
                     self.value_types.insert(def, tid);
                 }
@@ -385,7 +390,7 @@ impl<'a> TypeChecker<'a> {
             })
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
-        if let Some(def) = self.find_def(self.current_module,f.name.symbol, DefKind::Fn) {
+        if let Some(def) = self.find_def(self.current_module, f.name.symbol, DefKind::Fn) {
             self.value_types.insert(def, fn_ty);
         }
     }
@@ -406,7 +411,7 @@ impl<'a> TypeChecker<'a> {
             })
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
-        if let Some(def) = self.find_def(self.current_module,sig.name.symbol, DefKind::Fn) {
+        if let Some(def) = self.find_def(self.current_module, sig.name.symbol, DefKind::Fn) {
             self.value_types.insert(def, fn_ty);
         }
     }
@@ -618,7 +623,7 @@ impl<'a> TypeChecker<'a> {
                 body,
             } => {
                 let s = self.check_expr_node(scrutinee);
-                self.check_pattern(&pattern.inner, s);
+                self.check_pattern(&pattern.inner, s, pattern.span);
                 self.check_block(&body.inner);
             }
             Stmt::Unsafe(body) => self.check_block(&body.inner),
@@ -1094,7 +1099,7 @@ impl<'a> TypeChecker<'a> {
         }
         let mut acc: Option<TypeId> = None;
         for arm in arms {
-            self.check_pattern(&arm.pattern.inner, s);
+            self.check_pattern(&arm.pattern.inner, s, arm.pattern.span);
             if let Some(g) = &arm.guard {
                 let gt = self.check_expr_node(g);
                 if gt != self.bool_ty {
@@ -1113,11 +1118,46 @@ impl<'a> TypeChecker<'a> {
         acc.unwrap_or(self.unit)
     }
 
-    fn check_pattern(&mut self, pat: &Pattern, scrutinee: TypeId) {
+    fn scrutinee_enum_def(&self, scrutinee: TypeId) -> Option<DefId> {
+        match self.types.get(scrutinee) {
+            Ty::Named { def, .. } if self.program_layout.enums.contains_key(def) => Some(*def),
+            _ => None,
+        }
+    }
+
+    fn error_enum_pattern_on_non_enum(&mut self, scrutinee: TypeId, span: Span) {
+        self.bag.push(TypeCheckError::Mismatch {
+            expected: "enum".to_string(),
+            found: self.format_ty(scrutinee),
+            span,
+        });
+    }
+
+    fn error_enum_variant_mismatch(&mut self, expected_def: DefId, scrutinee: TypeId, span: Span) {
+        self.bag.push(TypeCheckError::Mismatch {
+            expected: self.format_named(expected_def),
+            found: self.format_ty(scrutinee),
+            span,
+        });
+    }
+
+    fn check_pattern(&mut self, pat: &Pattern, scrutinee: TypeId, span: Span) {
         match pat {
             Pattern::Wildcard | Pattern::Literal(_) => {}
             Pattern::Ident(ident) => {
-                self.define_local(ident.symbol, scrutinee, BindingKind::Var);
+                if let Some((variant_enum_def, _variant)) =
+                    self.program_layout.enum_variant_by_name(ident.symbol)
+                {
+                    if let Some(scrutinee_enum) = self.scrutinee_enum_def(scrutinee) {
+                        if scrutinee_enum != variant_enum_def {
+                            self.error_enum_variant_mismatch(variant_enum_def, scrutinee, span);
+                        }
+                    } else {
+                        self.error_enum_pattern_on_non_enum(scrutinee, span);
+                    }
+                } else {
+                    self.define_local(ident.symbol, scrutinee, BindingKind::Var);
+                }
             }
             Pattern::Struct { name, fields } => {
                 if let Some(&def) = self.type_defs.get(&name.symbol) {
@@ -1126,7 +1166,7 @@ impl<'a> TypeChecker<'a> {
                             self.bag.push(TypeCheckError::Mismatch {
                                 expected: self.format_named(def),
                                 found: self.format_ty(scrutinee),
-                                span: Span::new(0, 0),
+                                span,
                             });
                         }
                     }
@@ -1137,7 +1177,7 @@ impl<'a> TypeChecker<'a> {
                             .and_then(|sf| sf.fields.get(&field.name.symbol).copied())
                         {
                             if let Some(p) = &field.pattern {
-                                self.check_pattern(&p.inner, fty);
+                                self.check_pattern(&p.inner, fty, span);
                             } else {
                                 self.define_local(field.name.symbol, fty, BindingKind::Var);
                             }
@@ -1146,22 +1186,19 @@ impl<'a> TypeChecker<'a> {
                 } else if let Some((enum_def, variant)) =
                     self.program_layout.enum_variant_by_name(name.symbol)
                 {
-                    if let Ty::Named { def: sdef, .. } = self.types.get(scrutinee) {
-                        if *sdef != enum_def {
-                            self.bag.push(TypeCheckError::Mismatch {
-                                expected: self.format_named(enum_def),
-                                found: self.format_ty(scrutinee),
-                                span: Span::new(0, 0),
-                            });
+                    if let Some(scrutinee_enum) = self.scrutinee_enum_def(scrutinee) {
+                        if scrutinee_enum != enum_def {
+                            self.error_enum_variant_mismatch(enum_def, scrutinee, span);
                         }
+                    } else {
+                        self.error_enum_pattern_on_non_enum(scrutinee, span);
                     }
                     if let VariantKind::Struct(payload) = &variant.kind {
-                        let field_map: HashMap<Symbol, TypeId> =
-                            payload.iter().copied().collect();
+                        let field_map: HashMap<Symbol, TypeId> = payload.iter().copied().collect();
                         for field in fields {
                             if let Some(fty) = field_map.get(&field.name.symbol) {
                                 if let Some(p) = &field.pattern {
-                                    self.check_pattern(&p.inner, *fty);
+                                    self.check_pattern(&p.inner, *fty, span);
                                 } else {
                                     self.define_local(field.name.symbol, *fty, BindingKind::Var);
                                 }
@@ -1171,23 +1208,22 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Pattern::Tuple { name, patterns } => {
-                let payload: Vec<TypeId> =
-                    self.program_layout
-                        .enums
-                        .values()
-                        .find_map(|el| {
-                            el.variants.iter().find(|v| v.name == name.symbol).and_then(
-                                |v| match &v.kind {
-                                    VariantKind::Tuple(ts) => Some(ts.clone()),
-                                    _ => None,
-                                },
-                            )
-                        })
-                        .unwrap_or_default();
-                for (p, pty) in patterns.iter().zip(payload.iter()) {
-                    self.check_pattern(&p.inner, *pty);
+                if let Some((enum_def, variant)) =
+                    self.program_layout.enum_variant_by_name(name.symbol)
+                {
+                    if let Some(scrutinee_enum) = self.scrutinee_enum_def(scrutinee) {
+                        if scrutinee_enum != enum_def {
+                            self.error_enum_variant_mismatch(enum_def, scrutinee, span);
+                        }
+                    } else {
+                        self.error_enum_pattern_on_non_enum(scrutinee, span);
+                    }
+                    if let VariantKind::Tuple(payload) = &variant.kind {
+                        for (p, pty) in patterns.iter().zip(payload.iter()) {
+                            self.check_pattern(&p.inner, *pty, span);
+                        }
+                    }
                 }
-                let _ = scrutinee;
             }
             _ => {}
         }
@@ -1252,16 +1288,14 @@ impl<'a> TypeChecker<'a> {
             }
             return ty;
         }
-        if let Some((enum_def, variant)) = self.program_layout.enum_variant_by_name(name.symbol)
-        {
+        if let Some((enum_def, variant)) = self.program_layout.enum_variant_by_name(name.symbol) {
             let enum_ty = self.types.intern(&Ty::Named {
                 def: enum_def,
                 args: vec![],
             });
             if let VariantKind::Struct(payload) = &variant.kind {
                 let field_map: HashMap<Symbol, TypeId> = payload.iter().copied().collect();
-                let required_fields: Vec<Symbol> =
-                    payload.iter().map(|(n, _)| *n).collect();
+                let required_fields: Vec<Symbol> = payload.iter().map(|(n, _)| *n).collect();
                 for field in fields {
                     if matches!(field, StructFieldInit::Spread(_)) {
                         self.bag.push(TypeCheckError::UnsupportedFeature {
