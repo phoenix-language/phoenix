@@ -30,7 +30,7 @@ use super::lower_ty::{TypeDefMap, build_type_def_map, lower_type, push_generics}
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
-use super::unify::unify_branch;
+use super::unify::{AliasEnv, unify_branch};
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
 
 /// Collected struct field types.
@@ -117,6 +117,18 @@ impl<'a> TypeChecker<'a> {
 
     fn fn_def_for(&self, f: &Function) -> Option<DefId> {
         self.find_def(self.current_module, f.name.symbol, DefKind::Fn)
+    }
+
+    fn alias_env(&self) -> AliasEnv<'_> {
+        AliasEnv {
+            types: &self.types,
+            defs: &self.resolved.defs,
+            value_types: &self.value_types,
+        }
+    }
+
+    fn types_equal(&self, a: TypeId, b: TypeId) -> bool {
+        super::unify::same_type(&self.alias_env(), a, b)
     }
 
     fn define_local(&mut self, symbol: phx_syntax::Symbol, ty: TypeId, kind: BindingKind) {
@@ -423,7 +435,7 @@ impl<'a> TypeChecker<'a> {
                 let got = self.check_expr_node(init);
                 if let Some(t) = ty {
                     let expected = self.lower_ast_type(t);
-                    if got != expected {
+                    if !self.types_equal(got, expected) {
                         self.error_mismatch(expected, got, init.span);
                     }
                 }
@@ -432,7 +444,7 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::Var { name, ty, init } => {
                 let expected = self.lower_ast_type(ty);
                 let got = self.check_expr_node(init);
-                if got != expected {
+                if !self.types_equal(got, expected) {
                     self.error_mismatch(expected, got, init.span);
                 }
                 self.move_if_non_copyable(init, got);
@@ -496,7 +508,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         let body_ty = self.check_block_value(&f.body.inner);
-        if body_ty != ret {
+        if !self.types_equal(body_ty, ret) {
             self.error_mismatch(ret, body_ty, f.body.span);
         }
         if let Some(mut builder) = self.layout.take() {
@@ -544,14 +556,14 @@ impl<'a> TypeChecker<'a> {
         if let Some(e) = expr {
             let got = self.check_expr_node(e);
             if let Some(ret) = self.fn_ret {
-                if got != ret {
+                if !self.types_equal(got, ret) {
                     self.error_mismatch(ret, got, e.span);
                 }
             }
             got
         } else {
             if let Some(ret) = self.fn_ret {
-                if ret != self.unit {
+                if !self.types_equal(ret, self.unit) {
                     self.error_mismatch(self.unit, ret, Span::new(0, 0));
                 }
             }
@@ -567,7 +579,7 @@ impl<'a> TypeChecker<'a> {
                 let got = self.check_expr_node(init);
                 self.ctor_expected = None;
                 if let Some(expected) = expected {
-                    if got != expected {
+                    if !self.types_equal(got, expected) {
                         self.error_mismatch(expected, got, init.span);
                     }
                 }
@@ -576,7 +588,7 @@ impl<'a> TypeChecker<'a> {
             Stmt::Var { name, ty, init } => {
                 let expected = self.lower_ast_type(ty);
                 let got = self.check_expr_node(init);
-                if got != expected {
+                if !self.types_equal(got, expected) {
                     self.error_mismatch(expected, got, init.span);
                 }
                 self.move_if_non_copyable(init, got);
@@ -611,7 +623,7 @@ impl<'a> TypeChecker<'a> {
             }
             Stmt::While { cond, body } => {
                 let c = self.check_expr_node(cond);
-                if c != self.bool_ty {
+                if !self.types_equal(c, self.bool_ty) {
                     self.error_mismatch(self.bool_ty, c, cond.span);
                 }
                 self.with_loop_body(|this| this.check_block(&body.inner));
@@ -634,7 +646,7 @@ impl<'a> TypeChecker<'a> {
     fn check_assign_expr(&mut self, target: &ExprNode, value: &ExprNode, span: Span) -> TypeId {
         let lhs = self.check_assign_target(target);
         let rhs = self.check_expr_node(value);
-        if lhs != rhs {
+        if !self.types_equal(lhs, rhs) {
             self.error_mismatch(lhs, rhs, span);
         }
         if let Expr::Ident(ident) = &value.inner {
@@ -759,7 +771,7 @@ impl<'a> TypeChecker<'a> {
                 let from = self.check_expr_node(expr);
                 let td = self.type_defs.clone();
                 let to = self.lower_ast_type_with_defs(ty, &td);
-                if !check_cast(&self.types, from, to) {
+                if !check_cast(&self.alias_env(), from, to) {
                     self.bag.push(TypeCheckError::InvalidCast {
                         from: self.format_ty(from),
                         to: self.format_ty(to),
@@ -936,11 +948,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn method_receiver_matches(&self, param: TypeId, receiver: TypeId) -> bool {
-        if receiver == param {
+        if self.types_equal(receiver, param) {
             return true;
         }
         if let Ty::Ref { inner, .. } = self.types.get(param) {
-            return receiver == *inner;
+            return self.types_equal(receiver, *inner);
         }
         false
     }
@@ -963,7 +975,7 @@ impl<'a> TypeChecker<'a> {
             }
             for (p, arg) in params.iter().zip(args.iter()) {
                 let got = self.check_expr_node(arg);
-                if got != *p {
+                if !self.types_equal(got, *p) {
                     self.error_mismatch(*p, got, arg.span);
                 }
             }
@@ -1019,7 +1031,7 @@ impl<'a> TypeChecker<'a> {
                     }
                     for (p, arg) in rest.iter().zip(args) {
                         let got = self.check_expr_node(arg);
-                        if got != *p {
+                        if !self.types_equal(got, *p) {
                             self.error_mismatch(*p, got, arg.span);
                         }
                     }
@@ -1062,24 +1074,24 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> TypeId {
         let c = self.check_expr_node(cond);
-        if c != self.bool_ty {
+        if !self.types_equal(c, self.bool_ty) {
             self.error_mismatch(self.bool_ty, c, cond.span);
         }
         let mut then_ty = self.check_block_expr(then_block);
         for (ec, eb) in else_ifs {
             let e = self.check_expr_node(ec);
-            if e != self.bool_ty {
+            if !self.types_equal(e, self.bool_ty) {
                 self.error_mismatch(self.bool_ty, e, ec.span);
             }
             let arm_ty = self.check_block_expr(eb);
-            then_ty = unify_branch(&self.types, then_ty, arm_ty).unwrap_or_else(|| {
+            then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
                 self.bag.push(TypeCheckError::NonUnifyingBranches { span });
                 self.unit
             });
         }
         if let Some(else_b) = else_block {
             let arm_ty = self.check_block_expr(else_b);
-            then_ty = unify_branch(&self.types, then_ty, arm_ty).unwrap_or_else(|| {
+            then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
                 self.bag.push(TypeCheckError::NonUnifyingBranches { span });
                 self.unit
             });
@@ -1102,14 +1114,14 @@ impl<'a> TypeChecker<'a> {
             self.check_pattern(&arm.pattern.inner, s, arm.pattern.span);
             if let Some(g) = &arm.guard {
                 let gt = self.check_expr_node(g);
-                if gt != self.bool_ty {
+                if !self.types_equal(gt, self.bool_ty) {
                     self.error_mismatch(self.bool_ty, gt, g.span);
                 }
             }
             let body_ty = self.check_expr_node(&arm.body);
             acc = Some(match acc {
                 None => body_ty,
-                Some(prev) => unify_branch(&self.types, prev, body_ty).unwrap_or_else(|| {
+                Some(prev) => unify_branch(&self.alias_env(), prev, body_ty).unwrap_or_else(|| {
                     self.bag.push(TypeCheckError::NonUnifyingBranches { span });
                     self.unit
                 }),
@@ -1267,7 +1279,7 @@ impl<'a> TypeChecker<'a> {
                         .and_then(|sf| sf.fields.get(&fname.symbol).copied())
                     {
                         let got = self.check_expr_node(value);
-                        if got != expected {
+                        if !self.types_equal(got, expected) {
                             self.error_mismatch(expected, got, value.span);
                         }
                     } else {
@@ -1312,7 +1324,7 @@ impl<'a> TypeChecker<'a> {
                     seen.insert(fname.symbol);
                     if let Some(expected) = field_map.get(&fname.symbol) {
                         let got = self.check_expr_node(value);
-                        if got != *expected {
+                        if !self.types_equal(got, *expected) {
                             self.error_mismatch(*expected, got, value.span);
                         }
                     } else {

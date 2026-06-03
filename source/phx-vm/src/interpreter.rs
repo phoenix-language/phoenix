@@ -8,12 +8,30 @@ use phx_bytecode::{
 use crate::VmError;
 use crate::frame::{Aggregate, Machine, Value};
 
+/// Captured VM state when the entry function returns.
+#[derive(Debug, Clone)]
+pub struct VmRunCapture {
+    /// Local slots for `main` at return.
+    pub main_locals: Vec<Value>,
+    /// Aggregate arena at return (for struct/enum inspection).
+    pub aggregates: Vec<Aggregate>,
+}
+
 /// Runs `module` starting at `entry` until `main` returns.
 ///
 /// # Errors
 ///
 /// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
 pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
+    run_captured(module).map(|_| ())
+}
+
+/// Runs `module` and returns `main` local slots captured at entry return.
+///
+/// # Errors
+///
+/// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
+pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
     let entry_id = module.header.entry_function_id;
     let entry = find_function(module, entry_id).ok_or(VmError::MissingEntry)?;
     if entry.arity != 0 {
@@ -34,7 +52,15 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
         let pc_usize = usize::try_from(pc).unwrap_or(0);
         if pc_usize >= code.len() {
             if machine.frames.len() == 1 {
-                return Ok(());
+                let main_locals = machine
+                    .frames
+                    .last()
+                    .map(|f| f.locals.clone())
+                    .unwrap_or_default();
+                return Ok(VmRunCapture {
+                    main_locals,
+                    aggregates: std::mem::take(&mut machine.aggregates),
+                });
             }
             return Err(VmError::TruncatedCode);
         }
@@ -167,9 +193,17 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
                 }
             }
             Opcode::Return => {
+                let main_locals = if machine.frames.len() == 1 {
+                    machine.frames.last().map(|f| f.locals.clone())
+                } else {
+                    None
+                };
                 machine.pop_frame();
                 if machine.frames.is_empty() {
-                    return Ok(());
+                    return Ok(VmRunCapture {
+                        main_locals: main_locals.unwrap_or_default(),
+                        aggregates: std::mem::take(&mut machine.aggregates),
+                    });
                 }
             }
             Opcode::Pop => {
@@ -409,7 +443,10 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
             }
         }
     }
-    Ok(())
+    Ok(VmRunCapture {
+        main_locals: Vec::new(),
+        aggregates: std::mem::take(&mut machine.aggregates),
+    })
 }
 
 fn find_function(module: &BytecodeModule, id: u32) -> Option<&FunctionRecord> {

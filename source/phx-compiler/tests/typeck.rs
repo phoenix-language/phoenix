@@ -273,3 +273,28 @@ fn enum_tuple_pattern_on_non_enum_scrutinee() {
 fn enum_match_user_enum_ok() {
     ok(include_str!("../../../tests/cli/fixtures/enum_match.phx"));
 }
+
+#[test]
+fn type_alias_const_inference_ok() {
+    ok("type Id = s32; main :: () => { const x: Id = 1; const _ = x; };");
+}
+
+#[test]
+fn type_alias_assignability_ok() {
+    ok("type Id = s32; main :: () => { const x: Id = 1; const y: s32 = x; const _ = y; };");
+}
+
+#[test]
+fn type_alias_cast_ok() {
+    ok("type Id = s32; main :: () => { const x: Id = 42 as Id; const _ = x; };");
+}
+
+#[test]
+fn type_alias_mismatch_still_errors() {
+    let bag = typeck_err("type Id = s32; main :: () => { const x: Id = true; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+    );
+}

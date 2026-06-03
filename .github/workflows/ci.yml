@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+      branches: [trunk, staging]
+    pull_request:
+      branches: [trunk, staging]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test workspace
+        run: cargo test --workspace
+
+      - name: CLI negative checks
+        run: bash tests/cli/check.sh
+
+      - name: CLI run fixtures
+        run: bash tests/cli/run.sh

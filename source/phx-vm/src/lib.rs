@@ -12,6 +12,8 @@ mod frame;
 mod interpreter;
 
 pub use error::VmError;
+pub use frame::{Aggregate, Value};
+pub use interpreter::{VmRunCapture, run_captured};
 pub use phx_bytecode::BytecodeModule;
 
 /// Runs `module` from its entry function until `main` returns.

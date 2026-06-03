@@ -3,6 +3,7 @@
 use phx_syntax::token::Keyword;
 
 use super::types::{Ty, TypeId, TypeInterner};
+use super::unify::{AliasEnv, normalize_type};
 use crate::typeck::builtins::bool_type;
 
 /// Result of checking a binary operator.
@@ -132,7 +133,10 @@ pub fn check_unary(
 
 /// Returns `true` when `from` may be cast to `to` explicitly (MVP: same primitive kind only).
 #[must_use]
-pub fn check_cast(types: &TypeInterner, from: TypeId, to: TypeId) -> bool {
+pub fn check_cast(env: &AliasEnv<'_>, from: TypeId, to: TypeId) -> bool {
+    let from = normalize_type(env, from);
+    let to = normalize_type(env, to);
+    let types = env.types;
     let f = types.get(from);
     let t = types.get(to);
     match (f, t) {
