@@ -1,7 +1,9 @@
 [project]
 name = "cli_project_test"
-module_path = "src"
+version = "0.1.0"
+description = "CLI build/run fixture"
+type = "bin"
+module_src = "src"
 
 [build]
 dir = "build"
-entry = "main"

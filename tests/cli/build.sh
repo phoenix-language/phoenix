@@ -5,8 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PHX_BIN="${ROOT}/target/debug/phx"
 PROJECT="${ROOT}/tests/cli/fixtures/project"
-ENTRY="${PROJECT}/src/main.phx"
-BUILD_BIN="${PROJECT}/build/bin/main.phx0"
+BUILD_BIN="${PROJECT}/build/bin/cli_project_test.phx0"
 
 cd "${ROOT}"
 
@@ -15,8 +14,8 @@ cargo build -q -p phx
 
 rm -rf "${PROJECT}/build"
 
-echo "running: phx build ${ENTRY}"
-"${PHX_BIN}" build "${ENTRY}"
+echo "running: phx build (project default entry)"
+"${PHX_BIN}" build --project-root "${PROJECT}"
 
 if [[ ! -f "${BUILD_BIN}" ]]; then
   echo "expected linked binary: ${BUILD_BIN}" >&2
@@ -28,12 +27,12 @@ if [[ ! -f "${PROJECT}/build/manifest.json" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${PROJECT}/build/pxi/util/math.pxi" ]]; then
-  echo "expected util/math.pxi" >&2
+if [[ ! -f "${PROJECT}/build/pxi/cli_project_test/util/math.pxi" ]]; then
+  echo "expected cli_project_test/util/math.pxi" >&2
   exit 1
 fi
 
-echo "running: phx run --no-build ${ENTRY}"
-"${PHX_BIN}" run --no-build "${ENTRY}"
+echo "running: phx run --no-build --project-root ${PROJECT}"
+"${PHX_BIN}" run --no-build --project-root "${PROJECT}" "${PROJECT}/src/main.phx"
 
 echo "phx build/run project tests passed"

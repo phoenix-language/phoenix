@@ -17,10 +17,10 @@ fn print_usage() {
          \n\
          usage:\n\
            phx help\n\
-           phx check [--module-path <dir>] <file.phx>\n\
-           phx build [--project-root <dir>] [--build] <entry.phx>\n\
-           phx compile [--module-path <dir>] <file.phx> -o <out>\n\
-           phx run [--project-root <dir>] [--no-build] [--build] <entry.phx>\n\
+           phx check [--module-src <dir>] <file.phx>\n\
+           phx build [--project-root <dir>] [--build] [entry.phx]\n\
+           phx compile [--module-src <dir>] <file.phx> -o <out>\n\
+           phx run [--project-root <dir>] [--no-build] [--build] [entry.phx]\n\
          \n\
          `build` and `run` require phoenix.toml at the project root."
     );
@@ -35,7 +35,7 @@ fn report_compile_error(err: &CompileError, entry_source: Option<&str>) {
 }
 
 struct ProjectArgs {
-    entry: PathBuf,
+    entry: Option<PathBuf>,
     project_root: Option<PathBuf>,
     force_build: bool,
     skip_build: bool,
@@ -56,7 +56,7 @@ fn parse_project_command(mut args: impl Iterator<Item = String>) -> Result<Proje
         }
     }
     Ok(ProjectArgs {
-        entry: entry.ok_or(())?,
+        entry,
         project_root,
         force_build,
         skip_build,
@@ -66,11 +66,11 @@ fn parse_project_command(mut args: impl Iterator<Item = String>) -> Result<Proje
 fn parse_file_command(
     mut args: impl Iterator<Item = String>,
 ) -> Result<(PathBuf, PathBuf), ()> {
-    let mut module_path = None;
+    let mut module_src = None;
     let mut file = None;
     while let Some(arg) = args.next() {
-        if arg == "--module-path" {
-            module_path = Some(PathBuf::from(args.next().ok_or(())?));
+        if arg == "--module-src" {
+            module_src = Some(PathBuf::from(args.next().ok_or(())?));
         } else if file.is_some() {
             return Err(());
         } else {
@@ -78,7 +78,7 @@ fn parse_file_command(
         }
     }
     let path = file.ok_or(())?;
-    let module_root = module_path.unwrap_or_else(|| {
+    let module_root = module_src.unwrap_or_else(|| {
         path.parent()
             .unwrap_or(Path::new("."))
             .to_path_buf()
@@ -86,8 +86,14 @@ fn parse_file_command(
     Ok((path, module_root))
 }
 
-fn run_with_project(entry: &Path, project_root: Option<&Path>, force: bool, skip_build: bool) {
-    let config = match resolve_project(entry, project_root) {
+fn run_with_project(
+    entry: Option<&Path>,
+    project_root: Option<&Path>,
+    force: bool,
+    skip_build: bool,
+) {
+    let anchor = entry.unwrap_or_else(|| Path::new("."));
+    let config = match resolve_project(anchor, project_root) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{e}");
@@ -100,7 +106,7 @@ fn run_with_project(entry: &Path, project_root: Option<&Path>, force: bool, skip
             process::exit(1);
         }
     }
-    match load_project_binary(&config, entry) {
+    match load_project_binary(&config) {
         Ok(module) => {
             if let Err(e) = verify(&module) {
                 eprintln!("verify error: {e}");
@@ -143,15 +149,16 @@ fn main() {
                 print_usage();
                 process::exit(1);
             };
-            let config = match resolve_project(&pa.entry, pa.project_root.as_deref()) {
+            let anchor = pa.entry.as_deref().unwrap_or_else(|| Path::new("."));
+            let config = match resolve_project(anchor, pa.project_root.as_deref()) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("{e}");
                     process::exit(1);
                 }
             };
-            match build_project(&config, &pa.entry, pa.force_build) {
-                Ok(result) => eprintln!("built {}", result.bin_path.display()),
+            match build_project(&config, pa.entry.as_deref(), pa.force_build) {
+                Ok(result) => eprintln!("built {}", result.output_path.display()),
                 Err(e) => {
                     eprintln!("{}", e.to_message());
                     process::exit(1);
@@ -170,7 +177,7 @@ fn main() {
                         i += 1;
                         out_path = Some(PathBuf::from(rest.get(i).ok_or(()).unwrap_or(&rest[0])));
                     }
-                    "--module-path" => {
+                    "--module-src" => {
                         i += 1;
                         module_root = Some(PathBuf::from(rest.get(i).ok_or(()).unwrap_or(&rest[0])));
                         i += 1;
@@ -225,21 +232,25 @@ fn main() {
                 print_usage();
                 process::exit(1);
             };
-            if resolve_project(&pa.entry, pa.project_root.as_deref()).is_ok() {
+            let anchor = pa.entry.as_deref().unwrap_or(Path::new("."));
+            if resolve_project(anchor, pa.project_root.as_deref()).is_ok() {
                 run_with_project(
-                    &pa.entry,
+                    pa.entry.as_deref(),
                     pa.project_root.as_deref(),
                     pa.force_build,
                     pa.skip_build,
                 );
             } else {
-                let module_root = pa
-                    .entry
+                let Some(entry) = pa.entry.as_ref() else {
+                    print_usage();
+                    process::exit(1);
+                };
+                let module_root = entry
                     .parent()
                     .unwrap_or(Path::new("."))
                     .to_path_buf();
-                let source = read_source(&pa.entry).ok();
-                match compile_to_module_with_module_path(&pa.entry, &module_root) {
+                let source = read_source(entry).ok();
+                match compile_to_module_with_module_path(entry, &module_root) {
                     Ok(module) => {
                         if let Err(e) = verify(&module) {
                             eprintln!("verify error: {e}");

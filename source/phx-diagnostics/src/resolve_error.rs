@@ -121,6 +121,13 @@ pub enum ResolveError {
     },
     /// No `main` function in the compilation unit.
     MissingMain,
+    /// `main` is not allowed in a `lib` package.
+    MainForbiddenInLib {
+        /// `main` definition span.
+        span: Span,
+        /// Module path.
+        module: String,
+    },
     /// `main` exists but does not match the MVP signature.
     InvalidMainSignature {
         /// Span of the `main` function name or signature.
@@ -147,7 +154,8 @@ impl ResolveError {
             | Self::ImportNotFound { span, .. }
             | Self::DuplicateImport { span, .. }
             | Self::MainNotInEntry { span, .. }
-            | Self::InvalidMainSignature { span, .. } => Some(*span),
+            | Self::InvalidMainSignature { span, .. }
+            | Self::MainForbiddenInLib { span, .. } => Some(*span),
             Self::MissingMain => None,
         }
     }
@@ -189,6 +197,9 @@ impl fmt::Display for ResolveError {
                 write!(f, "`main` must be defined in the entry module, not in `{module}`")
             }
             Self::MissingMain => f.write_str("missing entry function `main`"),
+            Self::MainForbiddenInLib { module, .. } => {
+                write!(f, "`main` is not allowed in library package module `{module}`")
+            }
             Self::InvalidMainSignature { reason, .. } => {
                 write!(f, "invalid `main` signature: {reason}")
             }

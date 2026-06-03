@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use phx_syntax::Interner;
 use phx_syntax::ast::ident::{Path as AstPath, PathSegment};
 
+use crate::project::PackageType;
+
 /// Logical module path (`a::b::c`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModulePath {
@@ -12,7 +14,7 @@ pub struct ModulePath {
 }
 
 impl ModulePath {
-    /// Creates a path from interned segment strings.
+    /// Creates a path from segment strings.
     #[must_use]
     pub fn new(segments: Vec<String>) -> Self {
         Self { segments }
@@ -31,11 +33,15 @@ impl ModulePath {
         self.segments.join("::")
     }
 
-    /// Builds a module path from a `.phx` file relative to `module_root`.
+    /// Builds a logical path from a `.phx` file under `module_root` for `package_name`.
     ///
-    /// `app/main.phx` under root → `app::main`; `lib/mod.phx` → `lib::mod`.
+    /// Special files: `main.phx` / `lib.phx` at root → `{package}`; `dir/mod.phx` → `{package}::dir`.
     #[must_use]
-    pub fn from_file_path(module_root: &Path, file: &Path) -> Option<Self> {
+    pub fn from_file_path(
+        module_root: &Path,
+        file: &Path,
+        package_name: &str,
+    ) -> Option<Self> {
         let rel = file.strip_prefix(module_root).ok()?;
         let mut parts: Vec<String> = rel
             .components()
@@ -44,52 +50,94 @@ impl ModulePath {
         if parts.is_empty() {
             return None;
         }
-        if parts.last().is_some_and(|p| p.ends_with(".phx")) {
-            let last = parts.pop()?;
-            let stem = last.strip_suffix(".phx")?;
-            if stem == "index" && !parts.is_empty() {
-                // index.phx uses parent folder name only (handled when resolving imports).
-            } else if !stem.is_empty() {
-                parts.push(stem.to_owned());
-            }
+        let stem = parts.pop()?.strip_suffix(".phx")?.to_owned();
+        let inner = if parts.is_empty() && (stem == "main" || stem == "lib") {
+            Vec::new()
+        } else if stem == "mod" {
+            parts
+        } else {
+            parts.push(stem);
+            parts
+        };
+        let mut segments = vec![package_name.to_owned()];
+        segments.extend(inner);
+        Some(Self::new(segments))
+    }
+
+    /// Segments after the package name prefix.
+    #[must_use]
+    pub fn within_package<'a>(&'a self, package_name: &str) -> &'a [String] {
+        if self
+            .segments
+            .first()
+            .is_some_and(|s| s == package_name)
+        {
+            &self.segments[1..]
+        } else {
+            &self.segments
         }
-        if parts.is_empty() {
+    }
+
+    /// Canonicalizes an import path for `workspace_name` and known dependency names.
+    #[must_use]
+    pub fn canonicalize_import(
+        target: &Self,
+        workspace_name: &str,
+        dep_names: &[&str],
+    ) -> Self {
+        if target.segments.is_empty() {
+            return target.clone();
+        }
+        let first = &target.segments[0];
+        if first == workspace_name || dep_names.iter().any(|d| *d == first) {
+            return target.clone();
+        }
+        let mut segs = vec![workspace_name.to_owned()];
+        segs.extend(target.segments.clone());
+        Self::new(segs)
+    }
+
+    /// Maps a logical path to a filesystem path under `module_root`.
+    #[must_use]
+    pub fn resolve_existing_file(
+        module_root: &Path,
+        path: &Self,
+        package_name: &str,
+        package_type: PackageType,
+    ) -> Option<PathBuf> {
+        let inner = path.within_package(package_name);
+        if inner.is_empty() {
+            let main = module_root.join("main.phx");
+            let lib = module_root.join("lib.phx");
+            return match package_type {
+                PackageType::Bin if main.is_file() => Some(main),
+                PackageType::Lib if lib.is_file() => Some(lib),
+                _ => None,
+            };
+        }
+        if inner.len() == 1 {
+            let direct = module_root.join(format!("{}.phx", inner[0]));
+            if direct.is_file() {
+                return Some(direct);
+            }
+            let mod_file = module_root.join(&inner[0]).join("mod.phx");
+            if mod_file.is_file() {
+                return Some(mod_file);
+            }
             return None;
         }
-        Some(Self::new(parts))
-    }
-
-    /// Maps an import / qualified path to a filesystem path under `module_root`.
-    #[must_use]
-    pub fn to_file_path(&self, module_root: &Path) -> PathBuf {
         let mut p = module_root.to_path_buf();
-        for seg in &self.segments {
+        for seg in &inner[..inner.len() - 1] {
             p.push(seg);
         }
-        p.set_extension("phx");
-        p
-    }
-
-    /// Alternate layout: `path/index.phx`.
-    #[must_use]
-    pub fn to_index_file_path(&self, module_root: &Path) -> PathBuf {
-        let mut p = module_root.to_path_buf();
-        for seg in &self.segments {
-            p.push(seg);
-        }
-        p.push("index.phx");
-        p
-    }
-
-    /// Resolves which file exists for this module path.
-    pub fn resolve_existing_file(module_root: &Path, path: &ModulePath) -> Option<PathBuf> {
-        let direct = path.to_file_path(module_root);
+        let last = inner.last()?;
+        let direct = p.join(format!("{last}.phx"));
         if direct.is_file() {
             return Some(direct);
         }
-        let index = path.to_index_file_path(module_root);
-        if index.is_file() {
-            return Some(index);
+        let mod_file = p.join(last).join("mod.phx");
+        if mod_file.is_file() {
+            return Some(mod_file);
         }
         None
     }
@@ -136,21 +184,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_path_to_module_path() {
-        let root = Path::new("/proj");
-        let file = Path::new("/proj/math/common.phx");
-        let mp = ModulePath::from_file_path(root, file).expect("path");
-        assert_eq!(mp.segments(), &["math", "common"]);
+    fn package_root_main() {
+        let root = Path::new("/proj/src");
+        let file = Path::new("/proj/src/main.phx");
+        let mp = ModulePath::from_file_path(root, file, "myapp").expect("path");
+        assert_eq!(mp.segments(), &["myapp"]);
     }
 
     #[test]
-    fn resolve_direct_or_index() {
-        let dir = std::env::temp_dir().join("phx_mod_test_direct");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("a/b")).unwrap();
-        std::fs::write(dir.join("a/b/c.phx"), "main :: () => { };").unwrap();
-        let mp = ModulePath::new(vec!["a".into(), "b".into(), "c".into()]);
-        assert!(ModulePath::resolve_existing_file(&dir, &mp).is_some());
-        let _ = std::fs::remove_dir_all(&dir);
+    fn mod_file_collapses() {
+        let root = Path::new("/proj/src");
+        let file = Path::new("/proj/src/utils/mod.phx");
+        let mp = ModulePath::from_file_path(root, file, "math").expect("path");
+        assert_eq!(mp.segments(), &["math", "utils"]);
+    }
+
+    #[test]
+    fn canonicalize_same_package() {
+        let t = ModulePath::new(vec!["utils".into(), "math".into()]);
+        let c = ModulePath::canonicalize_import(&t, "myapp", &["math"]);
+        assert_eq!(c.display(), "myapp::utils::math");
     }
 }

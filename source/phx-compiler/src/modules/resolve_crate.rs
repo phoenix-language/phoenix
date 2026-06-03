@@ -12,6 +12,7 @@ use crate::resolver::scopes::ScopeStack;
 
 use super::loader::{LoadedCrate, LoadedModule, ModuleId};
 use super::path::ModulePath;
+use crate::project::PackageType;
 
 type ExportMap = HashMap<Symbol, DefId>;
 
@@ -22,7 +23,12 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         modules,
         root,
         path_index,
+        package_type,
+        package_name,
+        dep_package_names,
+        ..
     } = loaded;
+    let dep_name_refs: Vec<&str> = dep_package_names.iter().map(String::as_str).collect();
     let mut bag = DiagnosticBag::new();
     let mut defs = Vec::new();
     let mut exports: Vec<ExportMap> = vec![HashMap::new(); modules.len()];
@@ -57,10 +63,17 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             import_bindings: Vec::new(),
         };
         resolver.resolve_program();
-        if module.id == root {
-            if resolver.main_fn.is_some() {
+        if resolver.main_fn.is_some() {
+            if package_type == PackageType::Lib {
+                bag.push(ResolveError::MainForbiddenInLib {
+                    span: phx_diagnostics::Span::new(0, 0),
+                    module: source_modules[idx].logical_path.clone(),
+                });
+            } else if module.id == root {
                 main_fn = resolver.main_fn;
             }
+        }
+        if module.id == root && package_type == PackageType::Bin {
             resolver.check_main();
         }
         for e in resolver.bag.into_errors() {
@@ -88,6 +101,8 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             &exports,
             &defs,
             &mut interner,
+            &package_name,
+            &dep_name_refs,
             &mut bag,
         );
         let sf = SourceFile::new(module.program.clone(), interner.clone());
@@ -112,7 +127,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         resolutions.extend(resolver.resolutions);
     }
 
-    if main_fn.is_none() {
+    if package_type == PackageType::Bin && main_fn.is_none() {
         bag.push(ResolveError::MissingMain);
     }
 
@@ -142,6 +157,8 @@ fn build_import_bindings(
     exports: &[ExportMap],
     defs: &[Def],
     interner: &mut Interner,
+    workspace_name: &str,
+    dep_names: &[&str],
     bag: &mut DiagnosticBag,
 ) -> Vec<(Symbol, DefId, bool)> {
     let mut bindings = Vec::new();
@@ -153,7 +170,9 @@ fn build_import_bindings(
         } else {
             ModulePath::split_import_target(&imp.inner.path, interner).0
         };
-        let key = target_path.display();
+        let canonical =
+            ModulePath::canonicalize_import(&target_path, workspace_name, dep_names);
+        let key = canonical.display();
         let Some(&dep_id) = path_index.get(&key) else {
             continue;
         };

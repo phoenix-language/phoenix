@@ -1,20 +1,43 @@
 //! Minimal `phoenix.toml` parsing (stdlib only).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+/// Package kind from `[project] type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackageType {
+    /// Executable; requires `main.phx` and `main` function.
+    Bin,
+    /// Library; requires `lib.phx`; `main` function forbidden.
+    Lib,
+}
+
+/// Path dependency entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathDependency {
+    /// Filesystem path (relative to project root).
+    pub path: PathBuf,
+}
 
 /// Parsed `phoenix.toml` project configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectConfig {
     /// Project root directory (contains `phoenix.toml`).
     pub root: PathBuf,
-    /// `[project] name`
+    /// `[project] name` — package name and namespace root.
     pub name: String,
-    /// `[project] module_path` — source root for modules.
-    pub module_path: PathBuf,
+    /// `[project] version`
+    pub version: String,
+    /// `[project] description`
+    pub description: String,
+    /// `[project] type`
+    pub package_type: PackageType,
+    /// `[project] module_src` — source root for modules.
+    pub module_src: PathBuf,
     /// `[build] dir`
     pub build_dir: PathBuf,
-    /// `[build] entry` — logical module path (optional).
-    pub entry_logical: Option<String>,
+    /// `[dependencies]` keyed by package name (must match depended `project.name`).
+    pub dependencies: HashMap<String, PathDependency>,
 }
 
 impl ProjectConfig {
@@ -29,19 +52,93 @@ impl ProjectConfig {
             path: path.display().to_string(),
             message: e.to_string(),
         })?;
-        parse_toml(&text, root)
+        let cfg = parse_toml(&text, root)?;
+        cfg.validate()?;
+        Ok(cfg)
     }
 
     /// Absolute path to the module source root.
     #[must_use]
     pub fn module_root(&self) -> PathBuf {
-        self.root.join(&self.module_path)
+        self.root.join(&self.module_src)
     }
 
     /// Absolute path to the build directory.
     #[must_use]
     pub fn build_root(&self) -> PathBuf {
         self.root.join(&self.build_dir)
+    }
+
+    /// Default entry source file for this package (`main.phx` or `lib.phx`).
+    #[must_use]
+    pub fn default_entry_file(&self) -> PathBuf {
+        match self.package_type {
+            PackageType::Bin => self.module_root().join("main.phx"),
+            PackageType::Lib => self.module_root().join("lib.phx"),
+        }
+    }
+
+    /// Linked artifact file name stem (`project.name`).
+    #[must_use]
+    pub fn output_name(&self) -> &str {
+        &self.name
+    }
+
+    /// Validates paths, required root files, and dependency keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::Invalid`] on schema violations.
+    pub fn validate(&self) -> Result<(), ProjectError> {
+        let module_root = self.module_root();
+        if !module_root.is_dir() {
+            return Err(ProjectError::Invalid {
+                message: format!(
+                    "module_src `{}` is not a directory",
+                    self.module_src.display()
+                ),
+            });
+        }
+        let entry = self.default_entry_file();
+        if !entry.is_file() {
+            let want = match self.package_type {
+                PackageType::Bin => "main.phx",
+                PackageType::Lib => "lib.phx",
+            };
+            return Err(ProjectError::Invalid {
+                message: format!(
+                    "missing required `{want}` at `{}` for type {:?}",
+                    entry.display(),
+                    self.package_type
+                ),
+            });
+        }
+        for (key, dep) in &self.dependencies {
+            let dep_root = self.root.join(&dep.path);
+            if !dep_root.join("phoenix.toml").is_file() {
+                return Err(ProjectError::Invalid {
+                    message: format!(
+                        "dependency `{key}` path `{}` has no phoenix.toml",
+                        dep.path.display()
+                    ),
+                });
+            }
+            let dep_cfg = ProjectConfig::load(&dep_root)?;
+            if dep_cfg.package_type != PackageType::Lib {
+                return Err(ProjectError::Invalid {
+                    message: format!("dependency `{key}` must have type = lib"),
+                });
+            }
+            if key != &dep_cfg.name {
+                return Err(ProjectError::Invalid {
+                    message: format!(
+                        "dependency key `{key}` must match dependency project.name `{}`",
+                        dep_cfg.name
+                    ),
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -83,10 +180,14 @@ impl std::error::Error for ProjectError {}
 
 fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut name: Option<String> = None;
-    let mut module_path = PathBuf::from(".");
+    let mut version = "0.0.0".to_owned();
+    let mut description = String::new();
+    let mut package_type: Option<PackageType> = None;
+    let mut module_src = PathBuf::from("src");
     let mut build_dir = PathBuf::from("build");
-    let mut entry_logical: Option<String> = None;
     let mut section = String::new();
+    let mut dep_key: Option<String> = None;
+    let mut dependencies: HashMap<String, PathDependency> = HashMap::new();
 
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -94,7 +195,14 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
             continue;
         }
         if line.starts_with('[') && line.ends_with(']') {
-            section = line[1..line.len() - 1].trim().to_owned();
+            let inner = line[1..line.len() - 1].trim();
+            if let Some(key) = inner.strip_prefix("dependencies.") {
+                dep_key = Some(key.to_owned());
+                section = "dependencies".to_owned();
+            } else {
+                dep_key = None;
+                section = inner.to_owned();
+            }
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {
@@ -105,14 +213,42 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         match section.as_str() {
             "project" => match key {
                 "name" => name = Some(value.to_owned()),
-                "module_path" => module_path = PathBuf::from(value),
+                "version" => version = value.to_owned(),
+                "description" => description = value.to_owned(),
+                "type" => {
+                    package_type = Some(parse_package_type(value)?);
+                }
+                "module_src" => module_src = PathBuf::from(value),
                 _ => {}
             },
             "build" => match key {
                 "dir" => build_dir = PathBuf::from(value),
-                "entry" => entry_logical = Some(value.replace('/', "::")),
                 _ => {}
             },
+            "dependencies" => {
+                if key == "path" {
+                    let Some(ref dk) = dep_key else {
+                        continue;
+                    };
+                    dependencies.insert(
+                        dk.clone(),
+                        PathDependency {
+                            path: PathBuf::from(value),
+                        },
+                    );
+                } else if value.starts_with('{') {
+                    let dep_name = key.to_owned();
+                    let path = extract_brace_path(value);
+                    if let Some(path) = path {
+                        dependencies.insert(
+                            dep_name,
+                            PathDependency {
+                                path: PathBuf::from(path),
+                            },
+                        );
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -120,14 +256,42 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let name = name.ok_or_else(|| ProjectError::Invalid {
         message: "missing [project] name".to_owned(),
     })?;
+    let package_type = package_type.ok_or_else(|| ProjectError::Invalid {
+        message: "missing [project] type (bin or lib)".to_owned(),
+    })?;
 
     Ok(ProjectConfig {
         root: root.to_path_buf(),
         name,
-        module_path,
+        version,
+        description,
+        package_type,
+        module_src,
         build_dir,
-        entry_logical,
+        dependencies,
     })
+}
+
+fn parse_package_type(value: &str) -> Result<PackageType, ProjectError> {
+    match value {
+        "bin" => Ok(PackageType::Bin),
+        "lib" => Ok(PackageType::Lib),
+        other => Err(ProjectError::Invalid {
+            message: format!("invalid project.type `{other}` (expected bin or lib)"),
+        }),
+    }
+}
+
+fn extract_brace_path(value: &str) -> Option<&str> {
+    let inner = value.trim().strip_prefix('{')?.strip_suffix('}')?.trim();
+    for part in inner.split(',') {
+        let part = part.trim();
+        let (k, v) = part.split_once('=')?;
+        if k.trim() == "path" {
+            return Some(trim_quotes(v.trim()));
+        }
+    }
+    None
 }
 
 fn trim_quotes(s: &str) -> &str {
@@ -141,19 +305,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_minimal() {
-        let text = r#"
+    fn parse_minimal_bin() {
+        let dir = std::env::temp_dir().join("phx_cfg_test_bin");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
 [project]
 name = "demo"
-module_path = "src"
-
-[build]
-dir = "build"
-entry = "app/main"
-"#;
-        let cfg = parse_toml(text, Path::new("/proj")).unwrap();
+type = "bin"
+module_src = "src"
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
+        let cfg = ProjectConfig::load(&dir).unwrap();
         assert_eq!(cfg.name, "demo");
-        assert_eq!(cfg.module_path, PathBuf::from("src"));
-        assert_eq!(cfg.entry_logical.as_deref(), Some("app::main"));
+        assert_eq!(cfg.module_src, PathBuf::from("src"));
+        assert_eq!(cfg.package_type, PackageType::Bin);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

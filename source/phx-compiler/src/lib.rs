@@ -35,7 +35,7 @@ pub use compile::{
     compile_to_module_with_module_path,
 };
 pub use project::{
-    discover_project, resolve_project, BuildLayout, ProjectConfig, ProjectError,
+    discover_project, resolve_project, BuildLayout, PackageType, ProjectConfig, ProjectError,
 };
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use lower::lower;

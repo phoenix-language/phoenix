@@ -1,0 +1,12 @@
+[project]
+name = "app_dep"
+version = "0.1.0"
+description = "App depending on math lib"
+type = "bin"
+module_src = "src"
+
+[dependencies]
+math = { path = "../math_lib" }
+
+[build]
+dir = "build"

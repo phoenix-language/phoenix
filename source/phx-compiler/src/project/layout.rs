@@ -28,16 +28,33 @@ impl BuildLayout {
         }
     }
 
+    /// Layout for a dependency built under `build/deps/{dep_name}/`.
+    #[must_use]
+    pub fn for_dependency(workspace: &ProjectConfig, dep_name: &str) -> Self {
+        Self {
+            build_root: workspace
+                .build_root()
+                .join("deps")
+                .join(dep_name),
+        }
+    }
+
     /// `build/manifest.json`
     #[must_use]
     pub fn manifest_path(&self) -> PathBuf {
         self.build_root.join("manifest.json")
     }
 
-    /// `build/bin/<bin_name>.phx0`
+    /// `build/bin/<name>.phx0`
     #[must_use]
-    pub fn bin_path(&self, bin_name: &str) -> PathBuf {
-        self.build_root.join("bin").join(format!("{bin_name}.phx0"))
+    pub fn bin_path(&self, name: &str) -> PathBuf {
+        self.build_root.join("bin").join(format!("{name}.phx0"))
+    }
+
+    /// `build/lib/<name>.phx0`
+    #[must_use]
+    pub fn lib_path(&self, name: &str) -> PathBuf {
+        self.build_root.join("lib").join(format!("{name}.phx0"))
     }
 
     /// Per-module `.pxi` and `.phx0` paths mirroring `::` as `/`.
@@ -54,15 +71,35 @@ impl BuildLayout {
         }
     }
 
-    /// Ensures `build/pxi`, `build/phx0`, and `build/bin` exist.
+    /// Ensures workspace build subdirectories exist.
     ///
     /// # Errors
     ///
     /// Returns I/O errors from `create_dir_all`.
-    pub fn ensure_dirs(&self) -> std::io::Result<()> {
+    pub fn ensure_workspace_dirs(&self, package_type: super::config::PackageType) -> std::io::Result<()> {
         std::fs::create_dir_all(self.build_root.join("pxi"))?;
         std::fs::create_dir_all(self.build_root.join("phx0"))?;
-        std::fs::create_dir_all(self.build_root.join("bin"))?;
+        std::fs::create_dir_all(self.build_root.join("deps"))?;
+        match package_type {
+            super::config::PackageType::Bin => {
+                std::fs::create_dir_all(self.build_root.join("bin"))?;
+            }
+            super::config::PackageType::Lib => {
+                std::fs::create_dir_all(self.build_root.join("lib"))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Ensures dependency artifact directories exist.
+    ///
+    /// # Errors
+    ///
+    /// I/O errors from `create_dir_all`.
+    pub fn ensure_dep_dirs(&self) -> std::io::Result<()> {
+        std::fs::create_dir_all(self.build_root.join("pxi"))?;
+        std::fs::create_dir_all(self.build_root.join("phx0"))?;
+        std::fs::create_dir_all(self.build_root.join("lib"))?;
         Ok(())
     }
 }
@@ -80,8 +117,8 @@ mod tests {
         let layout = BuildLayout {
             build_root: PathBuf::from("/p/build"),
         };
-        let a = layout.module_artifacts("util::math");
-        assert!(a.pxi.ends_with("util/math.pxi"));
-        assert!(a.phx0.ends_with("util/math.phx0"));
+        let a = layout.module_artifacts("myapp::util::math");
+        assert!(a.pxi.ends_with("myapp/util/math.pxi"));
+        assert!(a.phx0.ends_with("myapp/util/math.phx0"));
     }
 }

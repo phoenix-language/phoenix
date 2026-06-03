@@ -99,15 +99,15 @@ for fixture in "${MODULE_MAIN}"; do
   fi
 done
 
-echo "running: phx check --module-path ${MODULES_DIR} ${MODULE_MAIN} (expect success)"
-if ! "${PHX_BIN}" check --module-path "${MODULES_DIR}" "${MODULE_MAIN}"; then
+echo "running: phx check --module-src ${MODULES_DIR} ${MODULE_MAIN} (expect success)"
+if ! "${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_MAIN}"; then
   echo "phx check should succeed for multi-file modules fixture" >&2
   exit 1
 fi
 echo "phx check passed (modules import)"
 
 echo "running: phx check ${MODULE_PRIVATE} (expect private import failure)"
-if output="$("${PHX_BIN}" check --module-path "${MODULES_DIR}" "${MODULE_PRIVATE}" 2>&1)"; then
+if output="$("${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_PRIVATE}" 2>&1)"; then
   echo "phx check should fail for private import" >&2
   exit 1
 fi
@@ -119,7 +119,7 @@ fi
 echo "phx check failed as expected (private import)"
 
 echo "running: phx check ${MODULE_CYCLE} (expect cycle failure)"
-if output="$("${PHX_BIN}" check --module-path "${MODULES_DIR}" "${MODULE_CYCLE}" 2>&1)"; then
+if output="$("${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_CYCLE}" 2>&1)"; then
   echo "phx check should fail for import cycle" >&2
   exit 1
 fi

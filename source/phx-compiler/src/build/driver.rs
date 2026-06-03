@@ -9,8 +9,10 @@ use crate::codegen::codegen_module;
 use crate::compile::CompileError;
 use crate::link::{LinkInput, link_modules};
 use crate::lower::{lower, lower_module};
-use crate::modules::{LoadedCrate, ModulePath, load_crate_with_layout, resolve_crate};
-use crate::project::{BuildLayout, ProjectConfig};
+use crate::modules::{
+    CrateLoadContext, LoadedCrate, ModulePath, load_crate_with_context, resolve_crate,
+};
+use crate::project::{BuildLayout, PackageType, ProjectConfig};
 use crate::pxi::{build_pxi_for_module, digest_file, module_dependencies, PxiFile};
 use crate::resolver::DefId;
 use crate::typeck::type_check;
@@ -21,48 +23,64 @@ use super::manifest::{BuildManifest, ManifestModule, module_is_up_to_date, recor
 /// Result of a successful project build.
 #[derive(Debug, Clone)]
 pub struct BuildResult {
-    /// Path to linked `build/bin/*.phx0`.
-    pub bin_path: PathBuf,
+    /// Path to linked output (`build/bin/` or `build/lib/`).
+    pub output_path: PathBuf,
     /// Entry logical module path.
     pub entry_logical: String,
 }
 
-/// Builds the project entry module and writes `build/` artifacts.
+/// Builds the project and writes `build/` artifacts.
 ///
 /// # Errors
 ///
 /// Returns [`BuildError`] on configuration, compile, link, or I/O failure.
 pub fn build_project(
     config: &ProjectConfig,
-    entry_file: &Path,
+    entry_file: Option<&Path>,
     force: bool,
 ) -> Result<BuildResult, BuildError> {
-    let layout = BuildLayout::new(config);
-    layout.ensure_dirs().map_err(io_err)?;
+    for (_key, dep) in &config.dependencies {
+        build_dependency(config, &config.root.join(&dep.path), force)?;
+    }
+    build_package(config, entry_file, force, None)
+}
 
-    let entry_logical = entry_logical_path(config, entry_file)?;
-    let bin_name = bin_name_from_entry(&entry_logical);
-    let bin_path = layout.bin_path(&bin_name);
+fn build_package(
+    config: &ProjectConfig,
+    entry_file: Option<&Path>,
+    force: bool,
+    layout_override: Option<BuildLayout>,
+) -> Result<BuildResult, BuildError> {
+    let entry_file = entry_file
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| config.default_entry_file());
+
+    let layout = layout_override.unwrap_or_else(|| BuildLayout::new(config));
+    layout
+        .ensure_workspace_dirs(config.package_type)
+        .map_err(io_err)?;
+
+    let ctx = CrateLoadContext::from_config(config);
+    let entry_logical = entry_logical_path(config, &entry_file)?;
+    let output_path = match config.package_type {
+        PackageType::Bin => layout.bin_path(config.output_name()),
+        PackageType::Lib => layout.lib_path(config.output_name()),
+    };
 
     let mut bag = phx_diagnostics::DiagnosticBag::new();
-    let loaded = load_crate_with_layout(
-        entry_file,
-        &config.module_root(),
-        Some(&layout),
-        &mut bag,
-    )
-    .ok_or(BuildError::Resolve(bag))?;
+    let loaded = load_crate_with_context(&entry_file, &ctx, Some(&layout), &mut bag)
+        .ok_or(BuildError::Resolve(bag))?;
 
     let manifest_path = layout.manifest_path();
     let old_manifest = BuildManifest::read(&manifest_path);
 
-    let needs_full = force || !bin_path.is_file() || old_manifest.is_none();
+    let needs_full = force || !output_path.is_file() || old_manifest.is_none();
 
     if !needs_full {
         if let Some(ref old) = old_manifest {
-            if all_modules_fresh(old, &loaded, &layout) {
+            if all_modules_fresh(old, &loaded, &layout, &ctx) {
                 return Ok(BuildResult {
-                    bin_path,
+                    output_path,
                     entry_logical,
                 });
             }
@@ -75,11 +93,12 @@ pub fn build_project(
     let global_fn = build_global_fn_map(&full_ir);
 
     let export_maps = collect_export_maps(&resolved);
+    let dep_names: Vec<&str> = ctx.dep_names();
 
     let mut link_inputs = Vec::new();
     let mut manifest = BuildManifest {
         entry: entry_logical.clone(),
-        bin_path: bin_path.display().to_string(),
+        bin_path: output_path.display().to_string(),
         modules: HashMap::new(),
     };
 
@@ -88,10 +107,17 @@ pub fn build_project(
         let artifacts = layout.module_artifacts(&logical);
         let source_hash = digest_file(&module.filesystem).unwrap_or_default();
         let exports = &export_maps[module.id.index() as usize];
-        let deps = module_dependencies(module, &layout, &loaded.path_index, &loaded.interner);
+        let deps = module_dependencies(
+            module,
+            &layout,
+            &loaded.path_index,
+            &loaded.interner,
+            &loaded.package_name,
+            &dep_names,
+        );
         let dep_hashes: Vec<_> = deps
             .iter()
-            .map(|d| (d.module_path.clone(), d.pxi_hash.clone()))
+            .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
             .collect();
 
         let skip = old_manifest.as_ref().is_some_and(|old| {
@@ -148,38 +174,99 @@ pub fn build_project(
         );
     }
 
-    let entry_fn = typed
-        .entry
-        .and_then(|d| global_fn.get(&d).copied())
-        .ok_or_else(|| {
-            let mut bag = phx_diagnostics::DiagnosticBag::new();
-            bag.push(phx_diagnostics::ResolveError::MissingMain);
-            BuildError::Resolve(bag)
-        })?;
+    append_dependency_link_inputs(config, &mut link_inputs)?;
+
+    let entry_fn = match config.package_type {
+        PackageType::Bin => typed
+            .entry
+            .and_then(|d| global_fn.get(&d).copied())
+            .ok_or_else(|| {
+                let mut bag = phx_diagnostics::DiagnosticBag::new();
+                bag.push(phx_diagnostics::ResolveError::MissingMain);
+                BuildError::Resolve(bag)
+            })?,
+        PackageType::Lib => 0,
+    };
 
     let linked = link_modules(&link_inputs, entry_fn).map_err(BuildError::Link)?;
-    write_module(&bin_path, &linked)?;
+    write_module(&output_path, &linked)?;
 
     manifest.write(&manifest_path).map_err(io_err)?;
 
     Ok(BuildResult {
-        bin_path,
+        output_path,
         entry_logical,
     })
 }
 
-/// Loads the linked binary from `build/bin` for `config` and `entry_file`.
+fn build_dependency(
+    consumer: &ProjectConfig,
+    dep_root: &Path,
+    force: bool,
+) -> Result<(), BuildError> {
+    let dep_cfg = ProjectConfig::load(dep_root).map_err(BuildError::Project)?;
+    let dep_layout = BuildLayout::for_dependency(consumer, &dep_cfg.name);
+    dep_layout.ensure_dep_dirs().map_err(io_err)?;
+    let out = dep_layout.lib_path(&dep_cfg.name);
+    if out.is_file() && !force {
+        return Ok(());
+    }
+    for (_key, nested) in &dep_cfg.dependencies {
+        build_dependency(consumer, &dep_cfg.root.join(&nested.path), force)?;
+    }
+    build_package(&dep_cfg, None, force, Some(dep_layout))?;
+    Ok(())
+}
+
+fn append_dependency_link_inputs(
+    config: &ProjectConfig,
+    link_inputs: &mut Vec<LinkInput>,
+) -> Result<(), BuildError> {
+    for (_key, dep) in &config.dependencies {
+        let dep_root = config.root.join(&dep.path);
+        let dep_cfg = ProjectConfig::load(&dep_root).map_err(BuildError::Project)?;
+        let dep_layout = BuildLayout::for_dependency(config, &dep_cfg.name);
+        let dep_manifest_path = dep_layout.manifest_path();
+        let Some(manifest) = BuildManifest::read(&dep_manifest_path) else {
+            continue;
+        };
+        for rec in manifest.modules.values() {
+            let bytes = std::fs::read(&rec.phx0_path).map_err(|e| BuildError::Io {
+                path: PathBuf::from(&rec.phx0_path),
+                message: e.to_string(),
+            })?;
+            let module = BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
+                path: PathBuf::from(&rec.phx0_path),
+                message: format!("{e:?}"),
+            })?;
+            if link_inputs
+                .iter()
+                .any(|i| i.logical_path == rec.logical_path)
+            {
+                continue;
+            }
+            link_inputs.push(LinkInput {
+                logical_path: rec.logical_path.clone(),
+                module,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Loads the linked binary from `build/bin` for `config`.
 ///
 /// # Errors
 ///
 /// Returns [`BuildError`] when the project was not built or the file is missing.
-pub fn load_project_binary(
-    config: &ProjectConfig,
-    entry_file: &Path,
-) -> Result<BytecodeModule, BuildError> {
+pub fn load_project_binary(config: &ProjectConfig) -> Result<BytecodeModule, BuildError> {
+    if config.package_type != PackageType::Bin {
+        return Err(BuildError::Project(crate::project::ProjectError::Invalid {
+            message: "phx run requires project.type = bin".to_owned(),
+        }));
+    }
     let layout = BuildLayout::new(config);
-    let entry_logical = entry_logical_path(config, entry_file)?;
-    let bin_path = layout.bin_path(&bin_name_from_entry(&entry_logical));
+    let bin_path = layout.bin_path(config.output_name());
     let bytes = std::fs::read(&bin_path).map_err(|e| io_err_path(&bin_path, e))?;
     BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
         path: bin_path,
@@ -188,18 +275,11 @@ pub fn load_project_binary(
 }
 
 fn entry_logical_path(config: &ProjectConfig, entry_file: &Path) -> Result<String, BuildError> {
-    if let Some(ref e) = config.entry_logical {
-        return Ok(e.clone());
-    }
-    ModulePath::from_file_path(&config.module_root(), entry_file)
+    ModulePath::from_file_path(&config.module_root(), entry_file, &config.name)
         .map(|p| p.display())
         .ok_or_else(|| BuildError::Project(crate::project::ProjectError::Invalid {
             message: "could not derive entry module path from file".to_owned(),
         }))
-}
-
-fn bin_name_from_entry(logical: &str) -> String {
-    logical.replace("::", "_")
 }
 
 fn build_global_fn_map(ir: &crate::ir::IrModule) -> HashMap<crate::resolver::DefId, u32> {
@@ -235,14 +315,23 @@ fn all_modules_fresh(
     manifest: &BuildManifest,
     loaded: &LoadedCrate,
     layout: &BuildLayout,
+    ctx: &CrateLoadContext,
 ) -> bool {
+    let dep_names: Vec<&str> = ctx.dep_names();
     loaded.modules.iter().all(|m| {
         let logical = m.logical_path.display();
         let source_hash = digest_file(&m.filesystem).unwrap_or_default();
-        let deps = module_dependencies(m, layout, &loaded.path_index, &loaded.interner);
+        let deps = module_dependencies(
+            m,
+            layout,
+            &loaded.path_index,
+            &loaded.interner,
+            &loaded.package_name,
+            &dep_names,
+        );
         let dep_hashes: Vec<_> = deps
             .iter()
-            .map(|d| (d.module_path.clone(), d.pxi_hash.clone()))
+            .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
             .collect();
         module_is_up_to_date(manifest, &logical, &source_hash, &dep_hashes)
     })

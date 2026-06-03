@@ -70,6 +70,9 @@ pub fn link_modules(inputs: &[LinkInput], entry_function_id: u32) -> Result<Byte
     if inputs.len() == 1 {
         let mut m = inputs[0].module.clone();
         m.header.entry_function_id = entry_function_id;
+        if entry_function_id == 0 {
+            return Ok(m);
+        }
         if m
             .functions
             .functions
@@ -140,9 +143,10 @@ pub fn link_modules(inputs: &[LinkInput], entry_function_id: u32) -> Result<Byte
             .extend(m.local_layouts.layouts.iter().cloned());
     }
 
-    if !merged_functions
-        .iter()
-        .any(|f| f.function_id == entry_function_id)
+    if entry_function_id != 0
+        && !merged_functions
+            .iter()
+            .any(|f| f.function_id == entry_function_id)
     {
         return Err(LinkError::InvalidEntry {
             entry_id: entry_function_id,

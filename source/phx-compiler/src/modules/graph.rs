@@ -130,13 +130,17 @@ pub(crate) fn collect_edges(
     imports: &[phx_syntax::ast::Node<ImportDirective>],
     path_index: &HashMap<String, ModuleId>,
     interner: &Interner,
+    workspace_name: &str,
+    dep_names: &[&str],
     bag: &mut DiagnosticBag,
 ) -> Vec<(ModuleId, ModuleId)> {
     let mut edges = Vec::new();
     let mut seen = HashSet::new();
     for imp in imports {
         let target_path = import_target_module(&imp.inner, interner);
-        let key = target_path.display();
+        let canonical =
+            ModulePath::canonicalize_import(&target_path, workspace_name, dep_names);
+        let key = canonical.display();
         if key.is_empty() {
             continue;
         }

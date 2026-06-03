@@ -62,8 +62,8 @@ if [[ ! -f "${MODULE_MAIN}" ]]; then
   echo "missing fixture: ${MODULE_MAIN}" >&2
   exit 1
 fi
-echo "running: phx run --module-path ${MODULES_DIR} ${MODULE_MAIN} (expect success)"
-if ! "${PHX_BIN}" run --module-path "${MODULES_DIR}" "${MODULE_MAIN}"; then
+echo "running: phx run --module-src ${MODULES_DIR} ${MODULE_MAIN} (expect success)"
+if ! "${PHX_BIN}" run --module-src "${MODULES_DIR}" "${MODULE_MAIN}"; then
   echo "phx run should succeed for multi-file modules fixture" >&2
   exit 1
 fi

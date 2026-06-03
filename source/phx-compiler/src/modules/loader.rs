@@ -7,8 +7,9 @@ use phx_diagnostics::{DiagnosticBag, ResolveError};
 use phx_syntax::{Interner, Program, parse_with_interner};
 
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
-use crate::project::BuildLayout;
+use super::load_context::CrateLoadContext;
 use super::path::ModulePath;
+use crate::project::{BuildLayout, PackageType};
 
 /// Dense module identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,9 +55,15 @@ pub struct LoadedCrate {
     pub root: ModuleId,
     /// `logical_path.display()` → id.
     pub path_index: HashMap<String, ModuleId>,
+    /// Workspace package name.
+    pub package_name: String,
+    /// Workspace package type.
+    pub package_type: PackageType,
+    /// Names of path-dependency packages.
+    pub dep_package_names: Vec<String>,
 }
 
-/// Loads the module graph starting at `entry_file` under `module_root`.
+/// Loads the module graph starting at `entry_file` under `module_root` (single-package fallback).
 ///
 /// # Errors
 ///
@@ -66,32 +73,41 @@ pub fn load_crate(
     module_root: &Path,
     bag: &mut DiagnosticBag,
 ) -> Option<LoadedCrate> {
-    load_crate_with_layout(entry_file, module_root, None, bag)
+    let ctx = CrateLoadContext {
+        workspace: super::load_context::PackageRoot {
+            name: infer_package_name(module_root),
+            module_src: module_root
+                .canonicalize()
+                .unwrap_or_else(|_| module_root.to_path_buf()),
+            package_type: PackageType::Bin,
+        },
+        dependencies: Vec::new(),
+    };
+    load_crate_with_context(entry_file, &ctx, None, bag)
 }
 
-/// Like [`load_crate`] with optional build layout for `.pxi` cycle escape (M2).
-pub fn load_crate_with_layout(
+/// Loads a crate from `entry_file` using workspace + dependency packages.
+pub fn load_crate_with_context(
     entry_file: &Path,
-    module_root: &Path,
+    ctx: &CrateLoadContext,
     layout: Option<&BuildLayout>,
     bag: &mut DiagnosticBag,
 ) -> Option<LoadedCrate> {
     let entry_file = entry_file.canonicalize().unwrap_or_else(|_| entry_file.to_path_buf());
-    let module_root = module_root
-        .canonicalize()
-        .unwrap_or_else(|_| module_root.to_path_buf());
+    let workspace = &ctx.workspace;
+    let entry_logical = ModulePath::from_file_path(
+        &workspace.module_src,
+        &entry_file,
+        &workspace.name,
+    )
+    .unwrap_or_else(|| ModulePath::new(vec![workspace.name.clone()]));
 
-    let entry_logical =
-        ModulePath::from_file_path(&module_root, &entry_file).unwrap_or(ModulePath::new(vec![
-            "main".to_owned(),
-        ]));
-
+    let dep_names: Vec<&str> = ctx.dep_names();
     let mut interner = Interner::new();
     let mut pending: Vec<(ModulePath, PathBuf)> = Vec::new();
     let mut loaded_paths: HashMap<String, PathBuf> = HashMap::new();
 
-    let entry_fs = entry_file.clone();
-    pending.push((entry_logical.clone(), entry_fs));
+    pending.push((entry_logical.clone(), entry_file.clone()));
     loaded_paths.insert(entry_logical.display(), entry_file.clone());
 
     let mut modules_raw: Vec<(ModulePath, PathBuf, String, Program)> = Vec::new();
@@ -128,15 +144,29 @@ pub fn load_crate_with_layout(
         let program = file.program;
 
         for imp in &program.imports {
-            let target = super::graph::import_target_module(&imp.inner, &interner);
-            let key = target.display();
+            let raw_target = super::graph::import_target_module(&imp.inner, &interner);
+            let canonical = ModulePath::canonicalize_import(
+                &raw_target,
+                &workspace.name,
+                &dep_names,
+            );
+            let key = canonical.display();
             if key.is_empty() {
                 continue;
             }
             if loaded_paths.contains_key(&key) {
                 continue;
             }
-            let Some(dep_fs) = ModulePath::resolve_existing_file(&module_root, &target) else {
+            let Some(pkg) = ctx.package_for_logical(&key) else {
+                bag.push(ResolveError::ModuleNotFound {
+                    span: imp.span,
+                    path: key,
+                });
+                continue;
+            };
+            let Some(dep_fs) =
+                ModulePath::resolve_existing_file(&pkg.module_src, &canonical, &pkg.name, pkg.package_type)
+            else {
                 bag.push(ResolveError::ModuleNotFound {
                     span: imp.span,
                     path: key,
@@ -144,7 +174,7 @@ pub fn load_crate_with_layout(
                 continue;
             };
             loaded_paths.insert(key.clone(), dep_fs.clone());
-            pending.push((target, dep_fs));
+            pending.push((canonical, dep_fs));
         }
 
         modules_raw.push((logical, fs_path, source, program));
@@ -155,7 +185,6 @@ pub fn load_crate_with_layout(
     }
 
     let root_key = entry_logical.display();
-
     let module_count = modules_raw.len();
     let mut id_for_path: HashMap<String, ModuleId> = HashMap::new();
     let mut modules: Vec<LoadedModule> = Vec::with_capacity(module_count);
@@ -180,9 +209,17 @@ pub fn load_crate_with_layout(
     let mut edges = Vec::new();
     for m in &modules {
         let mut local_bag = DiagnosticBag::new();
-        let mut e = collect_edges(m.id, &m.program.imports, &path_index, &interner, &mut local_bag);
-        for e in local_bag.into_errors() {
-            bag.push(e);
+        let mut e = collect_edges(
+            m.id,
+            &m.program.imports,
+            &path_index,
+            &interner,
+            &workspace.name,
+            &dep_names,
+            &mut local_bag,
+        );
+        for err in local_bag.into_errors() {
+            bag.push(err);
         }
         edges.append(&mut e);
     }
@@ -224,5 +261,17 @@ pub fn load_crate_with_layout(
         modules: sorted,
         root: root_id,
         path_index,
+        package_name: workspace.name.clone(),
+        package_type: workspace.package_type,
+        dep_package_names: ctx.dependencies.iter().map(|d| d.name.clone()).collect(),
     })
+}
+
+fn infer_package_name(module_root: &Path) -> String {
+    module_root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty() && *s != "." && *s != "..")
+        .unwrap_or("app")
+        .to_owned()
 }

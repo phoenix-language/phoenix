@@ -44,7 +44,7 @@ pub fn build_pxi_for_module(
 
     PxiFile {
         format_version: 1,
-        module_path: logical_path.to_owned(),
+        logical_module: logical_path.to_owned(),
         source_hash,
         origin: None,
         exports: pxi_exports,
@@ -89,12 +89,19 @@ pub fn module_dependencies(
     layout: &BuildLayout,
     path_index: &HashMap<String, crate::modules::ModuleId>,
     interner: &Interner,
+    workspace_name: &str,
+    dep_names: &[&str],
 ) -> Vec<PxiDependency> {
     let mut deps = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for imp in &module.program.imports {
         let target = import_target_module(&imp.inner, interner);
-        let key = target.display();
+        let canonical = crate::modules::ModulePath::canonicalize_import(
+            &target,
+            workspace_name,
+            dep_names,
+        );
+        let key = canonical.display();
         if key.is_empty() || !path_index.contains_key(&key) {
             continue;
         }
@@ -106,7 +113,7 @@ pub fn module_dependencies(
             .map(|t| digest_bytes(t.as_bytes()))
             .unwrap_or_else(|_| String::new());
         deps.push(PxiDependency {
-            module_path: key,
+            logical_module: key,
             pxi_hash,
         });
     }

@@ -20,7 +20,7 @@ pub struct PxiExport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiDependency {
     /// Logical module path.
-    pub module_path: String,
+    pub logical_module: String,
     /// Digest of the dependency `.pxi` at compile time.
     pub pxi_hash: String,
 }
@@ -31,7 +31,7 @@ pub struct PxiFile {
     /// Always `1` for this schema.
     pub format_version: u32,
     /// Logical module path (`a::b`).
-    pub module_path: String,
+    pub logical_module: String,
     /// Digest of corresponding `.phx` source.
     pub source_hash: String,
     /// Optional package origin (future).
@@ -50,8 +50,8 @@ impl PxiFile {
         out.push_str("{\n");
         out.push_str(&format!("  \"format_version\": {},\n", self.format_version));
         out.push_str(&format!(
-            "  \"module_path\": {},\n",
-            json_string(&self.module_path)
+            "  \"logical_module\": {},\n",
+            json_string(&self.logical_module)
         ));
         out.push_str(&format!(
             "  \"source_hash\": {},\n",
@@ -76,8 +76,8 @@ impl PxiFile {
         for (i, d) in self.dependencies.iter().enumerate() {
             let comma = if i + 1 < self.dependencies.len() { "," } else { "" };
             out.push_str(&format!(
-                "    {{\"module_path\": {}, \"pxi_hash\": {}}}{comma}\n",
-                json_string(&d.module_path),
+                "    {{\"logical_module\": {}, \"pxi_hash\": {}}}{comma}\n",
+                json_string(&d.logical_module),
                 json_string(&d.pxi_hash)
             ));
         }
@@ -209,8 +209,14 @@ fn parse_inner(text: &str) -> Result<PxiFile, PxiError> {
     if version != 1 {
         return Err(PxiError::UnsupportedVersion { found: version });
     }
-    let module_path = extract_string(text, "module_path").ok_or_else(|| PxiError::Parse {
-        message: "missing module_path".to_owned(),
+    if text.contains("\"module_path\"") {
+        return Err(PxiError::Parse {
+            message: "legacy .pxi field module_path is not supported; use logical_module"
+                .to_owned(),
+        });
+    }
+    let logical_module = extract_string(text, "logical_module").ok_or_else(|| PxiError::Parse {
+        message: "missing logical_module".to_owned(),
     })?;
     let source_hash = extract_string(text, "source_hash").ok_or_else(|| PxiError::Parse {
         message: "missing source_hash".to_owned(),
@@ -220,7 +226,7 @@ fn parse_inner(text: &str) -> Result<PxiFile, PxiError> {
     let dependencies = parse_dependencies(text);
     Ok(PxiFile {
         format_version: version,
-        module_path,
+        logical_module,
         source_hash,
         origin,
         exports,
@@ -319,18 +325,18 @@ fn parse_dependencies(text: &str) -> Vec<PxiDependency> {
     let slice = &text[start + arr_start..];
     let mut deps = Vec::new();
     let mut search = slice;
-    while let Some(pos) = search.find("\"module_path\"") {
+    while let Some(pos) = search.find("\"logical_module\"") {
         let chunk = &search[pos..];
-        if let (Some(module_path), Some(pxi_hash)) = (
-            extract_field_string(chunk, "module_path"),
+        if let (Some(logical_module), Some(pxi_hash)) = (
+            extract_field_string(chunk, "logical_module"),
             extract_field_string(chunk, "pxi_hash"),
         ) {
             deps.push(PxiDependency {
-                module_path,
+                logical_module,
                 pxi_hash,
             });
         }
-        search = &search[pos + 12..];
+        search = &search[pos + 16..];
     }
     deps
 }
@@ -353,7 +359,7 @@ mod tests {
     fn round_trip() {
         let pxi = PxiFile {
             format_version: 1,
-            module_path: "util::math".to_owned(),
+            logical_module: "util::math".to_owned(),
             source_hash: "abc".to_owned(),
             origin: None,
             exports: vec![PxiExport {
@@ -362,13 +368,13 @@ mod tests {
                 signature: "(s32, s32) => s32".to_owned(),
             }],
             dependencies: vec![PxiDependency {
-                module_path: "core".to_owned(),
+                logical_module: "core".to_owned(),
                 pxi_hash: "def".to_owned(),
             }],
         };
         let json = pxi.to_json();
         let back = PxiFile::parse(&json).unwrap();
-        assert_eq!(back.module_path, "util::math");
+        assert_eq!(back.logical_module, "util::math");
         assert_eq!(back.exports.len(), 1);
     }
 }
