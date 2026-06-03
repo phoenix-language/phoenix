@@ -143,7 +143,7 @@ A credible MVP demo `.phx` should be able to:
 | `&&` / `||` on `bool`                      | done     | `typeck/ops.rs`                   |                                                                               | Typeck accepts                                         |
 | `%` `**` bitwise shifts                    | done     | `typeck/ops.rs`, lower, VM        |                                                                               | `mod_bitwise.phx`                                      |
 | Method calls `x.foo()`                     | partial  | `typeck/check.rs`, `lower/expr.rs` | Inherent impl dispatch; synthetic receiver param; `self.` in impl body parse gap | `struct_method.phx`                                    |
-| Trait / impl static resolution             | missing  | —                                 | Impl bodies type-checked; no trait constraint dispatch                        | `Point :: impl for Eq` call resolves to impl           |
+| Trait / impl static resolution             | missing  | —                                 | Impl bodies type-checked; no trait constraint dispatch                        | `Point :: impl :: Eq` call resolves to impl            |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
 | Raw pointers `*T`                          | partial  | `typeck/ops.rs`, VM `PtrLoad`/`PtrStore` | Deref on primitives; full pointer surface TBD                          | `deref_ptr.phx`                                        |
 | Generics on types                          | partial  | `typeck/lower_ty.rs`              | Named types + args scaffold                                                   | User generic fn typeck                                 |
@@ -305,7 +305,7 @@ A credible MVP demo `.phx` should be able to:
 
 | Item                                  | Status  | Where    | Notes                                                    | Acceptance                          |
 | ------------------------------------- | ------- | -------- | -------------------------------------------------------- | ----------------------------------- |
-| Parse `trait` / `impl` / `impl for`   | done    | parser   |                                                          | Parser tests                        |
+| Parse `trait` / `impl` / `impl ::`    | done    | parser   | Rejects legacy `impl for`                                 | Parser tests                        |
 | Resolve trait/impl names              | done    | resolver |                                                          |                                     |
 | Type-check impl methods               | done    | typeck   | Members as functions                                     |                                     |
 | Static method resolution to impl      | missing | typeck   | No trait vtable; methods not looked up via receiver type | Call trait method on typed receiver |

@@ -36,7 +36,7 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Declarations | `const`, `var`, function declarations |
 | Types | numeric primitives, `bool`, tuples, unit `()`, raw pointers, borrow types (`&T`, `&mut T`), fixed arrays, slices/views |
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
-| Traits | `Name :: trait`, `Type :: impl`, `Type :: impl for Trait` (parse + static method resolution) |
+| Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution) |
 | Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given` |
 | Expressions | arithmetic, comparison, logical operators; explicit casts (`expr as Type`) |
 

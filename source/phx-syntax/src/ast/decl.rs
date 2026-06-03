@@ -192,7 +192,7 @@ pub enum TopLevelDecl {
         /// Trait items.
         items: Vec<TraitItem>,
     },
-    /// `Type :: impl [for Trait] { … }`
+    /// `Type :: impl [:: Trait] { … }`
     Impl {
         /// Implementing type.
         type_name: TypeName,

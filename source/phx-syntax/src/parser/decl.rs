@@ -342,8 +342,14 @@ impl Parser<'_> {
         &mut self,
         _generics: Option<Vec<crate::ast::GenericParam>>,
     ) -> Result<(Option<crate::ast::TypeName>, Vec<Function>), ParseError> {
-        let trait_ = if self.eat_keyword(Keyword::For) {
+        let trait_ = if self.peek_kind() == TokenKind::ColonColon {
+            self.bump();
             Some(self.parse_type_name()?)
+        } else if self.peek_kind() == TokenKind::Keyword(Keyword::For) {
+            self.bump();
+            return Err(self.reject_unsupported(
+                "trait impl uses 'Type :: impl :: Trait', not 'impl for Trait'",
+            ));
         } else {
             None
         };

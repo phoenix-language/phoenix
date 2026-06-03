@@ -270,7 +270,15 @@ fn decl_trait_associated_type() {
 
 #[test]
 fn decl_impl_for_trait() {
-    assert_ok("P :: impl for Eq { eq :: (self, o: &Self) => bool { true }; }; main :: () => { };");
+    assert_ok("P :: impl :: Eq { eq :: (self, o: &Self) => bool { true }; }; main :: () => { };");
+}
+
+#[test]
+fn decl_impl_for_trait_legacy_syntax_rejected() {
+    assert_unsupported(
+        "P :: impl for Eq { eq :: (self, o: &Self) => bool { true }; }; main :: () => { };",
+        "trait impl uses 'Type :: impl :: Trait', not 'impl for Trait'",
+    );
 }
 
 #[test]

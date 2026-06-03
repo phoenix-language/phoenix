@@ -80,7 +80,7 @@ trait_method       = function_decl_body , ";"
 associated_type_decl = "type" , type_identifier , ";" ;
 
 impl_decl          = type_identifier , "::" , [ generic_params ] , "impl" ,
-                     [ "for" , type_identifier ] , impl_block ;
+                     [ "::" , type_identifier ] , impl_block ;
 impl_block         = "{" , { impl_member } , "}" ;
 impl_member        = function_decl_body , ";" ;
 

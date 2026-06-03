@@ -65,7 +65,7 @@ const c = 3.14;    // f32
 Core keywords include:
 `const`, `var`, `if`, `else`, `match`, `given`, `while`, `for`, `loop`, `break`, `continue`, `return`, `struct`, `enum`, `type`, `pub`, `trait`, `impl`, `as`, `true`, `false`, `self`
 
-Declarations use `Name :: kind` — for example `Point :: struct`, `PartialEq :: trait`, `Point :: impl for PartialEq`. The words `struct`, `enum`, `trait`, and `impl` are keywords that follow `::`.
+Declarations use `Name :: kind` — for example `Point :: struct`, `PartialEq :: trait`, `Point :: impl :: PartialEq`. The words `struct`, `enum`, `trait`, and `impl` are keywords that follow `::`.
 
 ---
 
@@ -153,7 +153,7 @@ PartialEq :: trait
   eq :: (self: &Self, other: &Self) => bool;
 }
 
-Point :: impl for PartialEq
+Point :: impl :: PartialEq
 {
   eq :: (self: &Self, other: &Self) => bool
   {

@@ -78,3 +78,9 @@ fn struct_point_sums_via_function() {
     let module = compile_fixture("struct_point.phx");
     main_locals_contain_i32(&module, 7);
 }
+
+#[test]
+fn trait_eq_method_returns_true() {
+    let module = compile_fixture("trait_eq.phx");
+    main_locals_contain_bool(&module, true);
+}

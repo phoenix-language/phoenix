@@ -73,7 +73,7 @@ Compilation fails if `main` is missing. MVP runs `main` on a plain stack interpr
 | Declarations | `const`, `var`, functions |
 | Types | numeric primitives, `bool`, tuples, `()`, raw pointers, `&T` / `&mut T` in signatures, fixed arrays, slices |
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
-| Traits | `Name :: trait`, `Type :: impl`, `Type :: impl for Trait` (parse + static method resolution per spec) |
+| Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution per spec) |
 | Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given` |
 | Operators | arithmetic, comparison, logical; explicit `expr as Type` |
 
@@ -123,7 +123,7 @@ Full rules live in the design docs. These are the non-negotiable headlines:
 
 ### Declarations
 
-Uniform `::` declaration style: `Name :: struct`, `Name :: enum`, `Name :: trait`, `Type :: impl`, `Type :: impl for Trait`, and functions `name :: (…) => T`.
+Uniform `::` declaration style: `Name :: struct`, `Name :: enum`, `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait`, and functions `name :: (…) => T`.
 
 ### Directives and modules
 

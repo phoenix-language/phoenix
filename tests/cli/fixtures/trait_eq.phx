@@ -7,7 +7,7 @@ Point :: struct {
     y: s32,
 };
 
-Point :: impl for PartialEq {
+Point :: impl :: PartialEq {
     eq :: (self: Point, other: Point) => bool {
         self.x == other.x && self.y == other.y
     };

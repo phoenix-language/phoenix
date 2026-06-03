@@ -42,7 +42,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 These are in [grammar.ebnf](../grammar.ebnf) and intended for full MVP pipeline support:
 
 - `Name :: struct` / `Name :: enum` / `type Alias = T`
-- `Name :: trait` / `Type :: impl` / `Type :: impl for Trait`
+- `Name :: trait` / `Type :: impl` / `Type :: impl :: Trait`
 - Functions `name :: (params) => T { }`, top-level and block `const` / `var`
 - Borrow types `&T`, `&mut T`; explicit casts `expr as Type`
 - Module paths with PascalCase segments; `#import`

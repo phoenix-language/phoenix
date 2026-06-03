@@ -2,7 +2,7 @@
 
 `trait` and `impl` are core language features used for shared behavior, static dispatch, and generic constraints. Trait libraries are expected to live in `std`/core libraries; the syntax and type-checking are compiler responsibilities.
 
-Declarations use the same `Name :: kind` form as structs and enums: `PartialEq :: trait { … }`, `Point :: impl for PartialEq { … }`, `Point :: impl { … }`.
+Declarations use the same `Name :: kind` form as structs and enums: `PartialEq :: trait { … }`, `Point :: impl :: PartialEq { … }`, `Point :: impl { … }`.
 
 Surface syntax lives in [grammer.md](../grammer.md#trait-and-impl-syntax). This document covers semantics.
 
@@ -75,7 +75,7 @@ An `impl` block attaches behavior to a concrete type. There are two forms.
 **1. Trait impl** — "`Type` implements `Trait`"
 
 ```
-Point :: impl for PartialEq
+Point :: impl :: PartialEq
 {
   eq :: (self: &Self, other: &Self) => bool
   {
@@ -141,7 +141,7 @@ Zero :: trait
   };
 }
 
-s32 :: impl for Zero { };
+s32 :: impl :: Zero { };
 ```
 
 Default trait body codegen is deferred in MVP — see [grammar-deferred.md](grammar-deferred.md).
@@ -296,4 +296,4 @@ Current status:
 
 ## Trait impl scope and orphans
 
-A `Type :: impl for Trait` block should live where either the trait or the type is defined (orphan-rule family constraint) to prevent conflicting downstream implementations.
+A `Type :: impl :: Trait` block should live where either the trait or the type is defined (orphan-rule family constraint) to prevent conflicting downstream implementations.
