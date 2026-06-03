@@ -75,13 +75,7 @@ pub struct Def {
 impl Def {
     /// Creates a definition record.
     #[must_use]
-    pub const fn new(
-        kind: DefKind,
-        name: Symbol,
-        span: Span,
-        module: u32,
-        exported: bool,
-    ) -> Self {
+    pub const fn new(kind: DefKind, name: Symbol, span: Span, module: u32, exported: bool) -> Self {
         Self {
             kind,
             name,

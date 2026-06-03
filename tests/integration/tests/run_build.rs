@@ -6,8 +6,7 @@ use phx_compiler::{build_project, discover_project, load_project_binary};
 
 #[test]
 fn project_build_and_load() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/project");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/project");
     let config = discover_project(&root).expect("phoenix.toml");
     let result = build_project(&config, None, true).expect("build");
     assert!(result.output_path.is_file());

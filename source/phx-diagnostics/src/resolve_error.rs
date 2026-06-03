@@ -185,7 +185,10 @@ impl fmt::Display for ResolveError {
             }
             Self::CircularImport { cycle, .. } => write!(f, "circular module import: {cycle}"),
             Self::ImportNotExported { name, .. } => {
-                write!(f, "`{name}` is not exported (add `pub` or import something else)")
+                write!(
+                    f,
+                    "`{name}` is not exported (add `pub` or import something else)"
+                )
             }
             Self::ImportNotFound { name, module, .. } => {
                 write!(f, "symbol `{name}` not found in module `{module}`")
@@ -194,11 +197,17 @@ impl fmt::Display for ResolveError {
                 write!(f, "duplicate import: `{name}`")
             }
             Self::MainNotInEntry { module, .. } => {
-                write!(f, "`main` must be defined in the entry module, not in `{module}`")
+                write!(
+                    f,
+                    "`main` must be defined in the entry module, not in `{module}`"
+                )
             }
             Self::MissingMain => f.write_str("missing entry function `main`"),
             Self::MainForbiddenInLib { module, .. } => {
-                write!(f, "`main` is not allowed in library package module `{module}`")
+                write!(
+                    f,
+                    "`main` is not allowed in library package module `{module}`"
+                )
             }
             Self::InvalidMainSignature { reason, .. } => {
                 write!(f, "invalid `main` signature: {reason}")

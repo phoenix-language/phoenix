@@ -13,7 +13,7 @@ use crate::modules::{
     CrateLoadContext, LoadedCrate, ModulePath, load_crate_with_context, resolve_crate,
 };
 use crate::project::{BuildLayout, PackageType, ProjectConfig};
-use crate::pxi::{build_pxi_for_module, digest_file, module_dependencies, PxiFile};
+use crate::pxi::{PxiFile, build_pxi_for_module, digest_file, module_dependencies};
 use crate::resolver::DefId;
 use crate::typeck::type_check;
 
@@ -277,21 +277,18 @@ pub fn load_project_binary(config: &ProjectConfig) -> Result<BytecodeModule, Bui
 fn entry_logical_path(config: &ProjectConfig, entry_file: &Path) -> Result<String, BuildError> {
     ModulePath::from_file_path(&config.module_root(), entry_file, &config.name)
         .map(|p| p.display())
-        .ok_or_else(|| BuildError::Project(crate::project::ProjectError::Invalid {
-            message: "could not derive entry module path from file".to_owned(),
-        }))
+        .ok_or_else(|| {
+            BuildError::Project(crate::project::ProjectError::Invalid {
+                message: "could not derive entry module path from file".to_owned(),
+            })
+        })
 }
 
 fn build_global_fn_map(ir: &crate::ir::IrModule) -> HashMap<crate::resolver::DefId, u32> {
     ir.functions
         .iter()
         .enumerate()
-        .map(|(i, f)| {
-            (
-                f.def,
-                u32::try_from(i).unwrap_or(u32::MAX),
-            )
-        })
+        .map(|(i, f)| (f.def, u32::try_from(i).unwrap_or(u32::MAX)))
         .collect()
 }
 
@@ -354,10 +351,7 @@ fn verify_pxi_exports(
             return Err(BuildError::InterfaceMismatch {
                 module: logical.to_owned(),
                 name: exp.name.clone(),
-                message: format!(
-                    "was `{}`, now `{}`",
-                    old_exp.signature, exp.signature
-                ),
+                message: format!("was `{}`, now `{}`", old_exp.signature, exp.signature),
             });
         }
     }

@@ -7,8 +7,8 @@ use phx_syntax::Interner;
 use phx_syntax::ast::decl::ImportItem;
 use phx_syntax::{SourceFile, Symbol};
 
-use crate::resolver::{Def, DefId, DefKind, ResolvedProgram, Resolver, SourceModule};
 use crate::resolver::scopes::ScopeStack;
+use crate::resolver::{Def, DefId, DefKind, ResolvedProgram, Resolver, SourceModule};
 
 use super::loader::{LoadedCrate, LoadedModule, ModuleId};
 use super::path::ModulePath;
@@ -170,8 +170,7 @@ fn build_import_bindings(
         } else {
             ModulePath::split_import_target(&imp.inner.path, interner).0
         };
-        let canonical =
-            ModulePath::canonicalize_import(&target_path, workspace_name, dep_names);
+        let canonical = ModulePath::canonicalize_import(&target_path, workspace_name, dep_names);
         let key = canonical.display();
         let Some(&dep_id) = path_index.get(&key) else {
             continue;
@@ -244,24 +243,19 @@ fn build_import_bindings(
 }
 
 fn is_type_def(defs: &[Def], def_id: DefId) -> bool {
-    defs.get(def_id.index() as usize)
-        .is_some_and(|d| {
-            matches!(
-                d.kind,
-                DefKind::Struct
-                    | DefKind::Enum
-                    | DefKind::TypeAlias
-                    | DefKind::Trait
-                    | DefKind::GenericParam
-            )
-        })
+    defs.get(def_id.index() as usize).is_some_and(|d| {
+        matches!(
+            d.kind,
+            DefKind::Struct
+                | DefKind::Enum
+                | DefKind::TypeAlias
+                | DefKind::Trait
+                | DefKind::GenericParam
+        )
+    })
 }
 
-fn find_private_in_module(
-    defs: &[Def],
-    module: u32,
-    sym: Symbol,
-) -> Option<DefId> {
+fn find_private_in_module(defs: &[Def], module: u32, sym: Symbol) -> Option<DefId> {
     defs.iter()
         .enumerate()
         .find(|(_, d)| d.module == module && d.name == sym)

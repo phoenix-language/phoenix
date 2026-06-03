@@ -161,9 +161,8 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 if let VariantKind::Struct(payload) = &variant.kind {
                     let type_id = ctx.typed.layout.type_id(enum_def).unwrap_or(0);
                     for (fname, _) in payload {
-                        if let Some(StructFieldInit::Field { value, .. }) = fields
-                            .iter()
-                            .find(|f| {
+                        if let Some(StructFieldInit::Field { value, .. }) =
+                            fields.iter().find(|f| {
                                 matches!(
                                     f,
                                     StructFieldInit::Field { name: n, .. }
@@ -1020,9 +1019,7 @@ pub(crate) fn bind_match_pattern(
                         });
                         if let Some(p) = &pat_field.pattern {
                             bind_match_pattern(ctx, &p.inner, temp, *fty, true);
-                        } else if let Some(binding) =
-                            ctx.layout.binding(pat_field.name.symbol)
-                        {
+                        } else if let Some(binding) = ctx.layout.binding(pat_field.name.symbol) {
                             ctx.emit(IrInst::StoreLocal {
                                 slot: binding.slot,
                                 ty: *fty,

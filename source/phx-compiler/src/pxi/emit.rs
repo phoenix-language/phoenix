@@ -5,12 +5,12 @@ use std::path::Path;
 
 use phx_syntax::Interner;
 
-use crate::modules::{import_target_module, LoadedModule};
+use crate::modules::{LoadedModule, import_target_module};
 use crate::project::BuildLayout;
 use crate::pxi::{PxiDependency, PxiExport, PxiFile, def_kind_to_pxi, digest_bytes, digest_file};
 use crate::resolver::{Def, DefId, DefKind};
-use crate::typeck::{format_type, TypedProgram};
 use crate::typeck::BindingKind;
+use crate::typeck::{TypedProgram, format_type};
 
 /// Builds a [`PxiFile`] for one module in a typed crate.
 #[must_use]
@@ -65,12 +65,7 @@ fn export_signature(def: &Def, def_id: DefId, typed: &TypedProgram, names: &Inte
                     .filter(|b| b.kind == BindingKind::Param)
                     .map(|p| format_type(&typed.types, names, &typed.resolved.defs, p.ty))
                     .collect();
-                let ret = format_type(
-                    &typed.types,
-                    names,
-                    &typed.resolved.defs,
-                    f.return_type,
-                );
+                let ret = format_type(&typed.types, names, &typed.resolved.defs, f.return_type);
                 format!("({}) => {}", params.join(", "), ret)
             })
             .unwrap_or_else(|| "() => ()".to_owned()),
@@ -96,11 +91,8 @@ pub fn module_dependencies(
     let mut seen = std::collections::HashSet::new();
     for imp in &module.program.imports {
         let target = import_target_module(&imp.inner, interner);
-        let canonical = crate::modules::ModulePath::canonicalize_import(
-            &target,
-            workspace_name,
-            dep_names,
-        );
+        let canonical =
+            crate::modules::ModulePath::canonicalize_import(&target, workspace_name, dep_names);
         let key = canonical.display();
         if key.is_empty() || !path_index.contains_key(&key) {
             continue;

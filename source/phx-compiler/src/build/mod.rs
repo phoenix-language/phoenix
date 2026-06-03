@@ -4,5 +4,5 @@ mod driver;
 mod error;
 mod manifest;
 
-pub use driver::{build_project, load_project_binary, BuildResult};
+pub use driver::{BuildResult, build_project, load_project_binary};
 pub use error::BuildError;

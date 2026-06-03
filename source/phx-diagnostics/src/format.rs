@@ -60,11 +60,7 @@ pub fn format_span_message_with_note(
 ) -> String {
     let primary = format_span_message(source, span, message);
     let note = format_span_message(source, note_span, "");
-    let note_body = note
-        .lines()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let note_body = note.lines().skip(1).collect::<Vec<_>>().join("\n");
     format!("{primary}\nnote: {note_label}\n{note_body}")
 }
 

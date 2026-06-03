@@ -61,7 +61,11 @@ impl BuildError {
             Self::StaleInterface { module, message } => {
                 format!("stale interface for module `{module}`: {message}")
             }
-            Self::InterfaceMismatch { module, name, message } => {
+            Self::InterfaceMismatch {
+                module,
+                name,
+                message,
+            } => {
                 format!("interface mismatch in `{module}` for `{name}`: {message}")
             }
             Self::Io { path, message } => format!("I/O error at {}: {message}", path.display()),

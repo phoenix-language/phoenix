@@ -134,13 +134,8 @@ impl Resolver<'_> {
         exported: bool,
     ) -> DefId {
         let id = DefId::from_raw(u32::try_from(self.defs.len()).unwrap_or(u32::MAX));
-        self.defs.push(Def::new(
-            kind,
-            name,
-            span,
-            self.current_module,
-            exported,
-        ));
+        self.defs
+            .push(Def::new(kind, name, span, self.current_module, exported));
         id
     }
 
@@ -197,6 +192,10 @@ impl Resolver<'_> {
 fn is_type_kind(kind: DefKind) -> bool {
     matches!(
         kind,
-        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias | DefKind::Trait | DefKind::GenericParam
+        DefKind::Struct
+            | DefKind::Enum
+            | DefKind::TypeAlias
+            | DefKind::Trait
+            | DefKind::GenericParam
     )
 }

@@ -12,10 +12,7 @@ use crate::project::BuildLayout;
 use crate::pxi::PxiFile;
 
 /// Directed edges: importer → imported module path string.
-fn topo_sort_inner(
-    module_count: usize,
-    edges: &[(ModuleId, ModuleId)],
-) -> Option<Vec<ModuleId>> {
+fn topo_sort_inner(module_count: usize, edges: &[(ModuleId, ModuleId)]) -> Option<Vec<ModuleId>> {
     let mut indegree = vec![0usize; module_count];
     let mut adj: Vec<Vec<ModuleId>> = vec![Vec::new(); module_count];
     for &(from, to) in edges {
@@ -112,10 +109,7 @@ fn cycle_modules_have_fresh_pxi(
 }
 
 /// Resolves import directive to target module path.
-pub fn import_target_module(
-    import: &ImportDirective,
-    interner: &Interner,
-) -> ModulePath {
+pub fn import_target_module(import: &ImportDirective, interner: &Interner) -> ModulePath {
     if import.items.is_some() {
         ModulePath::from_ast_path(&import.path, interner)
     } else {
@@ -138,8 +132,7 @@ pub(crate) fn collect_edges(
     let mut seen = HashSet::new();
     for imp in imports {
         let target_path = import_target_module(&imp.inner, interner);
-        let canonical =
-            ModulePath::canonicalize_import(&target_path, workspace_name, dep_names);
+        let canonical = ModulePath::canonicalize_import(&target_path, workspace_name, dep_names);
         let key = canonical.display();
         if key.is_empty() {
             continue;

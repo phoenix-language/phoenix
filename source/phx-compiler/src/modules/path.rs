@@ -37,11 +37,7 @@ impl ModulePath {
     ///
     /// Special files: `main.phx` / `lib.phx` at root → `{package}`; `dir/mod.phx` → `{package}::dir`.
     #[must_use]
-    pub fn from_file_path(
-        module_root: &Path,
-        file: &Path,
-        package_name: &str,
-    ) -> Option<Self> {
+    pub fn from_file_path(module_root: &Path, file: &Path, package_name: &str) -> Option<Self> {
         let rel = file.strip_prefix(module_root).ok()?;
         let mut parts: Vec<String> = rel
             .components()
@@ -67,11 +63,7 @@ impl ModulePath {
     /// Segments after the package name prefix.
     #[must_use]
     pub fn within_package<'a>(&'a self, package_name: &str) -> &'a [String] {
-        if self
-            .segments
-            .first()
-            .is_some_and(|s| s == package_name)
-        {
+        if self.segments.first().is_some_and(|s| s == package_name) {
             &self.segments[1..]
         } else {
             &self.segments
@@ -80,11 +72,7 @@ impl ModulePath {
 
     /// Canonicalizes an import path for `workspace_name` and known dependency names.
     #[must_use]
-    pub fn canonicalize_import(
-        target: &Self,
-        workspace_name: &str,
-        dep_names: &[&str],
-    ) -> Self {
+    pub fn canonicalize_import(target: &Self, workspace_name: &str, dep_names: &[&str]) -> Self {
         if target.segments.is_empty() {
             return target.clone();
         }

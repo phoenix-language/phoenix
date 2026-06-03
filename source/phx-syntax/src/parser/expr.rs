@@ -341,10 +341,7 @@ impl Parser<'_> {
                 Ok(Node::new(Expr::Literal(lit), self.span_from(start)))
             }
             TokenKind::Ident(name) => {
-                if matches!(
-                    self.peek_at(1),
-                    TokenKind::ColonColon | TokenKind::LBrace
-                ) {
+                if matches!(self.peek_at(1), TokenKind::ColonColon | TokenKind::LBrace) {
                     return self.parse_path_or_struct_literal();
                 }
                 self.bump();

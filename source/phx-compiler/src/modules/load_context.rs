@@ -67,5 +67,4 @@ impl CrateLoadContext {
         }
         self.dependencies.iter().find(|d| d.name == first)
     }
-
 }

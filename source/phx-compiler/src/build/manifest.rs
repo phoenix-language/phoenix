@@ -62,26 +62,17 @@ impl BuildManifest {
             let m = &self.modules[*key];
             let comma = if i + 1 < keys.len() { "," } else { "" };
             out.push_str(&format!("    {}: {{\n", json_str(key)));
-            out.push_str(&format!(
-                "      \"source\": {},\n",
-                json_str(&m.source)
-            ));
+            out.push_str(&format!("      \"source\": {},\n", json_str(&m.source)));
             out.push_str(&format!(
                 "      \"source_hash\": {},\n",
                 json_str(&m.source_hash)
             ));
-            out.push_str(&format!(
-                "      \"pxi_hash\": {},\n",
-                json_str(&m.pxi_hash)
-            ));
+            out.push_str(&format!("      \"pxi_hash\": {},\n", json_str(&m.pxi_hash)));
             out.push_str(&format!(
                 "      \"phx0_path\": {},\n",
                 json_str(&m.phx0_path)
             ));
-            out.push_str(&format!(
-                "      \"pxi_path\": {}\n",
-                json_str(&m.pxi_path)
-            ));
+            out.push_str(&format!("      \"pxi_path\": {}\n", json_str(&m.pxi_path)));
             out.push_str(&format!("    }}{comma}\n"));
         }
         out.push_str("  }\n}\n");
@@ -158,7 +149,10 @@ fn extract_module_keys(text: &str) -> Vec<(String, ())> {
     for line in slice.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('"') && trimmed.contains("::") && trimmed.ends_with(": {") {
-            if let Some(name) = trimmed.strip_prefix('"').and_then(|s| s.strip_suffix("\": {")) {
+            if let Some(name) = trimmed
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix("\": {"))
+            {
                 out.push((name.to_owned(), ()));
             }
         }
@@ -187,8 +181,7 @@ pub fn module_is_up_to_date(
             return false;
         }
     }
-    std::path::Path::new(&rec.phx0_path).is_file()
-        && std::path::Path::new(&rec.pxi_path).is_file()
+    std::path::Path::new(&rec.phx0_path).is_file() && std::path::Path::new(&rec.pxi_path).is_file()
 }
 
 /// Hash of manifest module record for dependency edges.

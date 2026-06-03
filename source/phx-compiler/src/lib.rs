@@ -27,22 +27,20 @@ mod resolver;
 mod typeck;
 mod unit;
 
+pub use build::{BuildError, BuildResult, build_project, load_project_binary};
 pub use codegen::{build_type_table, codegen, codegen_module};
-pub use link::{link_modules, LinkError, LinkInput};
-pub use build::{build_project, load_project_binary, BuildError, BuildResult};
 pub use compile::{
     CompileError, check_file, check_file_with_module_path, compile_source, compile_to_module,
     compile_to_module_with_module_path,
 };
-pub use project::{
-    discover_project, resolve_project, BuildLayout, PackageType, ProjectConfig, ProjectError,
-};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
+pub use link::{LinkError, LinkInput, link_modules};
 pub use lower::lower;
 pub use phx_bytecode::BytecodeModule;
-pub use resolver::{
-    Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule, resolve,
+pub use project::{
+    BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,
 };
+pub use resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule, resolve};
 pub use typeck::{
     Binding, BindingKind, ExprId, FunctionLayout, Ty, TypeId, TypeInterner, TypedProgram,
     type_check,

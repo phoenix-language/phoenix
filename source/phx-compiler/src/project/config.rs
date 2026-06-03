@@ -168,7 +168,11 @@ impl std::fmt::Display for ProjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotFound { from } => {
-                write!(f, "phoenix.toml not found (searched from {})", from.display())
+                write!(
+                    f,
+                    "phoenix.toml not found (searched from {})",
+                    from.display()
+                )
             }
             Self::Io { path, message } => write!(f, "I/O error reading {path}: {message}"),
             Self::Invalid { message } => write!(f, "invalid phoenix.toml: {message}"),

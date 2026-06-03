@@ -32,10 +32,7 @@ impl BuildLayout {
     #[must_use]
     pub fn for_dependency(workspace: &ProjectConfig, dep_name: &str) -> Self {
         Self {
-            build_root: workspace
-                .build_root()
-                .join("deps")
-                .join(dep_name),
+            build_root: workspace.build_root().join("deps").join(dep_name),
         }
     }
 
@@ -76,7 +73,10 @@ impl BuildLayout {
     /// # Errors
     ///
     /// Returns I/O errors from `create_dir_all`.
-    pub fn ensure_workspace_dirs(&self, package_type: super::config::PackageType) -> std::io::Result<()> {
+    pub fn ensure_workspace_dirs(
+        &self,
+        package_type: super::config::PackageType,
+    ) -> std::io::Result<()> {
         std::fs::create_dir_all(self.build_root.join("pxi"))?;
         std::fs::create_dir_all(self.build_root.join("phx0"))?;
         std::fs::create_dir_all(self.build_root.join("deps"))?;

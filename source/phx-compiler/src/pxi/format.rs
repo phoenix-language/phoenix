@@ -74,7 +74,11 @@ impl PxiFile {
         out.push_str("  ],\n");
         out.push_str("  \"dependencies\": [\n");
         for (i, d) in self.dependencies.iter().enumerate() {
-            let comma = if i + 1 < self.dependencies.len() { "," } else { "" };
+            let comma = if i + 1 < self.dependencies.len() {
+                ","
+            } else {
+                ""
+            };
             out.push_str(&format!(
                 "    {{\"logical_module\": {}, \"pxi_hash\": {}}}{comma}\n",
                 json_string(&d.logical_module),
@@ -183,8 +187,12 @@ pub fn def_kind_to_pxi(kind: DefKind) -> &'static str {
         DefKind::Const => "const",
         DefKind::Var => "var",
         DefKind::EnumVariant => "variant",
-        DefKind::StructField | DefKind::Param | DefKind::Local | DefKind::Impl
-        | DefKind::GenericParam | DefKind::TraitAssocType => "other",
+        DefKind::StructField
+        | DefKind::Param
+        | DefKind::Local
+        | DefKind::Impl
+        | DefKind::GenericParam
+        | DefKind::TraitAssocType => "other",
     }
 }
 

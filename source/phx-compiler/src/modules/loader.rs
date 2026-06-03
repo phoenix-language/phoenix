@@ -93,14 +93,13 @@ pub fn load_crate_with_context(
     layout: Option<&BuildLayout>,
     bag: &mut DiagnosticBag,
 ) -> Option<LoadedCrate> {
-    let entry_file = entry_file.canonicalize().unwrap_or_else(|_| entry_file.to_path_buf());
+    let entry_file = entry_file
+        .canonicalize()
+        .unwrap_or_else(|_| entry_file.to_path_buf());
     let workspace = &ctx.workspace;
-    let entry_logical = ModulePath::from_file_path(
-        &workspace.module_src,
-        &entry_file,
-        &workspace.name,
-    )
-    .unwrap_or_else(|| ModulePath::new(vec![workspace.name.clone()]));
+    let entry_logical =
+        ModulePath::from_file_path(&workspace.module_src, &entry_file, &workspace.name)
+            .unwrap_or_else(|| ModulePath::new(vec![workspace.name.clone()]));
 
     let dep_names: Vec<&str> = ctx.dep_names();
     let mut interner = Interner::new();
@@ -145,11 +144,8 @@ pub fn load_crate_with_context(
 
         for imp in &program.imports {
             let raw_target = super::graph::import_target_module(&imp.inner, &interner);
-            let canonical = ModulePath::canonicalize_import(
-                &raw_target,
-                &workspace.name,
-                &dep_names,
-            );
+            let canonical =
+                ModulePath::canonicalize_import(&raw_target, &workspace.name, &dep_names);
             let key = canonical.display();
             if key.is_empty() {
                 continue;
@@ -164,9 +160,12 @@ pub fn load_crate_with_context(
                 });
                 continue;
             };
-            let Some(dep_fs) =
-                ModulePath::resolve_existing_file(&pkg.module_src, &canonical, &pkg.name, pkg.package_type)
-            else {
+            let Some(dep_fs) = ModulePath::resolve_existing_file(
+                &pkg.module_src,
+                &canonical,
+                &pkg.name,
+                pkg.package_type,
+            ) else {
                 bag.push(ResolveError::ModuleNotFound {
                     span: imp.span,
                     path: key,
@@ -201,10 +200,8 @@ pub fn load_crate_with_context(
         });
     }
 
-    let path_index: HashMap<String, ModuleId> = id_for_path
-        .iter()
-        .map(|(k, v)| (k.clone(), *v))
-        .collect();
+    let path_index: HashMap<String, ModuleId> =
+        id_for_path.iter().map(|(k, v)| (k.clone(), *v)).collect();
 
     let mut edges = Vec::new();
     for m in &modules {
@@ -233,14 +230,7 @@ pub fn load_crate_with_context(
         .copied()
         .or_else(|| id_for_path.values().next().copied())?;
 
-    let order = topo_sort_with_pxi_escape(
-        module_count,
-        &edges,
-        root_id,
-        &modules,
-        layout,
-        bag,
-    )?;
+    let order = topo_sort_with_pxi_escape(module_count, &edges, root_id, &modules, layout, bag)?;
     let index_map: HashMap<ModuleId, usize> = modules
         .iter()
         .map(|m| (m.id, m.id.index() as usize))

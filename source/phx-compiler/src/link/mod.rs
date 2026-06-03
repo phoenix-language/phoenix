@@ -1,8 +1,8 @@
 //! PHX0 linker — merge per-module object files into one executable image.
 
 use phx_bytecode::{
-    BytecodeModule, ConstPool, FileHeader, FunctionRecord, FunctionTable, Instruction, LocalLayoutTable,
-    Opcode, TypeTable,
+    BytecodeModule, ConstPool, FileHeader, FunctionRecord, FunctionTable, Instruction,
+    LocalLayoutTable, Opcode, TypeTable,
 };
 use std::collections::HashMap;
 
@@ -63,7 +63,10 @@ impl std::error::Error for LinkError {}
 /// # Errors
 ///
 /// Returns [`LinkError`] on duplicate ids or missing entry.
-pub fn link_modules(inputs: &[LinkInput], entry_function_id: u32) -> Result<BytecodeModule, LinkError> {
+pub fn link_modules(
+    inputs: &[LinkInput],
+    entry_function_id: u32,
+) -> Result<BytecodeModule, LinkError> {
     if inputs.is_empty() {
         return Err(LinkError::EmptyInput);
     }
@@ -73,8 +76,7 @@ pub fn link_modules(inputs: &[LinkInput], entry_function_id: u32) -> Result<Byte
         if entry_function_id == 0 {
             return Ok(m);
         }
-        if m
-            .functions
+        if m.functions
             .functions
             .iter()
             .any(|f| f.function_id == entry_function_id)

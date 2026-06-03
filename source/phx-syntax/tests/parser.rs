@@ -1225,9 +1225,7 @@ fn real_world_cast_no_implicit_widen() {
 
 #[test]
 fn real_world_match_option() {
-    assert_ok(&in_main(
-        "const _r = match v { Some(x) => x; None => 0; };",
-    ));
+    assert_ok(&in_main("const _r = match v { Some(x) => x; None => 0; };"));
 }
 
 // -----------------------------------------------------------------------------

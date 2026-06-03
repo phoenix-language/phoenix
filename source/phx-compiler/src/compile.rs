@@ -6,9 +6,11 @@
 use std::io;
 use std::path::Path;
 
-use phx_bytecode::BytecodeModule;
-use phx_diagnostics::{DiagnosticBag, ParseError, TypeCheckBag, format_span_message, format_typecheck_error};
 use crate::resolver::SourceModule;
+use phx_bytecode::BytecodeModule;
+use phx_diagnostics::{
+    DiagnosticBag, ParseError, TypeCheckBag, format_span_message, format_typecheck_error,
+};
 use phx_syntax::parse;
 
 use crate::codegen::codegen;
@@ -170,8 +172,7 @@ pub fn check_file_with_module_path(
 ) -> Result<CompilationUnit, CompileError> {
     let source = std::fs::read_to_string(path).map_err(CompileError::Io)?;
     let mut bag = DiagnosticBag::new();
-    let loaded = load_crate(path, module_root, &mut bag)
-        .ok_or(CompileError::Resolve(bag))?;
+    let loaded = load_crate(path, module_root, &mut bag).ok_or(CompileError::Resolve(bag))?;
     let resolved = resolve_crate(loaded).map_err(CompileError::Resolve)?;
     let typed = type_check(&resolved).map_err(CompileError::TypeCheck)?;
     Ok(CompilationUnit {
