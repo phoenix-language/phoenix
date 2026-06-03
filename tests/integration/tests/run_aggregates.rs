@@ -31,6 +31,11 @@ fn run_enum_match_without_panic() {
 }
 
 #[test]
+fn run_enum_match_struct_without_panic() {
+    run_fixture("enum_match_struct.phx");
+}
+
+#[test]
 fn run_struct_method_without_panic() {
     run_fixture("struct_method.phx");
 }

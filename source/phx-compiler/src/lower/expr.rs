@@ -155,6 +155,32 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                         field_count,
                     });
                 }
+            } else if let Some((enum_def, variant)) =
+                ctx.typed.layout.enum_variant_by_name(name.symbol)
+            {
+                if let VariantKind::Struct(payload) = &variant.kind {
+                    let type_id = ctx.typed.layout.type_id(enum_def).unwrap_or(0);
+                    for (fname, _) in payload {
+                        if let Some(StructFieldInit::Field { value, .. }) = fields
+                            .iter()
+                            .find(|f| {
+                                matches!(
+                                    f,
+                                    StructFieldInit::Field { name: n, .. }
+                                        if n.symbol == *fname
+                                )
+                            })
+                        {
+                            lower_expr(ctx, value);
+                        }
+                    }
+                    let payload_count = u32::try_from(payload.len()).unwrap_or(u32::MAX);
+                    ctx.emit(IrInst::MakeEnum {
+                        type_id,
+                        variant_tag: variant.tag,
+                        payload_count,
+                    });
+                }
             }
         }
         Expr::Unsafe(block) => lower_block_expr(ctx, block),
@@ -856,8 +882,26 @@ pub(crate) fn emit_arm_condition(
                 ctx.emit(IrInst::Jump { target: fail_id });
             }
         }
-        Pattern::Struct { .. } => {
-            ctx.emit(IrInst::Jump { target: body_id });
+        Pattern::Struct { name, .. } => {
+            if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, name.symbol) {
+                ctx.emit(IrInst::LoadLocal {
+                    slot: temp,
+                    ty: temp_ty,
+                    prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                });
+                ctx.emit(IrInst::MatchTag {
+                    type_id,
+                    variant_tag: tag,
+                });
+                ctx.emit(IrInst::JumpIf {
+                    then_block: body_id,
+                    else_block: fail_id,
+                });
+            } else if struct_def_by_name(&ctx.typed.resolved, name.symbol).is_some() {
+                ctx.emit(IrInst::Jump { target: body_id });
+            } else {
+                ctx.emit(IrInst::Jump { target: fail_id });
+            }
         }
         Pattern::Tuple { name, .. } => {
             if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, name.symbol) {
@@ -951,6 +995,40 @@ pub(crate) fn bind_match_pattern(
                             ty: result_ty,
                             prim_kind: prim_kind_byte(ctx.typed, result_ty),
                         });
+                    }
+                }
+            } else if let Some((enum_def, variant)) =
+                ctx.typed.layout.enum_variant_by_name(name.symbol)
+            {
+                let type_id = ctx.typed.layout.type_id(enum_def).unwrap_or(0);
+                if let VariantKind::Struct(payload) = &variant.kind {
+                    for (i, (fname, fty)) in payload.iter().enumerate() {
+                        let pat_field = fields.iter().find(|f| f.name.symbol == *fname);
+                        let Some(pat_field) = pat_field else {
+                            continue;
+                        };
+                        ctx.emit(IrInst::LoadLocal {
+                            slot: temp,
+                            ty: temp_ty,
+                            prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                        });
+                        let field_index = u32::try_from(i).unwrap_or(u32::MAX);
+                        ctx.emit(IrInst::GetField {
+                            type_id,
+                            field_index,
+                            result: *fty,
+                        });
+                        if let Some(p) = &pat_field.pattern {
+                            bind_match_pattern(ctx, &p.inner, temp, *fty, true);
+                        } else if let Some(binding) =
+                            ctx.layout.binding(pat_field.name.symbol)
+                        {
+                            ctx.emit(IrInst::StoreLocal {
+                                slot: binding.slot,
+                                ty: *fty,
+                                prim_kind: prim_kind_byte(ctx.typed, *fty),
+                            });
+                        }
                     }
                 }
             }

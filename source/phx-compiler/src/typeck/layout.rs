@@ -34,6 +34,8 @@ pub enum VariantKind {
     Unit,
     /// Tuple variant fields.
     Tuple(Vec<TypeId>),
+    /// Struct variant fields (declaration order).
+    Struct(Vec<(Symbol, TypeId)>),
 }
 
 impl VariantKind {
@@ -43,6 +45,7 @@ impl VariantKind {
         match self {
             Self::Unit => 0,
             Self::Tuple(ts) => ts.len(),
+            Self::Struct(fs) => fs.len(),
         }
     }
 }
@@ -100,5 +103,16 @@ impl ProgramLayout {
                 .position(|(name, _)| *name == field)
                 .map(|i| u32::try_from(i).unwrap_or(u32::MAX))
         })
+    }
+
+    /// Finds an enum variant by ctor name across all enums.
+    #[must_use]
+    pub fn enum_variant_by_name(&self, name: Symbol) -> Option<(DefId, VariantLayout)> {
+        for el in self.enums.values() {
+            if let Some(v) = el.variants.iter().find(|v| v.name == name) {
+                return Some((el.enum_def, v.clone()));
+            }
+        }
+        None
     }
 }

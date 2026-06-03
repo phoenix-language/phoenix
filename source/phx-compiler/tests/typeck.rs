@@ -218,6 +218,17 @@ fn assign_moves_non_copyable() {
 }
 
 #[test]
+fn enum_struct_variant_match_ok() {
+    ok(include_str!("../../../tests/cli/fixtures/enum_match_struct.phx"));
+}
+
+#[test]
+fn enum_struct_variant_lit_unknown_field() {
+    let bag = typeck_err("R :: enum { Ok { v: s32 }, }; main :: () => { const _ = Ok { z: 1 }; };");
+    assert!(has_unsupported(&bag, "unknown enum variant field"));
+}
+
+#[test]
 fn index_array_ok() {
     ok("main :: () => { const a: [s32; 2] = [1, 2]; const x: s32 = a[0]; };");
 }

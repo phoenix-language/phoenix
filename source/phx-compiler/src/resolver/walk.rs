@@ -445,7 +445,7 @@ impl Resolver<'_> {
                 generics,
                 fields,
             } => {
-                self.resolve_type_name(name, span);
+                self.resolve_type_or_value_name(name, span);
                 if let Some(args) = generics {
                     for arg in args {
                         self.resolve_type_node(arg);
@@ -511,7 +511,7 @@ impl Resolver<'_> {
                 self.define_value(ident.symbol, span, DefKind::Local);
             }
             Pattern::Struct { name, fields } => {
-                self.resolve_type_name(name, span);
+                self.resolve_type_or_value_name(name, span);
                 for field in fields {
                     if let Some(p) = &field.pattern {
                         self.resolve_pattern_node(p);

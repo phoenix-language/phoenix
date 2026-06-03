@@ -236,20 +236,30 @@ impl<'a> TypeChecker<'a> {
                     for (tag, v) in variants.iter().enumerate() {
                         let tag = u32::try_from(tag).unwrap_or(u32::MAX);
                         let variant_def = self.find_def(v.name.symbol, DefKind::EnumVariant);
-                        let payload_types: Vec<TypeId> = match &v.kind {
-                            Variant::Unit => vec![],
-                            Variant::Tuple(ts) => ts
-                                .iter()
-                                .map(|t| self.lower_ast_type_with_defs(t, &td))
-                                .collect(),
-                            Variant::Struct(_) => vec![],
-                            _ => vec![],
-                        };
-                        let kind = match &v.kind {
-                            Variant::Unit => VariantKind::Unit,
-                            Variant::Tuple(_) => VariantKind::Tuple(payload_types.clone()),
-                            Variant::Struct(_) => VariantKind::Unit,
-                            _ => VariantKind::Unit,
+                        let (payload_types, kind) = match &v.kind {
+                            Variant::Unit => (vec![], VariantKind::Unit),
+                            Variant::Tuple(ts) => {
+                                let pts: Vec<TypeId> = ts
+                                    .iter()
+                                    .map(|t| self.lower_ast_type_with_defs(t, &td))
+                                    .collect();
+                                (pts.clone(), VariantKind::Tuple(pts))
+                            }
+                            Variant::Struct(fs) => {
+                                let fields: Vec<(Symbol, TypeId)> = fs
+                                    .iter()
+                                    .map(|f| {
+                                        (
+                                            f.name.symbol,
+                                            self.lower_ast_type_with_defs(&f.ty, &td),
+                                        )
+                                    })
+                                    .collect();
+                                let pts: Vec<TypeId> =
+                                    fields.iter().map(|(_, ty)| *ty).collect();
+                                (pts, VariantKind::Struct(fields))
+                            }
+                            _ => (vec![], VariantKind::Unit),
                         };
                         if let Some(vdef) = variant_def {
                             let params: Vec<TypeId> = payload_types.clone();
@@ -1124,6 +1134,31 @@ impl<'a> TypeChecker<'a> {
                             }
                         }
                     }
+                } else if let Some((enum_def, variant)) =
+                    self.program_layout.enum_variant_by_name(name.symbol)
+                {
+                    if let Ty::Named { def: sdef, .. } = self.types.get(scrutinee) {
+                        if *sdef != enum_def {
+                            self.bag.push(TypeCheckError::Mismatch {
+                                expected: self.format_named(enum_def),
+                                found: self.format_ty(scrutinee),
+                                span: Span::new(0, 0),
+                            });
+                        }
+                    }
+                    if let VariantKind::Struct(payload) = &variant.kind {
+                        let field_map: HashMap<Symbol, TypeId> =
+                            payload.iter().copied().collect();
+                        for field in fields {
+                            if let Some(fty) = field_map.get(&field.name.symbol) {
+                                if let Some(p) = &field.pattern {
+                                    self.check_pattern(&p.inner, *fty);
+                                } else {
+                                    self.define_local(field.name.symbol, *fty, BindingKind::Var);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Pattern::Tuple { name, patterns } => {
@@ -1207,6 +1242,53 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             return ty;
+        }
+        if let Some((enum_def, variant)) = self.program_layout.enum_variant_by_name(name.symbol)
+        {
+            let enum_ty = self.types.intern(&Ty::Named {
+                def: enum_def,
+                args: vec![],
+            });
+            if let VariantKind::Struct(payload) = &variant.kind {
+                let field_map: HashMap<Symbol, TypeId> = payload.iter().copied().collect();
+                let required_fields: Vec<Symbol> =
+                    payload.iter().map(|(n, _)| *n).collect();
+                for field in fields {
+                    if matches!(field, StructFieldInit::Spread(_)) {
+                        self.bag.push(TypeCheckError::UnsupportedFeature {
+                            feature: "enum struct literal spread",
+                            span,
+                        });
+                    }
+                }
+                let mut seen = std::collections::HashSet::new();
+                for field in fields {
+                    let StructFieldInit::Field { name: fname, value } = field else {
+                        continue;
+                    };
+                    seen.insert(fname.symbol);
+                    if let Some(expected) = field_map.get(&fname.symbol) {
+                        let got = self.check_expr_node(value);
+                        if got != *expected {
+                            self.error_mismatch(*expected, got, value.span);
+                        }
+                    } else {
+                        self.bag.push(TypeCheckError::UnsupportedFeature {
+                            feature: "unknown enum variant field",
+                            span: value.span,
+                        });
+                    }
+                }
+                for fname in required_fields {
+                    if !seen.contains(&fname) {
+                        self.bag.push(TypeCheckError::UnsupportedFeature {
+                            feature: "missing enum variant field",
+                            span,
+                        });
+                    }
+                }
+            }
+            return enum_ty;
         }
         self.bag.push(TypeCheckError::UnknownType {
             symbol_index: name.symbol.index(),

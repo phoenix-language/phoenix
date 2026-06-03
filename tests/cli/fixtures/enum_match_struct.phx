@@ -1,0 +1,13 @@
+Result :: enum {
+    Ok { v: s32 },
+    Err { code: s32 },
+};
+
+main :: () => {
+    const r: Result = Ok { v: 42 };
+    const n: s32 = match r {
+        Ok { v } => v;
+        Err { code } => code;
+    };
+    const _ = n;
+};

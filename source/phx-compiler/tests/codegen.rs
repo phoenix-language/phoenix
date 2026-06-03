@@ -139,6 +139,29 @@ fn codegen_enum_match_verifies() {
 }
 
 #[test]
+fn codegen_enum_struct_match_emits_tag_and_get_field() {
+    let source = include_str!("../../../tests/cli/fixtures/enum_match_struct.phx");
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed);
+    let insts: Vec<_> = ir
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.insts)
+        .collect();
+    assert!(
+        insts.iter().any(|i| matches!(i, IrInst::MatchTag { .. })),
+        "struct-variant match should emit MatchTag"
+    );
+    assert!(
+        insts.iter().any(|i| matches!(i, IrInst::GetField { .. })),
+        "struct-variant bind should emit GetField"
+    );
+    let module = codegen(&ir, &unit.typed);
+    verify(&module).expect("enum_match_struct bytecode should verify");
+}
+
+#[test]
 fn codegen_struct_point_emits_make_struct() {
     let source = include_str!("../../../tests/cli/fixtures/struct_point.phx");
     let unit = compile_source(source, None).unwrap();

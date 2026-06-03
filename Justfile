@@ -11,6 +11,9 @@ build-release:
 run file:
     cargo run -p phx -- run {{file}}
 
+compile_source_file target out:
+    cargo run -p phx -- compile {{target}} -o {{out}}
+
 test:
     cargo test --workspace
 

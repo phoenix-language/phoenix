@@ -16,6 +16,7 @@ FIXTURES=(
   struct_point.phx
   struct_assign.phx
   enum_match.phx
+  enum_match_struct.phx
   struct_method.phx
   cast_width.phx
   mod_bitwise.phx

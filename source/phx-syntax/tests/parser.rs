@@ -854,6 +854,13 @@ fn expr_match_ident_literal_arms_no_parens() {
 }
 
 #[test]
+fn expr_match_enum_struct_variant_arm() {
+    assert_ok(
+        "E :: enum { Err { code: s32 }, }; main :: () => { const _ = match e { Err { code: c } => c; }; };",
+    );
+}
+
+#[test]
 fn expr_match_type_name_scrutinee_no_parens() {
     assert_ok(&in_main("const _ = match Point { _ => 0; };"));
 }
