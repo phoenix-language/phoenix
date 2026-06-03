@@ -1127,7 +1127,63 @@ impl<'a> TypeChecker<'a> {
                 }),
             });
         }
+        self.check_match_exhaustiveness(s, arms, span);
         acc.unwrap_or(self.unit)
+    }
+
+    fn symbol_name(&self, symbol: Symbol) -> String {
+        self.resolved.interner.resolve(symbol).to_owned()
+    }
+
+    fn check_match_exhaustiveness(
+        &mut self,
+        scrutinee: TypeId,
+        arms: &[phx_syntax::ast::pat::MatchArm],
+        span: Span,
+    ) {
+        let Some(enum_def) = self.scrutinee_enum_def(scrutinee) else {
+            return;
+        };
+        let Some(layout) = self.program_layout.enums.get(&enum_def) else {
+            return;
+        };
+        if arms
+            .iter()
+            .any(|arm| matches!(arm.pattern.inner, Pattern::Wildcard))
+        {
+            return;
+        }
+        let mut covered = std::collections::HashSet::new();
+        for arm in arms {
+            if let Some(variant_name) = self.pattern_covered_variant(&arm.pattern.inner) {
+                covered.insert(variant_name);
+            }
+        }
+        let missing: Vec<String> = layout
+            .variants
+            .iter()
+            .filter(|v| !covered.contains(&v.name))
+            .map(|v| self.symbol_name(v.name))
+            .collect();
+        if !missing.is_empty() {
+            self.bag
+                .push(TypeCheckError::NonExhaustiveMatch { missing, span });
+        }
+    }
+
+    fn pattern_covered_variant(&self, pat: &Pattern) -> Option<Symbol> {
+        match pat {
+            Pattern::Wildcard | Pattern::Literal(_) => None,
+            Pattern::Ident(ident) => self
+                .program_layout
+                .enum_variant_by_name(ident.symbol)
+                .map(|(_, v)| v.name),
+            Pattern::Struct { name, .. } | Pattern::Tuple { name, .. } => self
+                .program_layout
+                .enum_variant_by_name(name.symbol)
+                .map(|(_, v)| v.name),
+            _ => None,
+        }
     }
 
     fn scrutinee_enum_def(&self, scrutinee: TypeId) -> Option<DefId> {
@@ -1283,16 +1339,16 @@ impl<'a> TypeChecker<'a> {
                             self.error_mismatch(expected, got, value.span);
                         }
                     } else {
-                        self.bag.push(TypeCheckError::UnsupportedFeature {
-                            feature: "unknown struct field",
+                        self.bag.push(TypeCheckError::UnknownStructField {
+                            name: self.symbol_name(fname.symbol),
                             span: value.span,
                         });
                     }
                 }
                 for fname in required_fields {
                     if !seen.contains(&fname) {
-                        self.bag.push(TypeCheckError::UnsupportedFeature {
-                            feature: "missing struct field",
+                        self.bag.push(TypeCheckError::MissingStructField {
+                            name: self.symbol_name(fname),
                             span,
                         });
                     }
@@ -1328,16 +1384,16 @@ impl<'a> TypeChecker<'a> {
                             self.error_mismatch(*expected, got, value.span);
                         }
                     } else {
-                        self.bag.push(TypeCheckError::UnsupportedFeature {
-                            feature: "unknown enum variant field",
+                        self.bag.push(TypeCheckError::UnknownEnumVariantField {
+                            name: self.symbol_name(fname.symbol),
                             span: value.span,
                         });
                     }
                 }
                 for fname in required_fields {
                     if !seen.contains(&fname) {
-                        self.bag.push(TypeCheckError::UnsupportedFeature {
-                            feature: "missing enum variant field",
+                        self.bag.push(TypeCheckError::MissingEnumVariantField {
+                            name: self.symbol_name(fname),
                             span,
                         });
                     }

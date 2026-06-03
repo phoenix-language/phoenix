@@ -65,6 +65,41 @@ pub enum TypeCheckError {
         /// Branch span.
         span: Span,
     },
+    /// `match` on an enum does not cover all variants (and has no `_` arm).
+    NonExhaustiveMatch {
+        /// Uncovered variant names, in declaration order.
+        missing: Vec<String>,
+        /// `match` expression span.
+        span: Span,
+    },
+    /// Struct literal names a field that does not exist.
+    UnknownStructField {
+        /// Field name.
+        name: String,
+        /// Field initializer span.
+        span: Span,
+    },
+    /// Struct literal omits a required field.
+    MissingStructField {
+        /// Field name.
+        name: String,
+        /// Struct literal span.
+        span: Span,
+    },
+    /// Enum struct-variant literal names a field that does not exist.
+    UnknownEnumVariantField {
+        /// Field name.
+        name: String,
+        /// Field initializer span.
+        span: Span,
+    },
+    /// Enum struct-variant literal omits a required field.
+    MissingEnumVariantField {
+        /// Field name.
+        name: String,
+        /// Variant literal span.
+        span: Span,
+    },
     /// Explicit cast is not allowed between these types.
     InvalidCast {
         /// Source type description.
@@ -134,6 +169,11 @@ impl TypeCheckError {
             | Self::UnresolvedMethod { span, .. }
             | Self::AmbiguousMethod { span, .. }
             | Self::NonUnifyingBranches { span }
+            | Self::NonExhaustiveMatch { span, .. }
+            | Self::UnknownStructField { span, .. }
+            | Self::MissingStructField { span, .. }
+            | Self::UnknownEnumVariantField { span, .. }
+            | Self::MissingEnumVariantField { span, .. }
             | Self::InvalidCast { span, .. }
             | Self::InvalidOperator { span, .. }
             | Self::UnsupportedFeature { span, .. }
@@ -175,6 +215,29 @@ impl fmt::Display for TypeCheckError {
                 "ambiguous method sym#{method_index} on type `{receiver}` (multiple trait impls)"
             ),
             Self::NonUnifyingBranches { .. } => f.write_str("branch types do not unify"),
+            Self::NonExhaustiveMatch { missing, .. } => {
+                if missing.is_empty() {
+                    write!(f, "non-exhaustive `match` on enum")
+                } else {
+                    write!(
+                        f,
+                        "non-exhaustive `match`: missing variant(s) {}",
+                        missing.join(", ")
+                    )
+                }
+            }
+            Self::UnknownStructField { name, .. } => {
+                write!(f, "struct literal has no field `{name}`")
+            }
+            Self::MissingStructField { name, .. } => {
+                write!(f, "struct literal is missing field `{name}`")
+            }
+            Self::UnknownEnumVariantField { name, .. } => {
+                write!(f, "enum variant literal has no field `{name}`")
+            }
+            Self::MissingEnumVariantField { name, .. } => {
+                write!(f, "enum variant literal is missing field `{name}`")
+            }
             Self::InvalidCast { from, to, .. } => {
                 write!(f, "invalid cast from `{from}` to `{to}`")
             }

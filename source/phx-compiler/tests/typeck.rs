@@ -227,7 +227,66 @@ fn enum_struct_variant_match_ok() {
 #[test]
 fn enum_struct_variant_lit_unknown_field() {
     let bag = typeck_err("R :: enum { Ok { v: s32 }, }; main :: () => { const _ = Ok { z: 1 }; };");
-    assert!(has_unsupported(&bag, "unknown enum variant field"));
+    assert!(bag.errors().iter().any(|e| {
+        matches!(e, TypeCheckError::UnknownEnumVariantField { name, .. } if name == "z")
+    }));
+}
+
+#[test]
+fn enum_struct_variant_lit_missing_field() {
+    let bag = typeck_err(
+        "R :: enum { Ok { v: s32, w: s32 }, }; main :: () => { const _ = Ok { v: 1 }; };",
+    );
+    assert!(bag.errors().iter().any(|e| {
+        matches!(e, TypeCheckError::MissingEnumVariantField { name, .. } if name == "w")
+    }));
+}
+
+#[test]
+fn struct_lit_unknown_field() {
+    let bag = typeck_err(
+        "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point { x: 1, z: 2 }; };",
+    );
+    assert!(bag.errors().iter().any(|e| {
+        matches!(e, TypeCheckError::UnknownStructField { name, .. } if name == "z")
+    }));
+}
+
+#[test]
+fn struct_lit_missing_field() {
+    let bag = typeck_err(
+        "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point { x: 1 }; };",
+    );
+    assert!(bag.errors().iter().any(|e| {
+        matches!(e, TypeCheckError::MissingStructField { name, .. } if name == "y")
+    }));
+}
+
+#[test]
+fn enum_match_non_exhaustive() {
+    let bag = typeck_err(
+        "Maybe :: enum { None, Some(s32), }; main :: () => { const m: Maybe = Some(1); const _ = match m { Some(x) => x; }; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::NonExhaustiveMatch { .. }))
+    );
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(e, TypeCheckError::NonExhaustiveMatch { .. }))
+        .expect("non-exhaustive match");
+    if let TypeCheckError::NonExhaustiveMatch { missing, .. } = err {
+        assert!(missing.iter().any(|n| n == "None"));
+    }
+}
+
+#[test]
+fn enum_match_wildcard_exhaustive_ok() {
+    ok(
+        "Maybe :: enum { None, Some(s32), }; main :: () => { const m: Maybe = Some(1); const _ = match m { _ => 0; }; };",
+    );
 }
 
 #[test]
@@ -287,6 +346,11 @@ fn type_alias_assignability_ok() {
 #[test]
 fn type_alias_cast_ok() {
     ok("type Id = s32; main :: () => { const x: Id = 42 as Id; const _ = x; };");
+}
+
+#[test]
+fn type_alias_meters_cast_ok() {
+    ok("type Meters = s32; main :: () => { const x: Meters = 42 as Meters; const _ = x; };");
 }
 
 #[test]
