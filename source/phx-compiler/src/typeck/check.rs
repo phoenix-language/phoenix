@@ -64,6 +64,8 @@ pub struct TypeChecker<'a> {
     next_type_id: u32,
     /// When checking inherent impl members, the receiver type (`Self`).
     impl_self_type: Option<TypeId>,
+    /// Module being collected or checked.
+    current_module: u32,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -91,6 +93,7 @@ impl<'a> TypeChecker<'a> {
             program_layout: ProgramLayout::default(),
             next_type_id: 1,
             impl_self_type: None,
+            current_module: resolved.root,
         }
     }
 
@@ -113,7 +116,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn fn_def_for(&self, f: &Function) -> Option<DefId> {
-        self.find_def(f.name.symbol, DefKind::Fn)
+        self.find_def(self.current_module, f.name.symbol, DefKind::Fn)
     }
 
     fn define_local(&mut self, symbol: phx_syntax::Symbol, ty: TypeId, kind: BindingKind) {
@@ -155,12 +158,12 @@ impl<'a> TypeChecker<'a> {
         self.lower_ast_type_with_defs(ty, &type_defs)
     }
 
-    fn find_def(&self, name: Symbol, kind: DefKind) -> Option<DefId> {
+    fn find_def(&self, module: u32, name: Symbol, kind: DefKind) -> Option<DefId> {
         self.resolved
             .defs
             .iter()
             .enumerate()
-            .find(|(_, d)| d.name == name && d.kind == kind)
+            .find(|(_, d)| d.module == module && d.name == name && d.kind == kind)
             .map(|(i, _)| DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
     }
 
@@ -177,14 +180,20 @@ impl<'a> TypeChecker<'a> {
 
     fn check_program(&mut self) {
         self.collect_decls();
-        for item in &self.resolved.program.items {
-            self.check_top_level(&item.inner);
+        for module in &self.resolved.modules {
+            self.current_module = module.id;
+            for item in &module.program.items {
+                self.check_top_level(&item.inner);
+            }
         }
     }
 
     fn collect_decls(&mut self) {
-        for item in &self.resolved.program.items {
-            self.collect_top_level_decl(&item.inner.decl);
+        for module in &self.resolved.modules {
+            self.current_module = module.id;
+            for item in &module.program.items {
+                self.collect_top_level_decl(&item.inner.decl);
+            }
         }
     }
 
@@ -197,7 +206,7 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
-                if let Some(def) = self.find_def(name.symbol, DefKind::Struct) {
+                if let Some(def) = self.find_def(self.current_module,name.symbol, DefKind::Struct) {
                     let mut fields_map = HashMap::new();
                     let mut ordered = Vec::new();
                     if let StructBody::Fields(fs) = body {
@@ -224,7 +233,7 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
-                if let Some(enum_def) = self.find_def(name.symbol, DefKind::Enum) {
+                if let Some(enum_def) = self.find_def(self.current_module,name.symbol, DefKind::Enum) {
                     let enum_ty = self.types.intern(&Ty::Named {
                         def: enum_def,
                         args: vec![],
@@ -235,7 +244,7 @@ impl<'a> TypeChecker<'a> {
                     let mut variant_layouts = Vec::new();
                     for (tag, v) in variants.iter().enumerate() {
                         let tag = u32::try_from(tag).unwrap_or(u32::MAX);
-                        let variant_def = self.find_def(v.name.symbol, DefKind::EnumVariant);
+                        let variant_def = self.find_def(self.current_module,v.name.symbol, DefKind::EnumVariant);
                         let (payload_types, kind) = match &v.kind {
                             Variant::Unit => (vec![], VariantKind::Unit),
                             Variant::Tuple(ts) => {
@@ -296,7 +305,7 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::TypeAlias { name, generics, ty } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
-                if let Some(def) = self.find_def(name.symbol, DefKind::TypeAlias) {
+                if let Some(def) = self.find_def(self.current_module,name.symbol, DefKind::TypeAlias) {
                     let lowered = self.lower_ast_type_with_defs(ty, &td);
                     self.value_types.insert(def, lowered);
                 }
@@ -313,7 +322,7 @@ impl<'a> TypeChecker<'a> {
                 if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
                     for m in members {
                         self.collect_fn_sig(m);
-                        if let Some(fn_def) = self.find_def(m.name.symbol, DefKind::Fn) {
+                        if let Some(fn_def) = self.find_def(self.current_module,m.name.symbol, DefKind::Fn) {
                             if let Some(trait_name) = trait_ {
                                 if let Some(trait_def) =
                                     self.type_defs.get(&trait_name.symbol).copied()
@@ -344,14 +353,14 @@ impl<'a> TypeChecker<'a> {
             }
             TopLevelDecl::Const { name, ty, .. } => {
                 if let (Some(def), Some(t)) =
-                    (self.find_def(name.symbol, DefKind::Const), ty.as_ref())
+                    (self.find_def(self.current_module,name.symbol, DefKind::Const), ty.as_ref())
                 {
                     let tid = self.lower_ast_type(t);
                     self.value_types.insert(def, tid);
                 }
             }
             TopLevelDecl::Var { name, ty, .. } => {
-                if let Some(def) = self.find_def(name.symbol, DefKind::Var) {
+                if let Some(def) = self.find_def(self.current_module,name.symbol, DefKind::Var) {
                     let tid = self.lower_ast_type(ty);
                     self.value_types.insert(def, tid);
                 }
@@ -376,7 +385,7 @@ impl<'a> TypeChecker<'a> {
             })
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
-        if let Some(def) = self.find_def(f.name.symbol, DefKind::Fn) {
+        if let Some(def) = self.find_def(self.current_module,f.name.symbol, DefKind::Fn) {
             self.value_types.insert(def, fn_ty);
         }
     }
@@ -397,7 +406,7 @@ impl<'a> TypeChecker<'a> {
             })
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
-        if let Some(def) = self.find_def(sig.name.symbol, DefKind::Fn) {
+        if let Some(def) = self.find_def(self.current_module,sig.name.symbol, DefKind::Fn) {
             self.value_types.insert(def, fn_ty);
         }
     }

@@ -1,5 +1,13 @@
+# Rust target directory
 /target
+
+# macOS files
 .DS_Store
+
+# Environment files
 .env
 .env.local
-node_modules
+
+# Phoenix bytecode files
+*.phx0
+*.pxi

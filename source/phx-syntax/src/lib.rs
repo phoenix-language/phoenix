@@ -21,7 +21,7 @@ pub mod token;
 pub use ast::Program;
 pub use intern::{Interner, Symbol, impl_receiver_symbol};
 pub use lexer::{Lexer, lex};
-pub use parser::parse;
+pub use parser::{parse, parse_with_interner};
 pub use phx_diagnostics::{LexError, ParseError, Span};
 pub use source_file::SourceFile;
 pub use token::{FloatSuffix, IntegerSuffix, Keyword, Token, TokenKind};

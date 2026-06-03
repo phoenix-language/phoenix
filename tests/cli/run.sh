@@ -56,4 +56,16 @@ for name in "${FIXTURES[@]}"; do
   fi
 done
 
+MODULES_DIR="${ROOT}/tests/cli/fixtures/modules"
+MODULE_MAIN="${MODULES_DIR}/main.phx"
+if [[ ! -f "${MODULE_MAIN}" ]]; then
+  echo "missing fixture: ${MODULE_MAIN}" >&2
+  exit 1
+fi
+echo "running: phx run --module-path ${MODULES_DIR} ${MODULE_MAIN} (expect success)"
+if ! "${PHX_BIN}" run --module-path "${MODULES_DIR}" "${MODULE_MAIN}"; then
+  echo "phx run should succeed for multi-file modules fixture" >&2
+  exit 1
+fi
+
 echo "all phx run CLI tests passed"

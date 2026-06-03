@@ -26,7 +26,7 @@ fn lower_one_function(
     index: usize,
     constants: &mut Vec<IrConst>,
 ) -> Option<IrFunction> {
-    let source = find_function(&typed.resolved.program.items, layout.def, typed)?;
+    let source = find_function_in_crate(typed, layout.def)?;
     let mut ctx = LowerCtx::new(typed, layout, constants);
     lower_block_value(&mut ctx, &source.body.inner);
     lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
@@ -52,17 +52,19 @@ fn lower_one_function(
     })
 }
 
-fn find_function<'a>(
-    items: &'a [Node<TopLevelItem>],
-    def: DefId,
-    typed: &TypedProgram,
-) -> Option<&'a Function> {
-    for item in items {
+fn find_function_in_crate<'a>(typed: &'a TypedProgram, def: DefId) -> Option<&'a Function> {
+    let def_record = typed.resolved.defs.get(def.index() as usize)?;
+    let module = typed
+        .resolved
+        .modules
+        .iter()
+        .find(|m| m.id == def_record.module)?;
+    for item in &module.program.items {
         match &item.inner.decl {
-            TopLevelDecl::Function(f) if fn_def_id(typed, f) == Some(def) => return Some(f),
+            TopLevelDecl::Function(f) if def_matches(typed, f, def) => return Some(f),
             TopLevelDecl::Impl { members, .. } => {
                 for m in members {
-                    if fn_def_id(typed, m) == Some(def) {
+                    if def_matches(typed, m, def) {
                         return Some(m);
                     }
                 }
@@ -73,12 +75,10 @@ fn find_function<'a>(
     None
 }
 
-fn fn_def_id(typed: &TypedProgram, f: &Function) -> Option<DefId> {
+fn def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
     typed
         .resolved
         .defs
-        .iter()
-        .enumerate()
-        .find(|(_, d)| d.name == f.name.symbol && d.kind == DefKind::Fn)
-        .and_then(|(i, _)| u32::try_from(i).ok().map(DefId::from_raw))
+        .get(def.index() as usize)
+        .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
 }

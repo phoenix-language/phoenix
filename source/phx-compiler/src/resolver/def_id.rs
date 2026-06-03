@@ -66,4 +66,28 @@ pub struct Def {
     pub name: Symbol,
     /// Span of the defining name.
     pub span: Span,
+    /// Owning module (crate-global id).
+    pub module: u32,
+    /// `true` when the item is exported (`pub` on the top-level item).
+    pub exported: bool,
+}
+
+impl Def {
+    /// Creates a definition record.
+    #[must_use]
+    pub const fn new(
+        kind: DefKind,
+        name: Symbol,
+        span: Span,
+        module: u32,
+        exported: bool,
+    ) -> Self {
+        Self {
+            kind,
+            name,
+            span,
+            module,
+            exported,
+        }
+    }
 }

@@ -35,11 +35,20 @@ pub(crate) struct Parser<'src> {
 impl<'src> Parser<'src> {
     /// Builds a parser over `tokens` borrowed from `source`.
     pub(crate) fn new(source: &'src str, tokens: &'src [Token<'src>]) -> Self {
+        Self::with_interner(source, tokens, Interner::new())
+    }
+
+    /// Builds a parser that interns identifiers into `interner`.
+    pub(crate) fn with_interner(
+        source: &'src str,
+        tokens: &'src [Token<'src>],
+        interner: Interner,
+    ) -> Self {
         Self {
             source,
             tokens,
             pos: 0,
-            interner: Interner::new(),
+            interner,
         }
     }
 
@@ -302,9 +311,21 @@ impl<'src> Parser<'src> {
 ///
 /// Returns [`ParseError`] on lexical or syntactic failure.
 pub fn parse(source: &str) -> Result<SourceFile, ParseError> {
+    parse_with_interner(source, &mut Interner::new())
+}
+
+/// Parses `source` using `interner` for all identifiers (shared across a crate).
+///
+/// # Errors
+///
+/// Returns [`ParseError`] on lexical or syntactic failure.
+pub fn parse_with_interner(
+    source: &str,
+    interner: &mut Interner,
+) -> Result<SourceFile, ParseError> {
     let tokens = lex(source).map_err(ParseError::Lex)?;
-    let mut parser = Parser::new(source, &tokens);
+    let mut parser = Parser::with_interner(source, &tokens, std::mem::take(interner));
     let program = parser.parse_program()?;
-    let interner = parser.interner;
-    Ok(SourceFile::new(program, interner))
+    *interner = parser.interner;
+    Ok(SourceFile::new(program, interner.clone()))
 }

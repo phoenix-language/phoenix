@@ -87,4 +87,47 @@ for entry in "${NEG_FIXTURES[@]}"; do
   fi
 done
 
+MODULES_DIR="${FIXTURES_DIR}/modules"
+MODULE_MAIN="${MODULES_DIR}/main.phx"
+MODULE_PRIVATE="${MODULES_DIR}/import_private.phx"
+MODULE_CYCLE="${MODULES_DIR}/cycle_a.phx"
+
+for fixture in "${MODULE_MAIN}"; do
+  if [[ ! -f "${fixture}" ]]; then
+    echo "missing fixture: ${fixture}" >&2
+    exit 1
+  fi
+done
+
+echo "running: phx check --module-path ${MODULES_DIR} ${MODULE_MAIN} (expect success)"
+if ! "${PHX_BIN}" check --module-path "${MODULES_DIR}" "${MODULE_MAIN}"; then
+  echo "phx check should succeed for multi-file modules fixture" >&2
+  exit 1
+fi
+echo "phx check passed (modules import)"
+
+echo "running: phx check ${MODULE_PRIVATE} (expect private import failure)"
+if output="$("${PHX_BIN}" check --module-path "${MODULES_DIR}" "${MODULE_PRIVATE}" 2>&1)"; then
+  echo "phx check should fail for private import" >&2
+  exit 1
+fi
+if [[ "${output}" != *"export"* ]] && [[ "${output}" != *"exported"* ]]; then
+  echo "private import should mention export" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+echo "phx check failed as expected (private import)"
+
+echo "running: phx check ${MODULE_CYCLE} (expect cycle failure)"
+if output="$("${PHX_BIN}" check --module-path "${MODULES_DIR}" "${MODULE_CYCLE}" 2>&1)"; then
+  echo "phx check should fail for import cycle" >&2
+  exit 1
+fi
+if [[ "${output}" != *"cycle"* ]]; then
+  echo "cycle diagnostic should mention cycle" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+echo "phx check failed as expected (import cycle)"
+
 echo "all phx check CLI tests passed"

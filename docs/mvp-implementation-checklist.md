@@ -23,7 +23,7 @@
 | Issue | Impact |
 |-------|--------|
 | Enum struct-payload `match` exhaustiveness | No unreachable-arm warnings yet |
-| `#import` / multi-file | Resolver returns `ImportNotSupported`; single compilation unit only |
+| `#import` / multi-file | M1 whole-program: `modules/loader.rs`, `resolve_crate.rs`; `compile_source` still single-file |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD after modules |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
 
@@ -114,8 +114,8 @@ A credible MVP demo `.phx` should be able to:
 | Block scopes, resolve exprs/pats    | done    | `resolver/walk.rs`              |                             |                                                       |
 | Enforce `main` present              | done    | `resolver/walk.rs`              | `ResolveError::MissingMain` | `missing_main` fixture fails `phx check`              |
 | Enforce `main :: () => …` signature | done    | `resolver/walk.rs`              | `InvalidMainSignature`      | resolve tests                                         |
-| `#import`                           | missing | `resolver/walk.rs`              | Always `ImportNotSupported` | `#import` loads second file and resolves symbols      |
-| `pub` / cross-module visibility     | missing | —                               | No module graph             | Private import fails; `pub` export works across files |
+| `#import`                           | done    | `modules/loader.rs`, `resolve_crate.rs` | `compile_source` still `ImportNotSupported` | `tests/cli/fixtures/modules/` + `run_modules.rs` |
+| `pub` / cross-module visibility     | done    | `resolver/walk.rs`, `resolve_crate.rs` | Export map + import preface | Private import fails; `pub` export works across files |
 
 
 ---
@@ -321,9 +321,9 @@ A credible MVP demo `.phx` should be able to:
 | Item                               | Status  | Where    | Notes                   | Acceptance                      |
 | ---------------------------------- | ------- | -------- | ----------------------- | ------------------------------- |
 | Parse `#import`                    | done    | parser   |                         |                                 |
-| Load multiple files / module paths | missing | —        | Single compilation unit | Two-file project with `#import` |
-| `pub` exports                      | missing | resolver |                         |                                 |
-| Path `std::…` → file mapping       | missing | —        |                         |                                 |
+| Load multiple files / module paths | done    | `modules/` | `--module-path`, `c.phx` / `index.phx` | `tests/cli/fixtures/modules/` |
+| `pub` exports                      | done    | `resolve_crate.rs` | Per-module export map | `import_private.phx` fails check |
+| Path `std::…` → file mapping       | done    | `modules/path.rs` | Under `module_root` | `util::math` → `util/math.phx` |
 
 
 ---

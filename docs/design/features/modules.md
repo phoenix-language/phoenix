@@ -1,22 +1,43 @@
 # Modules and imports
 
-Phoenix has no `mod { ... }` or `use` blocks. Files are modules. Imports use the `#import` compile-time directive.
+Phoenix has no `mod { ... }` or `use` blocks. **Files are modules.** Folders are packages (directories of modules). Imports use the `#import` compile-time directive.
 
 ---
 
-## File paths
+## Milestones
 
-The compiler maps each source file to a path from the project root and package layout (e.g. `std/http/request.phx` → `std::http::request`).
+| Phase | Behavior |
+|-------|----------|
+| **M1 (current target)** | Whole-program compile: load all reachable `.phx` files, `#import`, `pub`, cycle rejection, one PHX0 output |
+| **M2 (planned)** | `.pxi` interface files, content-hash incremental rebuild, separate compilation in cycles, linker artifacts |
 
-- Items at file scope are private to that module by default
-- `pub` marks an item as exportable — other files may `#import` it
+M1 does **not** include: relative `./` / `../` imports, `import { x as y }` aliases, `.pxi` files, or per-module object linking.
+
+---
+
+## File paths and module names
+
+The compiler maps each source file to a logical module path from the project layout:
+
+- `math/common.phx` → module `math::common`
+- `math/common/index.phx` → module `math::common` (fallback when `math/common.phx` is absent)
+
+Path resolution for `#import math::common`:
+
+1. `{module_root}/math/common.phx`
+2. Else `{module_root}/math/common/index.phx`
+
+`module_root` is set by `--module-path` (defaults to the entry file’s directory).
+
+- Items at file scope are **private** unless marked `pub`
+- `pub` marks an item exportable to other modules via `#import`
 - Paths use `::` as separator: `std::collections::HashMap`
 
 ---
 
 ## Defining and consuming code
 
-```
+```phoenix
 // std/http/request.phx
 
 pub Request :: struct
@@ -31,7 +52,7 @@ handle :: (req: Request) => Response
 };
 ```
 
-```
+```phoenix
 // app/main.phx
 
 #import std::http::Request
@@ -44,16 +65,52 @@ main :: () =>
 };
 ```
 
-You can always refer to an item by its full path without importing (`std::http::Request`), but `#import` brings names into local scope for convenience.
+Qualified paths (`std::http::Request`) may resolve without `#import` when unambiguous; `#import` brings names into the importer’s scope.
 
 ---
 
 ## Import forms
 
 | Form | Effect |
-|---|---|
-| `#import path::Item` | `Item` is in scope by its name |
-| `#import path::{A, B, C}` | Multiple items in scope |
-| `#import path::*` | All `pub` items from that module (use sparingly) |
+|------|--------|
+| `#import path::Item` | `Item` in scope (last path segment is the symbol; preceding segments are the module) |
+| `#import path::{A, B, C}` | Multiple `pub` items from `path` |
+| `#import path::*` | All `pub` items from module `path` |
 
-The path must resolve to a `pub` item (or a module for `::*`). Importing a private item is a compile error.
+Importing a non-`pub` item is a compile error. Duplicate names from globs or multiple imports are reported.
+
+---
+
+## Entry point
+
+- Executable builds require `main :: () => { … }` in the **entry** module (the file passed to `phx check` / `phx run`).
+- Other modules may omit `main`.
+- Circular `#import` graphs are rejected in M1 (with a cycle trace).
+
+---
+
+## Top-level side effects (M1)
+
+Top-level executable side effects are disallowed. Use `init :: () => { … }` (or call from `main`) instead. Module-level `const` / `var` runtime is not part of M1.
+
+---
+
+## M2: interfaces and incremental builds (planned)
+
+From the separate-compilation design:
+
+- **`.pxi` files** — per-module exported symbol metadata and a content hash/checksum
+- **Incremental compile** — recompile when a dependency’s `.pxi` hash changes
+- **Import cycles** — may compile only when every module in the cycle has a current `.pxi` (interfaces only, no body forwarding)
+- **Linker** — combine object/bytecode artifacts; link only symbols listed as `pub` in `.pxi`
+- **Future syntax** — `./` and `../` in import paths; `import { cos as c }`
+- **Optional `origin` field** in `.pxi` for future package/version identifiers
+
+---
+
+## Related documents
+
+| Topic | Document |
+|-------|----------|
+| Formal grammar | [grammar.ebnf](../grammar.ebnf) |
+| MVP boundary | [mvp.md](../mvp.md) |

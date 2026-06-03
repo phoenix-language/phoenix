@@ -15,7 +15,7 @@
 
 use phx_diagnostics::{InvalidMainReason, ResolveError, Span};
 use phx_syntax::ast::decl::{
-    Function, FunctionSig, Param, StructBody, TopLevelDecl, TraitItem, Variant,
+    Function, FunctionSig, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
 use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
@@ -26,66 +26,125 @@ use phx_syntax::ast::{BlockNode, ExprNode, Node, PatternNode};
 use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::Resolver;
-use super::def_id::DefKind;
+use super::def_id::{DefId, DefKind};
 
 impl Resolver<'_> {
     /// Resolves the whole program in `self.source`.
     /// Runs the full resolve pass on [`Resolver::source`].
-    pub(super) fn resolve_program(&mut self) {
-        for import in &self.source.program.imports {
-            self.bag
-                .push(ResolveError::ImportNotSupported { span: import.span });
+    pub(crate) fn resolve_program(&mut self) {
+        if !self.allow_imports {
+            for import in &self.source.program.imports {
+                self.bag
+                    .push(ResolveError::ImportNotSupported { span: import.span });
+            }
         }
 
         self.scopes.push();
-        self.collect_top_level_defs();
-        self.resolve_top_level_items();
-        self.check_main();
+        for &(sym, id, is_type) in &self.import_bindings {
+            if is_type {
+                self.scopes
+                    .define_type(&self.defs, &mut self.bag, sym, id, Span::new(0, 0));
+            } else {
+                self.scopes
+                    .define_value(&self.defs, &mut self.bag, sym, id, Span::new(0, 0));
+            }
+        }
+        if self.collect_only {
+            self.collect_top_level_defs();
+        } else {
+            if self.defs.is_empty() {
+                self.collect_top_level_defs();
+            } else {
+                self.seed_module_scopes();
+            }
+            self.resolve_top_level_items();
+            if !self.allow_imports {
+                self.check_main();
+            }
+        }
         self.scopes.pop();
     }
 
     fn collect_top_level_defs(&mut self) {
         for item in &self.source.program.items {
-            self.collect_top_level_decl(&item.inner.decl, item.span);
+            self.collect_top_level_item(&item.inner, item.span);
         }
     }
 
-    fn collect_top_level_decl(&mut self, decl: &TopLevelDecl, span: Span) {
-        match decl {
+    fn collect_top_level_item(&mut self, item: &TopLevelItem, span: Span) {
+        let exported = item.pub_;
+        match &item.decl {
             TopLevelDecl::Struct { name, .. } => {
-                self.define_type(name.symbol, span, DefKind::Struct);
+                self.define_exported(name.symbol, span, DefKind::Struct, exported);
             }
             TopLevelDecl::Enum { name, variants, .. } => {
-                self.define_type(name.symbol, span, DefKind::Enum);
+                self.define_exported(name.symbol, span, DefKind::Enum, exported);
                 for v in variants {
-                    self.define_value(v.name.symbol, name_span_type(&v.name), DefKind::EnumVariant);
+                    let vspan = name_span_type(&v.name);
+                    self.define_exported(v.name.symbol, vspan, DefKind::EnumVariant, exported);
                 }
             }
             TopLevelDecl::TypeAlias { name, .. } => {
-                self.define_type(name.symbol, span, DefKind::TypeAlias);
+                self.define_exported(name.symbol, span, DefKind::TypeAlias, exported);
             }
             TopLevelDecl::Trait { name, .. } => {
-                self.define_type(name.symbol, span, DefKind::Trait);
+                self.define_exported(name.symbol, span, DefKind::Trait, exported);
             }
             TopLevelDecl::Impl { members, .. } => {
                 for member in members {
-                    let span = name_span_ident(&member.name);
-                    self.define_value(member.name.symbol, span, DefKind::Fn);
+                    let mspan = name_span_ident(&member.name);
+                    self.define_value(member.name.symbol, mspan, DefKind::Fn);
                 }
             }
             TopLevelDecl::Function(f) => {
-                let id = self.define_value(f.name.symbol, span, DefKind::Fn);
+                let id = self.define_exported(f.name.symbol, span, DefKind::Fn, exported);
                 if self.is_main_name(f.name.symbol) {
-                    self.main_fn = Some(id);
+                    if self.current_module != self.root_module {
+                        self.bag.push(ResolveError::MainNotInEntry {
+                            span,
+                            module: self.logical_path.to_owned(),
+                        });
+                    } else {
+                        self.main_fn = Some(id);
+                    }
                 }
             }
             TopLevelDecl::Const { name, .. } => {
-                self.define_value(name.symbol, span, DefKind::Const);
+                self.define_exported(name.symbol, span, DefKind::Const, exported);
             }
             TopLevelDecl::Var { name, .. } => {
-                self.define_value(name.symbol, span, DefKind::Var);
+                self.define_exported(name.symbol, span, DefKind::Var, exported);
             }
             _ => {}
+        }
+    }
+
+    /// Registers existing crate defs for this module into scope (phase-2 resolve).
+    fn seed_module_scopes(&mut self) {
+        for (i, def) in self.defs.iter().enumerate() {
+            if def.module != self.current_module {
+                continue;
+            }
+            let id = DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX));
+            match def.kind {
+                DefKind::Struct
+                | DefKind::Enum
+                | DefKind::TypeAlias
+                | DefKind::Trait
+                | DefKind::GenericParam => {
+                    self.scopes
+                        .define_type(&self.defs, &mut self.bag, def.name, id, def.span);
+                }
+                DefKind::Fn | DefKind::Const | DefKind::Var | DefKind::EnumVariant => {
+                    self.scopes
+                        .define_value(&self.defs, &mut self.bag, def.name, id, def.span);
+                }
+                DefKind::StructField
+                | DefKind::Param
+                | DefKind::Local
+                | DefKind::Impl
+                | DefKind::TraitAssocType => {}
+            }
         }
     }
 
@@ -565,7 +624,7 @@ impl Resolver<'_> {
     }
 
     /// Validates MVP entry `main :: () => { … }`.
-    fn check_main(&mut self) {
+    pub(crate) fn check_main(&mut self) {
         if self.main_fn.is_none() {
             self.bag.push(ResolveError::MissingMain);
             return;

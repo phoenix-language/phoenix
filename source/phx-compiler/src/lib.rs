@@ -18,16 +18,22 @@ mod codegen;
 mod compile;
 mod ir;
 mod lower;
+mod modules;
 mod resolver;
 mod typeck;
 mod unit;
 
 pub use codegen::{build_type_table, codegen};
-pub use compile::{CompileError, check_file, compile_source, compile_to_module};
+pub use compile::{
+    CompileError, check_file, check_file_with_module_path, compile_source, compile_to_module,
+    compile_to_module_with_module_path,
+};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use lower::lower;
 pub use phx_bytecode::BytecodeModule;
-pub use resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram, resolve};
+pub use resolver::{
+    Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule, resolve,
+};
 pub use typeck::{
     Binding, BindingKind, ExprId, FunctionLayout, Ty, TypeId, TypeInterner, TypedProgram,
     type_check,

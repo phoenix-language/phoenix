@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use phx_diagnostics::{DiagnosticBag, ResolveError, Span};
 use phx_syntax::Symbol;
 
-use super::def_id::{Def, DefId};
+use super::def_id::{Def, DefId, DefKind};
 
 /// One lexical scope layer.
 #[derive(Debug, Default)]
@@ -123,11 +123,13 @@ mod tests {
         let mut scopes = ScopeStack::default();
         scopes.push();
         let id = DefId::from_raw(0);
-        defs.push(Def {
-            kind: DefKind::Local,
-            name: sym,
-            span: Span::new(0, 1),
-        });
+        defs.push(Def::new(
+            DefKind::Local,
+            sym,
+            Span::new(0, 1),
+            0,
+            false,
+        ));
         scopes.define_value(&defs, &mut bag, sym, id, Span::new(0, 1));
         assert!(scopes.lookup_value(sym).is_some());
         scopes.pop();
