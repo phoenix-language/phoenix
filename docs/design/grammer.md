@@ -63,7 +63,7 @@ const c = 3.14;    // f32
 - Types/variants/traits: `PascalCase`
 
 Core keywords include:
-`const`, `var`, `if`, `else`, `match`, `given`, `while`, `for`, `loop`, `break`, `continue`, `return`, `struct`, `enum`, `type`, `pub`, `trait`, `impl`, `as`, `Some`, `None`, `Ok`, `Err`, `true`, `false`, `self`, `Self`.
+`const`, `var`, `if`, `else`, `match`, `given`, `while`, `for`, `loop`, `break`, `continue`, `return`, `struct`, `enum`, `type`, `pub`, `trait`, `impl`, `as`, `true`, `false`, `self`
 
 Declarations use `Name :: kind` — for example `Point :: struct`, `PartialEq :: trait`, `Point :: impl for PartialEq`. The words `struct`, `enum`, `trait`, and `impl` are keywords that follow `::`.
 
@@ -195,10 +195,10 @@ for item in items { process(item); };
 ```
 
 ```phoenix
-match value
+match n
 {
-  Some(v) => handle(v),
-  None    => fallback(),
+  0 => 1,
+  _ => 2,
 };
 ```
 
@@ -212,28 +212,32 @@ given Some(v) = maybe_value { use(v); }
 
 ## Operators
 
-| Category | Operators |
-|---|---|
-| Arithmetic | `+` `-` `*` `/` `%` `**` |
-| Bitwise | `&` `\|` `^` `<<` `>>` `~` |
-| Comparison | `==` `!=` `<` `<=` `>` `>=` |
-| Logical | `&&` `\|\|` `!` |
-| Assignment | `=` `+=` `-=` `*=` `/=` `%=` |
-| References (expr) | `&x` `&mut x` `*ptr` |
-| Cast | `expr as Type` |
-| Error propagation | `?` |
+
+| Category          | Operators                    |
+| ----------------- | ---------------------------- |
+| Arithmetic        | `+` `-` `*` `/` `%` `**`     |
+| Bitwise           | `&` `|` `^` `<<` `>>` `~`    |
+| Comparison        | `==` `!=` `<` `<=` `>` `>=`  |
+| Logical           | `&&` `||` `!`                |
+| Assignment        | `=` `+=` `-=` `*=` `/=` `%=` |
+| References (expr) | `&x` `&mut x` `*ptr`         |
+| Cast              | `expr as Type`               |
+| Error propagation | `?`                          |
+
 
 ---
 
 ## Literal forms
 
-| Kind | Examples |
-|---|---|
-| Integer | `0`, `42`, `1_000`, `0xff`, `0b1010`, `42u` |
-| Float | `3.14`, `1e10`, `2.5f64` |
-| Boolean | `true`, `false` |
-| Byte char | `b'a'`, `b'\n'` |
-| Byte string | `b\"abc\"`, `b\"A\\x0A\"` |
+
+| Kind        | Examples                                    |
+| ----------- | ------------------------------------------- |
+| Integer     | `0`, `42`, `1_000`, `0xff`, `0b1010`, `42u` |
+| Float       | `3.14`, `1e10`, `2.5f64`                    |
+| Boolean     | `true`, `false`                             |
+| Byte char   | `b'a'`, `b'\n'`                             |
+| Byte string | `b\"abc\"`, `b\"A\\x0A\"`                   |
+
 
 ---
 

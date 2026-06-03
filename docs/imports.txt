@@ -1,4 +1,0 @@
-How imports should work in phoenix:
-
-I think modules can be complex and I dont want complexity. The basic idea is to enable code sharing between
-different source files to imporove maintainibility.

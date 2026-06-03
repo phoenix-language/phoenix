@@ -73,11 +73,25 @@ impl<'src> Parser<'src> {
     }
 
     /// Returns the token kind at `pos + n` without consuming.
-    #[allow(dead_code)]
     pub(crate) fn peek_at(&self, n: usize) -> TokenKind<'src> {
         self.tokens
             .get(self.pos + n)
             .map_or(TokenKind::Eof, |t| t.kind.clone())
+    }
+
+    /// Returns `true` when the current token is `{` and the following tokens look like a struct literal body (`..`, `field:`, or empty only for type names), not a block or `match` arms.
+    ///
+    /// `type_name` is `true` when the path began with a [`TokenKind::TypeIdent`] (e.g. `Point {}`); value idents use `foo { }` for blocks, not empty struct literals.
+    pub(crate) fn brace_starts_struct_literal_body(&self, type_name: bool) -> bool {
+        if !matches!(self.peek_kind(), TokenKind::LBrace) {
+            return false;
+        }
+        match self.peek_at(1) {
+            TokenKind::RBrace => type_name,
+            TokenKind::DotDot => true,
+            TokenKind::Ident(_) => matches!(self.peek_at(2), TokenKind::Colon),
+            _ => false,
+        }
     }
 
     /// Consumes and returns the current token.

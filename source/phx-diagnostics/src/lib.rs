@@ -18,7 +18,7 @@ mod resolve_error;
 mod span;
 mod type_error;
 
-pub use format::format_span_message;
+pub use format::{format_span_message, format_span_message_with_note, format_typecheck_error};
 pub use lex_error::LexError;
 pub use parse_error::{ExpectedToken, ParseError, ParseResult};
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};

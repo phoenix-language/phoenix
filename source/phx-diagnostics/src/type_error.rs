@@ -90,8 +90,8 @@ pub enum TypeCheckError {
     },
     /// Use of a binding after it was moved.
     UseAfterMove {
-        /// Variable name index.
-        symbol_index: u32,
+        /// Variable name for diagnostics.
+        name: String,
         /// Original move site.
         move_span: Span,
         /// Use site span.
@@ -99,6 +99,10 @@ pub enum TypeCheckError {
     },
     /// Assignment target was moved.
     MovedAssignTarget {
+        /// Variable name for diagnostics.
+        name: String,
+        /// Original move site.
+        move_span: Span,
         /// Span of the assignment.
         span: Span,
     },
@@ -134,7 +138,7 @@ impl TypeCheckError {
             | Self::InvalidOperator { span, .. }
             | Self::UnsupportedFeature { span, .. }
             | Self::UseAfterMove { span, .. }
-            | Self::MovedAssignTarget { span }
+            | Self::MovedAssignTarget { span, .. }
             | Self::UnresolvedValue { span, .. }
             | Self::LoopControlOutsideLoop { span, .. } => Some(*span),
         }
@@ -178,10 +182,12 @@ impl fmt::Display for TypeCheckError {
             Self::UnsupportedFeature { feature, .. } => {
                 write!(f, "{feature} is not available in MVP")
             }
-            Self::UseAfterMove { symbol_index, .. } => {
-                write!(f, "use of moved value (sym#{symbol_index})")
+            Self::UseAfterMove { name, .. } => {
+                write!(f, "use of moved value `{name}`")
             }
-            Self::MovedAssignTarget { .. } => f.write_str("cannot assign to a moved value"),
+            Self::MovedAssignTarget { name, .. } => {
+                write!(f, "cannot assign to moved value `{name}`")
+            }
             Self::UnresolvedValue { symbol_index, .. } => {
                 write!(f, "unresolved value (sym#{symbol_index})")
             }

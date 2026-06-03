@@ -4,7 +4,7 @@
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
-**Last surveyed:** `trunk` @ `5f4a146` ([vm]: width-faithful primitives, slices, refs, byte strings). **`cargo test --workspace`:** all crates green. **`tests/cli/run.sh`:** 25 fixtures.
+**Last surveyed:** `trunk` @ `5f4a146` ([vm]: width-faithful primitives, slices, refs, byte strings). **`cargo test --workspace`:** all crates green. **`tests/cli/run.sh`:** 26 fixtures.
 
 ### Runtime snapshot (current VM)
 
@@ -22,9 +22,6 @@
 
 | Issue | Impact |
 |-------|--------|
-| `i < n` / `c \|\| d {` before `{` | Parser ambiguity; parenthesize (`n > (i)`, `(c \|\| d)`) |
-| `match ident {` scrutinee | Use `match (ident) {` not `match ident {` (struct-literal parse) |
-| `given pat = e { … }` before `{` body | Use `given pat = (e) { … }` when scrutinee is followed by `{` (struct-literal parse) |
 | Enum/struct `match` patterns | Struct/tuple/unit enum arms work; enum **struct payload** variants deferred |
 | `#import` / multi-file | Resolver returns `ImportNotSupported`; single compilation unit only |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD after modules |
@@ -75,7 +72,7 @@ A credible MVP demo `.phx` should be able to:
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
 | PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, **5** sections (incl. local layouts), minor v1           | Round-trip test in `codegen.rs`                          |
 | Bytecode verifier                                                                | partial | `source/phx-bytecode/src/verify.rs`                    | Jump targets, stack depth, locals — for **implemented** opcodes only | `verify(&module)` on `sample.phx` output                 |
-| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (25 fixtures) |
+| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (26 fixtures) |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
 | Source-backed diagnostics in CLI                                                 | done    | `source/phx-diagnostics/src/format.rs`                 | Line + caret for parse/type errors via `CompileError::format_with_source` | `phx check bad_type.phx` shows caret |
@@ -408,7 +405,7 @@ Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_met
 5. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
 6. ~~**Language surface:**~~ explicit casts, tuple/array/slice runtime, `given`, trait impl dispatch, `b"…"`, frame refs.
 
-Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program) list; `run.sh` runs **25** programs.
+Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program) list; `run.sh` runs **26** programs.
 
 ### Phase 4 — Polish (next, before modules)
 

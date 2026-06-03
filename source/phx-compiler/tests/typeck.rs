@@ -81,14 +81,19 @@ fn question_mark_unsupported_in_mvp() {
 
 #[test]
 fn use_after_move_error() {
-    let bag = typeck_err(
-        "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; var q: Point = p; const _ = p.x; };",
-    );
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(e, TypeCheckError::UseAfterMove { .. }))
-    );
+    let source = "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; var q: Point = p; const _ = p.x; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(e, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = err {
+        assert_eq!(name, "p");
+    }
+    let msg = phx_diagnostics::format_typecheck_error(source, err);
+    assert!(msg.contains("moved"));
+    assert!(msg.contains("note:"));
 }
 
 #[test]

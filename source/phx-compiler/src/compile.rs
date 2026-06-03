@@ -7,7 +7,7 @@ use std::io;
 use std::path::Path;
 
 use phx_bytecode::BytecodeModule;
-use phx_diagnostics::{DiagnosticBag, ParseError, TypeCheckBag, format_span_message};
+use phx_diagnostics::{DiagnosticBag, ParseError, TypeCheckBag, format_span_message, format_typecheck_error};
 use phx_syntax::parse;
 
 use crate::codegen::codegen;
@@ -65,9 +65,7 @@ fn format_resolve_bag(bag: &DiagnosticBag, source: Option<&str>) -> String {
 fn format_typecheck_bag(bag: &TypeCheckBag, source: Option<&str>) -> String {
     if let Some(src) = source {
         if let Some(err) = bag.errors().first() {
-            if let Some(span) = err.span() {
-                return format_span_message(src, span, &err.to_string());
-            }
+            return format_typecheck_error(src, err);
         }
     }
     bag.to_string()

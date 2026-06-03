@@ -11,6 +11,7 @@ FIXTURES=(
   continue_in_if.phx
   logical.phx
   match_int.phx
+  match_ident.phx
   match_bool.phx
   struct_point.phx
   struct_assign.phx

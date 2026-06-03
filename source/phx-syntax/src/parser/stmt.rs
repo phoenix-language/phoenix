@@ -85,7 +85,7 @@ impl Parser<'_> {
                     None
                 };
                 self.expect_kind(ExpectedToken::Punct("="), &TokenKind::Eq)?;
-                let init = self.parse_expr()?;
+                let init = self.parse_expr_without_semi()?;
                 self.expect_semi()?;
                 Stmt::Const { name, ty, init }
             }
@@ -95,7 +95,7 @@ impl Parser<'_> {
                 self.expect_kind(ExpectedToken::Punct(":"), &TokenKind::Colon)?;
                 let ty = self.parse_type()?;
                 self.expect_kind(ExpectedToken::Punct("="), &TokenKind::Eq)?;
-                let init = self.parse_expr()?;
+                let init = self.parse_expr_without_semi()?;
                 self.expect_semi()?;
                 Stmt::Var { name, ty, init }
             }

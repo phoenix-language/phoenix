@@ -343,7 +343,7 @@ impl Parser<'_> {
             TokenKind::Ident(name) => {
                 if matches!(
                     self.peek_at(1),
-                    TokenKind::ColonColon | TokenKind::LBrace | TokenKind::Lt
+                    TokenKind::ColonColon | TokenKind::LBrace
                 ) {
                     return self.parse_path_or_struct_literal();
                 }
@@ -425,11 +425,11 @@ impl Parser<'_> {
     /// Parses `Type { … }`, `a::b`, or a single-segment path/ident.
     fn parse_path_or_struct_literal(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
-        let (type_name, first_segment) = match self.peek_kind() {
+        let (type_name, first_segment, from_type_ident) = match self.peek_kind() {
             TokenKind::TypeIdent(n) => {
                 self.bump();
                 let tn = self.intern_type_name(n);
-                (tn, crate::ast::PathSegment::Type(tn))
+                (tn, crate::ast::PathSegment::Type(tn), true)
             }
             TokenKind::Ident(n) => {
                 self.bump();
@@ -437,14 +437,16 @@ impl Parser<'_> {
                 (
                     TypeName { symbol: id.symbol },
                     crate::ast::PathSegment::Ident(id),
+                    false,
                 )
             }
             _ => return Err(self.error_unexpected(ExpectedToken::Ident)),
         };
-        if self.eat_kind(&TokenKind::Lt) {
+        if from_type_ident && self.eat_kind(&TokenKind::Lt) {
             let _generics = self.parse_generic_args()?;
         }
-        if self.eat_kind(&TokenKind::LBrace) {
+        if self.brace_starts_struct_literal_body(from_type_ident) {
+            self.bump();
             let fields = self.parse_struct_field_inits()?;
             return Ok(Node::new(
                 Expr::StructLit {
@@ -551,11 +553,16 @@ impl Parser<'_> {
     fn parse_if_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         self.eat_keyword(Keyword::If);
-        let cond = self.parse_expr()?;
+        // Condition must not include trailing `{ … }` blocks or `else`; use logical level only.
+        let cond = self.parse_logical_or_expr()?;
         let then_block = self.parse_block()?;
         let mut else_ifs = Vec::new();
-        while self.eat_keyword(Keyword::Else) && self.eat_keyword(Keyword::If) {
-            let econd = self.parse_expr()?;
+        while matches!(self.peek_kind(), TokenKind::Keyword(Keyword::Else))
+            && matches!(self.peek_at(1), TokenKind::Keyword(Keyword::If))
+        {
+            self.eat_keyword(Keyword::Else);
+            self.eat_keyword(Keyword::If);
+            let econd = self.parse_logical_or_expr()?;
             let eblock = self.parse_block()?;
             else_ifs.push((econd, eblock));
         }

@@ -625,9 +625,12 @@ impl<'a> TypeChecker<'a> {
         match &target.inner {
             Expr::Ident(ident) => {
                 if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
-                    self.bag
-                        .push(TypeCheckError::MovedAssignTarget { span: target.span });
-                    let _ = move_span;
+                    let name = self.resolved.interner.resolve(ident.symbol).to_owned();
+                    self.bag.push(TypeCheckError::MovedAssignTarget {
+                        name,
+                        move_span,
+                        span: target.span,
+                    });
                 }
                 self.check_ident(ident, target.span)
             }
@@ -789,8 +792,9 @@ impl<'a> TypeChecker<'a> {
             }
         }
         if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
+            let name = self.resolved.interner.resolve(ident.symbol).to_owned();
             self.bag.push(TypeCheckError::UseAfterMove {
-                symbol_index: ident.symbol.index(),
+                name,
                 move_span,
                 span,
             });

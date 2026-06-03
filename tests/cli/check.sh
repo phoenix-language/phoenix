@@ -3,19 +3,21 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FIXTURE_OK="${ROOT}/tests/cli/fixtures/sample.phx"
-FIXTURE_ERR="${ROOT}/tests/cli/fixtures/bad_type.phx"
-FIXTURE_RESOLVE_ERR="${ROOT}/tests/cli/fixtures/missing_main.phx"
+FIXTURES_DIR="${ROOT}/tests/cli/fixtures"
 PHX_BIN="${ROOT}/target/debug/phx"
 
-cd "${ROOT}"
+FIXTURE_OK="${FIXTURES_DIR}/sample.phx"
+FIXTURE_ERR="${FIXTURES_DIR}/bad_type.phx"
+FIXTURE_RESOLVE_ERR="${FIXTURES_DIR}/missing_main.phx"
 
-for fixture in "${FIXTURE_OK}" "${FIXTURE_ERR}" "${FIXTURE_RESOLVE_ERR}"; do
-  if [[ ! -f "${fixture}" ]]; then
-    echo "missing fixture: ${fixture}" >&2
-    exit 1
-  fi
-done
+NEG_FIXTURES=(
+  "bad_type.phx:type mismatch"
+  "missing_main.phx:main"
+  "use_after_move.phx:moved"
+  "mixed_width.phx:invalid"
+)
+
+cd "${ROOT}"
 
 echo "building phx CLI..."
 cargo build -q -p phx
@@ -24,6 +26,13 @@ if [[ ! -x "${PHX_BIN}" ]]; then
   echo "missing binary: ${PHX_BIN}" >&2
   exit 1
 fi
+
+for fixture in "${FIXTURE_OK}" "${FIXTURE_ERR}" "${FIXTURE_RESOLVE_ERR}"; do
+  if [[ ! -f "${fixture}" ]]; then
+    echo "missing fixture: ${fixture}" >&2
+    exit 1
+  fi
+done
 
 echo "running: phx check ${FIXTURE_OK} (expect success)"
 if ! "${PHX_BIN}" check "${FIXTURE_OK}"; then
@@ -50,5 +59,32 @@ if "${PHX_BIN}" check "${FIXTURE_RESOLVE_ERR}"; then
   exit 1
 fi
 echo "phx check failed as expected (missing main)"
+
+for entry in "${NEG_FIXTURES[@]}"; do
+  name="${entry%%:*}"
+  needle="${entry#*:}"
+  path="${FIXTURES_DIR}/${name}"
+  if [[ ! -f "${path}" ]]; then
+    echo "missing fixture: ${path}" >&2
+    exit 1
+  fi
+  echo "running: phx check ${path} (expect failure containing '${needle}')"
+  if output="$("${PHX_BIN}" check "${path}" 2>&1)"; then
+    echo "phx check should fail for ${path}" >&2
+    exit 1
+  fi
+  if [[ "${output}" != *"${needle}"* ]]; then
+    echo "phx check output should mention '${needle}'" >&2
+    echo "got: ${output}" >&2
+    exit 1
+  fi
+  if [[ "${name}" == "use_after_move.phx" ]]; then
+    if [[ "${output}" != *"note:"* ]]; then
+      echo "use-after-move diagnostic should include move-site note" >&2
+      echo "got: ${output}" >&2
+      exit 1
+    fi
+  fi
+done
 
 echo "all phx check CLI tests passed"

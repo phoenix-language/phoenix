@@ -1,0 +1,5 @@
+main :: () => {
+    const a: s32 = 1;
+    const b: s64 = 2 as s64;
+    const _ = a + b;
+};

@@ -844,6 +844,51 @@ fn expr_match_arm_guard() {
 }
 
 #[test]
+fn expr_match_ident_scrutinee_no_parens() {
+    assert_ok(&in_main("const _ = match n { _ => 0; };"));
+}
+
+#[test]
+fn expr_match_ident_literal_arms_no_parens() {
+    assert_ok(&in_main("const _ = match n { 0 => 1; _ => 2; };"));
+}
+
+#[test]
+fn expr_match_type_name_scrutinee_no_parens() {
+    assert_ok(&in_main("const _ = match Point { _ => 0; };"));
+}
+
+#[test]
+fn stmt_given_ident_scrutinee_no_parens() {
+    assert_ok(&in_main("given _ = x { };"));
+}
+
+#[test]
+fn stmt_while_comparison_block_no_parens() {
+    assert_ok(&in_main("while i < n { };"));
+}
+
+#[test]
+fn expr_if_logical_block_no_parens() {
+    assert_ok(&in_main("const _v = if c || d { 1 } else { 0 };"));
+}
+
+#[test]
+fn stmt_if_expr_no_parens() {
+    assert_ok(&in_main("if c || d { 1 } else { 0 };"));
+}
+
+#[test]
+fn const_if_true_else_no_parens() {
+    assert_ok(&in_main("const _v = if true { 1 } else { 0 };"));
+}
+
+#[test]
+fn expr_if_in_block_as_const_init() {
+    assert_ok(&in_main("const z = { if true { 1 } else { 2 } };"));
+}
+
+#[test]
 fn expr_block_as_expr() {
     assert_ok(&in_main_expr("{ 1 }"));
 }
@@ -1174,7 +1219,7 @@ fn real_world_cast_no_implicit_widen() {
 #[test]
 fn real_world_match_option() {
     assert_ok(&in_main(
-        "const _r = match (v) { Some(x) => x; None => 0; };",
+        "const _r = match v { Some(x) => x; None => 0; };",
     ));
 }
 
