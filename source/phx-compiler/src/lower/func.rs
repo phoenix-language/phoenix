@@ -20,7 +20,8 @@ pub fn lower_functions(typed: &TypedProgram, constants: &mut Vec<IrConst>) -> Ve
         .collect()
 }
 
-fn lower_one_function(
+/// Lowers a single function layout to IR.
+pub(crate) fn lower_one_function(
     typed: &TypedProgram,
     layout: &FunctionLayout,
     index: usize,

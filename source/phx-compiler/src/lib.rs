@@ -14,19 +14,28 @@
 //! - [`lower`] — [`TypedProgram`] → [`IrModule`].
 //! - [`codegen`] — [`IrModule`] → [`phx_bytecode::BytecodeModule`].
 
+mod build;
 mod codegen;
 mod compile;
 mod ir;
+mod link;
 mod lower;
 mod modules;
+mod project;
+mod pxi;
 mod resolver;
 mod typeck;
 mod unit;
 
-pub use codegen::{build_type_table, codegen};
+pub use codegen::{build_type_table, codegen, codegen_module};
+pub use link::{link_modules, LinkError, LinkInput};
+pub use build::{build_project, load_project_binary, BuildError, BuildResult};
 pub use compile::{
     CompileError, check_file, check_file_with_module_path, compile_source, compile_to_module,
     compile_to_module_with_module_path,
+};
+pub use project::{
+    discover_project, resolve_project, BuildLayout, ProjectConfig, ProjectError,
 };
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use lower::lower;

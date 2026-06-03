@@ -21,7 +21,7 @@ mod expr;
 mod func;
 mod stmt;
 
-use crate::ir::IrModule;
+use crate::ir::{IrFunction, IrModule};
 use crate::typeck::TypedProgram;
 
 /// Lowers `typed` to IR.
@@ -37,5 +37,35 @@ pub fn lower(typed: &TypedProgram) -> IrModule {
         functions,
         entry: typed.entry,
         constants,
+    }
+}
+
+/// Lowers only functions defined in `module_id` (slice of a full [`lower`] result).
+#[must_use]
+pub fn lower_module(typed: &TypedProgram, module_id: u32) -> IrModule {
+    let full = lower(typed);
+    let functions: Vec<IrFunction> = full
+        .functions
+        .iter()
+        .filter(|f| {
+            typed
+                .resolved
+                .defs
+                .get(f.def.index() as usize)
+                .is_some_and(|d| d.module == module_id)
+        })
+        .cloned()
+        .collect();
+    let entry = typed.entry.filter(|&main| {
+        typed
+            .resolved
+            .defs
+            .get(main.index() as usize)
+            .is_some_and(|d| d.module == module_id)
+    });
+    IrModule {
+        functions,
+        entry,
+        constants: full.constants,
     }
 }

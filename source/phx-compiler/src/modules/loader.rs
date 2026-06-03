@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use phx_diagnostics::{DiagnosticBag, ResolveError};
 use phx_syntax::{Interner, Program, SourceFile, parse_with_interner};
 
-use super::graph::{build_path_index, collect_edges, topo_sort};
+use super::graph::{collect_edges, topo_sort_with_pxi_escape};
+use crate::project::BuildLayout;
 use super::path::ModulePath;
 
 /// Dense module identifier.
@@ -63,6 +64,16 @@ pub struct LoadedCrate {
 pub fn load_crate(
     entry_file: &Path,
     module_root: &Path,
+    bag: &mut DiagnosticBag,
+) -> Option<LoadedCrate> {
+    load_crate_with_layout(entry_file, module_root, None, bag)
+}
+
+/// Like [`load_crate`] with optional build layout for `.pxi` cycle escape (M2).
+pub fn load_crate_with_layout(
+    entry_file: &Path,
+    module_root: &Path,
+    layout: Option<&BuildLayout>,
     bag: &mut DiagnosticBag,
 ) -> Option<LoadedCrate> {
     let entry_file = entry_file.canonicalize().unwrap_or_else(|_| entry_file.to_path_buf());
@@ -185,7 +196,14 @@ pub fn load_crate(
         .copied()
         .or_else(|| id_for_path.values().next().copied())?;
 
-    let order = topo_sort(module_count, &edges, root_id, bag)?;
+    let order = topo_sort_with_pxi_escape(
+        module_count,
+        &edges,
+        root_id,
+        &modules,
+        layout,
+        bag,
+    )?;
     let index_map: HashMap<ModuleId, usize> = modules
         .iter()
         .map(|m| (m.id, m.id.index() as usize))

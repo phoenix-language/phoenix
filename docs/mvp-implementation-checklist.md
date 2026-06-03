@@ -23,7 +23,7 @@
 | Issue | Impact |
 |-------|--------|
 | Enum struct-payload `match` exhaustiveness | No unreachable-arm warnings yet |
-| `#import` / multi-file | M1 whole-program: `modules/loader.rs`, `resolve_crate.rs`; `compile_source` still single-file |
+| `#import` / multi-file | M1 whole-program + M2 `phx build` → `build/` (`.pxi`, `.phx0`, `build/bin`) |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD after modules |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
 
@@ -326,6 +326,21 @@ A credible MVP demo `.phx` should be able to:
 | Path `std::…` → file mapping       | done    | `modules/path.rs` | Under `module_root` | `util::math` → `util/math.phx` |
 
 
+### M2 — `phoenix.toml`, `build/`, incremental (modules.md)
+
+
+| Item | Status | Where | Notes | Acceptance |
+|------|--------|-------|-------|------------|
+| `phoenix.toml` project root | done | `project/config.rs` | Marker file required | `tests/cli/fixtures/project/` |
+| `build/` artifact layout | done | `project/layout.rs` | `pxi/`, `phx0/`, `bin/`, `manifest.json` | `tests/cli/build.sh` |
+| `.pxi` v1 interfaces | done | `pxi/format.rs` | JSON exports + source hash | `build/pxi/util/math.pxi` |
+| PHX0 linker | done | `link/mod.rs` | Merge per-module objects | `build/bin/main.phx0` runs |
+| Incremental manifest | done | `build/manifest.rs` | Skip unchanged modules | Re-`phx build` fast path |
+| Import cycle + `.pxi` escape | done | `modules/graph.rs` | Fresh `.pxi` on all SCC nodes | Design in modules.md |
+| `phx build` / project `phx run` | done | `build/driver.rs`, `phx` CLI | `--no-build`, `--build` | `tests/integration/run_build.rs` |
+| Separate compile via `.pxi` | partial | `modules/interface_loader.rs` | API present; build uses whole-program typeck | — |
+
+
 ---
 
 ## CLI & tooling
@@ -335,8 +350,9 @@ A credible MVP demo `.phx` should be able to:
 | -------------------------------- | ------- | ------------------------ | --------------------------- | -------------------- |
 | `phx help`                       | done    | `source/phx/src/main.rs` |                             | `tests/cli/help.sh`  |
 | `phx check <file>`               | done    | same                     | Parse+resolve+typeck        | `tests/cli/check.sh` |
-| `phx run <file>`                 | done    | compile+verify+VM        |                             | `tests/cli/run.sh`   |
-| `phx compile -o`                 | missing | —                        |                             |                      |
+| `phx build <file>`               | done    | `build/driver.rs`        | Requires `phoenix.toml`     | `tests/cli/build.sh` |
+| `phx run <file>`                 | done    | project build or M1 path | `build/bin` when project    | `tests/cli/build.sh` |
+| `phx compile -o`                 | done    | same                     | M1 path; optional project   | `tests/cli/compile.sh` |
 | Pretty diagnostics (span labels) | missing | `phx-diagnostics`        | Comment: "later formatting" |                      |
 
 
@@ -416,8 +432,9 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program) list; `run.sh` runs
 
 ### Phase 5 — Modules (`#import`)
 
-1. **Module graph:** load multiple files, `::` paths, `pub` visibility ([modules.md](design/features/modules.md)).
-2. **Std + prelude (minimal):** `Option`/`Result` as generic enums in library; then `?` — not compiler builtins.
+1. ~~**Module graph (M1):**~~ load multiple files, `::` paths, `pub` visibility ([modules.md](design/features/modules.md)).
+2. ~~**M2 build pipeline:**~~ `phoenix.toml`, `build/`, `.pxi`, linker, incremental manifest.
+3. **Std + prelude (minimal):** `Option`/`Result` as generic enums in library; then `?` — not compiler builtins.
 
 ### Phase 6 — Memory model & lifetimes (after modules; before scheduler/std I/O)
 

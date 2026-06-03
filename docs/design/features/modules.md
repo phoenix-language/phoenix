@@ -8,10 +8,10 @@ Phoenix has no `mod { ... }` or `use` blocks. **Files are modules.** Folders are
 
 | Phase | Behavior |
 |-------|----------|
-| **M1 (current target)** | Whole-program compile: load all reachable `.phx` files, `#import`, `pub`, cycle rejection, one PHX0 output |
-| **M2 (planned)** | `.pxi` interface files, content-hash incremental rebuild, separate compilation in cycles, linker artifacts |
+| **M1** | Whole-program compile: load all reachable `.phx` files, `#import`, `pub`, cycle rejection, one PHX0 output |
+| **M2** | `phoenix.toml` project root, `build/` artifacts, `.pxi` interfaces, incremental rebuild, PHX0 linker, `phx build` / `phx run` |
 
-M1 does **not** include: relative `./` / `../` imports, `import { x as y }` aliases, `.pxi` files, or per-module object linking.
+**Deferred (post-M2):** relative `./` / `../` imports, `import { x as y }` aliases, qualified paths without `#import`.
 
 ---
 
@@ -27,7 +27,7 @@ Path resolution for `#import math::common`:
 1. `{module_root}/math/common.phx`
 2. Else `{module_root}/math/common/index.phx`
 
-`module_root` is set by `--module-path` (defaults to the entry file’s directory).
+`module_root` comes from `phoenix.toml` `[project] module_path` or `--module-path`.
 
 - Items at file scope are **private** unless marked `pub`
 - `pub` marks an item exportable to other modules via `#import`
@@ -35,47 +35,13 @@ Path resolution for `#import math::common`:
 
 ---
 
-## Defining and consuming code
-
-```phoenix
-// std/http/request.phx
-
-pub Request :: struct
-{
-  method: [u8; 4],
-  path: [u8; 8],
-}
-
-handle :: (req: Request) => Response
-{
-  // ...
-};
-```
-
-```phoenix
-// app/main.phx
-
-#import std::http::Request
-#import std::http::handle
-
-main :: () =>
-{
-  const req = Request { method: [71u, 69u, 84u, 0u], path: [47u, 104u, 101u, 97u, 108u, 116u, 104u, 0u] };
-  handle(req);
-};
-```
-
-Qualified paths (`std::http::Request`) may resolve without `#import` when unambiguous; `#import` brings names into the importer’s scope.
-
----
-
 ## Import forms
 
 | Form | Effect |
 |------|--------|
-| `#import path::Item` | `Item` in scope (last path segment is the symbol; preceding segments are the module) |
-| `#import path::{A, B, C}` | Multiple `pub` items from `path` |
-| `#import path::*` | All `pub` items from module `path` |
+| `#import path::Item;` | `Item` in scope (last segment is the symbol) |
+| `#import path::{A, B, C};` | Multiple `pub` items from `path` |
+| `#import path::*;` | All `pub` items from module `path` |
 
 Importing a non-`pub` item is a compile error. Duplicate names from globs or multiple imports are reported.
 
@@ -83,28 +49,121 @@ Importing a non-`pub` item is a compile error. Duplicate names from globs or mul
 
 ## Entry point
 
-- Executable builds require `main :: () => { … }` in the **entry** module (the file passed to `phx check` / `phx run`).
+- Executable builds require `main :: () => { … }` in the **entry** module.
 - Other modules may omit `main`.
-- Circular `#import` graphs are rejected in M1 (with a cycle trace).
+- **M1:** circular `#import` graphs are rejected with a cycle trace.
+- **M2:** cycles may compile when every module in the SCC has a **fresh** `.pxi` (interface-only for importers).
 
 ---
 
-## Top-level side effects (M1)
+## Project configuration (`phoenix.toml`)
 
-Top-level executable side effects are disallowed. Use `init :: () => { … }` (or call from `main`) instead. Module-level `const` / `var` runtime is not part of M1.
+The project root is the directory containing `phoenix.toml`. `phx build` and `phx run` require this file.
+
+```toml
+[project]
+name = "myapp"
+module_path = "src"
+
+[build]
+dir = "build"
+entry = "app/main"
+```
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `project.name` | required | Project name (diagnostics) |
+| `project.module_path` | `"."` | Root for source modules and `#import` |
+| `build.dir` | `"build"` | All compiler outputs |
+| `build.entry` | CLI entry file | Logical module path for `main` (e.g. `app/main`) |
 
 ---
 
-## M2: interfaces and incremental builds (planned)
+## Build directory layout (M2)
 
-From the separate-compilation design:
+All compiler outputs live under `{build.dir}` (default `build/`):
 
-- **`.pxi` files** — per-module exported symbol metadata and a content hash/checksum
-- **Incremental compile** — recompile when a dependency’s `.pxi` hash changes
-- **Import cycles** — may compile only when every module in the cycle has a current `.pxi` (interfaces only, no body forwarding)
-- **Linker** — combine object/bytecode artifacts; link only symbols listed as `pub` in `.pxi`
-- **Future syntax** — `./` and `../` in import paths; `import { cos as c }`
-- **Optional `origin` field** in `.pxi` for future package/version identifiers
+| Path | Content |
+|------|---------|
+| `build/manifest.json` | Module graph, source/pxi hashes, artifact paths |
+| `build/pxi/<path>.pxi` | Interface for logical module `a::b::c` → `build/pxi/a/b/c.pxi` |
+| `build/phx0/<path>.phx0` | Per-module object bytecode |
+| `build/bin/<name>.phx0` | Linked executable for `phx run` |
+
+Logical path `util::math` maps to `build/pxi/util/math.pxi` and `build/phx0/util/math.phx0`.
+
+---
+
+## `.pxi` interface format (v1)
+
+JSON file, `format_version: 1`:
+
+```json
+{
+  "format_version": 1,
+  "module_path": "util::math",
+  "source_hash": "<hex digest of .phx bytes>",
+  "origin": null,
+  "exports": [
+    { "name": "add", "kind": "fn", "signature": "(s32, s32) => s32" }
+  ],
+  "dependencies": [
+    { "module_path": "other", "pxi_hash": "<hex digest of .pxi file>" }
+  ]
+}
+```
+
+- **`source_hash`** — digest of source bytes; stale when source changes.
+- **`exports`** — `pub` items only; `signature` is a stable type string for cross-module checking.
+- **`dependencies`** — direct imports for incremental invalidation.
+- **`origin`** — optional; reserved for future packages.
+
+Importers may type-check against `.pxi` when compiling separately and dependency `.pxi` is fresh.
+
+---
+
+## Linker contract (M2)
+
+**Input:** ordered per-module `build/phx0/*.phx0`, export tables from `.pxi`, entry module logical path.
+
+**Output:** one [`BytecodeModule`](vm-linear.md) at `build/bin/<name>.phx0` with:
+
+- Remapped `function_id`, type ids, and constant indices across modules
+- `entry_function_id` = linked id of entry module `main`
+- Cross-module calls resolved via `pub` exports in `.pxi`
+
+**Errors:** `InterfaceMismatch`, duplicate global symbol, missing `main` in entry module.
+
+---
+
+## Incremental builds
+
+`build/manifest.json` records per-module `source_hash`, `pxi_hash`, and paths.
+
+Rebuild module **M** when:
+
+- `hash(M.source) != pxi(M).source_hash`, or
+- any direct dependency’s `pxi_hash` changed.
+
+Transitive importers are rebuilt in reverse dependency order.
+
+---
+
+## CLI (M2)
+
+| Command | Behavior |
+|---------|----------|
+| `phx build [entry.phx]` | Requires `phoenix.toml`; writes `build/` artifacts and manifest |
+| `phx run [entry.phx]` | Loads `build/bin/*.phx0`; rebuilds when stale unless `--no-build` |
+| `phx check` | Unchanged M1 path (no `build/` required) |
+
+Flags: `--project-root`, `--module-path`, `--no-build`, `--build`, `--emit-interface-only`.
+
+---
+
+## Top-level side effects
+
+Top-level executable side effects are disallowed. Use `init :: () => { … }` or call from `main`. Module-level `const` / `var` runtime is not part of MVP modules.
 
 ---
 
@@ -114,3 +173,4 @@ From the separate-compilation design:
 |-------|----------|
 | Formal grammar | [grammar.ebnf](../grammar.ebnf) |
 | MVP boundary | [mvp.md](../mvp.md) |
+| Bytecode / VM | [vm-linear.md](vm-linear.md) |

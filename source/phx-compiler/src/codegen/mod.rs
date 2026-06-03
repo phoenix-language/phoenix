@@ -125,6 +125,91 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
     }
 }
 
+/// Codegens one module's IR slice using global function ids for [`IrInst::Call`].
+#[must_use]
+pub fn codegen_module(
+    ir: &IrModule,
+    typed: &TypedProgram,
+    global_fn: &HashMap<DefId, u32>,
+    is_entry_module: bool,
+) -> BytecodeModule {
+    let layout = &typed.layout;
+    let def_to_fn = global_fn;
+    let fn_arity: HashMap<u32, u16> = ir
+        .functions
+        .iter()
+        .map(|f| {
+            (
+                global_fn.get(&f.def).copied().unwrap_or(f.id.index()),
+                u16::try_from(f.params.len()).unwrap_or(u16::MAX),
+            )
+        })
+        .collect();
+
+    let mut pool = ConstPoolBuilder::new();
+    pool.fill_from_ir(&ir.constants);
+    let mut code = Vec::new();
+    let mut records = Vec::new();
+
+    for func in &ir.functions {
+        let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
+        let offset = u32::try_from(code.len()).unwrap_or(u32::MAX);
+        let emitted = emit::emit_function(func, &mut pool, def_to_fn, &fn_arity);
+        let len = u32::try_from(emitted.code.len()).unwrap_or(u32::MAX);
+        records.push(FunctionRecord {
+            function_id: fn_id,
+            name_symbol_id: 0,
+            arity: u16::try_from(func.params.len()).unwrap_or(u16::MAX),
+            local_count: u16::try_from(func.local_count).unwrap_or(u16::MAX),
+            stack_max: emitted.stack_max,
+            flags: 0,
+            code_offset: offset,
+            code_len: len,
+            return_type_id: 0,
+        });
+        code.extend_from_slice(&emitted.code);
+    }
+
+    let entry_function_id = if is_entry_module {
+        ir.entry
+            .and_then(|main| global_fn.get(&main).copied())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    let constants = pool.finish();
+    let mut layouts = Vec::new();
+    for func in &ir.functions {
+        let Some(fl) = typed.functions.iter().find(|f| f.def == func.def) else {
+            continue;
+        };
+        let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
+        let slots: Vec<LocalSlotKind> = fl
+            .bindings
+            .iter()
+            .map(|b| slot_kind_for_binding(&typed.types, b.ty))
+            .collect();
+        layouts.push(FunctionLocalLayout {
+            function_id: fn_id,
+            slots,
+        });
+    }
+
+    BytecodeModule {
+        header: FileHeader {
+            entry_function_id,
+            section_count: 5,
+            ..FileHeader::new(5, entry_function_id)
+        },
+        constants,
+        types: build_type_table(layout),
+        functions: FunctionTable { functions: records },
+        code,
+        local_layouts: LocalLayoutTable { layouts },
+    }
+}
+
 fn build_local_layouts(ir: &IrModule, typed: &TypedProgram) -> LocalLayoutTable {
     let mut layouts = Vec::new();
     for func in &ir.functions {

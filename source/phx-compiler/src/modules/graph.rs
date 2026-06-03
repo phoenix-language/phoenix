@@ -7,15 +7,15 @@ use phx_syntax::Interner;
 use phx_syntax::ast::decl::{ImportDirective, ImportItem};
 use phx_syntax::ast::ident::PathSegment;
 
-use super::loader::ModuleId;
+use super::loader::{LoadedModule, ModuleId};
 use super::path::ModulePath;
+use crate::project::BuildLayout;
+use crate::pxi::PxiFile;
 
 /// Directed edges: importer → imported module path string.
-pub(crate) fn topo_sort(
+fn topo_sort_inner(
     module_count: usize,
     edges: &[(ModuleId, ModuleId)],
-    roots: ModuleId,
-    bag: &mut DiagnosticBag,
 ) -> Option<Vec<ModuleId>> {
     let mut indegree = vec![0usize; module_count];
     let mut adj: Vec<Vec<ModuleId>> = vec![Vec::new(); module_count];
@@ -47,17 +47,91 @@ pub(crate) fn topo_sort(
     }
 
     if order.len() != module_count {
-        bag.push(ResolveError::CircularImport {
-            span: Span::new(0, 0),
-            cycle: format!("module graph cycle (entry module id {})", roots.index()),
-        });
         return None;
     }
     Some(order)
 }
 
+/// Topological order; reports [`ResolveError::CircularImport`] on failure.
+pub(crate) fn topo_sort(
+    module_count: usize,
+    edges: &[(ModuleId, ModuleId)],
+    roots: ModuleId,
+    bag: &mut DiagnosticBag,
+) -> Option<Vec<ModuleId>> {
+    let _ = roots;
+    topo_sort_inner(module_count, edges).or_else(|| {
+        bag.push(ResolveError::CircularImport {
+            span: Span::new(0, 0),
+            cycle: "module graph cycle".to_owned(),
+        });
+        None
+    })
+}
+
+/// Topological order, or cycle escape when every cyclic module has a fresh `.pxi`.
+pub(crate) fn topo_sort_with_pxi_escape(
+    module_count: usize,
+    edges: &[(ModuleId, ModuleId)],
+    roots: ModuleId,
+    modules: &[LoadedModule],
+    layout: Option<&BuildLayout>,
+    bag: &mut DiagnosticBag,
+) -> Option<Vec<ModuleId>> {
+    let _ = roots;
+    if let Some(order) = topo_sort_inner(module_count, edges) {
+        return Some(order);
+    }
+    if let Some(layout) = layout {
+        if cycle_modules_have_fresh_pxi(module_count, edges, modules, layout) {
+            return Some(
+                (0..module_count)
+                    .map(|i| ModuleId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+                    .collect(),
+            );
+        }
+    }
+    bag.push(ResolveError::CircularImport {
+        span: Span::new(0, 0),
+        cycle: format!("module graph cycle (entry module id {})", roots.index()),
+    });
+    None
+}
+
+fn cycle_modules_have_fresh_pxi(
+    module_count: usize,
+    edges: &[(ModuleId, ModuleId)],
+    modules: &[LoadedModule],
+    layout: &BuildLayout,
+) -> bool {
+    let mut indegree = vec![0usize; module_count];
+    for &(_, to) in edges {
+        if (to.index() as usize) < module_count {
+            indegree[to.index() as usize] += 1;
+        }
+    }
+    let cyclic: Vec<usize> = indegree
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| **d > 0)
+        .map(|(i, _)| i)
+        .collect();
+    if cyclic.is_empty() {
+        return false;
+    }
+    cyclic.iter().all(|&idx| {
+        let m = &modules[idx];
+        let pxi_path = layout.module_artifacts(&m.logical_path.display()).pxi;
+        let Ok(pxi) = PxiFile::read_from_path(&pxi_path) else {
+            return false;
+        };
+        pxi.source_is_fresh(&m.filesystem)
+    })
+}
+
 /// Resolves import directive to target module path.
-pub(crate) fn import_target_module(
+/// Resolves import directive to target module path.
+pub fn import_target_module(
     import: &ImportDirective,
     interner: &Interner,
 ) -> ModulePath {

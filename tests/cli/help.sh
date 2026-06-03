@@ -16,8 +16,8 @@ if [[ ! -x "${PHX_BIN}" ]]; then
 fi
 
 output="$("${PHX_BIN}" help 2>&1)" || true
-if [[ "${output}" != *"phx check"* ]] || [[ "${output}" != *"phx run"* ]] || [[ "${output}" != *"phx compile"* ]] || [[ "${output}" != *"module-path"* ]]; then
-  echo "phx help should mention check, compile, run, and --module-path" >&2
+if [[ "${output}" != *"phx check"* ]] || [[ "${output}" != *"phx run"* ]] || [[ "${output}" != *"phx compile"* ]] || [[ "${output}" != *"phx build"* ]] || [[ "${output}" != *"phoenix.toml"* ]]; then
+  echo "phx help should mention check, build, compile, run, and phoenix.toml" >&2
   echo "got: ${output}" >&2
   exit 1
 fi
