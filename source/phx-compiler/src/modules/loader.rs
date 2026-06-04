@@ -61,6 +61,8 @@ pub struct LoadedCrate {
     pub package_type: PackageType,
     /// Names of path-dependency packages.
     pub dep_package_names: Vec<String>,
+    /// Build artifact paths when loaded under a project layout (for `.pxi` import surface).
+    pub build_layout: Option<BuildLayout>,
 }
 
 /// Loads the module graph starting at `entry_file` under `module_root` (single-package fallback).
@@ -273,6 +275,7 @@ pub fn load_crate_with_context(
         package_name: workspace.name.clone(),
         package_type: workspace.package_type,
         dep_package_names: ctx.dependencies.iter().map(|d| d.name.clone()).collect(),
+        build_layout: layout.cloned(),
     })
 }
 

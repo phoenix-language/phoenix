@@ -146,18 +146,17 @@ impl<'src> Parser<'src> {
         Ok(crate::ast::Ident { symbol, span })
     }
 
-    /// Interns `text` as a type identifier (`PascalCase` name).
+    /// Interns `text` as a type identifier (`PascalCase` name) at `span`.
     pub(crate) fn intern_type_name(
         &mut self,
         text: &str,
+        span: Span,
     ) -> Result<crate::ast::TypeName, ParseError> {
         let symbol = self
             .interner
             .intern(text)
-            .map_err(|_| ParseError::InternTableFull {
-                span: self.current_span(),
-            })?;
-        Ok(crate::ast::TypeName { symbol })
+            .map_err(|_| ParseError::InternTableFull { span })?;
+        Ok(crate::ast::TypeName { symbol, span })
     }
 
     /// Returns `true` when the cursor is at EOF.
@@ -319,12 +318,14 @@ impl<'src> Parser<'src> {
     pub(crate) fn parse_type_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
         match self.peek_kind() {
             TokenKind::TypeIdent(name) => {
+                let span = self.current_span();
                 self.bump();
-                self.intern_type_name(name)
+                self.intern_type_name(name, span)
             }
             TokenKind::Keyword(Keyword::SelfUpper) => {
+                let span = self.current_span();
                 self.bump();
-                self.intern_type_name("Self")
+                self.intern_type_name("Self", span)
             }
             _ => Err(self.error_unexpected(ExpectedToken::TypeIdent)),
         }

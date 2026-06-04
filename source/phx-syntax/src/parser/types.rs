@@ -67,20 +67,22 @@ impl Parser<'_> {
                 Ok(Node::new(Type::Primitive(k), self.span_from(start)))
             }
             TokenKind::TypeIdent(name) => {
+                let span = self.current_span();
                 self.bump();
                 Ok(Node::new(
                     Type::Named {
-                        name: self.intern_type_name(name)?,
+                        name: self.intern_type_name(name, span)?,
                         generics: None,
                     },
                     self.span_from(start),
                 ))
             }
             TokenKind::Keyword(Keyword::SelfUpper) => {
+                let span = self.current_span();
                 self.bump();
                 Ok(Node::new(
                     Type::Named {
-                        name: self.intern_type_name("Self")?,
+                        name: self.intern_type_name("Self", span)?,
                         generics: None,
                     },
                     self.span_from(start),

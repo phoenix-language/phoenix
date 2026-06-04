@@ -1,0 +1,4 @@
+#import bad_dup::witness;
+#import util::math::add;
+
+main :: () => { const _ = add(1, 2); };

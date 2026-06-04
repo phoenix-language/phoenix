@@ -450,14 +450,18 @@ impl Parser<'_> {
         let start = self.pos;
         let (type_name, first_segment, from_type_ident) = match self.peek_kind() {
             TokenKind::TypeIdent(n) => {
+                let span = self.current_span();
                 self.bump();
-                let tn = self.intern_type_name(n)?;
+                let tn = self.intern_type_name(n, span)?;
                 (tn, crate::ast::PathSegment::Type(tn), true)
             }
             TokenKind::Ident(n) => {
                 let id = self.bump_ident(n)?;
                 (
-                    TypeName { symbol: id.symbol },
+                    TypeName {
+                        symbol: id.symbol,
+                        span: id.span,
+                    },
                     crate::ast::PathSegment::Ident(id),
                     false,
                 )
@@ -496,8 +500,11 @@ impl Parser<'_> {
             loop {
                 match self.peek_kind() {
                     TokenKind::TypeIdent(seg) => {
+                        let span = self.current_span();
                         self.bump();
-                        segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)?));
+                        segments.push(crate::ast::PathSegment::Type(
+                            self.intern_type_name(seg, span)?,
+                        ));
                     }
                     TokenKind::Ident(seg) => {
                         segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));

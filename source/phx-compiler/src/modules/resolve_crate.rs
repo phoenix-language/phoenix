@@ -12,7 +12,8 @@ use crate::resolver::{Def, DefId, DefKind, ResolvedProgram, Resolver, SourceModu
 
 use super::loader::{LoadedCrate, LoadedModule, ModuleId};
 use super::path::ModulePath;
-use crate::project::PackageType;
+use crate::project::{BuildLayout, PackageType};
+use crate::pxi::PxiFile;
 
 type ExportMap = HashMap<Symbol, DefId>;
 
@@ -31,13 +32,15 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         package_type,
         package_name,
         dep_package_names,
-        ..
+        build_layout,
     } = loaded;
+    let layout = build_layout.as_ref();
     let dep_name_refs: Vec<&str> = dep_package_names.iter().map(String::as_str).collect();
     let mut bag = DiagnosticBag::new();
     let mut defs = Vec::new();
     let mut exports: Vec<ExportMap> = vec![HashMap::new(); modules.len()];
     let mut main_fn = None;
+    let mut phase1_skip: HashSet<u32> = HashSet::new();
 
     let source_modules: Vec<SourceModule> = modules
         .iter()
@@ -86,6 +89,9 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         if module.id == root && package_type == PackageType::Bin {
             resolver.check_main();
         }
+        if resolver.bag.has_errors() {
+            phase1_skip.insert(module.id.index());
+        }
         for e in resolver.bag.into_errors() {
             bag.push_located(e);
         }
@@ -98,18 +104,19 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         }
     }
 
-    if bag.has_errors() {
-        return Err(bag);
-    }
-
-    // Phase 2: resolve bodies with import prefaces.
+    // Phase 2: resolve bodies with import prefaces (skip modules that failed phase 1).
     let mut resolutions = HashMap::new();
     for (idx, module) in modules.iter().enumerate() {
+        if phase1_skip.contains(&module.id.index()) {
+            continue;
+        }
         let bindings = build_import_bindings(
             module,
+            &modules,
             &path_index,
             &exports,
             &defs,
+            layout,
             &mut interner,
             &package_name,
             &dep_name_refs,
@@ -173,9 +180,11 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
 #[allow(clippy::too_many_arguments)]
 fn build_import_bindings(
     module: &LoadedModule,
+    modules: &[LoadedModule],
     path_index: &HashMap<String, ModuleId>,
     exports: &[ExportMap],
     defs: &[Def],
+    layout: Option<&BuildLayout>,
     interner: &mut Interner,
     workspace_name: &str,
     dep_names: &[&str],
@@ -196,7 +205,8 @@ fn build_import_bindings(
             continue;
         };
         let dep_idx = dep_id.index() as usize;
-        let dep_exports = &exports[dep_idx];
+        let dep_exports =
+            exports_for_dependency(&key, &exports[dep_idx], &modules[dep_idx], layout, interner);
 
         let glob = imp
             .inner
@@ -204,7 +214,7 @@ fn build_import_bindings(
             .as_ref()
             .is_some_and(|list| list.items.iter().any(|i| matches!(i, ImportItem::Glob)));
         if glob {
-            for (&sym, &def_id) in dep_exports {
+            for (&sym, &def_id) in &dep_exports {
                 if !seen.insert(sym) {
                     bag.push(
                         module.id.index(),
@@ -277,6 +287,42 @@ fn build_import_bindings(
         }
     }
     bindings
+}
+
+/// Export map for an import target: when `.pxi` is fresh, restrict to symbols listed in the interface.
+fn exports_for_dependency(
+    logical_path: &str,
+    ast_exports: &ExportMap,
+    dep_module: &LoadedModule,
+    layout: Option<&BuildLayout>,
+    interner: &Interner,
+) -> ExportMap {
+    let Some(layout) = layout else {
+        return ast_exports.clone();
+    };
+    let pxi_path = layout.module_artifacts(logical_path).pxi;
+    if !pxi_path.is_file() {
+        return ast_exports.clone();
+    }
+    let Ok(pxi) = PxiFile::read_from_path(&pxi_path) else {
+        return ast_exports.clone();
+    };
+    if !pxi.source_is_fresh(&dep_module.filesystem) {
+        return ast_exports.clone();
+    }
+    let mut from_pxi = ExportMap::new();
+    for exp in &pxi.exports {
+        for (&sym, &def_id) in ast_exports {
+            if interner.resolve(sym) == exp.name {
+                from_pxi.insert(sym, def_id);
+            }
+        }
+    }
+    if from_pxi.is_empty() {
+        ast_exports.clone()
+    } else {
+        from_pxi
+    }
 }
 
 fn main_function_span(program: &Program, interner: &Interner) -> Option<Span> {

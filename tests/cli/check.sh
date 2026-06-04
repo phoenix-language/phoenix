@@ -130,6 +130,11 @@ if [[ "${output}" != *"cycle"* ]]; then
   echo "got: ${output}" >&2
   exit 1
 fi
+if [[ "${output}" != *"#import"* && "${output}" != *"import"* ]]; then
+  echo "cycle diagnostic should reference an import site" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
 echo "phx check failed as expected (import cycle)"
 
 echo "all phx check CLI tests passed"

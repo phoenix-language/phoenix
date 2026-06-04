@@ -1,4 +1,9 @@
 //! Import dependency graph and topological ordering.
+//!
+//! When every module in an import SCC has a **fresh** `.pxi` (source hash matches), compilation
+//! may proceed with **undefined** module order inside the SCC; cross-module ABI is frozen by the
+//! interface files, not by parse order. If any cyclic module lacks a fresh `.pxi`, [`ResolveError::CircularImport`]
+//! is reported at an `#import` edge in the cycle.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -71,7 +76,9 @@ fn cycle_edge(edges: &[ImportEdge], module_count: usize) -> Option<(Span, u32)> 
     edges.first().map(|&(from, _, span)| (span, from.index()))
 }
 
-/// Topological order, or cycle escape when every cyclic module has a fresh `.pxi`.
+/// Topological order, or identity `0..n` when every cyclic module has a fresh `.pxi`.
+///
+/// The fallback order is arbitrary; importers must use `.pxi` export lists, not source parse order.
 pub(crate) fn topo_sort_with_pxi_escape(
     module_count: usize,
     edges: &[ImportEdge],

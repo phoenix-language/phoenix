@@ -100,7 +100,7 @@ Importing a non-`pub` item is a compile error. Duplicate names from globs or mul
 - **`type = lib`** — `main` is **forbidden** in any module in the package.
 - Other modules may omit `main`.
 - **M1:** circular `#import` graphs are rejected with a cycle trace.
-- **M2:** cycles may compile when every module in the SCC has a **fresh** `.pxi` (interface-only for importers).
+- **M2:** cycles may compile when every module in the SCC has a **fresh** `.pxi` (interface-only for importers). Compile order within the SCC is undefined; importers use `.pxi` export lists, not source parse order.
 
 ---
 

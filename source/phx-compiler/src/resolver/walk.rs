@@ -13,6 +13,8 @@
     clippy::collapsible_if
 )]
 
+use std::collections::HashMap;
+
 use phx_diagnostics::{InvalidMainReason, ResolveError, Span};
 use phx_syntax::ast::decl::{
     Function, FunctionSig, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
@@ -289,8 +291,20 @@ impl Resolver<'_> {
 
     fn resolve_generics(&mut self, generics: &Option<Vec<GenericParam>>) {
         if let Some(params) = generics {
+            let mut seen: HashMap<Symbol, Span> = HashMap::new();
             for param in params {
                 let span = name_span_ident(&param.name);
+                if let Some(first_span) = seen.insert(param.name.symbol, span) {
+                    self.bag.push(
+                        self.current_module,
+                        ResolveError::DuplicateDefinition {
+                            symbol_index: param.name.symbol.index(),
+                            first_span,
+                            span,
+                        },
+                    );
+                    continue;
+                }
                 self.define_type(param.name.symbol, span, DefKind::GenericParam);
                 if let Some(bounds) = &param.bounds {
                     for bound in bounds {
@@ -681,20 +695,24 @@ impl Resolver<'_> {
             return;
         }
         match &path.segments[0] {
-            PathSegment::Ident(ident) => self.resolve_ident(ident, span),
-            PathSegment::Type(name) => self.resolve_type_or_value_name(name, span),
+            PathSegment::Ident(ident) => self.resolve_ident(ident, ident.span),
+            PathSegment::Type(name) => {
+                self.resolve_type_or_value_name(name, name_span_type(name));
+            }
         }
         if path.segments.len() > 1 {
             for seg in &path.segments[1..] {
                 match seg {
                     PathSegment::Ident(ident) => {
-                        self.resolve_ident(ident, span);
+                        self.resolve_ident(ident, ident.span);
                     }
                     PathSegment::Type(name) => {
-                        self.resolve_type_name(name, span);
+                        self.resolve_type_name(name, name_span_type(name));
                     }
                 }
             }
+        } else {
+            let _ = span;
         }
     }
 
@@ -704,7 +722,9 @@ impl Resolver<'_> {
             self.bag.push(
                 self.current_module,
                 ResolveError::MissingMain {
-                    span: self.program_hint_span(),
+                    span: self
+                        .main_decl_name_span()
+                        .unwrap_or_else(|| self.program_hint_span()),
                 },
             );
             return;
@@ -765,6 +785,18 @@ impl Resolver<'_> {
             Span::new(0, 1)
         }
     }
+
+    fn main_decl_name_span(&self) -> Option<Span> {
+        for item in &self.source.program.items {
+            let TopLevelDecl::Function(f) = &item.inner.decl else {
+                continue;
+            };
+            if self.is_main_name(f.name.symbol) {
+                return Some(f.name.span);
+            }
+        }
+        None
+    }
 }
 
 fn type_is_unit(ty: &Type) -> bool {
@@ -775,6 +807,6 @@ fn name_span_ident(ident: &Ident) -> Span {
     ident.span
 }
 
-fn name_span_type(_name: &TypeName) -> Span {
-    Span::new(0, 0)
+fn name_span_type(name: &TypeName) -> Span {
+    name.span
 }

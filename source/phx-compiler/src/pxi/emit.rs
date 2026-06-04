@@ -7,7 +7,9 @@ use phx_syntax::Interner;
 
 use crate::modules::{LoadedModule, import_target_module};
 use crate::project::BuildLayout;
-use crate::pxi::{PxiDependency, PxiExport, PxiFile, def_kind_to_pxi, digest_bytes, digest_file};
+use crate::pxi::{
+    PxiDependency, PxiExport, PxiFile, def_kind_to_pxi, digest_bytes, digest_file, stable_export_id,
+};
 use crate::resolver::{Def, DefId, DefKind};
 use crate::typeck::BindingKind;
 use crate::typeck::{TypedProgram, format_type};
@@ -34,9 +36,12 @@ pub fn build_pxi_for_module(
             continue;
         }
         let signature = export_signature(def, def_id, typed, interner);
+        let name = interner.resolve(*sym).to_owned();
+        let kind = def_kind_to_pxi(def.kind).to_owned();
         pxi_exports.push(PxiExport {
-            name: interner.resolve(*sym).to_owned(),
-            kind: def_kind_to_pxi(def.kind).to_owned(),
+            export_id: stable_export_id(logical_path, &name, &kind),
+            name,
+            kind,
             signature,
         });
     }

@@ -283,10 +283,9 @@ impl std::error::Error for CompileError {
 
 /// Parses and resolves Phoenix `source` as a **single compilation unit** (no crate loader).
 ///
-/// `#import` is not supported here: resolution uses [`resolve`] on one file only, so imports
-/// fail with [`crate::resolver::ResolveError::ImportNotSupported`]. For multi-file programs use
-/// [`check_file`] / [`check_file_with_module_path`] (CLI: parent dir or `--module-src`) or
-/// [`compile_to_module_with_module_path`] / project [`crate::build_project`].
+/// `#import` is not supported: resolution uses [`resolve`] on one file only, so imports fail with
+/// [`crate::resolver::ResolveError::ImportNotSupported`]. For multi-file programs use
+/// [`compile_source_with_module_root`], [`check_file_with_module_path`], or [`build_project`].
 ///
 /// # Errors
 ///
@@ -300,6 +299,40 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
         type_check(&resolved).map_err(|bag| CompileError::TypeCheck { bag, context: ctx })?;
     Ok(CompilationUnit {
         path: path.map(Path::to_path_buf),
+        source: source.to_owned(),
+        typed,
+    })
+}
+
+/// Parses and type-checks `source` using the module graph rooted at `path` under `module_root`.
+///
+/// `path` must exist on disk (reachable via `#import` from that entry). The returned
+/// [`CompilationUnit::source`] is the `source` argument (typically the entry file text).
+///
+/// # Errors
+///
+/// Returns I/O errors from the loader, [`CompileError::Parse`], [`CompileError::Resolve`], or
+/// [`CompileError::TypeCheck`].
+pub fn compile_source_with_module_root(
+    source: &str,
+    path: &Path,
+    module_root: &Path,
+) -> Result<CompilationUnit, CompileError> {
+    let mut bag = DiagnosticBag::new();
+    let Some(loaded) = load_crate(path, module_root, &mut bag) else {
+        return Err(CompileError::Resolve { bag, context: None });
+    };
+    let ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
+    let resolved = resolve_crate(loaded).map_err(|bag| CompileError::Resolve {
+        bag,
+        context: Some(ctx.clone()),
+    })?;
+    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+        bag,
+        context: DiagnosticContext::from_resolved(&resolved),
+    })?;
+    Ok(CompilationUnit {
+        path: Some(path.to_path_buf()),
         source: source.to_owned(),
         typed,
     })

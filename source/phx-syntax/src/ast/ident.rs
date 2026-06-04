@@ -20,6 +20,8 @@ pub struct Ident {
 pub struct TypeName {
     /// Interned name.
     pub symbol: Symbol,
+    /// Source span of this type name token.
+    pub span: Span,
 }
 
 /// A path segment in a module path.

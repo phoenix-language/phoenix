@@ -9,12 +9,20 @@ use crate::resolver::DefKind;
 /// One exported symbol in a `.pxi` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiExport {
+    /// Stable id (`logical_module::name::kind`) for separate compilation.
+    pub export_id: String,
     /// Interned symbol name (stored as string in file).
     pub name: String,
     /// `fn`, `struct`, `enum`, etc.
     pub kind: String,
     /// Stable type signature string.
     pub signature: String,
+}
+
+/// Builds a stable export id for `.pxi` and link maps.
+#[must_use]
+pub fn stable_export_id(logical_module: &str, name: &str, kind: &str) -> String {
+    format!("{logical_module}::{name}::{kind}")
 }
 
 /// One dependency entry.
@@ -71,7 +79,8 @@ impl PxiFile {
             let comma = if i + 1 < self.exports.len() { "," } else { "" };
             let _ = writeln!(
                 out,
-                "    {{\"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}",
+                "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}",
+                json_string(&e.export_id),
                 json_string(&e.name),
                 json_string(&e.kind),
                 json_string(&e.signature)
@@ -235,7 +244,7 @@ fn parse_inner(text: &str) -> Result<PxiFile, PxiError> {
         message: "missing source_hash".to_owned(),
     })?;
     let origin = extract_optional_string(text, "origin");
-    let exports = parse_exports(text);
+    let exports = parse_exports(&logical_module, text);
     let dependencies = parse_dependencies(text);
     Ok(PxiFile {
         format_version: version,
@@ -300,7 +309,7 @@ fn parse_json_string(s: &str) -> Option<String> {
     None
 }
 
-fn parse_exports(text: &str) -> Vec<PxiExport> {
+fn parse_exports(logical_module: &str, text: &str) -> Vec<PxiExport> {
     let Some(start) = text.find("\"exports\"") else {
         return Vec::new();
     };
@@ -317,7 +326,10 @@ fn parse_exports(text: &str) -> Vec<PxiExport> {
             extract_field_string(chunk, "kind"),
             extract_field_string(chunk, "signature"),
         ) {
+            let export_id = extract_field_string(chunk, "export_id")
+                .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
             exports.push(PxiExport {
+                export_id,
                 name,
                 kind,
                 signature: sig,
@@ -377,6 +389,7 @@ mod tests {
             source_hash: "abc".to_owned(),
             origin: None,
             exports: vec![PxiExport {
+                export_id: "util::math::add::fn".to_owned(),
                 name: "add".to_owned(),
                 kind: "fn".to_owned(),
                 signature: "(s32, s32) => s32".to_owned(),

@@ -1,7 +1,8 @@
 //! Multi-file module loading, import graph, and crate assembly.
 
 mod graph;
-#[allow(dead_code)] // M2: `.pxi`-only import resolution
+#[allow(dead_code)]
+// incremental `.pxi`-only import surface; wired via exports_for_dependency today
 mod interface_loader;
 mod load_context;
 mod loader;
