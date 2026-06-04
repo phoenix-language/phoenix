@@ -55,7 +55,12 @@ fn is_copyable_inner(types: &TypeInterner, id: TypeId, seen: &mut Vec<TypeId>) -
     seen.push(id);
     let ok = match types.get(id) {
         Ty::Primitive(_) | Ty::Unit => true,
-        Ty::Ref { .. } | Ty::Ptr { .. } | Ty::Fn { .. } | Ty::Var(_) | Ty::Named { .. } => false,
+        Ty::Ref { .. }
+        | Ty::Ptr { .. }
+        | Ty::Fn { .. }
+        | Ty::Var(_)
+        | Ty::Named { .. }
+        | Ty::Error => false,
         Ty::Slice(inner) => is_copyable_inner(types, *inner, seen),
         Ty::Tuple(elems) => elems.iter().all(|e| is_copyable_inner(types, *e, seen)),
         Ty::Array { elem, .. } => is_copyable_inner(types, *elem, seen),

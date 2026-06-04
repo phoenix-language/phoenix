@@ -26,12 +26,17 @@ use super::display::format_type;
 use super::layout::{
     EnumLayout, ProgramLayout, StructLayout, VariantKind, VariantLayout, VariantMeta,
 };
-use super::lower_ty::{TypeDefMap, build_type_def_map, lower_type, push_generics};
+use super::lower_ty::{TypeDefMap, build_type_def_map, error_type, lower_type, push_generics};
+use super::mono::MonoInst;
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
+use super::primitive::is_int_keyword;
+use super::subst::Substitution;
+use super::types::is_error_type;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
 use super::unify::{AliasEnv, unify_branch};
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
+use phx_syntax::token::Keyword;
 
 /// Collected struct field types.
 #[derive(Debug, Clone)]
@@ -69,6 +74,10 @@ pub struct TypeChecker<'a> {
     impl_self_type: Option<TypeId>,
     /// Module being collected or checked.
     current_module: u32,
+    /// Active type substitution when checking a monomorphized clone.
+    subst: Option<Substitution>,
+    /// Explicit generic instantiations to specialize after the main pass.
+    mono_insts: Vec<MonoInst>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -97,7 +106,55 @@ impl<'a> TypeChecker<'a> {
             next_type_id: 1,
             impl_self_type: None,
             current_module: resolved.root,
+            subst: None,
+            mono_insts: Vec::new(),
         }
+    }
+
+    /// Type-checker seeded with a substitution map for one monomorphized function body.
+    pub(crate) fn new_with_substitution(
+        resolved: &'a ResolvedProgram,
+        subst: Substitution,
+    ) -> Self {
+        let mut checker = Self::new(resolved);
+        checker.subst = Some(subst);
+        checker
+    }
+
+    pub(crate) fn take_mono_insts(&mut self) -> Vec<MonoInst> {
+        std::mem::take(&mut self.mono_insts)
+    }
+
+    pub(crate) fn set_expr_id_base(&mut self, base: u32) {
+        self.next_expr = base;
+    }
+
+    pub(crate) fn check_function_specialized(&mut self, f: &Function, spec_def: DefId) {
+        let fn_ty = self.fn_type_for_function(f);
+        self.value_types.insert(spec_def, fn_ty);
+        self.check_function_body(f, spec_def, true);
+    }
+
+    fn fn_type_for_function(&mut self, f: &Function) -> TypeId {
+        let mut td = self.type_defs.clone();
+        push_generics(&mut td, &self.resolved.defs, f.generics.as_deref());
+        let ret = f
+            .ret
+            .as_ref()
+            .map(|r| self.lower_ast_type_with_defs(r, &td))
+            .unwrap_or(self.unit);
+        let params: Vec<_> = f
+            .params
+            .iter()
+            .filter_map(|p| match p {
+                Param::Named { ty, .. } => Some(self.lower_ast_type_with_defs(ty, &td)),
+                Param::Receiver { ty, .. } => {
+                    ty.as_ref().map(|t| self.lower_ast_type_with_defs(t, &td))
+                }
+                _ => None,
+            })
+            .collect();
+        self.types.intern(&Ty::Fn { params, ret })
     }
 
     fn alloc_type_id(&mut self, def: DefId) -> u32 {
@@ -118,6 +175,20 @@ impl<'a> TypeChecker<'a> {
         self.loop_depth = self.loop_depth.saturating_add(1);
         f(self);
         self.loop_depth = self.loop_depth.saturating_sub(1);
+    }
+
+    fn enter_scope(&mut self) {
+        self.ownership.enter_scope();
+        if let Some(layout) = &mut self.layout {
+            layout.enter_scope();
+        }
+    }
+
+    fn exit_scope(&mut self) {
+        self.ownership.exit_scope();
+        if let Some(layout) = &mut self.layout {
+            layout.exit_scope();
+        }
     }
 
     fn fn_def_for(&self, f: &Function) -> Option<DefId> {
@@ -169,8 +240,96 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
+    fn is_post_mvp_std_type_name(&self, symbol: Symbol) -> bool {
+        let name = self.resolved.interner.resolve(symbol);
+        if name != "Option" && name != "Result" {
+            return false;
+        }
+        !self.type_defs.contains_key(&symbol)
+    }
+
+    fn poison_type(&mut self) -> TypeId {
+        error_type(&mut self.types)
+    }
+
     fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
-        lower_type(&mut self.types, type_defs, &ty.inner)
+        if let Type::Named { name, .. } = &ty.inner {
+            if self.is_post_mvp_std_type_name(name.symbol) {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "std Option/Result types (post-MVP)",
+                        span: ty.span,
+                    },
+                );
+                return self.poison_type();
+            }
+        }
+        let id = lower_type(&mut self.types, type_defs, &ty.inner);
+        let id = if let Some(subst) = &self.subst {
+            Substitution::apply(&mut self.types, id, subst)
+        } else {
+            id
+        };
+        if is_error_type(&self.types, id) {
+            if let Type::Named { name, .. } = &ty.inner {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnknownType {
+                        symbol_index: name.symbol.index(),
+                        span: ty.span,
+                    },
+                );
+            }
+        }
+        id
+    }
+
+    fn validate_type_aliases(&mut self) {
+        for (index, def) in self.resolved.defs.iter().enumerate() {
+            if def.kind != DefKind::TypeAlias {
+                continue;
+            }
+            let alias_id = DefId::from_raw(u32::try_from(index).unwrap_or(u32::MAX));
+            let Some(&start) = self.value_types.get(&alias_id) else {
+                continue;
+            };
+            let mut stack = std::collections::HashSet::new();
+            if self.type_alias_cycle_from(start, &mut stack) {
+                self.bag.push(
+                    def.module,
+                    TypeCheckError::RecursiveTypeAlias { span: def.span },
+                );
+            }
+        }
+    }
+
+    fn type_alias_cycle_from(
+        &self,
+        current: TypeId,
+        stack: &mut std::collections::HashSet<DefId>,
+    ) -> bool {
+        let Ty::Named { def, .. } = self.types.get(current) else {
+            return false;
+        };
+        if !stack.insert(*def) {
+            return true;
+        }
+        let Some(def_record) = self.resolved.defs.get(def.index() as usize) else {
+            stack.remove(def);
+            return false;
+        };
+        if def_record.kind != DefKind::TypeAlias {
+            stack.remove(def);
+            return false;
+        }
+        let Some(&next) = self.value_types.get(def) else {
+            stack.remove(def);
+            return false;
+        };
+        let cycled = self.type_alias_cycle_from(next, stack);
+        stack.remove(def);
+        cycled
     }
 
     fn lower_ast_type(&mut self, ty: &Node<Type>) -> TypeId {
@@ -199,6 +358,7 @@ impl<'a> TypeChecker<'a> {
 
     fn check_program(&mut self) {
         self.collect_decls();
+        self.validate_type_aliases();
         for module in &self.resolved.modules {
             self.current_module = module.id;
             for item in &module.program.items {
@@ -433,21 +593,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn collect_fn_sig(&mut self, f: &Function) {
-        let ret = f
-            .ret
-            .as_ref()
-            .map(|r| self.lower_ast_type(r))
-            .unwrap_or(self.unit);
-        let params: Vec<_> = f
-            .params
-            .iter()
-            .filter_map(|p| match p {
-                Param::Named { ty, .. } => Some(self.lower_ast_type(ty)),
-                Param::Receiver { ty, .. } => ty.as_ref().map(|t| self.lower_ast_type(t)),
-                _ => None,
-            })
-            .collect();
-        let fn_ty = self.types.intern(&Ty::Fn { params, ret });
+        let fn_ty = self.fn_type_for_function(f);
         if let Some(def) = self.find_def(self.current_module, f.name.symbol, DefKind::Fn) {
             self.value_types.insert(def, fn_ty);
         }
@@ -523,27 +669,36 @@ impl<'a> TypeChecker<'a> {
         if !f.derives.is_empty() {
             self.push_unsupported("#derive directive", f.body.span);
         }
+        let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
+        let is_generic = f.generics.as_ref().is_some_and(|g| !g.is_empty());
+        self.check_function_body(f, def, !is_generic);
+    }
+
+    fn check_function_body(&mut self, f: &Function, def: DefId, emit_layout: bool) {
+        let mut td = self.type_defs.clone();
+        push_generics(&mut td, &self.resolved.defs, f.generics.as_deref());
         let ret = f
             .ret
             .as_ref()
-            .map(|r| self.lower_ast_type(r))
+            .map(|r| self.lower_ast_type_with_defs(r, &td))
             .unwrap_or(self.unit);
-        let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
         self.fn_ret = Some(ret);
         self.ownership = OwnershipTracker::new();
-        self.layout = Some(FunctionLayoutBuilder::new(def, ret));
+        if emit_layout {
+            self.layout = Some(FunctionLayoutBuilder::new(def, ret));
+        }
         let expr_start = self.next_expr;
         let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
         for p in &f.params {
             match p {
                 Param::Named { name, ty, .. } => {
-                    let pty = self.lower_ast_type(ty);
+                    let pty = self.lower_ast_type_with_defs(ty, &td);
                     self.define_local(name.symbol, pty, BindingKind::Param);
                 }
                 Param::Receiver { ty, .. } => {
                     let pty = ty
                         .as_ref()
-                        .map(|t| self.lower_ast_type(t))
+                        .map(|t| self.lower_ast_type_with_defs(t, &td))
                         .or(self.impl_self_type)
                         .unwrap_or(self.unit);
                     self.define_local(impl_receiver_symbol(), pty, BindingKind::Param);
@@ -560,11 +715,14 @@ impl<'a> TypeChecker<'a> {
         if !self.types_equal(body_ty, ret) {
             self.error_mismatch(ret, body_ty, f.body.span);
         }
-        if let Some(mut builder) = self.layout.take() {
-            builder.set_expr_range(expr_start, self.next_expr);
-            self.functions.push(builder.finish());
+        if emit_layout {
+            if let Some(mut builder) = self.layout.take() {
+                builder.set_expr_range(expr_start, self.next_expr);
+                self.functions.push(builder.finish());
+            }
         }
         self.fn_ret = None;
+        self.layout = None;
     }
 
     fn check_block(&mut self, block: &Block) {
@@ -573,6 +731,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Type-checks `block` and returns the type of its last value-producing item.
     fn check_block_value(&mut self, block: &Block) -> TypeId {
+        self.enter_scope();
         let mut last = self.unit;
         for item in &block.items {
             last = match item {
@@ -581,6 +740,7 @@ impl<'a> TypeChecker<'a> {
                 _ => self.unit,
             };
         }
+        self.exit_scope();
         last
     }
 
@@ -1012,7 +1172,17 @@ impl<'a> TypeChecker<'a> {
                 PostfixOp::Method { name, args, .. } => {
                     self.check_method_call(ty, name, args, span)
                 }
-                PostfixOp::Call(args) => self.check_call(ty, args, span),
+                PostfixOp::Call { generics, args } => {
+                    let callee_def = self.callee_def_from_expr(base);
+                    self.check_call_with_generics(
+                        ty,
+                        callee_def,
+                        base,
+                        generics.as_deref(),
+                        args,
+                        span,
+                    )
+                }
                 PostfixOp::Index(idx) => {
                     let _ = self.check_expr_node(idx);
                     self.check_index(ty, span)
@@ -1069,6 +1239,152 @@ impl<'a> TypeChecker<'a> {
             return self.types_equal(receiver, *inner);
         }
         false
+    }
+
+    fn callee_def_from_expr(&self, base: &ExprNode) -> Option<DefId> {
+        match &base.inner {
+            Expr::Ident(ident) => self.lookup_resolution(ident.id),
+            Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
+                PathSegment::Ident(ident) => self.lookup_resolution(ident.id),
+                PathSegment::Type(name) => self.lookup_resolution(name.id),
+            },
+            _ => None,
+        }
+    }
+
+    fn record_mono_inst(&mut self, base_fn: DefId, args: Vec<TypeId>, site: phx_syntax::AstNodeId) {
+        if let Some(inst) = self
+            .mono_insts
+            .iter_mut()
+            .find(|i| i.base_fn == base_fn && i.args == args)
+        {
+            inst.call_sites.push(site);
+            return;
+        }
+        self.mono_insts.push(MonoInst {
+            base_fn,
+            args,
+            call_sites: vec![site],
+        });
+    }
+
+    fn generic_param_defs_for_fn(&self, f: &Function) -> Vec<DefId> {
+        let Some(params) = f.generics.as_ref() else {
+            return Vec::new();
+        };
+        params
+            .iter()
+            .filter_map(|param| {
+                self.find_def(
+                    self.current_module,
+                    param.name.symbol,
+                    DefKind::GenericParam,
+                )
+            })
+            .collect()
+    }
+
+    fn find_function_decl(&self, def: DefId) -> Option<&Function> {
+        for module in &self.resolved.modules {
+            for item in &module.program.items {
+                let TopLevelDecl::Function(f) = &item.inner.decl else {
+                    continue;
+                };
+                if self.fn_def_for(f) == Some(def) {
+                    return Some(f);
+                }
+            }
+        }
+        None
+    }
+
+    fn check_call_with_generics(
+        &mut self,
+        callee: TypeId,
+        callee_def: Option<DefId>,
+        base: &ExprNode,
+        generics: Option<&[Node<Type>]>,
+        args: &[ExprNode],
+        span: Span,
+    ) -> TypeId {
+        let Some(fn_def) = callee_def else {
+            return self.check_call(callee, args, span);
+        };
+        let Some(f) = self.find_function_decl(fn_def) else {
+            return self.check_call(callee, args, span);
+        };
+        let param_defs = self.generic_param_defs_for_fn(f);
+        let fn_generics = f.generics.clone();
+        if param_defs.is_empty() {
+            if generics.is_some() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "type arguments on non-generic call",
+                        span,
+                    },
+                );
+            }
+            return self.check_call(callee, args, span);
+        }
+        let Some(generic_nodes) = generics else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: "missing explicit type arguments on generic call",
+                    span,
+                },
+            );
+            return self.check_call(callee, args, span);
+        };
+        if generic_nodes.len() != param_defs.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: generic_nodes.len(),
+                    span,
+                },
+            );
+        }
+        let mut td = self.type_defs.clone();
+        push_generics(&mut td, &self.resolved.defs, fn_generics.as_deref());
+        let mut concrete_args = Vec::new();
+        let mut subst = Substitution::new();
+        for (param_def, ty_node) in param_defs.iter().zip(generic_nodes) {
+            let concrete = self.lower_ast_type_with_defs(ty_node, &td);
+            subst.insert(*param_def, concrete);
+            concrete_args.push(concrete);
+        }
+        let Ty::Fn { params, ret } = self.types.get(callee).clone() else {
+            return self.check_call(callee, args, span);
+        };
+        let params: Vec<_> = params
+            .iter()
+            .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+            .collect();
+        let ret = Substitution::apply(&mut self.types, ret, &subst);
+        if params.len() != args.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: params.len(),
+                    found: args.len(),
+                    span,
+                },
+            );
+        }
+        for (p, arg) in params.iter().zip(args.iter()) {
+            let got = self.check_expr_node(arg);
+            if !self.types_equal(got, *p) {
+                self.error_mismatch(*p, got, arg.span);
+            }
+        }
+        let site = callee_name_use_id(base);
+        if let Some(site) = site {
+            self.record_mono_inst(fn_def, concrete_args, site);
+        }
+        ret
     }
 
     fn check_call(&mut self, callee: TypeId, args: &[ExprNode], span: Span) -> TypeId {
@@ -1359,35 +1675,75 @@ impl<'a> TypeChecker<'a> {
         arms: &[phx_syntax::ast::pat::MatchArm],
         span: Span,
     ) {
-        let Some(enum_def) = self.scrutinee_enum_def(scrutinee) else {
-            return;
-        };
-        let Some(layout) = self.program_layout.enums.get(&enum_def) else {
-            return;
-        };
         if arms
             .iter()
             .any(|arm| matches!(arm.pattern.inner, Pattern::Wildcard))
         {
             return;
         }
-        let mut covered = std::collections::HashSet::new();
-        for arm in arms {
-            if let Some(variant_name) = self.pattern_covered_variant(&arm.pattern.inner) {
-                covered.insert(variant_name);
+
+        if let Some(enum_def) = self.scrutinee_enum_def(scrutinee) {
+            let Some(layout) = self.program_layout.enums.get(&enum_def) else {
+                return;
+            };
+            let mut covered = std::collections::HashSet::new();
+            for arm in arms {
+                if let Some(variant_name) = self.pattern_covered_variant(&arm.pattern.inner) {
+                    covered.insert(variant_name);
+                }
             }
+            let missing: Vec<String> = layout
+                .variants
+                .iter()
+                .filter(|v| !covered.contains(&v.name))
+                .map(|v| self.symbol_name(v.name))
+                .collect();
+            if !missing.is_empty() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::NonExhaustiveMatch { missing, span },
+                );
+            }
+            return;
         }
-        let missing: Vec<String> = layout
-            .variants
-            .iter()
-            .filter(|v| !covered.contains(&v.name))
-            .map(|v| self.symbol_name(v.name))
-            .collect();
-        if !missing.is_empty() {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::NonExhaustiveMatch { missing, span },
-            );
+
+        match self.types.get(scrutinee) {
+            Ty::Primitive(Keyword::Bool) => {
+                let mut has_true = false;
+                let mut has_false = false;
+                for arm in arms {
+                    if let Pattern::Literal(Literal::Bool(value)) = &arm.pattern.inner {
+                        if *value {
+                            has_true = true;
+                        } else {
+                            has_false = true;
+                        }
+                    }
+                }
+                let mut missing = Vec::new();
+                if !has_true {
+                    missing.push("true".to_string());
+                }
+                if !has_false {
+                    missing.push("false".to_string());
+                }
+                if !missing.is_empty() {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::NonExhaustiveMatch { missing, span },
+                    );
+                }
+            }
+            Ty::Primitive(kw) if is_int_keyword(*kw) => {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::NonExhaustiveMatch {
+                        missing: vec!["_".to_string()],
+                        span,
+                    },
+                );
+            }
+            _ => {}
         }
     }
 
@@ -1686,6 +2042,38 @@ impl<'a> TypeChecker<'a> {
             self.program_layout,
         )
     }
+
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn finish_all(
+        self,
+    ) -> (
+        TypeInterner,
+        HashMap<ExprId, TypeId>,
+        TypeCheckBag,
+        Vec<FunctionLayout>,
+        ProgramLayout,
+        HashMap<DefId, TypeId>,
+    ) {
+        (
+            self.types,
+            self.expr_types,
+            self.bag,
+            self.functions,
+            self.program_layout,
+            self.value_types,
+        )
+    }
+}
+
+fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
+    match &base.inner {
+        Expr::Ident(ident) => Some(ident.id),
+        Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
+            PathSegment::Ident(ident) => Some(ident.id),
+            PathSegment::Type(name) => Some(name.id),
+        },
+        _ => None,
+    }
 }
 
 fn loop_control_stmt_span(stmt: &Stmt) -> Span {
@@ -1731,16 +2119,20 @@ fn pattern_literal_eq(a: &Literal, b: &Literal) -> bool {
 pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
     let mut checker = TypeChecker::new(resolved);
     checker.check_program();
+    let mono_insts = checker.take_mono_insts();
     let (types, expr_types, bag, functions, layout) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
-    Ok(super::TypedProgram {
+    let mut program = super::TypedProgram {
         resolved: resolved.clone(),
         types,
         expr_types,
         functions,
         entry: resolved.main_fn,
         layout,
-    })
+        specialized_from: HashMap::new(),
+    };
+    super::mono::monomorphize(&mut program, &mono_insts);
+    Ok(program)
 }

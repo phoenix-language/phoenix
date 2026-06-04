@@ -48,6 +48,8 @@ pub enum Ty {
     Primitive(Keyword),
     /// Unit `()`.
     Unit,
+    /// Poison type for unresolved or invalid type syntax (never a valid value type).
+    Error,
     /// User-defined or generic param type.
     Named {
         /// Resolved definition.
@@ -95,6 +97,12 @@ pub enum Ty {
 #[derive(Debug, Clone, Default)]
 pub struct TypeInterner {
     types: Vec<Ty>,
+}
+
+/// Returns `true` when `id` is the poison [`Ty::Error`] type.
+#[must_use]
+pub fn is_error_type(types: &TypeInterner, id: TypeId) -> bool {
+    matches!(types.get(id), Ty::Error)
 }
 
 impl TypeInterner {

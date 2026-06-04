@@ -47,6 +47,8 @@ pub struct Binding {
     pub ty: TypeId,
     /// Parameter vs local kind.
     pub kind: BindingKind,
+    /// Block nesting depth where this binding was introduced.
+    pub scope_depth: u32,
 }
 
 /// Layout of locals for one function (for IR/codegen).
@@ -73,10 +75,10 @@ impl FunctionLayout {
         u32::try_from(self.bindings.len()).unwrap_or(u32::MAX)
     }
 
-    /// Looks up a binding by symbol.
+    /// Looks up the innermost binding for `symbol` (shadowing-safe).
     #[must_use]
     pub fn binding(&self, symbol: Symbol) -> Option<&Binding> {
-        self.bindings.iter().find(|b| b.symbol == symbol)
+        self.bindings.iter().rfind(|b| b.symbol == symbol)
     }
 }
 
@@ -91,6 +93,7 @@ pub struct FunctionLayoutBuilder {
     match_temp_serial: u32,
     expr_start: u32,
     expr_end: u32,
+    scope_depth: u32,
 }
 
 impl FunctionLayoutBuilder {
@@ -106,7 +109,18 @@ impl FunctionLayoutBuilder {
             match_temp_serial: 0,
             expr_start: 0,
             expr_end: 0,
+            scope_depth: 0,
         }
+    }
+
+    /// Enters a nested block scope (recorded on each [`Binding::scope_depth`]; slots are not reclaimed).
+    pub fn enter_scope(&mut self) {
+        self.scope_depth = self.scope_depth.saturating_add(1);
+    }
+
+    /// Leaves a block scope (bindings remain for stable [`LocalSlot`] indices; use [`FunctionLayout::binding`] with shadowing).
+    pub fn exit_scope(&mut self) {
+        self.scope_depth = self.scope_depth.saturating_sub(1);
     }
 
     /// Records the expression id range checked for this function body.
@@ -136,6 +150,7 @@ impl FunctionLayoutBuilder {
             slot,
             ty,
             kind,
+            scope_depth: self.scope_depth,
         });
         slot
     }

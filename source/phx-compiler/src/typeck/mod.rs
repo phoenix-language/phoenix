@@ -15,11 +15,16 @@ mod check;
 mod display;
 mod layout;
 mod lower_ty;
+mod mono;
 mod ops;
 mod ownership;
 mod primitive;
+mod subst;
 mod types;
 mod unify;
+
+#[allow(unused_imports)]
+pub use mono::{MonoInst, monomorphize};
 
 pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
@@ -28,7 +33,7 @@ pub use layout::{ProgramLayout, VariantKind};
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
-use crate::resolver::ResolvedProgram;
+use crate::resolver::{DefId, ResolvedProgram};
 
 /// Result of type-checking a [`ResolvedProgram`].
 ///
@@ -48,4 +53,6 @@ pub struct TypedProgram {
     pub entry: Option<crate::resolver::DefId>,
     /// Struct/enum layouts and bytecode type ids.
     pub layout: ProgramLayout,
+    /// Monomorphized `DefId` → generic template `DefId` for AST lookup during lowering.
+    pub specialized_from: std::collections::HashMap<DefId, DefId>,
 }

@@ -11,7 +11,7 @@
 
 use phx_diagnostics::{ExpectedToken, LexError, ParseBag, ParseError};
 use phx_syntax::ast::decl::{FnDirective, StructBody, TopLevelDecl, Variant};
-use phx_syntax::ast::expr::{AssignOp, Expr};
+use phx_syntax::ast::expr::{AssignOp, Expr, PostfixOp};
 use phx_syntax::ast::stmt::{BlockItem, Stmt};
 use phx_syntax::ast::{BlockNode, Program};
 use phx_syntax::parse;
@@ -957,6 +957,31 @@ fn expr_path_type_only() {
 #[test]
 fn expr_path_qualified() {
     assert_ok(&in_main_expr("core::mem::size"));
+}
+
+#[test]
+fn expr_generic_call_on_value_ident() {
+    let src = &format!(
+        "id :: <t> (x: s32) => s32 {{ x }}; {}",
+        in_main_expr("id :: <s32> (1)")
+    );
+    let program = parse_ok(src);
+    let expr = support::first_stmt_expr(&main_fn(&program).body);
+    match expr {
+        Expr::Postfix { ops, .. } => {
+            assert!(
+                ops.iter().any(|op| matches!(
+                    op,
+                    PostfixOp::Call {
+                        generics: Some(g),
+                        ..
+                    } if !g.is_empty()
+                )),
+                "expected Call with generic args"
+            );
+        }
+        other => panic!("expected Postfix call, got {other:?}"),
+    }
 }
 
 // -----------------------------------------------------------------------------

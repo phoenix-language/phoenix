@@ -566,7 +566,7 @@ fn lower_postfix_inner(
                     }
                 }
             }
-            PostfixOp::Call(args) => {
+            PostfixOp::Call { args, .. } => {
                 if let Some(variant_def) = resolve_variant_ctor(ctx, base) {
                     if let Some(meta) = ctx.typed.layout.variants.get(&variant_def) {
                         for arg in args {

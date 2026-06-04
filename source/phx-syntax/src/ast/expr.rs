@@ -105,8 +105,13 @@ pub enum PostfixOp {
         /// Call arguments.
         args: Vec<ExprNode>,
     },
-    /// `(args)`
-    Call(Vec<ExprNode>),
+    /// `(args)` with optional leading `:: < … >`.
+    Call {
+        /// Type arguments before `(` when present.
+        generics: Option<Vec<Node<Type>>>,
+        /// Call arguments.
+        args: Vec<ExprNode>,
+    },
     /// `[index]`
     Index(ExprNode),
     /// `?`

@@ -164,6 +164,11 @@ pub enum TypeCheckError {
         /// Statement span.
         span: Span,
     },
+    /// Type alias expands in a cycle (`type A = B; type B = A;`).
+    RecursiveTypeAlias {
+        /// Alias declaration span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -191,6 +196,7 @@ impl TypeCheckError {
             Self::MovedAssignTarget { .. } => DiagnosticCode::new("E2018"),
             Self::UnresolvedValue { .. } => DiagnosticCode::new("E2019"),
             Self::LoopControlOutsideLoop { .. } => DiagnosticCode::new("E2020"),
+            Self::RecursiveTypeAlias { .. } => DiagnosticCode::new("E2021"),
         }
     }
 
@@ -217,7 +223,8 @@ impl TypeCheckError {
             | Self::UseAfterMove { span, .. }
             | Self::MovedAssignTarget { span, .. }
             | Self::UnresolvedValue { span, .. }
-            | Self::LoopControlOutsideLoop { span, .. } => Some(*span),
+            | Self::LoopControlOutsideLoop { span, .. }
+            | Self::RecursiveTypeAlias { span, .. } => Some(*span),
         }
     }
 }
@@ -297,6 +304,7 @@ impl fmt::Display for TypeCheckError {
             Self::LoopControlOutsideLoop { keyword, .. } => {
                 write!(f, "`{keyword}` outside of a loop")
             }
+            Self::RecursiveTypeAlias { .. } => f.write_str("recursive type alias"),
         }
     }
 }

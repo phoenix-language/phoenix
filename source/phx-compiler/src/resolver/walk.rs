@@ -661,7 +661,7 @@ impl Resolver<'_> {
                     self.resolve_expr_node(arg);
                 }
             }
-            PostfixOp::Call(args) => {
+            PostfixOp::Call { args, .. } => {
                 for arg in args {
                     self.resolve_expr_node(arg);
                 }

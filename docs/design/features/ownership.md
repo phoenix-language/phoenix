@@ -127,6 +127,14 @@ Generic bounds: prefer **`T: Copyable`** when the algorithm only needs cheap dup
 
 Method receivers follow the same model: `self` moves (unless Copyable), `self: &Self` borrows, `self: &mut Self` mutably borrows.
 
+### MVP: move detection scope
+
+The MVP compiler records a move only when ownership transfers through a **bare identifier** on the right-hand side of an assignment or `var` initializer, for example `var q = p;`. Expressions such as `var q = foo();` or `var q = make();` do **not** move out of a local binding yet, even when `foo` takes its parameter by value.
+
+Block-scoped shadowing is respected: an inner `var x` does not affect move state for an outer `x` after the inner block ends.
+
+Post-MVP ownership analysis will use path-sensitive last-use and move-through-call rules aligned with the full design above.
+
 Large owned values should use borrow for read, move for transfer, and `.clone()` only when duplication is required.
 
 ---

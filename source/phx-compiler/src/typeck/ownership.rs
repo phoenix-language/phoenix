@@ -14,10 +14,20 @@ pub enum BindingState {
     Moved(Span),
 }
 
+/// One local binding with the block depth where it was introduced.
+#[derive(Debug, Clone)]
+struct BindingEntry {
+    symbol: Symbol,
+    state: BindingState,
+    ty: TypeId,
+    depth: u32,
+}
+
 /// Tracks moves for locals in the current function/block scope.
 #[derive(Debug, Default)]
 pub struct OwnershipTracker {
-    bindings: Vec<(Symbol, BindingState, TypeId)>,
+    bindings: Vec<BindingEntry>,
+    scope_depth: u32,
 }
 
 impl OwnershipTracker {
@@ -27,37 +37,55 @@ impl OwnershipTracker {
         Self::default()
     }
 
-    /// Registers a new binding as valid with its type.
-    ///
-    /// Shadowing replaces the innermost entry for `name`.
-    pub fn define(&mut self, name: Symbol, ty: TypeId) {
-        self.bindings.push((name, BindingState::Valid, ty));
+    /// Enters a nested block scope (locals defined here are popped on [`Self::exit_scope`]).
+    pub fn enter_scope(&mut self) {
+        self.scope_depth = self.scope_depth.saturating_add(1);
     }
 
-    /// Returns the type recorded for `name`, if any.
+    /// Leaves a block scope and drops bindings introduced in that scope.
+    pub fn exit_scope(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+        self.scope_depth -= 1;
+        self.bindings
+            .retain(|entry| entry.depth <= self.scope_depth);
+    }
+
+    /// Registers a new binding as valid with its type at the current scope depth.
+    pub fn define(&mut self, name: Symbol, ty: TypeId) {
+        self.bindings.push(BindingEntry {
+            symbol: name,
+            state: BindingState::Valid,
+            ty,
+            depth: self.scope_depth,
+        });
+    }
+
+    /// Returns the type recorded for `name` in the innermost active scope, if any.
     #[must_use]
     pub fn binding_type(&self, name: Symbol) -> Option<TypeId> {
         self.bindings
             .iter()
-            .find(|(s, _, _)| *s == name)
-            .map(|(_, _, ty)| *ty)
+            .rfind(|entry| entry.symbol == name)
+            .map(|entry| entry.ty)
     }
 
-    /// Marks `name` as moved at `span`.
+    /// Marks the innermost active binding for `name` as moved at `span`.
     pub fn move_binding(&mut self, name: Symbol, span: Span) {
-        if let Some((_, state, _)) = self.bindings.iter_mut().find(|(s, _, _)| *s == name) {
-            *state = BindingState::Moved(span);
+        if let Some(entry) = self.bindings.iter_mut().rfind(|entry| entry.symbol == name) {
+            entry.state = BindingState::Moved(span);
         }
     }
 
-    /// Returns move span if `name` was moved.
+    /// Returns move span if the innermost active binding for `name` was moved.
     #[must_use]
     pub fn moved_at(&self, name: Symbol) -> Option<Span> {
         self.bindings
             .iter()
-            .find(|(s, _, _)| *s == name)
-            .and_then(|(_, state, _)| match state {
-                BindingState::Moved(span) => Some(*span),
+            .rfind(|entry| entry.symbol == name)
+            .and_then(|entry| match entry.state {
+                BindingState::Moved(span) => Some(span),
                 BindingState::Valid => None,
             })
     }

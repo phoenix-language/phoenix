@@ -25,6 +25,7 @@ fn format_type_inner(
     let s = match types.get(id) {
         Ty::Primitive(k) => format!("{k:?}"),
         Ty::Unit => "()".to_owned(),
+        Ty::Error => "<error>".to_owned(),
         Ty::Named { def, args } => {
             let base = def_name(names, defs, *def);
             if args.is_empty() {

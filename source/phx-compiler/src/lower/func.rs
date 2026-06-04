@@ -81,9 +81,10 @@ fn find_function_in_crate(typed: &TypedProgram, def: DefId) -> Option<&Function>
 }
 
 fn def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
+    let lookup = typed.specialized_from.get(&def).copied().unwrap_or(def);
     typed
         .resolved
         .defs
-        .get(def.index() as usize)
+        .get(lookup.index() as usize)
         .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
 }

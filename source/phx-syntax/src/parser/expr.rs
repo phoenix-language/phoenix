@@ -306,10 +306,21 @@ impl Parser<'_> {
                         ops.push(PostfixOp::Field(name));
                     }
                 }
+                TokenKind::ColonColon if matches!(self.peek_at(1), TokenKind::Lt) => {
+                    self.bump();
+                    self.bump();
+                    let generics = Some(self.parse_generic_args()?);
+                    self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
+                    let args = self.parse_arg_list()?;
+                    ops.push(PostfixOp::Call { generics, args });
+                }
                 TokenKind::LParen => {
                     self.bump();
                     let args = self.parse_arg_list()?;
-                    ops.push(PostfixOp::Call(args));
+                    ops.push(PostfixOp::Call {
+                        generics: None,
+                        args,
+                    });
                 }
                 TokenKind::LBracket => {
                     self.bump();
@@ -457,6 +468,11 @@ impl Parser<'_> {
             }
             TokenKind::Ident(n) => {
                 let id = self.bump_ident(n)?;
+                if matches!(self.peek_kind(), TokenKind::ColonColon)
+                    && matches!(self.peek_at(1), TokenKind::Lt)
+                {
+                    return Ok(self.node(Expr::Ident(id), self.span_from(start)));
+                }
                 (
                     TypeName {
                         symbol: id.symbol,

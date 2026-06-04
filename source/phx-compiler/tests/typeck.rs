@@ -489,6 +489,54 @@ fn deferred_typeck_hash_derive() {
 }
 
 #[test]
+fn shadowed_var_move_does_not_move_outer() {
+    ok(
+        "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; { var p: Point = Point { x: 3, y: 4 }; var q: Point = p; }; const _ = p.x; };",
+    );
+}
+
+#[test]
+fn bool_match_non_exhaustive_errors() {
+    let bag = typeck_err("main :: () => { const _ = match false { true => 1; }; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
+    );
+}
+
+#[test]
+fn int_match_requires_wildcard() {
+    let bag = typeck_err("main :: () => { const _ = match 1 { 1 => 0; }; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
+    );
+}
+
+#[test]
+fn recursive_type_alias_errors() {
+    let bag = typeck_err("type A = B; type B = A; main :: () => { };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::RecursiveTypeAlias { .. }))
+    );
+}
+
+#[test]
+fn generic_fn_explicit_args_ok() {
+    ok("id :: <t> (x: s32) => s32 { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
+}
+
+#[test]
+fn generic_fn_missing_type_args_errors() {
+    let bag = typeck_err("id :: <t> (x: s32) => s32 { x }; main :: () => { const _ = id (1); };");
+    assert!(has_unsupported(&bag, "missing explicit type arguments"));
+}
+
+#[test]
 fn parse_recovery_formats_multiple_carets() {
     let source = "main :: () => { const x = ; const y: s32 = ; };";
     let err = match compile_source(source, None) {

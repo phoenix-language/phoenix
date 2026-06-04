@@ -31,7 +31,7 @@ fn lower_type_inner(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type)
             if let Some(def) = def {
                 types.intern(&Ty::Named { def, args })
             } else {
-                types.intern(&Ty::Unit)
+                types.intern(&Ty::Error)
             }
         }
         Type::Function { params, ret } => {
@@ -76,8 +76,14 @@ fn lower_type_inner(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type)
             let i = lower_type_node(types, type_defs, inner);
             types.intern(&Ty::Slice(i))
         }
-        _ => types.intern(&Ty::Unit),
+        _ => types.intern(&Ty::Error),
     }
+}
+
+/// Interned poison type id for unresolved types (singleton per interner growth).
+#[must_use]
+pub fn error_type(types: &mut TypeInterner) -> TypeId {
+    types.intern(&Ty::Error)
 }
 
 fn lower_type_node(types: &mut TypeInterner, type_defs: &TypeDefMap, node: &Node<Type>) -> TypeId {

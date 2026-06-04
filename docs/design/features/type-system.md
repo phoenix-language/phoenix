@@ -81,6 +81,21 @@ Fixed arrays `[T; N]` may be explicitly cast to slices `[T]`; slice values are `
 
 ---
 
+## Monomorphization (MVP)
+
+MVP generics use **explicit type arguments** at the call site and **compile-time monomorphization** before IR lowering — no runtime type erasure and no global inference search.
+
+| Rule | MVP behavior |
+|---|---|
+| Syntax | `name :: <t1, …> (args…)` on value identifiers (and `:: <…>` before `(` in postfix chains) |
+| Requirement | Generic functions must be called with a `:: <…>` type-argument list matching the declaration’s generic parameter count |
+| Specialization | Each distinct instantiation gets a specialized `DefId` (mangled name such as `id$s32`) and its own [`FunctionLayout`](../../../source/phx-compiler/src/typeck/bindings.rs) for lowering |
+| Out of scope (MVP) | Generic enums/structs at use sites beyond parsing, trait-object vtables, `.pxi` export mangling, implicit inference |
+
+Type parameters in function bodies are checked once on the generic template; monomorphization re-type-checks the body under a substitution map for each collected instantiation.
+
+---
+
 ## Phased: Option and Result (language → std)
 
 Phoenix has no `null`. **Absence and failure are std concerns**, not compiler builtins in MVP.
