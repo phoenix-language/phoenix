@@ -81,6 +81,24 @@ impl PrimitiveKind {
         matches!(self, Self::F32 | Self::F64)
     }
 
+    /// Returns `true` for signed integer kinds.
+    #[must_use]
+    pub const fn is_signed_int(self) -> bool {
+        matches!(
+            self,
+            Self::S8 | Self::S16 | Self::S32 | Self::S64 | Self::S128
+        )
+    }
+
+    /// Returns `true` for unsigned integer kinds.
+    #[must_use]
+    pub const fn is_unsigned_int(self) -> bool {
+        matches!(
+            self,
+            Self::U8 | Self::U16 | Self::U32 | Self::U64 | Self::U128
+        )
+    }
+
     /// Storage size in bytes for this primitive.
     #[must_use]
     pub const fn byte_size(self) -> u8 {

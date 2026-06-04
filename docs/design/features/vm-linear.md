@@ -57,7 +57,7 @@ All integer fields are little-endian.
 | 6 | 2 | version_minor | format minor version |
 | 8 | 4 | flags | reserved; MVP must be `0` |
 | 12 | 4 | section_count | number of section table entries |
-| 16 | 4 | entry_function_id | function id for `main` |
+| 16 | 4 | entry_function_id | function id for `main` (`0xFFFF_FFFF` = no entry, library objects) |
 | 20 | 4 | reserved | reserved for alignment/future use |
 
 Header size: 24 bytes.
@@ -81,7 +81,13 @@ Section kinds (MVP):
 - `2`: types
 - `3`: functions
 - `4`: code
-- `5`: symbols (optional debug)
+- `5`: symbols (optional debug names; **not written** by the MVP compiler — reserved for future tooling)
+- `6`: local layouts (format minor 1+; verifier cross-checks slot kinds)
+
+**Compiler-only notes (MVP):**
+
+- **`POP` (opcode 3)** — defined for the verifier/VM; Phoenix codegen does not emit it (void results are handled via control flow and `STORE_LOCAL` to `_`).
+- **`ALLOC` (38) / `PTR_STORE` (40)** — implemented in the VM for future heap/alloc intrinsics; not emitted until the intrinsic kernel spelling is fixed in design (`grammar-deferred.md`).
 
 ---
 

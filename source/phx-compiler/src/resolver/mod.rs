@@ -10,7 +10,6 @@ mod walk;
 use scopes::ScopeStack;
 
 use std::collections::HashMap;
-
 use std::path::PathBuf;
 
 use phx_diagnostics::{DiagnosticBag, Span};
@@ -82,6 +81,8 @@ pub struct ResolvedProgram {
     pub closures: HashMap<DefId, ClosureInfo>,
     /// Definition id of `main` when present and valid.
     pub main_fn: Option<DefId>,
+    /// Structured types from fresh dependency `.pxi` v2 (imported `DefId` → type).
+    pub import_types: std::collections::HashMap<DefId, crate::pxi::PxiType>,
 }
 
 /// Resolves names in `source` (single file, no `#import` loading).
@@ -129,6 +130,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         resolutions: resolver.resolutions,
         closures: resolver.closures,
         main_fn: resolver.main_fn,
+        import_types: HashMap::new(),
     })
 }
 

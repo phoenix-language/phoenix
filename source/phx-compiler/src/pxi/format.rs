@@ -1,9 +1,10 @@
-//! `.pxi` v1 JSON read/write (minimal parser, no external deps).
+//! `.pxi` JSON read/write (v1 signatures, v2 structured types).
 
 use std::fmt::Write;
 use std::path::Path;
 
 use super::hash::digest_bytes;
+use super::type_ast::{PxiType, parse_type_value};
 use crate::resolver::DefKind;
 
 /// One exported symbol in a `.pxi` file.
@@ -17,6 +18,8 @@ pub struct PxiExport {
     pub kind: String,
     /// Stable type signature string.
     pub signature: String,
+    /// Structured type (format v2).
+    pub ty: Option<PxiType>,
 }
 
 /// Builds a stable export id for `.pxi` and link maps.
@@ -34,10 +37,10 @@ pub struct PxiDependency {
     pub pxi_hash: String,
 }
 
-/// Parsed `.pxi` interface (format version 1).
+/// Parsed `.pxi` interface (format version 1 or 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiFile {
-    /// Always `1` for this schema.
+    /// `1` (signatures only) or `2` (structured `type` on exports).
     pub format_version: u32,
     /// Logical module path (`a::b`).
     pub logical_module: String,
@@ -77,14 +80,26 @@ impl PxiFile {
         out.push_str("  \"exports\": [\n");
         for (i, e) in self.exports.iter().enumerate() {
             let comma = if i + 1 < self.exports.len() { "," } else { "" };
-            let _ = writeln!(
-                out,
-                "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}",
-                json_string(&e.export_id),
-                json_string(&e.name),
-                json_string(&e.kind),
-                json_string(&e.signature)
-            );
+            if let Some(ty) = &e.ty {
+                let _ = writeln!(
+                    out,
+                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}, \"type\": {}}}{comma}",
+                    json_string(&e.export_id),
+                    json_string(&e.name),
+                    json_string(&e.kind),
+                    json_string(&e.signature),
+                    ty.to_json()
+                );
+            } else {
+                let _ = writeln!(
+                    out,
+                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}",
+                    json_string(&e.export_id),
+                    json_string(&e.name),
+                    json_string(&e.kind),
+                    json_string(&e.signature)
+                );
+            }
         }
         out.push_str("  ],\n");
         out.push_str("  \"dependencies\": [\n");
@@ -141,6 +156,7 @@ impl PxiFile {
     }
 
     /// Returns true when `source_path` bytes match `source_hash`.
+    #[must_use]
     pub fn source_is_fresh(&self, source_path: &Path) -> bool {
         std::fs::read(source_path).is_ok_and(|b| digest_bytes(&b) == self.source_hash)
     }
@@ -229,7 +245,7 @@ fn parse_inner(text: &str) -> Result<PxiFile, PxiError> {
     let version = extract_u32(text, "format_version").ok_or_else(|| PxiError::Parse {
         message: "missing format_version".to_owned(),
     })?;
-    if version != 1 {
+    if version != 1 && version != 2 {
         return Err(PxiError::UnsupportedVersion { found: version });
     }
     if text.contains("\"module_path\"") {
@@ -329,11 +345,13 @@ fn parse_exports(logical_module: &str, text: &str) -> Vec<PxiExport> {
         ) {
             let export_id = extract_field_string(chunk, "export_id")
                 .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
+            let ty = parse_export_type(chunk);
             exports.push(PxiExport {
                 export_id,
                 name,
                 kind,
                 signature: sig,
+                ty,
             });
         }
         search = &search[name_pos + 6..];
@@ -367,6 +385,12 @@ fn parse_dependencies(text: &str) -> Vec<PxiDependency> {
     deps
 }
 
+fn parse_export_type(chunk: &str) -> Option<PxiType> {
+    let pat = "\"type\":";
+    let pos = chunk.find(pat)? + pat.len();
+    parse_type_value(&chunk[pos..])
+}
+
 fn extract_field_string(chunk: &str, key: &str) -> Option<String> {
     let pat = format!("\"{key}\":");
     let pos = chunk.find(&pat)? + pat.len();
@@ -394,6 +418,7 @@ mod tests {
                 name: "add".to_owned(),
                 kind: "fn".to_owned(),
                 signature: "(s32, s32) => s32".to_owned(),
+                ty: None,
             }],
             dependencies: vec![PxiDependency {
                 logical_module: "core".to_owned(),

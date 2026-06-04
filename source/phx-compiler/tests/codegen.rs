@@ -13,7 +13,7 @@ fn codegen_sample_round_trip_and_verify() {
     let unit = compile_source(source, Some(Path::new("sample.phx")))
         .unwrap_or_else(|e| panic!("compile: {e}"));
     let ir = lower(&unit.typed).expect("lower");
-    let module = codegen(&ir, &unit.typed);
+    let module = codegen(&ir, &unit.typed).expect("codegen");
 
     assert_eq!(module.functions.functions.len(), 2);
     assert!(!module.code.is_empty());
@@ -28,7 +28,7 @@ fn codegen_sample_round_trip_and_verify() {
         .expect("main function record");
     assert_eq!(main_rec.arity, 0);
 
-    let bytes = module.encode();
+    let bytes = module.encode().expect("encode");
     let decoded = BytecodeModule::decode(&bytes).expect("decode");
     verify(&decoded).expect("verify");
 
@@ -49,7 +49,7 @@ fn codegen_sample_round_trip_and_verify() {
 fn codegen_constants_include_sample_literals() {
     let source = include_str!("../../../tests/cli/fixtures/sample.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed);
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
 
     let mut has_ten = false;
     let mut has_two = false;
@@ -77,7 +77,7 @@ fn continue_program_runs_on_vm() {
     let source =
         "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed);
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("verify continue program");
 }
 
@@ -135,7 +135,7 @@ fn lower_match_emits_eq_and_jump_if() {
 fn codegen_enum_match_verifies() {
     let source = include_str!("../../../tests/cli/fixtures/enum_match.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed);
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("enum_match bytecode should verify");
 }
 
@@ -158,7 +158,7 @@ fn codegen_enum_struct_match_emits_tag_and_get_field() {
         insts.iter().any(|i| matches!(i, IrInst::GetField { .. })),
         "struct-variant bind should emit GetField"
     );
-    let module = codegen(&ir, &unit.typed);
+    let module = codegen(&ir, &unit.typed).expect("codegen");
     verify(&module).expect("enum_match_struct bytecode should verify");
 }
 
@@ -181,7 +181,7 @@ fn codegen_struct_point_emits_make_struct() {
         .flat_map(|b| &b.insts)
         .any(|i| matches!(i, IrInst::GetField { .. }));
     assert!(has_get, "field read should emit GetField");
-    let module = codegen(&ir, &unit.typed);
+    let module = codegen(&ir, &unit.typed).expect("codegen");
     verify(&module).expect("struct_point bytecode should verify");
 }
 
@@ -189,7 +189,7 @@ fn codegen_struct_point_emits_make_struct() {
 fn deep_logical_chain_verifies_and_runs() {
     let source = include_str!("../../../tests/cli/fixtures/deep_logical_chain.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed);
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("deep && chain should verify");
 }
 
@@ -197,7 +197,7 @@ fn deep_logical_chain_verifies_and_runs() {
 fn deep_logical_or_chain_verifies() {
     let source = include_str!("../../../tests/cli/fixtures/deep_logical_or_chain.phx");
     let unit = compile_source(source, None).unwrap();
-    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed);
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("deep || chain should verify");
 }
 
@@ -238,6 +238,21 @@ fn greater_than_lowers_via_swapped_lt() {
         has_lt,
         "3 > 2 should lower to IrBinOp::Lt with swapped operands"
     );
-    let module = codegen(&ir, &unit.typed);
+    let module = codegen(&ir, &unit.typed).expect("codegen");
     verify(&module).expect("gt program verifies");
+}
+
+#[test]
+fn const_pool_dedupes_identical_literals() {
+    let source = "main :: () => { const a: s32 = 42; const b: s32 = 42; const _ = a + b; };\n";
+    let unit = compile_source(source, None).unwrap_or_else(|e| panic!("compile: {e}"));
+    let ir = lower(&unit.typed).expect("lower");
+    assert!(ir.constants.len() >= 2, "expected at least two IR literals");
+    let module = codegen(&ir, &unit.typed).expect("codegen");
+    assert_eq!(
+        module.constants.entries.len(),
+        1,
+        "identical s32 literals should share one pool entry"
+    );
+    verify(&module).expect("deduped module verifies");
 }

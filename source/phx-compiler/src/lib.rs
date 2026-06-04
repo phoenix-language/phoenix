@@ -46,6 +46,7 @@ pub use phx_bytecode::BytecodeModule;
 pub use project::{
     BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,
 };
+pub use pxi::{PxiExport, PxiFile, PxiType};
 pub use resolver::{
     ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule,
     resolve,

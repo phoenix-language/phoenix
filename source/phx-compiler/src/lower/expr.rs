@@ -296,11 +296,11 @@ fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
 
 fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
     let symbol = ident.symbol;
-    if let Some(slot) = slot_for_symbol(ctx.layout, symbol) {
+    if let Some(binding) = ctx.layout.binding(symbol) {
         ctx.emit(IrInst::LoadLocal {
-            slot,
+            slot: binding.slot,
             ty,
-            prim_kind: prim_kind_byte(ctx.typed, ty),
+            prim_kind: prim_kind_byte(ctx.typed, binding.ty),
         });
     }
 }

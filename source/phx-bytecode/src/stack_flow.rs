@@ -26,6 +26,13 @@ pub enum StackFlowError {
         /// Depth from the conflicting predecessor.
         found: u32,
     },
+    /// [`Opcode::Call`] targets a function id not in the module table.
+    InvalidCallTarget {
+        /// Offset of the call instruction.
+        offset: u32,
+        /// Callee function id operand.
+        callee: u32,
+    },
 }
 
 /// Result of a successful CFG stack simulation.
@@ -89,7 +96,13 @@ pub fn analyze_stack_cfg(
             let (rel, inst) = &instructions[idx];
             let call_arity = if inst.opcode == Opcode::Call {
                 let callee = inst.operands.first().copied().unwrap_or(0);
-                Some(*fn_arity.get(&callee).unwrap_or(&0))
+                let Some(arity) = fn_arity.get(&callee) else {
+                    return Err(StackFlowError::InvalidCallTarget {
+                        offset: *rel,
+                        callee,
+                    });
+                };
+                Some(*arity)
             } else {
                 None
             };

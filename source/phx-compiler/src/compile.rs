@@ -88,6 +88,8 @@ pub enum CompileError {
         /// Module sources and interner from the typed program.
         context: DiagnosticContext,
     },
+    /// IR → bytecode codegen failure.
+    Codegen(crate::codegen::CodegenError),
     /// Failed to read source from disk.
     Io(io::Error),
 }
@@ -123,6 +125,7 @@ impl CompileError {
             Self::Lower { bag, context } => {
                 format_lower_bag(bag, entry_source, Some(&context.modules))
             }
+            Self::Codegen(e) => e.to_string(),
             Self::Io(e) => format!("I/O error: {e}"),
         }
     }
@@ -299,6 +302,7 @@ impl std::fmt::Display for CompileError {
             Self::Resolve { bag, .. } => write!(f, "{bag}"),
             Self::TypeCheck { bag, .. } => write!(f, "{bag}"),
             Self::Lower { bag, .. } => write!(f, "{bag}"),
+            Self::Codegen(e) => write!(f, "{e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
         }
     }
@@ -311,6 +315,7 @@ impl std::error::Error for CompileError {
             Self::Resolve { bag, .. } => Some(bag),
             Self::TypeCheck { bag, .. } => Some(bag),
             Self::Lower { bag, .. } => Some(bag),
+            Self::Codegen(e) => Some(e),
             Self::Io(e) => Some(e),
         }
     }
@@ -438,5 +443,5 @@ pub fn compile_to_module_with_module_path(
     let unit = check_file_with_module_path(path, module_root)?;
     let ctx = DiagnosticContext::from_resolved(&unit.typed.resolved);
     let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower { bag, context: ctx })?;
-    Ok(codegen(&ir, &unit.typed))
+    codegen(&ir, &unit.typed).map_err(CompileError::Codegen)
 }

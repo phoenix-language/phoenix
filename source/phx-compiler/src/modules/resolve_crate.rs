@@ -13,7 +13,7 @@ use crate::resolver::{Def, DefId, DefKind, ResolvedProgram, Resolver, SourceModu
 use super::loader::{LoadedCrate, LoadedModule, ModuleId};
 use super::path::ModulePath;
 use crate::project::{BuildLayout, PackageType};
-use crate::pxi::PxiFile;
+use crate::pxi::{PxiFile, PxiType};
 
 type ExportMap = HashMap<Symbol, DefId>;
 
@@ -110,6 +110,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
     // Phase 2: resolve bodies with import prefaces (skip modules that failed phase 1).
     let mut resolutions = HashMap::new();
     let mut closures = HashMap::new();
+    let mut import_types: HashMap<DefId, PxiType> = HashMap::new();
     for (idx, module) in modules.iter().enumerate() {
         if phase1_skip.contains(&module.id.index()) {
             continue;
@@ -125,6 +126,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             &package_name,
             &dep_name_refs,
             &mut bag,
+            &mut import_types,
         );
         let sf = SourceFile::new(module.program.clone(), interner.clone());
         let mut resolver = Resolver {
@@ -183,10 +185,11 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         resolutions,
         closures,
         main_fn,
+        import_types,
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn build_import_bindings(
     module: &LoadedModule,
     modules: &[LoadedModule],
@@ -198,6 +201,7 @@ fn build_import_bindings(
     workspace_name: &str,
     dep_names: &[&str],
     bag: &mut DiagnosticBag,
+    import_types: &mut HashMap<DefId, PxiType>,
 ) -> Vec<(Symbol, DefId, bool, Span)> {
     let mut bindings = Vec::new();
     let mut seen: HashSet<Symbol> = HashSet::new();
@@ -235,6 +239,15 @@ fn build_import_bindings(
                     continue;
                 }
                 let is_type = is_type_def(defs, def_id);
+                attach_pxi_type(
+                    import_types,
+                    layout,
+                    &key,
+                    &modules[dep_idx],
+                    interner,
+                    def_id,
+                    sym,
+                );
                 bindings.push((sym, def_id, is_type, imp.span));
             }
             continue;
@@ -272,6 +285,15 @@ fn build_import_bindings(
                     continue;
                 }
                 let is_type = is_type_def(defs, def_id);
+                attach_pxi_type(
+                    import_types,
+                    layout,
+                    &key,
+                    &modules[dep_idx],
+                    interner,
+                    def_id,
+                    sym,
+                );
                 bindings.push((sym, def_id, is_type, imp.span));
             } else if find_private_in_module(defs, u32::try_from(dep_idx).unwrap_or(u32::MAX), sym)
                 .is_some()
@@ -299,6 +321,41 @@ fn build_import_bindings(
 }
 
 /// Export map for an import target: when `.pxi` is fresh, restrict to symbols listed in the interface.
+fn attach_pxi_type(
+    import_types: &mut HashMap<DefId, PxiType>,
+    layout: Option<&BuildLayout>,
+    logical_path: &str,
+    dep_module: &LoadedModule,
+    interner: &Interner,
+    def_id: DefId,
+    sym: Symbol,
+) {
+    let Some(ty) = pxi_type_for_export(layout, logical_path, dep_module, interner, sym) else {
+        return;
+    };
+    import_types.insert(def_id, ty);
+}
+
+fn pxi_type_for_export(
+    layout: Option<&BuildLayout>,
+    logical_path: &str,
+    dep_module: &LoadedModule,
+    interner: &Interner,
+    sym: Symbol,
+) -> Option<PxiType> {
+    let layout = layout?;
+    let pxi_path = layout.module_artifacts(logical_path).pxi;
+    let pxi = PxiFile::read_from_path(&pxi_path).ok()?;
+    if !pxi.source_is_fresh(&dep_module.filesystem) {
+        return None;
+    }
+    let name = interner.resolve(sym);
+    pxi.exports
+        .iter()
+        .find(|e| e.name == name)
+        .and_then(|e| e.ty.clone())
+}
+
 fn exports_for_dependency(
     logical_path: &str,
     ast_exports: &ExportMap,

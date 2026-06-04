@@ -1,13 +1,25 @@
 //! Module constant pool builder (dedupe literal payloads).
 
+use std::collections::HashMap;
+
 use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
 
 use crate::ir::IrConst;
+
+/// Key for deduplicating constant pool entries.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PoolKey {
+    tag: u8,
+    payload: Vec<u8>,
+}
 
 /// Builder for a deduplicated [`ConstPool`].
 #[derive(Debug, Default)]
 pub struct ConstPoolBuilder {
     entries: Vec<ConstEntry>,
+    dedupe: HashMap<PoolKey, u32>,
+    /// Maps IR literal index → pool index.
+    ir_to_pool: Vec<u32>,
 }
 
 impl ConstPoolBuilder {
@@ -17,17 +29,41 @@ impl ConstPoolBuilder {
         Self::default()
     }
 
-    /// Appends all literals from `constants` in order (index `i` → pool `i`).
+    /// Registers all literals from `constants`, deduplicating identical payloads.
     pub fn fill_from_ir(&mut self, constants: &[IrConst]) {
+        self.ir_to_pool.clear();
+        self.ir_to_pool.reserve(constants.len());
         for lit in constants {
-            self.entries.push(ir_const_to_entry(lit));
+            let entry = ir_const_to_entry(lit);
+            let key = PoolKey {
+                tag: entry.tag as u8,
+                payload: entry.payload.clone(),
+            };
+            let pool_idx = if let Some(&idx) = self.dedupe.get(&key) {
+                idx
+            } else {
+                let Some(idx) = u32::try_from(self.entries.len()).ok() else {
+                    break;
+                };
+                self.dedupe.insert(key, idx);
+                self.entries.push(entry);
+                idx
+            };
+            self.ir_to_pool.push(pool_idx);
         }
     }
 
-    /// Pool index equals `constants` index when built via [`Self::fill_from_ir`].
+    /// Returns the constant pool index for IR literal `literal_index`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `fill_from_ir` was not called or `literal_index` is out of range.
     #[must_use]
-    pub const fn pool_index_for_literal(literal_index: u32) -> u32 {
-        literal_index
+    pub fn pool_index_for_literal(&self, literal_index: u32) -> u32 {
+        self.ir_to_pool
+            .get(literal_index as usize)
+            .copied()
+            .unwrap_or(literal_index)
     }
 
     /// Finishes the pool.

@@ -85,6 +85,19 @@ impl<'a> TypeChecker<'a> {
         let mut types = TypeInterner::new();
         let unit = unit(&mut types);
         let bool_ty = bool_type(&mut types);
+        let named_paths = crate::pxi::build_named_def_paths(resolved);
+        let mut value_types = HashMap::new();
+        for (def_id, pxi_ty) in &resolved.import_types {
+            let Some(def) = resolved.defs.get(def_id.index() as usize) else {
+                continue;
+            };
+            let mut ctx = crate::pxi::PxiImportCtx {
+                types: &mut types,
+                interner: &resolved.interner,
+                named_defs: &named_paths,
+            };
+            crate::pxi::seed_value_type(&mut ctx, *def_id, def.kind, pxi_ty, &mut value_types);
+        }
         Self {
             resolved,
             types,
@@ -92,7 +105,7 @@ impl<'a> TypeChecker<'a> {
             expr_types: HashMap::new(),
             next_expr: 0,
             type_defs: build_type_def_map(&resolved.defs),
-            value_types: HashMap::new(),
+            value_types,
             struct_fields: HashMap::new(),
             fn_ret: None,
             ownership: OwnershipTracker::new(),

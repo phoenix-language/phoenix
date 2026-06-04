@@ -7,14 +7,17 @@ use phx_syntax::Interner;
 
 use crate::modules::{LoadedModule, import_target_module};
 use crate::project::BuildLayout;
+use crate::pxi::serialize_ty::{
+    enum_export_type, fn_export_type, signature_string, struct_export_type,
+};
 use crate::pxi::{
     PxiDependency, PxiExport, PxiFile, def_kind_to_pxi, digest_bytes, digest_file, stable_export_id,
 };
 use crate::resolver::{Def, DefId, DefKind};
 use crate::typeck::BindingKind;
-use crate::typeck::{TypedProgram, format_type};
+use crate::typeck::TypedProgram;
 
-/// Builds a [`PxiFile`] for one module in a typed crate.
+/// Builds a [`PxiFile`] (format v2) for one module in a typed crate.
 #[must_use]
 pub fn build_pxi_for_module(
     logical_path: &str,
@@ -26,29 +29,32 @@ pub fn build_pxi_for_module(
 ) -> PxiFile {
     let source_hash = digest_file(source_path).unwrap_or_else(|_| digest_bytes(b""));
     let interner = &typed.resolved.interner;
+    let defs = &typed.resolved.defs;
     let mut pxi_exports = Vec::new();
 
     for (sym, &def_id) in exports {
-        let Some(def) = typed.resolved.defs.get(def_id.index() as usize) else {
+        let Some(def) = defs.get(def_id.index() as usize) else {
             continue;
         };
         if def.module != module_id || !def.exported {
             continue;
         }
-        let signature = export_signature(def, def_id, typed, interner);
         let name = interner.resolve(*sym).to_owned();
         let kind = def_kind_to_pxi(def.kind).to_owned();
+        let ty = export_structured_type(def, def_id, typed, logical_path);
+        let signature = export_signature_fallback(def, def_id, typed, interner);
         pxi_exports.push(PxiExport {
             export_id: stable_export_id(logical_path, &name, &kind),
             name,
             kind,
             signature,
+            ty,
         });
     }
     pxi_exports.sort_by(|a, b| a.name.cmp(&b.name));
 
     PxiFile {
-        format_version: 1,
+        format_version: 2,
         logical_module: logical_path.to_owned(),
         source_hash,
         origin: None,
@@ -57,7 +63,63 @@ pub fn build_pxi_for_module(
     }
 }
 
-fn export_signature(def: &Def, def_id: DefId, typed: &TypedProgram, names: &Interner) -> String {
+fn export_structured_type(
+    def: &Def,
+    def_id: DefId,
+    typed: &TypedProgram,
+    logical_module: &str,
+) -> Option<super::type_ast::PxiType> {
+    let interner = &typed.resolved.interner;
+    let defs = &typed.resolved.defs;
+    let layout = &typed.layout;
+    let ty_interner = &typed.types;
+    match def.kind {
+        DefKind::Fn => typed.functions.iter().find(|f| f.def == def_id).map(|f| {
+            let params: Vec<_> = f
+                .bindings
+                .iter()
+                .filter(|b| b.kind == BindingKind::Param)
+                .map(|p| p.ty)
+                .collect();
+            fn_export_type(
+                ty_interner,
+                interner,
+                defs,
+                layout,
+                logical_module,
+                &params,
+                f.return_type,
+            )
+        }),
+        DefKind::Struct => layout.structs.get(&def_id).map(|sl| {
+            struct_export_type(
+                ty_interner,
+                interner,
+                defs,
+                layout,
+                logical_module,
+                def_id,
+                sl,
+            )
+        }),
+        DefKind::Enum => layout
+            .enums
+            .get(&def_id)
+            .map(|el| enum_export_type(ty_interner, interner, defs, layout, logical_module, el)),
+        DefKind::TypeAlias => Some(super::type_ast::PxiType::Named {
+            path: format!("{logical_module}::{}", interner.resolve(def.name)),
+            args: vec![],
+        }),
+        _ => None,
+    }
+}
+
+fn export_signature_fallback(
+    def: &Def,
+    def_id: DefId,
+    typed: &TypedProgram,
+    names: &Interner,
+) -> String {
     match def.kind {
         DefKind::Fn => typed
             .functions
@@ -70,18 +132,14 @@ fn export_signature(def: &Def, def_id: DefId, typed: &TypedProgram, names: &Inte
                         .bindings
                         .iter()
                         .filter(|b| b.kind == BindingKind::Param)
-                        .map(|p| format_type(&typed.types, names, &typed.resolved.defs, p.ty))
+                        .map(|p| signature_string(&typed.types, names, &typed.resolved.defs, p.ty))
                         .collect();
-                    let ret = format_type(&typed.types, names, &typed.resolved.defs, f.return_type);
+                    let ret =
+                        signature_string(&typed.types, names, &typed.resolved.defs, f.return_type);
                     format!("({}) => {}", params.join(", "), ret)
                 },
             ),
-        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias => {
-            typed.layout.type_id(def_id).map_or_else(
-                || def_kind_to_pxi(def.kind).to_owned(),
-                |tid| format!("type_id({tid})"),
-            )
-        }
+        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias => names.resolve(def.name).to_owned(),
         _ => def_kind_to_pxi(def.kind).to_owned(),
     }
 }

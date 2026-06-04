@@ -1,7 +1,7 @@
 //! PHX0 linker — merge per-module object files into one executable image.
 
 use phx_bytecode::{
-    BytecodeModule, ConstPool, FileHeader, FunctionRecord, FunctionTable, Instruction,
+    BytecodeModule, ConstPool, ENTRY_NONE, FileHeader, FunctionRecord, FunctionTable, Instruction,
     LocalLayoutTable, Opcode, TypeTable,
 };
 use std::collections::HashMap;
@@ -18,6 +18,13 @@ pub struct LinkInput {
 /// Linker failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkError {
+    /// Section or offset does not fit in `u32`.
+    SectionTooLarge {
+        /// Section name.
+        section: &'static str,
+        /// Length that overflowed.
+        len: usize,
+    },
     /// No input modules.
     EmptyInput,
     /// `entry_function_id` not present after merge.
@@ -36,9 +43,16 @@ pub enum LinkError {
     },
 }
 
+fn u32_link(section: &'static str, len: usize) -> Result<u32, LinkError> {
+    u32::try_from(len).map_err(|_| LinkError::SectionTooLarge { section, len })
+}
+
 impl std::fmt::Display for LinkError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::SectionTooLarge { section, len } => {
+                write!(f, "linker: section `{section}` size {len} exceeds u32::MAX")
+            }
             Self::EmptyInput => f.write_str("linker: no input modules"),
             Self::InvalidEntry { entry_id } => {
                 write!(f, "linker: entry function id {entry_id} not found")
@@ -73,7 +87,7 @@ pub fn link_modules(
     if inputs.len() == 1 {
         let mut m = inputs[0].module.clone();
         m.header.entry_function_id = entry_function_id;
-        if entry_function_id == 0 {
+        if entry_function_id == ENTRY_NONE {
             return Ok(m);
         }
         if m.functions
@@ -101,9 +115,10 @@ pub fn link_modules(
     for input in inputs {
         let m = &input.module;
         let const_base = const_off;
-        const_off += u32::try_from(m.constants.entries.len()).unwrap_or(u32::MAX);
+        const_off =
+            const_off.saturating_add(u32_link("constants_count", m.constants.entries.len())?);
         let type_base = type_off;
-        type_off += u32::try_from(m.types.records.len()).unwrap_or(u32::MAX);
+        type_off = type_off.saturating_add(u32_link("types_count", m.types.records.len())?);
 
         for entry in &m.constants.entries {
             merged_constants.entries.push(entry.clone());
@@ -122,10 +137,10 @@ pub fn link_modules(
                     second: input.logical_path.clone(),
                 });
             }
-            let code_offset = u32::try_from(merged_code.len()).unwrap_or(u32::MAX);
+            let code_offset = u32_link("code_offset", merged_code.len())?;
             let body = slice_code(&m.code, f.code_offset, f.code_len);
             let patched = patch_code(body, const_base, type_base, f.function_id, &m.functions);
-            let code_len = u32::try_from(patched.len()).unwrap_or(u32::MAX);
+            let code_len = u32_link("code_len", patched.len())?;
             merged_code.extend_from_slice(&patched);
             merged_functions.push(FunctionRecord {
                 function_id: f.function_id,
@@ -145,7 +160,7 @@ pub fn link_modules(
             .extend(m.local_layouts.layouts.iter().cloned());
     }
 
-    if entry_function_id != 0
+    if entry_function_id != ENTRY_NONE
         && !merged_functions
             .iter()
             .any(|f| f.function_id == entry_function_id)

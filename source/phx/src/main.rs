@@ -280,7 +280,14 @@ fn main() {
                         eprintln!("verify error: {e}");
                         process::exit(1);
                     }
-                    if let Err(e) = fs::write(&out, module.encode()) {
+                    let bytes = match module.encode() {
+                        Ok(b) => b,
+                        Err(e) => {
+                            eprintln!("encode error: {e}");
+                            process::exit(1);
+                        }
+                    };
+                    if let Err(e) = fs::write(&out, bytes) {
                         eprintln!("I/O error: {e}");
                         process::exit(1);
                     }

@@ -12,6 +12,9 @@ pub const VERSION_MAJOR: u16 = 0;
 /// Format minor version for MVP.
 pub const VERSION_MINOR: u16 = 1;
 
+/// Sentinel `entry_function_id` for library images with no `main`.
+pub const ENTRY_NONE: u32 = u32::MAX;
+
 /// Parsed PHX0 file header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileHeader {

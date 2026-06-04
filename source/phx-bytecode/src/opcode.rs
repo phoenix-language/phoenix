@@ -11,6 +11,8 @@ pub enum Opcode {
     /// Pop and store to local. Stack: `[value] → []`
     StoreLocal = 2,
     /// Pop one value. Stack: `[a] → []`
+    ///
+    /// MVP codegen does not emit `Pop`; reserved for verifier/tests and future stmt-expr forms.
     Pop = 3,
     /// Add. Stack: `[a, b] → [sum]`
     Add = 4,
@@ -81,10 +83,14 @@ pub enum Opcode {
     /// Abort execution. Stack: `[] → []` (terminator)
     Trap = 37,
     /// Allocate `size` bytes on the VM heap. Stack: `[] → [addr]` — operand: byte size.
+    ///
+    /// VM-ready; MVP compiler does not emit until alloc intrinsic spelling is defined in design.
     Alloc = 38,
     /// Load primitive at address. Stack: `[addr] → [value]` — operands: `size`, `signed` (0/1).
     PtrLoad = 39,
     /// Store primitive at address. Stack: `[addr, value] → []` — operands: `size`, `signed`.
+    ///
+    /// VM-ready; not emitted by MVP codegen (see `Alloc`).
     PtrStore = 40,
     /// Build slice from array aggregate. Stack: `[array] → [slice]` — operand: element `prim_kind`.
     MakeSlice = 41,

@@ -1,6 +1,7 @@
 //! PHX0 [`BytecodeModule`] aggregate and file encode/decode.
 
 use super::const_pool::ConstPool;
+use super::encode::{EncodeError, u32_len};
 use super::function::FunctionTable;
 use super::header::{FileHeader, HEADER_SIZE, HeaderError};
 use super::instr::Instruction;
@@ -40,8 +41,11 @@ impl BytecodeModule {
     }
 
     /// Encodes the module to a PHX0 byte vector.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError::SectionTooLarge`] when any section or offset exceeds `u32::MAX`.
+    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
         let constants = self.constants.encode();
         let types = self.types.encode();
         let functions = self.functions.encode();
@@ -49,41 +53,41 @@ impl BytecodeModule {
         let local_layouts = self.local_layouts.encode();
 
         let section_count = 5u32;
-        let table_size = usize::try_from(section_count).unwrap_or(0) * 12;
+        let table_size = 5usize * 12;
         let mut offset = HEADER_SIZE + table_size;
 
         let constants_entry = SectionEntry {
             kind: SectionKind::Constants,
-            offset: u32::try_from(offset).unwrap_or(u32::MAX),
-            length: u32::try_from(constants.len()).unwrap_or(u32::MAX),
+            offset: u32_len("constants_offset", offset)?,
+            length: u32_len("constants", constants.len())?,
         };
         offset = offset.saturating_add(constants.len());
 
         let types_entry = SectionEntry {
             kind: SectionKind::Types,
-            offset: u32::try_from(offset).unwrap_or(u32::MAX),
-            length: u32::try_from(types.len()).unwrap_or(u32::MAX),
+            offset: u32_len("types_offset", offset)?,
+            length: u32_len("types", types.len())?,
         };
         offset = offset.saturating_add(types.len());
 
         let functions_entry = SectionEntry {
             kind: SectionKind::Functions,
-            offset: u32::try_from(offset).unwrap_or(u32::MAX),
-            length: u32::try_from(functions.len()).unwrap_or(u32::MAX),
+            offset: u32_len("functions_offset", offset)?,
+            length: u32_len("functions", functions.len())?,
         };
         offset = offset.saturating_add(functions.len());
 
         let code_entry = SectionEntry {
             kind: SectionKind::Code,
-            offset: u32::try_from(offset).unwrap_or(u32::MAX),
-            length: u32::try_from(code.len()).unwrap_or(u32::MAX),
+            offset: u32_len("code_offset", offset)?,
+            length: u32_len("code", code.len())?,
         };
         offset = offset.saturating_add(code.len());
 
         let local_layouts_entry = SectionEntry {
             kind: SectionKind::LocalLayouts,
-            offset: u32::try_from(offset).unwrap_or(u32::MAX),
-            length: u32::try_from(local_layouts.len()).unwrap_or(u32::MAX),
+            offset: u32_len("local_layouts_offset", offset)?,
+            length: u32_len("local_layouts", local_layouts.len())?,
         };
 
         let header = FileHeader {
@@ -112,7 +116,7 @@ impl BytecodeModule {
         out.extend_from_slice(&functions);
         out.extend_from_slice(code);
         out.extend_from_slice(&local_layouts);
-        out
+        Ok(out)
     }
 
     /// Decodes a PHX0 file from bytes.
@@ -202,6 +206,8 @@ impl BytecodeModule {
 /// Module-level encode/decode failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleError {
+    /// Encode failed before write (internal).
+    Encode(EncodeError),
     /// File shorter than header or section table.
     Truncated,
     /// Section payload extends past file end.

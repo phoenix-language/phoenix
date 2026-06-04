@@ -29,7 +29,7 @@ pub use mono::{MonoInst, monomorphize};
 pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use display::format_type;
-pub use layout::{ProgramLayout, VariantKind};
+pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 

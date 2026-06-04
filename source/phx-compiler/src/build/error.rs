@@ -24,6 +24,12 @@ pub enum BuildError {
     Pxi(PxiError),
     /// Linker failure.
     Link(crate::link::LinkError),
+    /// Codegen failure.
+    Codegen(crate::codegen::CodegenError),
+    /// PHX0 encode failure.
+    Encode(phx_bytecode::EncodeError),
+    /// Bytecode verifier failure.
+    Verify(phx_bytecode::VerifyError),
     /// Stale or missing interface.
     StaleInterface {
         /// Module path.
@@ -61,6 +67,9 @@ impl BuildError {
             Self::Lower(b) => b.to_string(),
             Self::Pxi(e) => e.to_string(),
             Self::Link(e) => e.to_string(),
+            Self::Codegen(e) => e.to_string(),
+            Self::Encode(e) => e.to_string(),
+            Self::Verify(e) => e.to_string(),
             Self::StaleInterface { module, message } => {
                 format!("stale interface for module `{module}`: {message}")
             }

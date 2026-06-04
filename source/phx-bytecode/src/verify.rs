@@ -2,9 +2,12 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::cast::{PrimitiveKind, SLOT_KIND_AGG};
+use super::const_pool::{ConstEntry, ConstTag};
 use super::function::FunctionRecord;
 use super::header::MAGIC;
 use super::instr::{InstrError, Instruction};
+use super::local_layout::{FunctionLocalLayout, LocalLayoutTable};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
 use super::stack_flow::{StackFlowError, analyze_stack_cfg};
@@ -80,8 +83,61 @@ pub enum VerifyError {
         /// Declared limit.
         limit: u16,
     },
+    /// Constant payload length does not match `prim_kind` on `Const`.
+    ConstPayloadMismatch {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Constant pool index.
+        index: u32,
+        /// `prim_kind` operand wire byte.
+        prim_kind: u8,
+        /// Expected payload length in bytes.
+        expected_len: usize,
+        /// Actual payload length in bytes.
+        actual_len: usize,
+    },
+    /// Constant tag does not match signed/unsigned `prim_kind`.
+    ConstTagMismatch {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Constant pool index.
+        index: u32,
+    },
+    /// Invalid `prim_kind` wire byte on an instruction operand.
+    InvalidPrimKind {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Offset within the function body.
+        offset: u32,
+        /// Invalid wire byte.
+        prim_kind: u8,
+    },
+    /// Local layouts section present but no row for this function.
+    MissingLocalLayout {
+        /// Function id without a layout row.
+        function_id: u32,
+    },
+    /// Layout `slot_count` does not match `FunctionRecord.local_count`.
+    LocalLayoutMismatch {
+        /// Function id.
+        function_id: u32,
+        /// Slots in layout section.
+        layout_slots: usize,
+        /// `local_count` in function record.
+        local_count: u16,
+    },
+    /// `LoadLocal` / `StoreLocal` `prim_kind` does not match layout slot kind.
+    LocalPrimKindMismatch {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Local slot index.
+        slot: u32,
+        /// Operand `prim_kind` wire byte.
+        prim_kind: u8,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 impl std::fmt::Display for VerifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -147,6 +203,47 @@ impl std::fmt::Display for VerifyError {
                 f,
                 "function {function_id} stack depth {observed} exceeds stack_max {limit}"
             ),
+            Self::ConstPayloadMismatch {
+                function_id,
+                index,
+                prim_kind,
+                expected_len,
+                actual_len,
+            } => write!(
+                f,
+                "constant {index} payload length {actual_len} != expected {expected_len} for prim_kind {prim_kind} in function {function_id}"
+            ),
+            Self::ConstTagMismatch { function_id, index } => write!(
+                f,
+                "constant {index} tag does not match prim_kind in function {function_id}"
+            ),
+            Self::InvalidPrimKind {
+                function_id,
+                offset,
+                prim_kind,
+            } => write!(
+                f,
+                "invalid prim_kind {prim_kind} in function {function_id} at offset {offset}"
+            ),
+            Self::MissingLocalLayout { function_id } => {
+                write!(f, "missing local layout for function {function_id}")
+            }
+            Self::LocalLayoutMismatch {
+                function_id,
+                layout_slots,
+                local_count,
+            } => write!(
+                f,
+                "function {function_id} layout has {layout_slots} slots but local_count is {local_count}"
+            ),
+            Self::LocalPrimKindMismatch {
+                function_id,
+                slot,
+                prim_kind,
+            } => write!(
+                f,
+                "local slot {slot} prim_kind {prim_kind} mismatch in function {function_id}"
+            ),
         }
     }
 }
@@ -162,15 +259,16 @@ pub fn verify(module: &BytecodeModule) -> Result<(), VerifyError> {
     verify_header_and_sections(module)?;
     verify_entry_function(module)?;
     let fn_arity = function_arity_map(module);
-    let const_count = u32::try_from(module.constants.entries.len()).unwrap_or(u32::MAX);
     for func in &module.functions.functions {
-        verify_function_body(func, module, &fn_arity, const_count)?;
+        verify_function_body(func, module, &fn_arity)?;
     }
     Ok(())
 }
 
 fn verify_header_and_sections(module: &BytecodeModule) -> Result<(), VerifyError> {
-    let bytes = module.encode();
+    let bytes = module
+        .encode()
+        .map_err(|_| VerifyError::SectionOutOfBounds)?;
     if bytes.len() < 24 {
         return Err(VerifyError::Truncated);
     }
@@ -212,6 +310,9 @@ fn verify_header_and_sections(module: &BytecodeModule) -> Result<(), VerifyError
 
 fn verify_entry_function(module: &BytecodeModule) -> Result<(), VerifyError> {
     let entry_id = module.header.entry_function_id;
+    if entry_id == crate::header::ENTRY_NONE {
+        return Ok(());
+    }
     let entry = module
         .functions
         .functions
@@ -243,8 +344,9 @@ fn verify_function_body(
     func: &FunctionRecord,
     module: &BytecodeModule,
     fn_arity: &HashMap<u32, u16>,
-    const_count: u32,
 ) -> Result<(), VerifyError> {
+    verify_function_layout(func, &module.local_layouts)?;
+
     let code = function_code(module, func).ok_or(VerifyError::FunctionCodeOutOfBounds {
         function_id: func.function_id,
     })?;
@@ -275,6 +377,7 @@ fn verify_function_body(
     }
 
     let code_len = func.code_len;
+    let layout = module.local_layouts.for_function(func.function_id);
     for (rel, inst) in &instructions {
         verify_operands(
             func,
@@ -283,7 +386,8 @@ fn verify_function_body(
             &inst_starts,
             code_len,
             fn_arity,
-            const_count,
+            module,
+            layout,
         )?;
     }
 
@@ -293,6 +397,10 @@ fn verify_function_body(
             | StackFlowError::JoinDepthMismatch { offset, .. } => VerifyError::StackUnderflow {
                 function_id: func.function_id,
                 offset,
+            },
+            StackFlowError::InvalidCallTarget { callee, .. } => VerifyError::InvalidCallTarget {
+                function_id: func.function_id,
+                callee,
             },
         })?;
     let max_depth = summary.max_depth;
@@ -308,7 +416,119 @@ fn verify_function_body(
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
+fn verify_function_layout(
+    func: &FunctionRecord,
+    layouts: &LocalLayoutTable,
+) -> Result<(), VerifyError> {
+    if layouts.layouts.is_empty() {
+        return Ok(());
+    }
+    let Some(layout) = layouts.for_function(func.function_id) else {
+        return Err(VerifyError::MissingLocalLayout {
+            function_id: func.function_id,
+        });
+    };
+    if layout.slots.len() != usize::from(func.local_count) {
+        return Err(VerifyError::LocalLayoutMismatch {
+            function_id: func.function_id,
+            layout_slots: layout.slots.len(),
+            local_count: func.local_count,
+        });
+    }
+    Ok(())
+}
+
+fn prim_kind_operand(raw: u32) -> Option<u8> {
+    u8::try_from(raw).ok()
+}
+
+fn verify_const_entry(
+    function_id: u32,
+    index: u32,
+    prim_kind_byte: u8,
+    entry: &ConstEntry,
+) -> Result<(), VerifyError> {
+    let Some(prim) = PrimitiveKind::from_u8(prim_kind_byte) else {
+        return Err(VerifyError::InvalidPrimKind {
+            function_id,
+            offset: 0,
+            prim_kind: prim_kind_byte,
+        });
+    };
+
+    let expected_len = match entry.tag {
+        ConstTag::Bool => 1usize,
+        ConstTag::Float32 => 4,
+        ConstTag::Float64 => 8,
+        ConstTag::Bytes => return Ok(()),
+        ConstTag::SignedInt | ConstTag::UnsignedInt => usize::from(prim.byte_size()),
+    };
+
+    let actual_len = entry.payload.len();
+    if actual_len != expected_len {
+        return Err(VerifyError::ConstPayloadMismatch {
+            function_id,
+            index,
+            prim_kind: prim_kind_byte,
+            expected_len,
+            actual_len,
+        });
+    }
+
+    let tag_ok = match entry.tag {
+        ConstTag::SignedInt => prim.is_signed_int(),
+        ConstTag::UnsignedInt => prim.is_unsigned_int(),
+        ConstTag::Bool => prim == PrimitiveKind::Bool,
+        ConstTag::Float32 => prim == PrimitiveKind::F32,
+        ConstTag::Float64 => prim == PrimitiveKind::F64,
+        ConstTag::Bytes => true,
+    };
+    if !tag_ok {
+        return Err(VerifyError::ConstTagMismatch { function_id, index });
+    }
+    Ok(())
+}
+
+fn check_local_slot(
+    function_id: u32,
+    slot: u32,
+    prim_kind_byte: u8,
+    func: &FunctionRecord,
+    layout: Option<&FunctionLocalLayout>,
+) -> Result<(), VerifyError> {
+    if slot >= u32::from(func.local_count) {
+        return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
+    }
+    let Some(layout) = layout else {
+        return Ok(());
+    };
+    let Some(slot_kind) = layout.slots.get(slot as usize) else {
+        return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
+    };
+    if slot_kind.is_aggregate() {
+        if prim_kind_byte != SLOT_KIND_AGG {
+            return Err(VerifyError::LocalPrimKindMismatch {
+                function_id,
+                slot,
+                prim_kind: prim_kind_byte,
+            });
+        }
+        return Ok(());
+    }
+    let Some(expected) = slot_kind.primitive_kind() else {
+        return Ok(());
+    };
+    if prim_kind_byte != expected.as_u8() {
+        return Err(VerifyError::LocalPrimKindMismatch {
+            function_id,
+            slot,
+            prim_kind: prim_kind_byte,
+        });
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn verify_operands(
     func: &FunctionRecord,
     offset: u32,
@@ -316,8 +536,10 @@ fn verify_operands(
     inst_starts: &HashSet<u32>,
     code_len: u32,
     fn_arity: &HashMap<u32, u16>,
-    const_count: u32,
+    module: &BytecodeModule,
+    layout: Option<&FunctionLocalLayout>,
 ) -> Result<(), VerifyError> {
+    let const_count = u32::try_from(module.constants.entries.len()).unwrap_or(u32::MAX);
     let function_id = func.function_id;
     match inst.opcode {
         Opcode::Const => {
@@ -331,6 +553,24 @@ fn verify_operands(
             if index >= const_count {
                 return Err(VerifyError::InvalidConstIndex { function_id, index });
             }
+            let Some(prim_kind_byte) =
+                prim_kind_operand(inst.operands.get(1).copied().unwrap_or(0))
+            else {
+                return Err(VerifyError::InvalidPrimKind {
+                    function_id,
+                    offset,
+                    prim_kind: 0xFF,
+                });
+            };
+            if PrimitiveKind::from_u8(prim_kind_byte).is_none() {
+                return Err(VerifyError::InvalidPrimKind {
+                    function_id,
+                    offset,
+                    prim_kind: prim_kind_byte,
+                });
+            }
+            let entry = &module.constants.entries[index as usize];
+            verify_const_entry(function_id, index, prim_kind_byte, entry)?;
         }
         Opcode::LoadLocal | Opcode::StoreLocal => {
             if inst.operands.len() != 2 {
@@ -340,11 +580,31 @@ fn verify_operands(
                 });
             }
             let slot = inst.operands.first().copied().unwrap_or(0);
-            if slot >= u32::from(func.local_count) {
-                return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
+            let Some(prim_kind_byte) =
+                prim_kind_operand(inst.operands.get(1).copied().unwrap_or(0))
+            else {
+                return Err(VerifyError::InvalidPrimKind {
+                    function_id,
+                    offset,
+                    prim_kind: 0xFF,
+                });
+            };
+            if prim_kind_byte != SLOT_KIND_AGG && PrimitiveKind::from_u8(prim_kind_byte).is_none() {
+                return Err(VerifyError::InvalidPrimKind {
+                    function_id,
+                    offset,
+                    prim_kind: prim_kind_byte,
+                });
             }
+            check_local_slot(function_id, slot, prim_kind_byte, func, layout)?;
         }
         Opcode::Call => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
             let callee = inst.operands.first().copied().unwrap_or(0);
             if !fn_arity.contains_key(&callee) {
                 return Err(VerifyError::InvalidCallTarget {
@@ -455,7 +715,7 @@ mod tests {
             constants: ConstPool {
                 entries: vec![ConstEntry {
                     tag: ConstTag::SignedInt,
-                    payload: 1i64.to_le_bytes().to_vec(),
+                    payload: 1i32.to_le_bytes().to_vec(),
                 }],
             },
             types: TypeTable::default(),
@@ -595,6 +855,39 @@ mod tests {
         assert!(matches!(
             err,
             VerifyError::StackUnderflow { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_const_payload_width_mismatch() {
+        let mut module = minimal_module(const_return_code(), 4, 0);
+        module.constants.entries[0].payload = 1i64.to_le_bytes().to_vec();
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(err, VerifyError::ConstPayloadMismatch { .. }));
+    }
+
+    #[test]
+    fn reject_invalid_call_target_in_stack_flow() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Call,
+                operands: vec![99],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 8, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::InvalidCallTarget { callee: 99, .. }
         ));
     }
 

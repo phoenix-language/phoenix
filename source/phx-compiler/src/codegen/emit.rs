@@ -286,7 +286,7 @@ fn try_enqueue_ir_block(
 fn emit_inst(
     out: &mut Vec<u8>,
     inst: &IrInst,
-    _pool: &mut ConstPoolBuilder,
+    pool: &ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     block_starts: &[u32],
 ) {
@@ -294,7 +294,7 @@ fn emit_inst(
         IrInst::Const {
             index, prim_kind, ..
         } => {
-            let pool_idx = ConstPoolBuilder::pool_index_for_literal(*index);
+            let pool_idx = pool.pool_index_for_literal(*index);
             out.extend(encode(Opcode::Const, &[pool_idx, u32::from(*prim_kind)]));
         }
         IrInst::LoadLocal {

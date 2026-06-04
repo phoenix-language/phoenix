@@ -5,18 +5,21 @@
 
 mod const_pool;
 mod emit;
+mod error;
 
 use phx_bytecode::{
-    BytecodeModule, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable,
+    BytecodeModule, ENTRY_NONE, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable,
     LocalLayoutTable, LocalSlotKind, TypeKind, TypeRecord, TypeTable,
 };
 use std::collections::HashMap;
 
+use crate::PxiType;
 use crate::ir::IrModule;
 use crate::resolver::DefId;
-use crate::typeck::{ProgramLayout, TypedProgram, slot_kind_for_binding};
+use crate::typeck::{BindingKind, ProgramLayout, TypedProgram, slot_kind_for_binding};
 
 pub use const_pool::ConstPoolBuilder;
+pub use error::CodegenError;
 
 /// Builds the bytecode types section from typeck layout tables.
 #[must_use]
@@ -64,9 +67,39 @@ pub fn build_type_table(layout: &ProgramLayout) -> TypeTable {
     TypeTable { records }
 }
 
+fn build_fn_arity_map(
+    typed: &TypedProgram,
+    ir: &IrModule,
+    global_fn: &HashMap<DefId, u32>,
+) -> HashMap<u32, u16> {
+    let mut map = HashMap::new();
+    for (&def, &fn_id) in global_fn {
+        let param_count = if let Some(f) = ir.functions.iter().find(|f| f.def == def) {
+            f.params.len()
+        } else if let Some(fl) = typed.functions.iter().find(|f| f.def == def) {
+            fl.bindings
+                .iter()
+                .filter(|b| b.kind == BindingKind::Param)
+                .count()
+        } else if let Some(PxiType::Fn { params, .. }) = typed.resolved.import_types.get(&def) {
+            params.len()
+        } else {
+            continue;
+        };
+        if let Ok(arity) = u16::try_from(param_count) {
+            map.insert(fn_id, arity);
+        }
+    }
+    map
+}
+
 /// Lowers `ir` to a [`BytecodeModule`] ready for [`phx_bytecode::verify`] and the VM.
-#[must_use]
-pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
+///
+/// # Errors
+///
+/// Returns [`CodegenError`] when section sizes exceed `u32::MAX`.
+pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, CodegenError> {
+    use error::u32_section;
     let layout = &typed.layout;
     let def_to_fn: HashMap<DefId, u32> =
         ir.functions.iter().map(|f| (f.def, f.id.index())).collect();
@@ -87,14 +120,22 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
     let mut records = Vec::new();
 
     for func in &ir.functions {
-        let offset = u32::try_from(code.len()).unwrap_or(u32::MAX);
+        let offset = u32_section("code_offset", code.len())?;
         let emitted = emit::emit_function(func, &mut pool, &def_to_fn, &fn_arity);
-        let len = u32::try_from(emitted.code.len()).unwrap_or(u32::MAX);
+        let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: func.id.index(),
             name_symbol_id: 0,
-            arity: u16::try_from(func.params.len()).unwrap_or(u16::MAX),
-            local_count: u16::try_from(func.local_count).unwrap_or(u16::MAX),
+            arity: u16::try_from(func.params.len()).map_err(|_| CodegenError::SectionTooLarge {
+                section: "arity",
+                len: func.params.len(),
+            })?,
+            local_count: u16::try_from(func.local_count).map_err(|_| {
+                CodegenError::SectionTooLarge {
+                    section: "local_count",
+                    len: func.local_count as usize,
+                }
+            })?,
             stack_max: emitted.stack_max,
             flags: 0,
             code_offset: offset,
@@ -111,7 +152,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
 
     let constants = pool.finish();
     let local_layouts = build_local_layouts(ir, typed);
-    BytecodeModule {
+    Ok(BytecodeModule {
         header: FileHeader {
             entry_function_id,
             section_count: 5,
@@ -122,30 +163,25 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
         functions: FunctionTable { functions: records },
         code,
         local_layouts,
-    }
+    })
 }
 
 /// Codegens one module's IR slice using global function ids for [`IrInst::Call`].
-#[must_use]
+///
+/// # Errors
+///
+/// Returns [`CodegenError`] when section sizes exceed `u32::MAX`.
 #[allow(clippy::implicit_hasher)]
 pub fn codegen_module(
     ir: &IrModule,
     typed: &TypedProgram,
     global_fn: &HashMap<DefId, u32>,
     is_entry_module: bool,
-) -> BytecodeModule {
+) -> Result<BytecodeModule, CodegenError> {
+    use error::u32_section;
     let layout = &typed.layout;
     let def_to_fn = global_fn;
-    let fn_arity: HashMap<u32, u16> = ir
-        .functions
-        .iter()
-        .map(|f| {
-            (
-                global_fn.get(&f.def).copied().unwrap_or(f.id.index()),
-                u16::try_from(f.params.len()).unwrap_or(u16::MAX),
-            )
-        })
-        .collect();
+    let fn_arity = build_fn_arity_map(typed, ir, global_fn);
 
     let mut pool = ConstPoolBuilder::new();
     pool.fill_from_ir(&ir.constants);
@@ -154,14 +190,22 @@ pub fn codegen_module(
 
     for func in &ir.functions {
         let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
-        let offset = u32::try_from(code.len()).unwrap_or(u32::MAX);
+        let offset = u32_section("code_offset", code.len())?;
         let emitted = emit::emit_function(func, &mut pool, def_to_fn, &fn_arity);
-        let len = u32::try_from(emitted.code.len()).unwrap_or(u32::MAX);
+        let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: fn_id,
             name_symbol_id: 0,
-            arity: u16::try_from(func.params.len()).unwrap_or(u16::MAX),
-            local_count: u16::try_from(func.local_count).unwrap_or(u16::MAX),
+            arity: u16::try_from(func.params.len()).map_err(|_| CodegenError::SectionTooLarge {
+                section: "arity",
+                len: func.params.len(),
+            })?,
+            local_count: u16::try_from(func.local_count).map_err(|_| {
+                CodegenError::SectionTooLarge {
+                    section: "local_count",
+                    len: func.local_count as usize,
+                }
+            })?,
             stack_max: emitted.stack_max,
             flags: 0,
             code_offset: offset,
@@ -174,9 +218,9 @@ pub fn codegen_module(
     let entry_function_id = if is_entry_module {
         ir.entry
             .and_then(|main| global_fn.get(&main).copied())
-            .unwrap_or(0)
+            .unwrap_or(ENTRY_NONE)
     } else {
-        0
+        ENTRY_NONE
     };
 
     let constants = pool.finish();
@@ -197,7 +241,7 @@ pub fn codegen_module(
         });
     }
 
-    BytecodeModule {
+    Ok(BytecodeModule {
         header: FileHeader {
             entry_function_id,
             section_count: 5,
@@ -208,7 +252,7 @@ pub fn codegen_module(
         functions: FunctionTable { functions: records },
         code,
         local_layouts: LocalLayoutTable { layouts },
-    }
+    })
 }
 
 fn build_local_layouts(ir: &IrModule, typed: &TypedProgram) -> LocalLayoutTable {

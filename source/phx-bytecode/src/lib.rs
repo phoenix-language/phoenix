@@ -7,6 +7,7 @@
 
 mod cast;
 mod const_pool;
+mod encode;
 mod function;
 mod header;
 mod instr;
@@ -22,8 +23,9 @@ mod verify;
 
 pub use cast::{PrimitiveKind, SLOT_KIND_AGG};
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
+pub use encode::{EncodeError, u32_len};
 pub use function::{FunctionRecord, FunctionTable};
-pub use header::{FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};
+pub use header::{ENTRY_NONE, FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};
 pub use instr::{InstrError, Instruction};
 pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
 pub use module::{BytecodeModule, ModuleError};
@@ -43,7 +45,7 @@ mod tests {
     #[test]
     fn empty_module_round_trip() {
         let module = BytecodeModule::empty();
-        let bytes = module.encode();
+        let bytes = module.encode().expect("encode");
         let decoded = BytecodeModule::decode(&bytes).expect("decode");
         assert_eq!(decoded.header.section_count, 5);
         assert!(matches!(
@@ -54,7 +56,7 @@ mod tests {
 
     #[test]
     fn reject_bad_magic() {
-        let mut bytes = BytecodeModule::empty().encode();
+        let mut bytes = BytecodeModule::empty().encode().expect("encode");
         bytes[0] = b'X';
         let err = BytecodeModule::decode(&bytes).unwrap_err();
         assert!(matches!(err, ModuleError::Header(HeaderError::BadMagic)));

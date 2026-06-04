@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use phx_bytecode::BytecodeModule;
+use phx_bytecode::{BytecodeModule, ENTRY_NONE};
 
 use crate::codegen::codegen_module;
 use crate::compile::CompileError;
@@ -88,7 +88,7 @@ fn build_package(
     let resolved = resolve_crate(loaded.clone()).map_err(BuildError::Resolve)?;
     let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
     let full_ir = lower(&typed).map_err(BuildError::Lower)?;
-    let global_fn = build_global_fn_map(&full_ir);
+    let global_fn = build_global_fn_map(&typed, &full_ir);
 
     let export_maps = collect_export_maps(&resolved);
     let dep_names: Vec<&str> = ctx.dep_names();
@@ -140,8 +140,9 @@ fn build_package(
         }
 
         let module_ir = lower_module(&typed, module.id.index()).map_err(BuildError::Lower)?;
-        let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root);
-        let bytes = obj.encode();
+        let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root)
+            .map_err(BuildError::Codegen)?;
+        let bytes = obj.encode().map_err(BuildError::Encode)?;
         if let Some(parent) = artifacts.phx0.parent() {
             std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;
         }
@@ -188,10 +189,11 @@ fn build_package(
                 );
                 BuildError::Resolve(bag)
             })?,
-        PackageType::Lib => 0,
+        PackageType::Lib => ENTRY_NONE,
     };
 
     let linked = link_modules(&link_inputs, entry_fn).map_err(BuildError::Link)?;
+    phx_bytecode::verify(&linked).map_err(BuildError::Verify)?;
     write_module(&output_path, &linked)?;
 
     manifest.write(&manifest_path).map_err(|e| io_err(&e))?;
@@ -287,12 +289,44 @@ fn entry_logical_path(config: &ProjectConfig, entry_file: &Path) -> Result<Strin
         })
 }
 
-fn build_global_fn_map(ir: &crate::ir::IrModule) -> HashMap<crate::resolver::DefId, u32> {
-    ir.functions
+fn build_global_fn_map(
+    typed: &crate::typeck::TypedProgram,
+    ir: &crate::ir::IrModule,
+) -> HashMap<crate::resolver::DefId, u32> {
+    use crate::resolver::DefKind;
+    use std::collections::HashSet;
+
+    let has_body: HashSet<_> = ir.functions.iter().map(|f| f.def).collect();
+    let mut external: Vec<crate::resolver::DefId> = typed
+        .resolved
+        .defs
         .iter()
         .enumerate()
-        .map(|(i, f)| (f.def, u32::try_from(i).unwrap_or(u32::MAX)))
-        .collect()
+        .filter_map(|(i, d)| {
+            if d.kind != DefKind::Fn {
+                return None;
+            }
+            let id = crate::resolver::DefId::from_raw(u32::try_from(i).unwrap_or(0));
+            if has_body.contains(&id) {
+                None
+            } else {
+                Some(id)
+            }
+        })
+        .collect();
+    external.sort_by_key(|d| d.index());
+
+    let mut map = HashMap::new();
+    let mut next = 0u32;
+    for d in external {
+        map.insert(d, next);
+        next = next.saturating_add(1);
+    }
+    for f in &ir.functions {
+        map.insert(f.def, next);
+        next = next.saturating_add(1);
+    }
+    map
 }
 
 fn collect_export_maps(
@@ -365,7 +399,8 @@ fn write_module(path: &Path, module: &BytecodeModule) -> Result<(), BuildError> 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| io_err(&e))?;
     }
-    std::fs::write(path, module.encode()).map_err(|e| io_err_path(path, &e))
+    let bytes = module.encode().map_err(BuildError::Encode)?;
+    std::fs::write(path, bytes).map_err(|e| io_err_path(path, &e))
 }
 
 fn io_err(e: &std::io::Error) -> BuildError {
@@ -389,6 +424,7 @@ impl From<CompileError> for BuildError {
             CompileError::Resolve { bag, .. } => Self::Resolve(bag),
             CompileError::TypeCheck { bag, .. } => Self::TypeCheck(bag),
             CompileError::Lower { bag, .. } => Self::Lower(bag),
+            CompileError::Codegen(e) => Self::Codegen(e),
             CompileError::Io(e) => Self::Io {
                 path: PathBuf::new(),
                 message: e.to_string(),
