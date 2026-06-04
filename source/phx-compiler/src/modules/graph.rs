@@ -68,9 +68,7 @@ fn cycle_edge(edges: &[ImportEdge], module_count: usize) -> Option<(Span, u32)> 
             return Some((span, from.index()));
         }
     }
-    edges
-        .first()
-        .map(|&(from, _, span)| (span, from.index()))
+    edges.first().map(|&(from, _, span)| (span, from.index()))
 }
 
 /// Topological order, or cycle escape when every cyclic module has a fresh `.pxi`.

@@ -23,6 +23,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Rustdoc
+        run: cargo doc --workspace --no-deps
+
       - name: Test workspace
         run: cargo test --workspace
 

@@ -544,6 +544,7 @@ impl Parser<'_> {
         Ok(fields)
     }
 
+    /// Parses a numeric, byte, float, bool, or unit literal.
     pub(crate) fn parse_literal(&mut self) -> Result<Literal, ParseError> {
         match self.peek_kind() {
             TokenKind::Integer { value, suffix } => {

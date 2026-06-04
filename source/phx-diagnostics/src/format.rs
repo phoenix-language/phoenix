@@ -1,13 +1,13 @@
 //! Source span rendering with carets for CLI diagnostics.
 
 use crate::LexError;
-use crate::SymbolNames;
 use crate::ResolveError;
 use crate::Span;
+use crate::SymbolNames;
 use crate::TypeCheckError;
 use crate::code::DiagnosticCode;
 
-fn append_code(message: String, code: DiagnosticCode) -> String {
+fn append_code(message: &str, code: DiagnosticCode) -> String {
     format!("{message} [{code}]")
 }
 
@@ -37,9 +37,9 @@ pub fn format_lex_error(source: &str, err: &LexError) -> String {
     let message = lex_message(err);
     let code = err.code();
     if let Some(span) = err.span() {
-        append_code(format_span_message(source, span, &message), code)
+        append_code(&format_span_message(source, span, &message), code)
     } else {
-        append_code(message, code)
+        append_code(&message, code)
     }
 }
 
@@ -107,7 +107,7 @@ pub fn format_resolve_error(source: &str, names: &impl SymbolNames, err: &Resolv
             }
         }
     };
-    append_code(body, code)
+    append_code(&body, code)
 }
 
 /// Human-readable message for a type-check error (no caret).
@@ -136,9 +136,7 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
             ..
         } => {
             let name = names.symbol_name(*method_index);
-            format!(
-                "ambiguous method `{name}` on type `{receiver}` (multiple trait impls)"
-            )
+            format!("ambiguous method `{name}` on type `{receiver}` (multiple trait impls)")
         }
         other => other.to_string(),
     }
@@ -146,7 +144,11 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
 
 /// Formats a type-check error with source carets; includes secondary notes for move errors.
 #[must_use]
-pub fn format_typecheck_error(source: &str, names: &impl SymbolNames, err: &TypeCheckError) -> String {
+pub fn format_typecheck_error(
+    source: &str,
+    names: &impl SymbolNames,
+    err: &TypeCheckError,
+) -> String {
     let code = err.code();
     let body = match err {
         TypeCheckError::UseAfterMove {
@@ -182,7 +184,7 @@ pub fn format_typecheck_error(source: &str, names: &impl SymbolNames, err: &Type
             }
         }
     };
-    append_code(body, code)
+    append_code(&body, code)
 }
 
 /// Formats `message` at `span` plus an optional `note_label` at `note_span`.
@@ -227,11 +229,7 @@ mod tests {
 
     impl SymbolNames for TestNames {
         fn symbol_name(&self, symbol_index: u32) -> &str {
-            if symbol_index == 0 {
-                "foo"
-            } else {
-                "?"
-            }
+            if symbol_index == 0 { "foo" } else { "?" }
         }
     }
 

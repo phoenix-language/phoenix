@@ -13,6 +13,12 @@
 //! - [`ir`] — intermediate representation.
 //! - [`lower`] — [`TypedProgram`] → [`IrModule`].
 //! - [`codegen`] — [`IrModule`] → [`phx_bytecode::BytecodeModule`].
+//!
+//! ## API stability
+//!
+//! [`DefId`], [`ResolvedProgram`], and [`TypedProgram`] expose in-tree compiler graphs for the CLI
+//! and tests. External tools should not rely on their field layout until a narrower facade exists
+//! (see `docs/review/10-rust-code-quality.md`).
 
 mod build;
 mod codegen;

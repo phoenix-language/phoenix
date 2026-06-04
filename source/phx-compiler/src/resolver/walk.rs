@@ -116,10 +116,13 @@ impl Resolver<'_> {
                     if self.current_module == self.root_module {
                         self.main_fn = Some(id);
                     } else {
-                        self.bag.push(self.current_module, ResolveError::MainNotInEntry {
-                            span,
-                            module: self.logical_path.to_owned(),
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            ResolveError::MainNotInEntry {
+                                span,
+                                module: self.logical_path.to_owned(),
+                            },
+                        );
                     }
                 }
             }
@@ -462,10 +465,13 @@ impl Resolver<'_> {
         if def_id.is_some() {
             self.record_resolution(span, name.symbol, def_id);
         } else {
-            self.bag.push(self.current_module, ResolveError::UnresolvedType {
-                symbol_index: name.symbol.index(),
-                span,
-            });
+            self.bag.push(
+                self.current_module,
+                ResolveError::UnresolvedType {
+                    symbol_index: name.symbol.index(),
+                    span,
+                },
+            );
         }
     }
 
@@ -660,10 +666,13 @@ impl Resolver<'_> {
         if let Some(id) = def_id {
             self.record_resolution(span, ident.symbol, Some(id));
         } else {
-            self.bag.push(self.current_module, ResolveError::UnresolvedIdent {
-                symbol_index: ident.symbol.index(),
-                span,
-            });
+            self.bag.push(
+                self.current_module,
+                ResolveError::UnresolvedIdent {
+                    symbol_index: ident.symbol.index(),
+                    span,
+                },
+            );
         }
     }
 
@@ -723,19 +732,26 @@ impl Resolver<'_> {
         }
 
         if has_params {
-            self.bag.push(self.current_module, ResolveError::InvalidMainSignature {
-                span: params_span.unwrap_or_else(|| self.program_hint_span()),
-                reason: InvalidMainReason::HasParameters,
-            });
+            self.bag.push(
+                self.current_module,
+                ResolveError::InvalidMainSignature {
+                    span: params_span.unwrap_or_else(|| self.program_hint_span()),
+                    reason: InvalidMainReason::HasParameters,
+                },
+            );
         }
         if let Some(span) = bad_ret_span {
-            self.bag.push(self.current_module, ResolveError::InvalidMainSignature {
-                span,
-                reason: InvalidMainReason::NonUnitReturn,
-            });
+            self.bag.push(
+                self.current_module,
+                ResolveError::InvalidMainSignature {
+                    span,
+                    reason: InvalidMainReason::NonUnitReturn,
+                },
+            );
         }
     }
 
+    /// Returns `true` when `symbol` is the interned `main` identifier.
     pub(crate) fn is_main_name(&self, symbol: Symbol) -> bool {
         self.source.interner.resolve(symbol) == "main"
     }

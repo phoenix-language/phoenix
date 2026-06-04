@@ -67,9 +67,10 @@ fn multi_module_error_labels_short_dependency_file() {
         other => panic!("expected resolve error, got {other:?}"),
     };
     assert!(
-        err.0.errors().iter().any(|e| {
-            matches!(e.error, ResolveError::UnresolvedIdent { .. })
-        }),
+        err.0
+            .errors()
+            .iter()
+            .any(|e| { matches!(e.error, ResolveError::UnresolvedIdent { .. }) }),
         "expected unresolved ident in dependency"
     );
     let formatted = CompileError::Resolve {

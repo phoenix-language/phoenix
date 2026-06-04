@@ -6,6 +6,8 @@ use phx_diagnostics::Span;
 use phx_syntax::Symbol;
 
 /// Dense index into [`crate::resolver::ResolvedProgram::defs`].
+///
+/// Not a stable ABI for external tools; layout may change with the compiler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DefId(u32);
 

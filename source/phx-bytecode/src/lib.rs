@@ -2,6 +2,8 @@
 //!
 //! Portable output of the compiler; consumed by [`phx_vm`] after the verifier pass.
 //! Format contract: `docs/design/features/vm-linear.md`.
+//!
+//! Call [`verify`] on every image before execution; the MVP VM assumes invariants checked there.
 
 mod cast;
 mod const_pool;

@@ -182,3 +182,15 @@ Do not implement in the compiler/VM until MVP checklist passes:
 1. Read the relevant `docs/design/` file.
 2. If behavior is ambiguous, update the design doc — do not guess in the implementation.
 3. Prefer narrowing MVP over shipping undocumented semantics.
+
+---
+
+## Agent completion gate
+
+Before marking a task complete, suggesting a commit, or opening a PR:
+
+1. From the repo root, run **`just pre-commit`**.
+2. If it fails, fix the issues and re-run until it passes.
+3. Do not describe the branch as ready to push until `just pre-commit` is green.
+
+`just pre-commit` runs `fmt-check`, `clippy` (`-D warnings`), `doc-check` (`cargo doc --no-deps`), and `test-lang` (CLI fixture scripts). It does **not** run `cargo test --workspace`; run that (or `just test`) before merge when changes may affect unit or integration tests.

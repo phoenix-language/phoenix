@@ -28,6 +28,8 @@ impl OwnershipTracker {
     }
 
     /// Registers a new binding as valid with its type.
+    ///
+    /// Shadowing replaces the innermost entry for `name`.
     pub fn define(&mut self, name: Symbol, ty: TypeId) {
         self.bindings.push((name, BindingState::Valid, ty));
     }

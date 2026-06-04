@@ -45,6 +45,9 @@ pub struct SourceModule {
 }
 
 /// Result of resolving a crate (one or more modules).
+///
+/// Exposes full AST and side tables for in-tree passes and tests. Not a stable public API surface
+/// for external IDEs or tooling until a narrower facade is introduced.
 #[derive(Debug, Clone)]
 pub struct ResolvedProgram {
     /// Entry module program (root file).

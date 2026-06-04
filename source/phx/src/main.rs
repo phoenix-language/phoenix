@@ -34,8 +34,8 @@ fn print_usage() {
     );
 }
 
-fn read_source(path: &Path) -> Result<String, CompileError> {
-    fs::read_to_string(path).map_err(CompileError::Io)
+fn read_source(path: &Path) -> std::io::Result<String> {
+    fs::read_to_string(path)
 }
 
 fn report_compile_error(err: &CompileError, entry_source: Option<&str>) {
@@ -44,10 +44,9 @@ fn report_compile_error(err: &CompileError, entry_source: Option<&str>) {
             context.as_ref().map(|c| c.modules.as_slice()),
             context.as_ref().map(|c| &c.interner),
         ),
-        CompileError::TypeCheck { context, .. } => (
-            Some(context.modules.as_slice()),
-            Some(&context.interner),
-        ),
+        CompileError::TypeCheck { context, .. } => {
+            (Some(context.modules.as_slice()), Some(&context.interner))
+        }
         _ => (None, None),
     };
     eprintln!(

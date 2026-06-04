@@ -133,6 +133,7 @@ impl<'src> Parser<'src> {
         self.intern_ident(text, span)
     }
 
+    /// Interns `text` at `span` as a value [`Ident`].
     pub(crate) fn intern_ident(
         &mut self,
         text: &str,

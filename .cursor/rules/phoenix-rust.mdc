@@ -315,7 +315,9 @@ pub fn load(bytes: &[u8]) -> Result<Module, LoadError>
 
 ## Before you commit Rust changes
 
-- [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`
+- [ ] **`just pre-commit`** from repo root (fmt-check, clippy, doc-check, test-lang)
+- [ ] **`cargo test --workspace`** when changes touch compiler logic, VM, or tests (not part of `pre-commit` today)
+- [ ] Optional full parity: **`just check`** (adds `build`) before large merges
 - [ ] No `unwrap`/`expect`/`dbg!` on user-facing paths
 - [ ] Every `unsafe` has `// SAFETY:` and a narrow safe wrapper
-- [ ] Public items documented with `# Errors` / `# Panics` / `# Safety` as needed
+- [ ] Public items documented with `# Errors` / `# Panics` / `# Safety` as needed (see `docs/contributing/rust-docs.md`)

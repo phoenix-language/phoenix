@@ -48,11 +48,14 @@ impl ScopeStack {
             return;
         };
         if let Some(&first_id) = scope.values.get(&name) {
-            bag.push(module, ResolveError::DuplicateDefinition {
-                symbol_index: name.index(),
-                first_span: defs[first_id.index() as usize].span,
-                span,
-            });
+            bag.push(
+                module,
+                ResolveError::DuplicateDefinition {
+                    symbol_index: name.index(),
+                    first_span: defs[first_id.index() as usize].span,
+                    span,
+                },
+            );
         }
         scope.values.insert(name, def_id);
     }
@@ -71,11 +74,14 @@ impl ScopeStack {
             return;
         };
         if let Some(&first_id) = scope.types.get(&name) {
-            bag.push(module, ResolveError::DuplicateDefinition {
-                symbol_index: name.index(),
-                first_span: defs[first_id.index() as usize].span,
-                span,
-            });
+            bag.push(
+                module,
+                ResolveError::DuplicateDefinition {
+                    symbol_index: name.index(),
+                    first_span: defs[first_id.index() as usize].span,
+                    span,
+                },
+            );
         }
         scope.types.insert(name, def_id);
     }
@@ -103,6 +109,8 @@ impl ScopeStack {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use phx_diagnostics::Span;
     use phx_syntax::{Interner, Program, SourceFile};
 

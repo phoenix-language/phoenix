@@ -16,7 +16,7 @@ missing_docs = "deny"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-missing_errors_doc = "warn"
+missing_errors_doc = "deny"
 perf = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"

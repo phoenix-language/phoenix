@@ -470,6 +470,7 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
     }
 }
 
+/// Lowers assignment (`=`, `+=`, …) into store or compound-op IR.
 pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value: &ExprNode) {
     lower_assign_target(ctx, &target.inner);
     lower_expr(ctx, value);
@@ -833,6 +834,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
     ctx.set_current(merge_id);
 }
 
+/// Emits branch tests for one `match` arm (tag compare, bindings, guard).
 pub(crate) fn emit_arm_condition(
     ctx: &mut LowerCtx<'_>,
     pat: &Pattern,
@@ -948,6 +950,7 @@ fn find_enum_variant_by_name(ctx: &LowerCtx<'_>, name: Symbol) -> Option<(u32, u
     None
 }
 
+/// Binds `match` pattern variables into locals and moves payload slots when needed.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn bind_match_pattern(
     ctx: &mut LowerCtx<'_>,

@@ -25,6 +25,12 @@ test-lang:
     tests/cli/run.sh
     tests/cli/help.sh
 
+pre-commit:
+    just fmt-check lint doc-check test-lang
+
+doc-check:
+    cargo doc --workspace --no-deps
+
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 

@@ -88,6 +88,7 @@ impl Parser<'_> {
         Ok(fields)
     }
 
+    /// Parses `pattern => expr` or `pattern => { block }`.
     pub(crate) fn parse_match_arm(&mut self) -> Result<MatchArm, ParseError> {
         let pattern = self.parse_pattern()?;
         let guard = if self.eat_keyword(Keyword::If) {
@@ -105,6 +106,7 @@ impl Parser<'_> {
         })
     }
 
+    /// Parses the right-hand side of a match arm (expression or braced block).
     pub(crate) fn parse_expr_or_block_value(&mut self) -> Result<ExprNode, ParseError> {
         if self.peek_kind() == TokenKind::LBrace {
             let block = self.parse_block()?;

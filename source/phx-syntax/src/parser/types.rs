@@ -210,6 +210,7 @@ impl Parser<'_> {
         Ok(args)
     }
 
+    /// Parses an integer literal token (radix and suffix).
     pub(crate) fn parse_int_lit(&mut self) -> Result<crate::ast::IntLit, ParseError> {
         match self.peek_kind() {
             TokenKind::Integer { value, suffix } => {

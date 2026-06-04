@@ -41,6 +41,9 @@ pub struct StructFields {
 }
 
 /// Type checker state for one compilation unit.
+///
+/// Walks the resolved AST, fills [`TypeInterner`] and per-expression [`TypeId`]s, and records
+/// errors in a [`TypeCheckBag`] without stopping at the first failure.
 pub struct TypeChecker<'a> {
     resolved: &'a ResolvedProgram,
     types: TypeInterner,
@@ -156,11 +159,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn error_mismatch(&mut self, expected: TypeId, found: TypeId, span: Span) {
-        self.bag.push(self.current_module, TypeCheckError::Mismatch {
-            expected: self.format_ty(expected),
-            found: self.format_ty(found),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::Mismatch {
+                expected: self.format_ty(expected),
+                found: self.format_ty(found),
+                span,
+            },
+        );
     }
 
     fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
@@ -230,11 +236,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn push_unsupported(&mut self, feature: &'static str, span: Span) {
-        self.bag
-            .push(
-                self.current_module,
-                TypeCheckError::UnsupportedFeature { feature, span },
-            );
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnsupportedFeature { feature, span },
+        );
     }
 
     fn collect_decls(&mut self) {
@@ -710,11 +715,14 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident(ident) => {
                 if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
                     let name = self.resolved.interner.resolve(ident.symbol).to_owned();
-                    self.bag.push(self.current_module, TypeCheckError::MovedAssignTarget {
-                        name,
-                        move_span,
-                        span: target.span,
-                    });
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::MovedAssignTarget {
+                            name,
+                            move_span,
+                            span: target.span,
+                        },
+                    );
                 }
                 self.check_ident(ident, target.span)
             }
@@ -727,18 +735,24 @@ impl<'a> TypeChecker<'a> {
                 if let PostfixOp::Field(field) = &ops[0] {
                     self.check_field(base_ty, field, target.span)
                 } else {
-                    self.bag.push(self.current_module, TypeCheckError::InvalidOperator {
-                        op: "assign target",
-                        span: target.span,
-                    });
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::InvalidOperator {
+                            op: "assign target",
+                            span: target.span,
+                        },
+                    );
                     self.unit
                 }
             }
             _ => {
-                self.bag.push(self.current_module, TypeCheckError::InvalidOperator {
-                    op: "assign target",
-                    span: target.span,
-                });
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::InvalidOperator {
+                        op: "assign target",
+                        span: target.span,
+                    },
+                );
                 self.unit
             }
         }
@@ -825,11 +839,14 @@ impl<'a> TypeChecker<'a> {
                 let td = self.type_defs.clone();
                 let to = self.lower_ast_type_with_defs(ty, &td);
                 if !check_cast(&self.alias_env(), from, to) {
-                    self.bag.push(self.current_module, TypeCheckError::InvalidCast {
-                        from: self.format_ty(from),
-                        to: self.format_ty(to),
-                        span,
-                    });
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::InvalidCast {
+                            from: self.format_ty(from),
+                            to: self.format_ty(to),
+                            span,
+                        },
+                    );
                 }
                 to
             }
@@ -915,11 +932,14 @@ impl<'a> TypeChecker<'a> {
         }
         if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
             let name = self.resolved.interner.resolve(ident.symbol).to_owned();
-            self.bag.push(self.current_module, TypeCheckError::UseAfterMove {
-                name,
-                move_span,
-                span,
-            });
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UseAfterMove {
+                    name,
+                    move_span,
+                    span,
+                },
+            );
         }
         if let Some(ty) = self.ownership.binding_type(ident.symbol).or_else(|| {
             self.lookup_resolution(span, ident.symbol)
@@ -935,10 +955,13 @@ impl<'a> TypeChecker<'a> {
                 let _ = fields;
             }
         }
-        self.bag.push(self.current_module, TypeCheckError::UnresolvedValue {
-            symbol_index: ident.symbol.index(),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnresolvedValue {
+                symbol_index: ident.symbol.index(),
+                span,
+            },
+        );
         self.unit
     }
 
@@ -996,10 +1019,13 @@ impl<'a> TypeChecker<'a> {
                     self.check_index(ty, span)
                 }
                 PostfixOp::Try => {
-                    self.bag.push(self.current_module, TypeCheckError::UnsupportedFeature {
-                        feature: "`?` operator (requires std `Option` / `Result`)",
-                        span,
-                    });
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "`?` operator (requires std `Option` / `Result`)",
+                            span,
+                        },
+                    );
                     self.unit
                 }
                 _ => self.unit,
@@ -1018,11 +1044,14 @@ impl<'a> TypeChecker<'a> {
                 }
             }
         }
-        self.bag.push(self.current_module, TypeCheckError::UnresolvedMethod {
-            receiver: self.format_ty(base),
-            method_index: field.symbol.index(),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnresolvedMethod {
+                receiver: self.format_ty(base),
+                method_index: field.symbol.index(),
+                span,
+            },
+        );
         self.unit
     }
 
@@ -1045,19 +1074,25 @@ impl<'a> TypeChecker<'a> {
 
     fn check_call(&mut self, callee: TypeId, args: &[ExprNode], span: Span) -> TypeId {
         let Ty::Fn { params, ret } = self.types.get(callee).clone() else {
-            self.bag.push(self.current_module, TypeCheckError::NotCallable {
-                found: self.format_ty(callee),
-                span,
-            });
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::NotCallable {
+                    found: self.format_ty(callee),
+                    span,
+                },
+            );
             return self.unit;
         };
         {
             if params.len() != args.len() {
-                self.bag.push(self.current_module, TypeCheckError::ArityMismatch {
-                    expected: params.len(),
-                    found: args.len(),
-                    span,
-                });
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::ArityMismatch {
+                        expected: params.len(),
+                        found: args.len(),
+                        span,
+                    },
+                );
             }
             for (p, arg) in params.iter().zip(args.iter()) {
                 let got = self.check_expr_node(arg);
@@ -1111,11 +1146,14 @@ impl<'a> TypeChecker<'a> {
                     }
                     let rest = &params[1..];
                     if rest.len() != args.len() {
-                        self.bag.push(self.current_module, TypeCheckError::ArityMismatch {
-                            expected: rest.len(),
-                            found: args.len(),
-                            span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::ArityMismatch {
+                                expected: rest.len(),
+                                found: args.len(),
+                                span,
+                            },
+                        );
                     }
                     for (p, arg) in rest.iter().zip(args) {
                         let got = self.check_expr_node(arg);
@@ -1138,18 +1176,24 @@ impl<'a> TypeChecker<'a> {
             trait_matches.sort_by_key(|d| d.index());
             trait_matches.dedup();
             if trait_matches.len() > 1 {
-                self.bag.push(self.current_module, TypeCheckError::AmbiguousMethod {
-                    receiver: self.format_ty(receiver),
-                    method_index: name.symbol.index(),
-                    span,
-                });
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::AmbiguousMethod {
+                        receiver: self.format_ty(receiver),
+                        method_index: name.symbol.index(),
+                        span,
+                    },
+                );
             }
         }
-        self.bag.push(self.current_module, TypeCheckError::UnresolvedMethod {
-            receiver: self.format_ty(receiver),
-            method_index: name.symbol.index(),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnresolvedMethod {
+                receiver: self.format_ty(receiver),
+                method_index: name.symbol.index(),
+                span,
+            },
+        );
         self.unit
     }
 
@@ -1173,14 +1217,20 @@ impl<'a> TypeChecker<'a> {
             }
             let arm_ty = self.check_block_expr(eb);
             then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
-                self.bag.push(self.current_module, TypeCheckError::NonUnifyingBranches { span });
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::NonUnifyingBranches { span },
+                );
                 self.unit
             });
         }
         if let Some(else_b) = else_block {
             let arm_ty = self.check_block_expr(else_b);
             then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
-                self.bag.push(self.current_module, TypeCheckError::NonUnifyingBranches { span });
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::NonUnifyingBranches { span },
+                );
                 self.unit
             });
         }
@@ -1210,7 +1260,10 @@ impl<'a> TypeChecker<'a> {
             acc = Some(match acc {
                 None => body_ty,
                 Some(prev) => unify_branch(&self.alias_env(), prev, body_ty).unwrap_or_else(|| {
-                    self.bag.push(self.current_module, TypeCheckError::NonUnifyingBranches { span });
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::NonUnifyingBranches { span },
+                    );
                     self.unit
                 }),
             });
@@ -1233,10 +1286,13 @@ impl<'a> TypeChecker<'a> {
         for arm in arms {
             let pat_span = arm.pattern.span;
             if after_unconditional_wildcard {
-                self.bag.push(self.current_module, TypeCheckError::UnreachableMatchArm {
-                    reason: "a previous `_` arm matches all remaining values",
-                    span: pat_span,
-                });
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnreachableMatchArm {
+                        reason: "a previous `_` arm matches all remaining values",
+                        span: pat_span,
+                    },
+                );
                 continue;
             }
 
@@ -1249,10 +1305,13 @@ impl<'a> TypeChecker<'a> {
                         .iter()
                         .any(|prev| pattern_literal_eq(prev, lit))
                     {
-                        self.bag.push(self.current_module, TypeCheckError::UnreachableMatchArm {
-                            reason: "an earlier arm already matches this literal",
-                            span: pat_span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::UnreachableMatchArm {
+                                reason: "an earlier arm already matches this literal",
+                                span: pat_span,
+                            },
+                        );
                     } else {
                         covered_literals.push(lit.clone());
                     }
@@ -1260,10 +1319,13 @@ impl<'a> TypeChecker<'a> {
                 _ if is_enum => {
                     if let Some(variant) = self.pattern_covered_variant(&arm.pattern.inner) {
                         if !covered_variants.insert(variant) {
-                            self.bag.push(self.current_module, TypeCheckError::UnreachableMatchArm {
-                                reason: "an earlier arm already matches this enum variant",
-                                span: pat_span,
-                            });
+                            self.bag.push(
+                                self.current_module,
+                                TypeCheckError::UnreachableMatchArm {
+                                    reason: "an earlier arm already matches this enum variant",
+                                    span: pat_span,
+                                },
+                            );
                         }
                     }
                 }
@@ -1352,19 +1414,25 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn error_enum_pattern_on_non_enum(&mut self, scrutinee: TypeId, span: Span) {
-        self.bag.push(self.current_module, TypeCheckError::Mismatch {
-            expected: "enum".to_string(),
-            found: self.format_ty(scrutinee),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::Mismatch {
+                expected: "enum".to_string(),
+                found: self.format_ty(scrutinee),
+                span,
+            },
+        );
     }
 
     fn error_enum_variant_mismatch(&mut self, expected_def: DefId, scrutinee: TypeId, span: Span) {
-        self.bag.push(self.current_module, TypeCheckError::Mismatch {
-            expected: self.format_named(expected_def),
-            found: self.format_ty(scrutinee),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::Mismatch {
+                expected: self.format_named(expected_def),
+                found: self.format_ty(scrutinee),
+                span,
+            },
+        );
     }
 
     fn check_pattern(&mut self, pat: &Pattern, scrutinee: TypeId, span: Span) {
@@ -1389,11 +1457,14 @@ impl<'a> TypeChecker<'a> {
                 if let Some(&def) = self.type_defs.get(&name.symbol) {
                     if let Ty::Named { def: sdef, .. } = self.types.get(scrutinee) {
                         if *sdef != def {
-                            self.bag.push(self.current_module, TypeCheckError::Mismatch {
-                                expected: self.format_named(def),
-                                found: self.format_ty(scrutinee),
-                                span,
-                            });
+                            self.bag.push(
+                                self.current_module,
+                                TypeCheckError::Mismatch {
+                                    expected: self.format_named(def),
+                                    found: self.format_ty(scrutinee),
+                                    span,
+                                },
+                            );
                         }
                     }
                     for field in fields {
@@ -1472,10 +1543,13 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> TypeId {
         if generics.is_some() {
-            self.bag.push(self.current_module, TypeCheckError::UnsupportedFeature {
-                feature: "struct literal type arguments",
-                span,
-            });
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: "struct literal type arguments",
+                    span,
+                },
+            );
         }
         if let Some(&def) = self.type_defs.get(&name.symbol) {
             let ty = self.types.intern(&Ty::Named { def, args: vec![] });
@@ -1483,10 +1557,13 @@ impl<'a> TypeChecker<'a> {
                 let required_fields: Vec<Symbol> = sl.fields.iter().map(|(n, _)| *n).collect();
                 for field in fields {
                     if matches!(field, StructFieldInit::Spread(_)) {
-                        self.bag.push(self.current_module, TypeCheckError::UnsupportedFeature {
-                            feature: "struct literal spread",
-                            span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::UnsupportedFeature {
+                                feature: "struct literal spread",
+                                span,
+                            },
+                        );
                     }
                 }
                 let mut seen = std::collections::HashSet::new();
@@ -1505,18 +1582,24 @@ impl<'a> TypeChecker<'a> {
                             self.error_mismatch(expected, got, value.span);
                         }
                     } else {
-                        self.bag.push(self.current_module, TypeCheckError::UnknownStructField {
-                            name: self.symbol_name(fname.symbol),
-                            span: value.span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::UnknownStructField {
+                                name: self.symbol_name(fname.symbol),
+                                span: value.span,
+                            },
+                        );
                     }
                 }
                 for fname in required_fields {
                     if !seen.contains(&fname) {
-                        self.bag.push(self.current_module, TypeCheckError::MissingStructField {
-                            name: self.symbol_name(fname),
-                            span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::MissingStructField {
+                                name: self.symbol_name(fname),
+                                span,
+                            },
+                        );
                     }
                 }
             }
@@ -1532,10 +1615,13 @@ impl<'a> TypeChecker<'a> {
                 let required_fields: Vec<Symbol> = payload.iter().map(|(n, _)| *n).collect();
                 for field in fields {
                     if matches!(field, StructFieldInit::Spread(_)) {
-                        self.bag.push(self.current_module, TypeCheckError::UnsupportedFeature {
-                            feature: "enum struct literal spread",
-                            span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::UnsupportedFeature {
+                                feature: "enum struct literal spread",
+                                span,
+                            },
+                        );
                     }
                 }
                 let mut seen = std::collections::HashSet::new();
@@ -1550,27 +1636,36 @@ impl<'a> TypeChecker<'a> {
                             self.error_mismatch(*expected, got, value.span);
                         }
                     } else {
-                        self.bag.push(self.current_module, TypeCheckError::UnknownEnumVariantField {
-                            name: self.symbol_name(fname.symbol),
-                            span: value.span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::UnknownEnumVariantField {
+                                name: self.symbol_name(fname.symbol),
+                                span: value.span,
+                            },
+                        );
                     }
                 }
                 for fname in required_fields {
                     if !seen.contains(&fname) {
-                        self.bag.push(self.current_module, TypeCheckError::MissingEnumVariantField {
-                            name: self.symbol_name(fname),
-                            span,
-                        });
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::MissingEnumVariantField {
+                                name: self.symbol_name(fname),
+                                span,
+                            },
+                        );
                     }
                 }
             }
             return enum_ty;
         }
-        self.bag.push(self.current_module, TypeCheckError::UnknownType {
-            symbol_index: name.symbol.index(),
-            span,
-        });
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnknownType {
+                symbol_index: name.symbol.index(),
+                span,
+            },
+        );
         self.unit
     }
 

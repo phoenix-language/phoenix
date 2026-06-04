@@ -139,10 +139,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
 
     if package_type == PackageType::Bin && main_fn.is_none() {
         let span = root_hint_span(&source_modules, root.index());
-        bag.push(
-            root.index(),
-            ResolveError::MissingMain { span },
-        );
+        bag.push(root.index(), ResolveError::MissingMain { span });
     }
 
     if bag.has_errors() {

@@ -9,8 +9,8 @@ use std::path::Path;
 use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
-    DiagnosticBag, ParseBag, ParseError, TypeCheckBag, format_lex_error,
-    format_resolve_error, format_typecheck_error,
+    DiagnosticBag, ParseBag, ParseError, TypeCheckBag, format_lex_error, format_resolve_error,
+    format_typecheck_error,
 };
 use phx_syntax::{Interner, parse};
 
@@ -22,6 +22,9 @@ use crate::typeck::type_check;
 use crate::unit::CompilationUnit;
 
 /// Sources and interner needed to format multi-module diagnostics.
+///
+/// Populated after crate load or resolve so [`CompileError::format_with_modules`] can print
+/// carets in the correct file.
 #[derive(Debug, Clone)]
 pub struct DiagnosticContext {
     /// All modules in the crate (for span → source buffer routing).
@@ -100,21 +103,16 @@ impl CompileError {
         match self {
             Self::Parse(bag) => format_parse_bag(bag, entry_source),
             Self::Resolve { bag, context } => {
-                let mods = context
-                    .as_ref()
-                    .map(|c| c.modules.as_slice())
-                    .or(modules);
+                let mods = context.as_ref().map(|c| c.modules.as_slice()).or(modules);
                 let intern = context.as_ref().map(|c| &c.interner).or(interner);
                 format_resolve_bag(bag, entry_source, mods, intern)
             }
-            Self::TypeCheck { bag, context } => {
-                format_typecheck_bag(
-                    bag,
-                    entry_source,
-                    Some(&context.modules),
-                    Some(&context.interner),
-                )
-            }
+            Self::TypeCheck { bag, context } => format_typecheck_bag(
+                bag,
+                entry_source,
+                Some(&context.modules),
+                Some(&context.interner),
+            ),
             Self::Io(e) => format!("I/O error: {e}"),
         }
     }
@@ -136,7 +134,11 @@ fn format_parse_bag(bag: &ParseBag, source: Option<&str>) -> String {
             (Some(src), ParseError::Lex(e)) => format_lex_error(src, e),
             (Some(src), other) if let Some(span) = other.span() => {
                 let code = other.code();
-                format!("{} [{}]", format_span_message_simple(src, span, &other.to_string()), code)
+                format!(
+                    "{} [{}]",
+                    format_span_message_simple(src, span, &other.to_string()),
+                    code
+                )
             }
             (_, other) => other.to_string(),
         };
@@ -145,11 +147,7 @@ fn format_parse_bag(bag: &ParseBag, source: Option<&str>) -> String {
     parts.join("\n---\n")
 }
 
-fn format_span_message_simple(
-    source: &str,
-    span: phx_diagnostics::Span,
-    message: &str,
-) -> String {
+fn format_span_message_simple(source: &str, span: phx_diagnostics::Span, message: &str) -> String {
     phx_diagnostics::format_span_message(source, span, message)
 }
 
@@ -160,28 +158,32 @@ fn format_resolve_bag(
     interner: Option<&Interner>,
 ) -> String {
     let default_interner;
-    let interner = match interner {
-        Some(i) => i,
-        None => {
-            default_interner = Interner::new();
-            &default_interner
-        }
+    let interner = if let Some(i) = interner {
+        i
+    } else {
+        default_interner = Interner::new();
+        &default_interner
     };
     let mut parts = Vec::new();
     for located in bag.errors() {
-        let body = if let Some((label, src)) =
-            source_for_module(entry_source, modules, located.module)
-        {
-            if located.error.span().is_some() {
-                format!("{label}:\n{}", format_resolve_error(src, interner, &located.error))
+        let body =
+            if let Some((label, src)) = source_for_module(entry_source, modules, located.module) {
+                if located.error.span().is_some() {
+                    format!(
+                        "{label}:\n{}",
+                        format_resolve_error(src, interner, &located.error)
+                    )
+                } else {
+                    format!(
+                        "{label}: {}",
+                        resolve_message_plain(interner, &located.error)
+                    )
+                }
+            } else if let Some(src) = entry_source {
+                format_resolve_error(src, interner, &located.error)
             } else {
-                format!("{label}: {}", resolve_message_plain(interner, &located.error))
-            }
-        } else if let Some(src) = entry_source {
-            format_resolve_error(src, interner, &located.error)
-        } else {
-            resolve_message_plain(interner, &located.error)
-        };
+                resolve_message_plain(interner, &located.error)
+            };
         parts.push(body);
     }
     if parts.is_empty() {
@@ -205,31 +207,29 @@ fn format_typecheck_bag(
     interner: Option<&Interner>,
 ) -> String {
     let default_interner;
-    let interner = match interner {
-        Some(i) => i,
-        None => {
-            default_interner = Interner::new();
-            &default_interner
-        }
+    let interner = if let Some(i) = interner {
+        i
+    } else {
+        default_interner = Interner::new();
+        &default_interner
     };
     let mut parts = Vec::new();
     for located in bag.errors() {
-        let body = if let Some((label, src)) =
-            source_for_module(entry_source, modules, located.module)
-        {
-            format!(
-                "{label}:\n{}",
+        let body =
+            if let Some((label, src)) = source_for_module(entry_source, modules, located.module) {
+                format!(
+                    "{label}:\n{}",
+                    format_typecheck_error(src, interner, &located.error)
+                )
+            } else if let Some(src) = entry_source {
                 format_typecheck_error(src, interner, &located.error)
-            )
-        } else if let Some(src) = entry_source {
-            format_typecheck_error(src, interner, &located.error)
-        } else {
-            format!(
-                "{} [{}]",
-                phx_diagnostics::typecheck_message(interner, &located.error),
-                located.error.code()
-            )
-        };
+            } else {
+                format!(
+                    "{} [{}]",
+                    phx_diagnostics::typecheck_message(interner, &located.error),
+                    located.error.code()
+                )
+            };
         parts.push(body);
     }
     if parts.is_empty() {
@@ -243,15 +243,15 @@ fn source_for_module<'a>(
     modules: Option<&'a [SourceModule]>,
     module_id: u32,
 ) -> Option<(String, &'a str)> {
-    if let Some(mods) = modules {
-        if let Some(m) = mods.iter().find(|m| m.id == module_id) {
-            let label = if m.filesystem.as_os_str().is_empty() {
-                m.logical_path.clone()
-            } else {
-                m.filesystem.display().to_string()
-            };
-            return Some((label, m.source.as_str()));
-        }
+    if let Some(mods) = modules
+        && let Some(m) = mods.iter().find(|m| m.id == module_id)
+    {
+        let label = if m.filesystem.as_os_str().is_empty() {
+            m.logical_path.clone()
+        } else {
+            m.filesystem.display().to_string()
+        };
+        return Some((label, m.source.as_str()));
     }
     if module_id == 0 {
         return entry_source.map(|s| ("<entry>".to_owned(), s));
@@ -293,15 +293,11 @@ impl std::error::Error for CompileError {
 /// Returns [`CompileError::Parse`] or [`CompileError::Resolve`] on failure.
 pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUnit, CompileError> {
     let source_file = parse(source).map_err(CompileError::Parse)?;
-    let resolved = resolve(&source_file).map_err(|bag| CompileError::Resolve {
-        bag,
-        context: None,
-    })?;
+    let resolved =
+        resolve(&source_file).map_err(|bag| CompileError::Resolve { bag, context: None })?;
     let ctx = DiagnosticContext::from_resolved(&resolved);
-    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
-        bag,
-        context: ctx,
-    })?;
+    let typed =
+        type_check(&resolved).map_err(|bag| CompileError::TypeCheck { bag, context: ctx })?;
     Ok(CompilationUnit {
         path: path.map(Path::to_path_buf),
         source: source.to_owned(),

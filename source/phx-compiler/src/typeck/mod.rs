@@ -31,6 +31,9 @@ pub use types::{ExprId, Ty, TypeId, TypeInterner};
 use crate::resolver::ResolvedProgram;
 
 /// Result of type-checking a [`ResolvedProgram`].
+///
+/// Carries the full resolved AST, type interner, and layout metadata for lowering. Field layout is
+/// not stable for external consumers; prefer [`crate::compile_to_module`] for bytecode output.
 #[derive(Debug, Clone)]
 pub struct TypedProgram {
     /// Resolved input (AST + defs).
