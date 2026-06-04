@@ -11,6 +11,21 @@
 //! - The entry function for executables is `main :: () => ()` (resolved before lowering).
 //! - Local slot indices must come from [`TypedProgram::functions`](crate::typeck::TypedProgram::functions);
 //!   lowering must not re-allocate slots from the AST.
+//!
+//! ### Stack discipline at merge blocks
+//!
+//! `if` and `match` expression lowering join branches at a merge block without phi nodes:
+//! each branch must leave the same stack depth (typically one unified result value; `match`
+//! stores the scrutinee in a temp local first). Short-circuit `&&` / `||` use dedicated CFG
+//! (`lower_short_circuit_bool` in `lower/expr.rs`). There is no IR-level stack verifier in MVP;
+//! [`phx_bytecode::verify`](../../../phx-bytecode/src/verify.rs) enforces stack effects on emitted
+//! bytecode.
+//!
+//! ### Ownership
+//!
+//! Moves and use-after-move are enforced in typeck only. IR uses [`IrInst::LoadLocal`] /
+//! [`IrInst::StoreLocal`] without move flags. Post-MVP borrow checking may add explicit move/drop
+//! instructions — see [`ownership.md`](../../../docs/design/features/ownership.md).
 
 mod block;
 mod const_lit;

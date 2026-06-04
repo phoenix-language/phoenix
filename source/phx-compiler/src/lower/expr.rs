@@ -582,7 +582,10 @@ fn lower_postfix_inner(
                         receiver_ty = result_ty;
                     }
                 } else {
-                    let callee = resolve_call_callee(ctx, base);
+                    let Some(callee) = resolve_call_callee(ctx, base) else {
+                        ctx.error_unresolved_callee(base.span);
+                        continue;
+                    };
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
@@ -630,10 +633,9 @@ fn resolve_variant_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
     }
 }
 
-fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> DefId {
-    path_or_ident_node_id(&base.inner)
-        .and_then(|id| lookup_resolution(&ctx.typed.resolved, ctx.module, id))
-        .unwrap_or(DefId::from_raw(0))
+fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
+    let node_id = path_or_ident_node_id(&base.inner)?;
+    lookup_resolution(&ctx.typed.resolved, ctx.module, node_id)
 }
 
 fn path_or_ident_node_id(expr: &Expr) -> Option<phx_syntax::AstNodeId> {
@@ -764,6 +766,7 @@ fn lower_else_if_chain(
 
 fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) {
     if arms.is_empty() {
+        ctx.emit(IrInst::TrapGivenMismatch);
         return;
     }
 

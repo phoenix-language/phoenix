@@ -12,7 +12,7 @@ fn lower_sample_produces_ir() {
         .unwrap_or_else(|e| panic!("compile sample.phx: {e}"));
     assert!(!unit.typed.functions.is_empty());
 
-    let ir = lower(&unit.typed);
+    let ir = lower(&unit.typed).expect("lower");
     assert_eq!(ir.functions.len(), 2, "add and main");
     assert!(ir.entry.is_some());
 
@@ -68,7 +68,7 @@ fn lower_control_flow_emits_loops() {
     let source = include_str!("../../../tests/cli/fixtures/control_flow.phx");
     let unit = compile_source(source, Some(Path::new("control_flow.phx")))
         .unwrap_or_else(|e| panic!("compile control_flow.phx: {e}"));
-    let ir = lower(&unit.typed);
+    let ir = lower(&unit.typed).expect("lower");
 
     let mut jump_count = 0u32;
     let mut jump_if_count = 0u32;
@@ -93,7 +93,7 @@ fn loop_back_edge_on_body_tail_not_header() {
     let source =
         "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
     let unit = compile_source(source, None).unwrap();
-    let ir = lower(&unit.typed);
+    let ir = lower(&unit.typed).expect("lower");
     let main = ir
         .functions
         .iter()
@@ -122,5 +122,29 @@ fn loop_back_edge_on_body_tail_not_header() {
             .last()
             .is_some_and(|i| matches!(i, IrInst::Jump { target: 1 })),
         "back-edge must be the tail block terminator"
+    );
+}
+
+#[test]
+fn explicit_return_emits_single_return() {
+    let source = "main :: () => { return; };";
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed).expect("lower");
+    let main = ir
+        .functions
+        .iter()
+        .find(|f| Some(f.def) == ir.entry)
+        .expect("main");
+    let return_count: u32 = main
+        .blocks
+        .iter()
+        .flat_map(|b| &b.insts)
+        .filter(|i| matches!(i, IrInst::Return { .. }))
+        .count()
+        .try_into()
+        .unwrap_or(u32::MAX);
+    assert_eq!(
+        return_count, 1,
+        "explicit return must not get a second synthetic Return"
     );
 }

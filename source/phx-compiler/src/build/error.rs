@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::project::ProjectError;
 use crate::pxi::PxiError;
-use phx_diagnostics::{DiagnosticBag, TypeCheckBag};
+use phx_diagnostics::{DiagnosticBag, LowerBag, TypeCheckBag};
 use phx_syntax::ParseBag;
 
 /// Failure during `phx build`.
@@ -18,6 +18,8 @@ pub enum BuildError {
     Resolve(DiagnosticBag),
     /// Type-check failure.
     TypeCheck(TypeCheckBag),
+    /// IR lowering failure.
+    Lower(LowerBag),
     /// `.pxi` failure.
     Pxi(PxiError),
     /// Linker failure.
@@ -56,6 +58,7 @@ impl BuildError {
             Self::Parse(e) => e.to_string(),
             Self::Resolve(b) => b.to_string(),
             Self::TypeCheck(b) => b.to_string(),
+            Self::Lower(b) => b.to_string(),
             Self::Pxi(e) => e.to_string(),
             Self::Link(e) => e.to_string(),
             Self::StaleInterface { module, message } => {

@@ -818,16 +818,17 @@ impl<'a> TypeChecker<'a> {
             Stmt::Return(expr) => {
                 let _ = self.check_return(expr.as_ref());
             }
-            Stmt::Break(expr) => {
+            Stmt::Break { value, span } => {
                 if self.loop_depth == 0 {
-                    self.error_loop_control_outside_loop("break", loop_control_stmt_span(stmt));
-                } else if let Some(e) = expr {
+                    self.error_loop_control_outside_loop("break", *span);
+                } else if let Some(e) = value {
                     let _ = self.check_expr_node(e);
                 }
             }
-            Stmt::Continue if self.loop_depth == 0 => {
-                self.error_loop_control_outside_loop("continue", loop_control_stmt_span(stmt));
+            Stmt::Continue { span } if self.loop_depth == 0 => {
+                self.error_loop_control_outside_loop("continue", *span);
             }
+            Stmt::Continue { .. } => {}
             Stmt::While { cond, body } => {
                 let c = self.check_expr_node(cond);
                 if !self.types_equal(c, self.bool_ty) {
@@ -2073,14 +2074,6 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
             PathSegment::Type(name) => Some(name.id),
         },
         _ => None,
-    }
-}
-
-fn loop_control_stmt_span(stmt: &Stmt) -> Span {
-    match stmt {
-        Stmt::Break(Some(e)) => e.span,
-        Stmt::Break(None) | Stmt::Continue => Span::new(0, 0),
-        _ => Span::new(0, 0),
     }
 }
 

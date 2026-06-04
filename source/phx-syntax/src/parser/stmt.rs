@@ -124,6 +124,7 @@ impl Parser<'_> {
                 Stmt::Return(value)
             }
             TokenKind::Keyword(Keyword::Break) => {
+                let span = self.current_span();
                 self.bump();
                 let value = if self.peek_kind() == TokenKind::Semicolon {
                     None
@@ -131,12 +132,13 @@ impl Parser<'_> {
                     Some(self.parse_expr()?)
                 };
                 self.expect_semi()?;
-                Stmt::Break(value)
+                Stmt::Break { value, span }
             }
             TokenKind::Keyword(Keyword::Continue) => {
+                let span = self.current_span();
                 self.bump();
                 self.expect_semi()?;
-                Stmt::Continue
+                Stmt::Continue { span }
             }
             TokenKind::Keyword(Keyword::While) => {
                 self.bump();

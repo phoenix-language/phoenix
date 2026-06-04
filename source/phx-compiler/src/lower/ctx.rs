@@ -8,6 +8,7 @@ use crate::typeck::{
     ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, primitive_kind_for_type,
 };
 use phx_bytecode::SLOT_KIND_AGG;
+use phx_diagnostics::{LowerBag, LowerError, Span};
 
 /// Jump target placeholder for a loop exit not yet allocated (`0xF000_0000 + slot`).
 pub const LOOP_EXIT_TARGET_BASE: u32 = 0xF000_0000;
@@ -43,6 +44,8 @@ pub struct LowerCtx<'a> {
     pub pending_loop_exits: Vec<Option<u32>>,
     /// Module constant literals (shared across functions).
     pub constants: &'a mut Vec<IrConst>,
+    /// Lowering errors for this function (merged into module bag on failure).
+    pub bag: &'a mut LowerBag,
 }
 
 impl<'a> LowerCtx<'a> {
@@ -53,6 +56,7 @@ impl<'a> LowerCtx<'a> {
         module: u32,
         layout: &'a FunctionLayout,
         constants: &'a mut Vec<IrConst>,
+        bag: &'a mut LowerBag,
     ) -> Self {
         Self {
             typed,
@@ -65,7 +69,15 @@ impl<'a> LowerCtx<'a> {
             match_temp_index: 0,
             pending_loop_exits: Vec::new(),
             constants,
+            bag,
         }
+    }
+
+    /// Records an unresolved call at `span` and skips emitting `IrInst::Call`.
+    pub fn error_unresolved_callee(&mut self, span: Span) {
+        debug_assert!(false, "unresolved callee during lowering");
+        self.bag
+            .push(self.module, LowerError::UnresolvedCallee { span });
     }
 
     /// Appends a literal to the module pool and returns its index.

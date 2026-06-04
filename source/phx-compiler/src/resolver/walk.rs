@@ -425,12 +425,12 @@ impl Resolver<'_> {
                     self.resolve_expr_node(e);
                 }
             }
-            Stmt::Break(expr) => {
-                if let Some(e) = expr {
+            Stmt::Break { value, .. } => {
+                if let Some(e) = value {
                     self.resolve_expr_node(e);
                 }
             }
-            Stmt::Continue => {}
+            Stmt::Continue { .. } => {}
             Stmt::While { cond, body } => {
                 self.resolve_expr_node(cond);
                 self.resolve_block_node(body);

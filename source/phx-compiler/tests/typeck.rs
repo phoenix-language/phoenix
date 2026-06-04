@@ -40,22 +40,44 @@ fn loop_break_continue_ok() {
 
 #[test]
 fn break_outside_loop() {
-    let bag = typeck_err("main :: () => { break; };");
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
-    );
+    let source = "main :: () => { break; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
+        .expect("LoopControlOutsideLoop");
+    if let TypeCheckError::LoopControlOutsideLoop { keyword, span } = &err.error {
+        assert_eq!(*keyword, "break");
+        assert!(
+            span.end > span.start,
+            "expected non-zero break keyword span"
+        );
+        let keyword_start =
+            u32::try_from(source.find("break").expect("break in source")).expect("offset fits u32");
+        assert_eq!(span.start, keyword_start);
+    }
 }
 
 #[test]
 fn continue_outside_loop() {
-    let bag = typeck_err("main :: () => { continue; };");
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
-    );
+    let source = "main :: () => { continue; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
+        .expect("LoopControlOutsideLoop");
+    if let TypeCheckError::LoopControlOutsideLoop { keyword, span } = &err.error {
+        assert_eq!(*keyword, "continue");
+        assert!(
+            span.end > span.start,
+            "expected non-zero continue keyword span"
+        );
+        let keyword_start = u32::try_from(source.find("continue").expect("continue in source"))
+            .expect("offset fits u32");
+        assert_eq!(span.start, keyword_start);
+    }
 }
 
 #[test]

@@ -87,7 +87,7 @@ fn build_package(
 
     let resolved = resolve_crate(loaded.clone()).map_err(BuildError::Resolve)?;
     let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
-    let full_ir = lower(&typed);
+    let full_ir = lower(&typed).map_err(BuildError::Lower)?;
     let global_fn = build_global_fn_map(&full_ir);
 
     let export_maps = collect_export_maps(&resolved);
@@ -139,7 +139,7 @@ fn build_package(
                 .map_err(|e| io_err_path(&artifacts.pxi, &e))?;
         }
 
-        let module_ir = lower_module(&typed, module.id.index());
+        let module_ir = lower_module(&typed, module.id.index()).map_err(BuildError::Lower)?;
         let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root);
         let bytes = obj.encode();
         if let Some(parent) = artifacts.phx0.parent() {
@@ -388,6 +388,7 @@ impl From<CompileError> for BuildError {
             CompileError::Parse(p) => Self::Parse(p),
             CompileError::Resolve { bag, .. } => Self::Resolve(bag),
             CompileError::TypeCheck { bag, .. } => Self::TypeCheck(bag),
+            CompileError::Lower { bag, .. } => Self::Lower(bag),
             CompileError::Io(e) => Self::Io {
                 path: PathBuf::new(),
                 message: e.to_string(),

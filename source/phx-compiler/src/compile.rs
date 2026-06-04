@@ -9,8 +9,8 @@ use std::path::Path;
 use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
-    DiagnosticBag, ParseBag, ParseError, TypeCheckBag, format_lex_error, format_resolve_error,
-    format_typecheck_error,
+    DiagnosticBag, LowerBag, ParseBag, ParseError, TypeCheckBag, format_lex_error,
+    format_lower_error, format_resolve_error, format_typecheck_error,
 };
 use phx_syntax::{Interner, parse};
 
@@ -81,6 +81,13 @@ pub enum CompileError {
         /// Module sources and interner from the resolved program.
         context: DiagnosticContext,
     },
+    /// One or more IR lowering errors (internal invariant violations).
+    Lower {
+        /// Collected errors.
+        bag: LowerBag,
+        /// Module sources and interner from the typed program.
+        context: DiagnosticContext,
+    },
     /// Failed to read source from disk.
     Io(io::Error),
 }
@@ -113,6 +120,9 @@ impl CompileError {
                 Some(&context.modules),
                 Some(&context.interner),
             ),
+            Self::Lower { bag, context } => {
+                format_lower_bag(bag, entry_source, Some(&context.modules))
+            }
             Self::Io(e) => format!("I/O error: {e}"),
         }
     }
@@ -238,6 +248,29 @@ fn format_typecheck_bag(
     parts.join("\n---\n")
 }
 
+fn format_lower_bag(
+    bag: &LowerBag,
+    entry_source: Option<&str>,
+    modules: Option<&[SourceModule]>,
+) -> String {
+    let mut parts = Vec::new();
+    for located in bag.errors() {
+        let body =
+            if let Some((label, src)) = source_for_module(entry_source, modules, located.module) {
+                format!("{label}:\n{}", format_lower_error(src, &located.error))
+            } else if let Some(src) = entry_source {
+                format_lower_error(src, &located.error)
+            } else {
+                format!("{} [{}]", located.error, located.error.code())
+            };
+        parts.push(body);
+    }
+    if parts.is_empty() {
+        return String::new();
+    }
+    parts.join("\n---\n")
+}
+
 fn source_for_module<'a>(
     entry_source: Option<&'a str>,
     modules: Option<&'a [SourceModule]>,
@@ -265,6 +298,7 @@ impl std::fmt::Display for CompileError {
             Self::Parse(bag) => write!(f, "{bag}"),
             Self::Resolve { bag, .. } => write!(f, "{bag}"),
             Self::TypeCheck { bag, .. } => write!(f, "{bag}"),
+            Self::Lower { bag, .. } => write!(f, "{bag}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
         }
     }
@@ -276,6 +310,7 @@ impl std::error::Error for CompileError {
             Self::Parse(bag) => Some(bag),
             Self::Resolve { bag, .. } => Some(bag),
             Self::TypeCheck { bag, .. } => Some(bag),
+            Self::Lower { bag, .. } => Some(bag),
             Self::Io(e) => Some(e),
         }
     }
@@ -401,5 +436,7 @@ pub fn compile_to_module_with_module_path(
     module_root: &Path,
 ) -> Result<BytecodeModule, CompileError> {
     let unit = check_file_with_module_path(path, module_root)?;
-    Ok(codegen(&lower(&unit.typed), &unit.typed))
+    let ctx = DiagnosticContext::from_resolved(&unit.typed.resolved);
+    let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower { bag, context: ctx })?;
+    Ok(codegen(&ir, &unit.typed))
 }

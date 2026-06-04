@@ -40,9 +40,17 @@ pub enum Stmt {
     /// `return [expr];`
     Return(Option<ExprNode>),
     /// `break [expr];`
-    Break(Option<ExprNode>),
+    Break {
+        /// Optional value expression.
+        value: Option<ExprNode>,
+        /// Span of the `break` keyword.
+        span: phx_diagnostics::Span,
+    },
     /// `continue;`
-    Continue,
+    Continue {
+        /// Span of the `continue` keyword.
+        span: phx_diagnostics::Span,
+    },
     /// `while cond { … }`
     While {
         /// Loop condition.

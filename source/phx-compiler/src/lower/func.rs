@@ -7,16 +7,29 @@ use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
 use crate::resolver::{DefId, DefKind};
 use crate::typeck::{BindingKind, FunctionLayout, TypedProgram};
+use phx_diagnostics::LowerBag;
 
 /// Lowers all functions in `typed`.
-#[must_use]
-pub fn lower_functions(typed: &TypedProgram, constants: &mut Vec<IrConst>) -> Vec<IrFunction> {
-    typed
+///
+/// # Errors
+///
+/// Returns [`LowerBag`] when any function body hits an internal lowering invariant violation.
+pub fn lower_functions(
+    typed: &TypedProgram,
+    constants: &mut Vec<IrConst>,
+    bag: &mut LowerBag,
+) -> Result<Vec<IrFunction>, LowerBag> {
+    let functions: Vec<IrFunction> = typed
         .functions
         .iter()
         .enumerate()
-        .filter_map(|(index, layout)| lower_one_function(typed, layout, index, constants))
-        .collect()
+        .filter_map(|(index, layout)| lower_one_function(typed, layout, index, constants, bag))
+        .collect();
+    if bag.has_errors() {
+        Err(std::mem::take(bag))
+    } else {
+        Ok(functions)
+    }
 }
 
 /// Lowers a single function layout to IR.
@@ -25,6 +38,7 @@ pub(crate) fn lower_one_function(
     layout: &FunctionLayout,
     index: usize,
     constants: &mut Vec<IrConst>,
+    bag: &mut LowerBag,
 ) -> Option<IrFunction> {
     let source = find_function_in_crate(typed, layout.def)?;
     let module = typed
@@ -32,9 +46,12 @@ pub(crate) fn lower_one_function(
         .defs
         .get(layout.def.index() as usize)
         .map_or(0, |d| d.module);
-    let mut ctx = LowerCtx::new(typed, module, layout, constants);
+    let mut ctx = LowerCtx::new(typed, module, layout, constants, bag);
     lower_block_value(&mut ctx, &source.body.inner);
     lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
+    if ctx.bag.has_errors() {
+        return None;
+    }
 
     let params: Vec<_> = layout
         .bindings

@@ -1,6 +1,7 @@
 //! Source span rendering with carets for CLI diagnostics.
 
 use crate::LexError;
+use crate::LowerError;
 use crate::ResolveError;
 use crate::Span;
 use crate::SymbolNames;
@@ -183,6 +184,19 @@ pub fn format_typecheck_error(
                 message
             }
         }
+    };
+    append_code(&body, code)
+}
+
+/// Formats a lowering error with a source caret when possible.
+#[must_use]
+pub fn format_lower_error(source: &str, err: &LowerError) -> String {
+    let code = err.code();
+    let message = err.to_string();
+    let body = if let Some(span) = err.span() {
+        format_span_message(source, span, &message)
+    } else {
+        message
     };
     append_code(&body, code)
 }

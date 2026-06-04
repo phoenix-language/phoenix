@@ -58,8 +58,8 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
             ..
         } => lower_given(ctx, pattern, scrutinee, &body.inner),
         Stmt::Unsafe(body) => lower_block_value(ctx, &body.inner),
-        Stmt::Break(expr) => lower_break(ctx, expr.as_ref()),
-        Stmt::Continue => lower_continue(ctx),
+        Stmt::Break { value, .. } => lower_break(ctx, value.as_ref()),
+        Stmt::Continue { .. } => lower_continue(ctx),
         _ => {}
     }
 }
@@ -193,7 +193,20 @@ fn lower_return(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>
     }
 }
 
-/// Emits [`IrInst::Return`] after the function body has been lowered.
+/// Emits [`IrInst::Return`] after the function body when the tail block does not already return.
 pub fn lower_function_return(ctx: &mut LowerCtx<'_>, _body: &Block, return_type: TypeId) {
+    if block_ends_with_return(ctx, ctx.current) {
+        return;
+    }
     ctx.emit(IrInst::Return { ty: return_type });
+}
+
+fn block_ends_with_return(ctx: &LowerCtx<'_>, block: u32) -> bool {
+    let idx = usize::try_from(block).ok();
+    let Some(b) = idx.and_then(|i| ctx.blocks.get(i)) else {
+        return false;
+    };
+    b.insts
+        .last()
+        .is_some_and(|inst| matches!(inst, IrInst::Return { .. }))
 }
