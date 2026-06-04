@@ -36,17 +36,19 @@ mod unit;
 pub use build::{BuildError, BuildResult, build_project, load_project_binary};
 pub use codegen::{build_type_table, codegen, codegen_module};
 pub use compile::{
-    CompileError, DiagnosticContext, check_file, check_file_with_module_path, compile_source,
-    compile_source_with_module_root, compile_to_module, compile_to_module_with_module_path,
+    CompileError, DiagnosticContext, check_file, check_file_with_module_path, check_project_file,
+    compile_source, compile_source_with_module_root, compile_to_module,
+    compile_to_module_with_module_path,
 };
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use link::{LinkError, LinkInput, link_modules};
 pub use lower::lower;
+pub use modules::{CrateLoadContext, LoadedCrate, load_crate_with_context, resolve_crate};
 pub use phx_bytecode::BytecodeModule;
 pub use project::{
     BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,
 };
-pub use pxi::{PxiExport, PxiFile, PxiType};
+pub use pxi::{PxiExport, PxiFile, PxiType, digest_bytes, digest_file};
 pub use resolver::{
     ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule,
     resolve,

@@ -14,8 +14,8 @@ use std::process;
 
 use phx_bytecode::verify;
 use phx_compiler::{
-    CompileError, build_project, check_file_with_module_path, compile_to_module_with_module_path,
-    load_project_binary, resolve_project,
+    CompileError, build_project, check_file_with_module_path, check_project_file,
+    compile_to_module_with_module_path, discover_project, load_project_binary, resolve_project,
 };
 
 fn print_usage() {
@@ -134,7 +134,9 @@ fn run_single_file(entry: &Path, module_root: &Path) {
     }
 }
 
-fn parse_file_command(mut args: impl Iterator<Item = String>) -> Result<(PathBuf, PathBuf), ()> {
+fn parse_file_command(
+    mut args: impl Iterator<Item = String>,
+) -> Result<(PathBuf, PathBuf, bool), ()> {
     let mut module_src = None;
     let mut file = None;
     while let Some(arg) = args.next() {
@@ -147,9 +149,10 @@ fn parse_file_command(mut args: impl Iterator<Item = String>) -> Result<(PathBuf
         }
     }
     let path = file.ok_or(())?;
+    let used_module_src_flag = module_src.is_some();
     let module_root =
         module_src.unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).to_path_buf());
-    Ok((path, module_root))
+    Ok((path, module_root, used_module_src_flag))
 }
 
 fn run_with_project(
@@ -200,12 +203,19 @@ fn main() {
     match cmd.as_str() {
         "help" => print_usage(),
         "check" => {
-            let Ok((path, module_root)) = parse_file_command(args) else {
+            let Ok((path, module_root, used_module_src_flag)) = parse_file_command(args) else {
                 print_usage();
                 process::exit(1);
             };
             let source = read_source(&path).ok();
-            if let Err(e) = check_file_with_module_path(&path, &module_root) {
+            let result = if used_module_src_flag {
+                check_file_with_module_path(&path, &module_root)
+            } else if let Ok(config) = discover_project(&path) {
+                check_project_file(&path, &config)
+            } else {
+                check_file_with_module_path(&path, &module_root)
+            };
+            if let Err(e) = result {
                 report_compile_error(&e, source.as_deref());
                 process::exit(1);
             }

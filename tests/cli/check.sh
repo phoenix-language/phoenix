@@ -130,11 +130,28 @@ if [[ "${output}" != *"cycle"* ]]; then
   echo "got: ${output}" >&2
   exit 1
 fi
+if [[ "${output}" != *"E1008"* && "${output}" != *"circular module import"* ]]; then
+  echo "cycle diagnostic should include E1008 or circular module import" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
 if [[ "${output}" != *"#import"* && "${output}" != *"import"* ]]; then
   echo "cycle diagnostic should reference an import site" >&2
   echo "got: ${output}" >&2
   exit 1
 fi
 echo "phx check failed as expected (import cycle)"
+
+PROJECT_MAIN="${ROOT}/tests/cli/fixtures/project/src/main.phx"
+if [[ ! -f "${PROJECT_MAIN}" ]]; then
+  echo "missing fixture: ${PROJECT_MAIN}" >&2
+  exit 1
+fi
+echo "running: phx check ${PROJECT_MAIN} (expect success via phoenix.toml discovery)"
+if ! "${PHX_BIN}" check "${PROJECT_MAIN}"; then
+  echo "phx check should succeed for project entry without --module-src" >&2
+  exit 1
+fi
+echo "phx check passed (project module_src discovery)"
 
 echo "all phx check CLI tests passed"

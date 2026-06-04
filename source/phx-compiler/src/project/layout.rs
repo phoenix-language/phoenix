@@ -68,6 +68,26 @@ impl BuildLayout {
         }
     }
 
+    /// Artifact paths for `logical_path`, using `build/deps/{dep}/` when the first path segment is a path dependency.
+    #[must_use]
+    pub fn module_artifacts_resolved(
+        &self,
+        logical_path: &str,
+        workspace_package: &str,
+        dep_names: &[&str],
+    ) -> ModuleArtifacts {
+        let first = logical_path.split("::").next().unwrap_or("");
+        if !first.is_empty() && first != workspace_package && dep_names.contains(&first) {
+            let dep_root = self.build_root.join("deps").join(first);
+            BuildLayout {
+                build_root: dep_root,
+            }
+            .module_artifacts(logical_path)
+        } else {
+            self.module_artifacts(logical_path)
+        }
+    }
+
     /// Ensures workspace build subdirectories exist.
     ///
     /// # Errors
@@ -120,5 +140,14 @@ mod tests {
         let a = layout.module_artifacts("myapp::util::math");
         assert!(a.pxi.ends_with("myapp/util/math.pxi"));
         assert!(a.phx0.ends_with("myapp/util/math.phx0"));
+    }
+
+    #[test]
+    fn dependency_artifact_paths() {
+        let layout = BuildLayout {
+            build_root: PathBuf::from("/p/build"),
+        };
+        let a = layout.module_artifacts_resolved("math::util", "app", &["math"]);
+        assert!(a.pxi.ends_with("build/deps/math/pxi/math/util.pxi"));
     }
 }

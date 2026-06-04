@@ -218,8 +218,15 @@ fn build_import_bindings(
             continue;
         };
         let dep_idx = dep_id.index() as usize;
-        let dep_exports =
-            exports_for_dependency(&key, &exports[dep_idx], &modules[dep_idx], layout, interner);
+        let dep_exports = exports_for_dependency(
+            &key,
+            &exports[dep_idx],
+            &modules[dep_idx],
+            layout,
+            workspace_name,
+            dep_names,
+            interner,
+        );
 
         let glob = imp
             .inner
@@ -244,6 +251,8 @@ fn build_import_bindings(
                     layout,
                     &key,
                     &modules[dep_idx],
+                    workspace_name,
+                    dep_names,
                     interner,
                     def_id,
                     sym,
@@ -290,6 +299,8 @@ fn build_import_bindings(
                     layout,
                     &key,
                     &modules[dep_idx],
+                    workspace_name,
+                    dep_names,
                     interner,
                     def_id,
                     sym,
@@ -321,16 +332,27 @@ fn build_import_bindings(
 }
 
 /// Export map for an import target: when `.pxi` is fresh, restrict to symbols listed in the interface.
+#[allow(clippy::too_many_arguments)]
 fn attach_pxi_type(
     import_types: &mut HashMap<DefId, PxiType>,
     layout: Option<&BuildLayout>,
     logical_path: &str,
     dep_module: &LoadedModule,
+    workspace_package: &str,
+    dep_names: &[&str],
     interner: &Interner,
     def_id: DefId,
     sym: Symbol,
 ) {
-    let Some(ty) = pxi_type_for_export(layout, logical_path, dep_module, interner, sym) else {
+    let Some(ty) = pxi_type_for_export(
+        layout,
+        logical_path,
+        dep_module,
+        workspace_package,
+        dep_names,
+        interner,
+        sym,
+    ) else {
         return;
     };
     import_types.insert(def_id, ty);
@@ -340,11 +362,15 @@ fn pxi_type_for_export(
     layout: Option<&BuildLayout>,
     logical_path: &str,
     dep_module: &LoadedModule,
+    workspace_package: &str,
+    dep_names: &[&str],
     interner: &Interner,
     sym: Symbol,
 ) -> Option<PxiType> {
     let layout = layout?;
-    let pxi_path = layout.module_artifacts(logical_path).pxi;
+    let pxi_path = layout
+        .module_artifacts_resolved(logical_path, workspace_package, dep_names)
+        .pxi;
     let pxi = PxiFile::read_from_path(&pxi_path).ok()?;
     if !pxi.source_is_fresh(&dep_module.filesystem) {
         return None;
@@ -361,12 +387,16 @@ fn exports_for_dependency(
     ast_exports: &ExportMap,
     dep_module: &LoadedModule,
     layout: Option<&BuildLayout>,
+    workspace_package: &str,
+    dep_names: &[&str],
     interner: &Interner,
 ) -> ExportMap {
     let Some(layout) = layout else {
         return ast_exports.clone();
     };
-    let pxi_path = layout.module_artifacts(logical_path).pxi;
+    let pxi_path = layout
+        .module_artifacts_resolved(logical_path, workspace_package, dep_names)
+        .pxi;
     if !pxi_path.is_file() {
         return ast_exports.clone();
     }

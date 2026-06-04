@@ -122,16 +122,15 @@ fn build_package(
             !force && module_is_up_to_date(old, &logical, &source_hash, &dep_hashes)
         });
 
-        let pxi = build_pxi_for_module(
-            &logical,
-            &module.filesystem,
-            module.id.index(),
-            &typed,
-            exports,
-            &deps,
-        );
-
         if !skip {
+            let pxi = build_pxi_for_module(
+                &logical,
+                &module.filesystem,
+                module.id.index(),
+                &typed,
+                exports,
+                &deps,
+            );
             if let Some(old) = &old_manifest {
                 verify_pxi_exports(old, &logical, &pxi)?;
             }
@@ -139,14 +138,30 @@ fn build_package(
                 .map_err(|e| io_err_path(&artifacts.pxi, &e))?;
         }
 
-        let module_ir = lower_module(&typed, module.id.index()).map_err(BuildError::Lower)?;
-        let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root)
-            .map_err(BuildError::Codegen)?;
-        let bytes = obj.encode().map_err(BuildError::Encode)?;
-        if let Some(parent) = artifacts.phx0.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;
-        }
-        std::fs::write(&artifacts.phx0, &bytes).map_err(|e| io_err_path(&artifacts.phx0, &e))?;
+        let obj = if skip {
+            let phx0_path = old_manifest
+                .as_ref()
+                .and_then(|old| old.modules.get(&logical))
+                .map(|rec| std::path::PathBuf::from(&rec.phx0_path))
+                .filter(|p| p.is_file())
+                .unwrap_or_else(|| artifacts.phx0.clone());
+            let bytes = std::fs::read(&phx0_path).map_err(|e| io_err_path(&phx0_path, &e))?;
+            BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
+                path: phx0_path,
+                message: format!("{e:?}"),
+            })?
+        } else {
+            let module_ir = lower_module(&typed, module.id.index()).map_err(BuildError::Lower)?;
+            let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root)
+                .map_err(BuildError::Codegen)?;
+            let bytes = obj.encode().map_err(BuildError::Encode)?;
+            if let Some(parent) = artifacts.phx0.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;
+            }
+            std::fs::write(&artifacts.phx0, &bytes)
+                .map_err(|e| io_err_path(&artifacts.phx0, &e))?;
+            obj
+        };
 
         link_inputs.push(LinkInput {
             logical_path: logical.clone(),

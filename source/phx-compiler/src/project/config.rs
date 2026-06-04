@@ -30,6 +30,10 @@ pub struct ProjectConfig {
     pub version: String,
     /// `[project] description`
     pub description: String,
+    /// `[project] edition` (reserved; not enforced in MVP).
+    pub edition: String,
+    /// `[project] module_roots` (reserved; MVP uses `module_src` only).
+    pub module_roots: Vec<PathBuf>,
     /// `[project] type`
     pub package_type: PackageType,
     /// `[project] module_src` — source root for modules.
@@ -186,6 +190,8 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut name: Option<String> = None;
     let mut version = "0.0.0".to_owned();
     let mut description = String::new();
+    let mut edition = String::new();
+    let mut module_roots: Vec<PathBuf> = Vec::new();
     let mut package_type: Option<PackageType> = None;
     let mut module_src = PathBuf::from("src");
     let mut build_dir = PathBuf::from("build");
@@ -219,6 +225,8 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
                 "name" => name = Some(value.to_owned()),
                 "version" => value.clone_into(&mut version),
                 "description" => value.clone_into(&mut description),
+                "edition" => value.clone_into(&mut edition),
+                "module_roots" => module_roots.push(PathBuf::from(value)),
                 "type" => {
                     package_type = Some(parse_package_type(value)?);
                 }
@@ -266,6 +274,8 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         name,
         version,
         description,
+        edition,
+        module_roots,
         package_type,
         module_src,
         build_dir,

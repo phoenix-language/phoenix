@@ -11,4 +11,5 @@ workspace = true
 [dev-dependencies]
 phx-bytecode = { path = "../../source/phx-bytecode" }
 phx-compiler = { path = "../../source/phx-compiler" }
+phx-diagnostics = { path = "../../source/phx-diagnostics" }
 phx-vm = { path = "../../source/phx-vm" }

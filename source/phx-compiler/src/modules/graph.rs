@@ -79,12 +79,15 @@ fn cycle_edge(edges: &[ImportEdge], module_count: usize) -> Option<(Span, u32)> 
 /// Topological order, or identity `0..n` when every cyclic module has a fresh `.pxi`.
 ///
 /// The fallback order is arbitrary; importers must use `.pxi` export lists, not source parse order.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn topo_sort_with_pxi_escape(
     module_count: usize,
     edges: &[ImportEdge],
     roots: ModuleId,
     modules: &[LoadedModule],
     layout: Option<&BuildLayout>,
+    workspace_package: &str,
+    dep_names: &[&str],
     bag: &mut DiagnosticBag,
 ) -> Option<Vec<ModuleId>> {
     let _ = roots;
@@ -92,7 +95,14 @@ pub(crate) fn topo_sort_with_pxi_escape(
         return Some(order);
     }
     if let Some(layout) = layout
-        && cycle_modules_have_fresh_pxi(module_count, edges, modules, layout)
+        && cycle_modules_have_fresh_pxi(
+            module_count,
+            edges,
+            modules,
+            layout,
+            workspace_package,
+            dep_names,
+        )
     {
         return Some(
             (0..module_count)
@@ -116,6 +126,8 @@ fn cycle_modules_have_fresh_pxi(
     edges: &[ImportEdge],
     modules: &[LoadedModule],
     layout: &BuildLayout,
+    workspace_package: &str,
+    dep_names: &[&str],
 ) -> bool {
     let mut indegree = vec![0usize; module_count];
     for &(_, to, _) in edges {
@@ -134,7 +146,9 @@ fn cycle_modules_have_fresh_pxi(
     }
     cyclic.iter().all(|&idx| {
         let m = &modules[idx];
-        let pxi_path = layout.module_artifacts(&m.logical_path.display()).pxi;
+        let pxi_path = layout
+            .module_artifacts_resolved(&m.logical_path.display(), workspace_package, dep_names)
+            .pxi;
         let Ok(pxi) = PxiFile::read_from_path(&pxi_path) else {
             return false;
         };

@@ -16,7 +16,10 @@ use phx_syntax::{Interner, parse};
 
 use crate::codegen::codegen;
 use crate::lower::lower;
-use crate::modules::{LoadedModule, load_crate, resolve_crate};
+use crate::modules::{
+    CrateLoadContext, LoadedModule, load_crate, load_crate_with_context, resolve_crate,
+};
+use crate::project::{BuildLayout, ProjectConfig};
 use crate::resolver::{ResolvedProgram, resolve};
 use crate::typeck::type_check;
 use crate::unit::CompilationUnit;
@@ -380,15 +383,50 @@ pub fn compile_source_with_module_root(
 
 /// Reads `path` and runs the full front-end (multi-file when `#import` is used).
 ///
-/// Module root defaults to `path.parent()` (or `"."` if missing), matching `phx check` / `phx run`
-/// on a single path. Pass an explicit root via [`check_file_with_module_path`] or CLI
-/// `--module-src`.
+/// When `path` lies under a tree with `phoenix.toml`, uses project `module_src` and path
+/// dependencies (same as `phx build`). Otherwise module root defaults to `path.parent()` (or `"."`
+/// if missing). Pass an explicit root via [`check_file_with_module_path`] or CLI `--module-src`.
 ///
 /// # Errors
 ///
 /// Returns I/O errors, [`CompileError::Parse`], [`CompileError::Resolve`], or [`CompileError::TypeCheck`].
 pub fn check_file(path: &Path) -> Result<CompilationUnit, CompileError> {
+    if let Ok(config) = crate::project::discover_project(path) {
+        return check_project_file(path, &config);
+    }
     check_file_with_module_path(path, path.parent().unwrap_or(Path::new(".")))
+}
+
+/// Type-checks `path` as part of a [`ProjectConfig`] crate (imports, deps, `.pxi` surfaces).
+///
+/// # Errors
+///
+/// Same as [`check_file`].
+pub fn check_project_file(
+    path: &Path,
+    config: &ProjectConfig,
+) -> Result<CompilationUnit, CompileError> {
+    let source = std::fs::read_to_string(path).map_err(CompileError::Io)?;
+    let ctx = CrateLoadContext::from_config(config);
+    let layout = BuildLayout::new(config);
+    let mut bag = DiagnosticBag::new();
+    let Some(loaded) = load_crate_with_context(path, &ctx, Some(&layout), &mut bag) else {
+        return Err(CompileError::Resolve { bag, context: None });
+    };
+    let ctx_diag = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
+    let resolved = resolve_crate(loaded).map_err(|bag| CompileError::Resolve {
+        bag,
+        context: Some(ctx_diag.clone()),
+    })?;
+    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+        bag,
+        context: DiagnosticContext::from_resolved(&resolved),
+    })?;
+    Ok(CompilationUnit {
+        path: Some(path.to_path_buf()),
+        source,
+        typed,
+    })
 }
 
 /// Reads `path` using `module_root` for `#import` resolution (`::` paths under that directory).

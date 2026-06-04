@@ -251,7 +251,16 @@ pub fn load_crate_with_context(
         .copied()
         .or_else(|| id_for_path.values().next().copied())?;
 
-    let order = topo_sort_with_pxi_escape(module_count, &edges, root_id, &modules, layout, bag)?;
+    let order = topo_sort_with_pxi_escape(
+        module_count,
+        &edges,
+        root_id,
+        &modules,
+        layout,
+        &workspace.name,
+        &dep_names,
+        bag,
+    )?;
     let index_map: HashMap<ModuleId, usize> = modules
         .iter()
         .map(|m| (m.id, m.id.index() as usize))

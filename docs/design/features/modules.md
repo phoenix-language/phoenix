@@ -128,6 +128,8 @@ dir = "build"
 | `project.name` | required | Package id, namespace root, output stem |
 | `project.version` | `"0.0.0"` | Package metadata |
 | `project.description` | `""` | Package metadata |
+| `project.edition` | `""` | Reserved (parsed, not enforced in MVP) |
+| `project.module_roots` | — | Reserved list (parsed; MVP uses `module_src` only) |
 | `project.type` | required | `bin` or `lib` |
 | `project.module_src` | `"src"` | Source root (relative to project root) |
 | `dependencies.<key>.path` | — | Filesystem path to dependency root (must contain `phoenix.toml`) |
@@ -167,18 +169,28 @@ Logical module `myapp::util::math` maps to `build/pxi/myapp/util/math.pxi` and `
 
 ---
 
-## `.pxi` interface format (v1)
+## `.pxi` interface format (v1 and v2)
 
-`format_version` is **`1`** until post-MVP stabilization.
+MVP emit uses **`format_version` `2`**. Readers accept v1 and v2.
+
+**v1** — `signature` string per export (stable for human diff and manifest checks).
+
+**v2** — adds structured **`ty`** JSON per export for cross-module type-checking (`import_types`); keeps `signature` as a fallback string.
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
   "logical_module": "math::utils",
   "source_hash": "<hex digest of .phx bytes>",
   "origin": null,
   "exports": [
-    { "name": "add", "kind": "fn", "signature": "(s32, s32) => s32" }
+    {
+      "export_id": "math::utils::add::fn",
+      "name": "add",
+      "kind": "fn",
+      "signature": "(s32, s32) => s32",
+      "ty": { "fn": { "params": ["s32", "s32"], "ret": "s32" } }
+    }
   ],
   "dependencies": [
     { "logical_module": "math::common", "pxi_hash": "<hex digest of .pxi file>" }
@@ -188,9 +200,11 @@ Logical module `myapp::util::math` maps to `build/pxi/myapp/util/math.pxi` and `
 
 - **`logical_module`** — full logical path including package name.
 - **`source_hash`** — digest of source bytes; stale when source changes.
-- **`exports`** — `pub` items only; `signature` is a stable type string for cross-module checking.
+- **`exports`** — `pub` items only; `signature` is a stable type string; optional **`ty`** for structured types (v2).
 - **`dependencies`** — direct imports for incremental invalidation.
 - **`origin`** — optional; reserved for future registry packages.
+
+Path-dependency `.pxi` files live under `build/deps/{dep_name}/pxi/` (not the workspace `build/pxi/` tree).
 
 Legacy field `module_path` is not accepted.
 
@@ -202,9 +216,10 @@ Legacy field `module_path` is not accepted.
 
 **Output:** one [`BytecodeModule`](vm-linear.md) at `build/bin/{name}.phx0` or `build/lib/{name}.phx0` with:
 
-- Remapped `function_id`, type ids, and constant indices across modules
+- **Globally unique `function_id`** assigned at per-module codegen (linker does not rewrite `Call` operands)
+- Remapped **constant** and **type** indices in merged code
 - `entry_function_id` = linked id of `main` in the root module (`bin` only)
-- Cross-module calls resolved via `pub` exports in `.pxi`
+- Cross-module calls use pre-assigned ids; export names/types come from `.pxi`
 
 **Errors:** `InterfaceMismatch`, duplicate global symbol, missing `main` (`bin`), `main` in `lib` package.
 
@@ -228,8 +243,8 @@ Transitive importers are rebuilt in reverse dependency order.
 | Command | Behavior |
 |---------|----------|
 | `phx build [entry.phx]` | Requires `phoenix.toml`; writes `build/` artifacts and manifest |
-| `phx run [entry.phx]` | `type = bin` only; loads `build/bin/{project.name}.phx0` |
-| `phx check` | M1 path (no `build/` required) |
+| `phx run [entry.phx]` | Requires `phoenix.toml` and `type = bin`; loads `build/bin/{project.name}.phx0`. Library packages (`type = lib`) produce `build/lib/{name}.phx0` for linking only — not executed by `phx run`. |
+| `phx check [file.phx]` | Type-check only. When `phoenix.toml` is found (walk parents from the file), uses `module_src` and path deps like `phx build`. Otherwise uses the file’s parent or `--module-src`. No `build/` required. |
 
 Flags: `--project-root`, `--module-src`, `--no-build`, `--build`, `--emit-interface-only`.
 

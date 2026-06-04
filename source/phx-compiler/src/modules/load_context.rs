@@ -60,6 +60,7 @@ impl CrateLoadContext {
     }
 
     /// Finds which package owns a canonical logical path (first segment).
+    #[must_use]
     pub fn package_for_logical(&self, logical: &str) -> Option<&PackageRoot> {
         let first = logical.split("::").next()?;
         if first == self.workspace.name {

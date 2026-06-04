@@ -71,8 +71,14 @@ impl std::error::Error for LinkError {}
 
 /// Merges `inputs` into one [`BytecodeModule`].
 ///
-/// Function ids must be globally unique across inputs (use a global map when emitting per-module
-/// objects). `entry_function_id` is the global id of `main`.
+/// ## Function ids and `Call` operands
+///
+/// Per-module codegen assigns **globally unique** `function_id` values before link (see
+/// [`crate::build::driver::build_global_fn_map`]). [`Opcode::Call`] operands are those ids; the
+/// linker does **not** rewrite them. It only rebases constant and type indices in each module's
+/// code via [`patch_instruction`]. Duplicate `function_id` across inputs is [`LinkError::DuplicateFunctionId`].
+///
+/// `entry_function_id` is the global id of `main` (or [`ENTRY_NONE`] for libraries).
 ///
 /// # Errors
 ///

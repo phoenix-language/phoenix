@@ -166,7 +166,9 @@ pub fn module_dependencies(
         if !seen.insert(key.clone()) {
             continue;
         }
-        let pxi_path = layout.module_artifacts(&key).pxi;
+        let pxi_path = layout
+            .module_artifacts_resolved(&key, workspace_name, dep_names)
+            .pxi;
         let pxi_hash = std::fs::read_to_string(&pxi_path)
             .map_or_else(|_| String::new(), |t| digest_bytes(t.as_bytes()));
         deps.push(PxiDependency {
