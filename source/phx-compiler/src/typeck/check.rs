@@ -195,9 +195,41 @@ impl<'a> TypeChecker<'a> {
         for module in &self.resolved.modules {
             self.current_module = module.id;
             for item in &module.program.items {
+                self.check_decl_derives(&item.inner, item.span);
                 self.check_top_level(&item.inner);
             }
         }
+    }
+
+    fn check_decl_derives(&mut self, item: &TopLevelItem, span: Span) {
+        let derives = match &item.decl {
+            TopLevelDecl::Struct { derives, .. }
+            | TopLevelDecl::Enum { derives, .. }
+            | TopLevelDecl::Trait { derives, .. } => derives,
+            TopLevelDecl::Function(f) => &f.derives,
+            TopLevelDecl::Impl { members, .. } => {
+                for m in members {
+                    if !m.derives.is_empty() {
+                        self.push_unsupported("#derive on impl method", m.body.span);
+                    }
+                }
+                return;
+            }
+            TopLevelDecl::Const { .. }
+            | TopLevelDecl::Var { .. }
+            | TopLevelDecl::TypeAlias { .. } => {
+                return;
+            }
+            _ => return,
+        };
+        if !derives.is_empty() {
+            self.push_unsupported("#derive directive", span);
+        }
+    }
+
+    fn push_unsupported(&mut self, feature: &'static str, span: Span) {
+        self.bag
+            .push(TypeCheckError::UnsupportedFeature { feature, span });
     }
 
     fn collect_decls(&mut self) {
@@ -214,9 +246,11 @@ impl<'a> TypeChecker<'a> {
         match decl {
             TopLevelDecl::Struct {
                 name,
+                derives,
                 generics,
                 body,
             } => {
+                let _ = derives;
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
                 if let Some(def) = self.find_def(self.current_module, name.symbol, DefKind::Struct)
@@ -242,9 +276,11 @@ impl<'a> TypeChecker<'a> {
             }
             TopLevelDecl::Enum {
                 name,
+                derives,
                 generics,
                 variants,
             } => {
+                let _ = derives;
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
                 if let Some(enum_def) =
@@ -475,6 +511,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_function(&mut self, f: &Function) {
+        if !f.derives.is_empty() {
+            self.push_unsupported("#derive directive", f.body.span);
+        }
         let ret = f
             .ret
             .as_ref()
@@ -627,6 +666,10 @@ impl<'a> TypeChecker<'a> {
                 }
                 self.with_loop_body(|this| this.check_block(&body.inner));
             }
+            Stmt::ForIn { iter, body, .. } => {
+                self.push_unsupported("for-in loop", iter.span);
+                self.with_loop_body(|this| this.check_block(&body.inner));
+            }
             Stmt::Loop(body) => self.with_loop_body(|this| this.check_block(&body.inner)),
             Stmt::Given {
                 pattern,
@@ -730,6 +773,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn check_expr(&mut self, expr: &Expr, span: Span) -> TypeId {
         match expr {
             Expr::Literal(lit) => self.check_literal(lit),
@@ -789,8 +833,41 @@ impl<'a> TypeChecker<'a> {
             } => self.check_if(cond, then_block, else_ifs, else_block, span),
             Expr::Match { scrutinee, arms } => self.check_match(scrutinee, arms, span),
             Expr::Block(block) => self.check_block_expr(block),
-            Expr::StructLit { name, fields, .. } => self.check_struct_lit(name, fields, span),
+            Expr::StructLit {
+                name,
+                generics,
+                fields,
+            } => self.check_struct_lit(name, generics.as_deref(), fields, span),
             Expr::Unsafe(block) => self.check_block_expr(block),
+            Expr::Range { start, end, .. } => {
+                let _ = self.check_expr_node(start);
+                let _ = self.check_expr_node(end);
+                self.push_unsupported("range expression", span);
+                self.unit
+            }
+            Expr::Lambda { body, .. } => {
+                let body_span = match body {
+                    phx_syntax::ast::expr::LambdaBody::Expr(e) => e.span,
+                    phx_syntax::ast::expr::LambdaBody::Block(b) => b.span,
+                    _ => span,
+                };
+                self.push_unsupported("lambda expression", body_span);
+                self.unit
+            }
+            Expr::RuntimeDirective { kind, args, .. } => {
+                let feature = match kind {
+                    phx_syntax::ast::expr::RuntimeDirectiveKind::Spawn => "@spawn directive",
+                    phx_syntax::ast::expr::RuntimeDirectiveKind::Send => "@send directive",
+                    phx_syntax::ast::expr::RuntimeDirectiveKind::Receive => "@receive directive",
+                    phx_syntax::ast::expr::RuntimeDirectiveKind::Reply => "@reply directive",
+                    _ => "runtime directive",
+                };
+                for arg in args {
+                    let _ = self.check_expr_node(arg);
+                }
+                self.push_unsupported(feature, span);
+                self.unit
+            }
             _ => self.unit,
         }
     }
@@ -1373,12 +1450,20 @@ impl<'a> TypeChecker<'a> {
             .unwrap_or_else(|| "<?>".to_string())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn check_struct_lit(
         &mut self,
         name: &TypeName,
+        generics: Option<&[phx_syntax::ast::Node<phx_syntax::ast::Type>]>,
         fields: &[StructFieldInit],
         span: Span,
     ) -> TypeId {
+        if generics.is_some() {
+            self.bag.push(TypeCheckError::UnsupportedFeature {
+                feature: "struct literal type arguments",
+                span,
+            });
+        }
         if let Some(&def) = self.type_defs.get(&name.symbol) {
             let ty = self.types.intern(&Ty::Named { def, args: vec![] });
             if let Some(sl) = self.program_layout.structs.get(&def) {

@@ -324,7 +324,7 @@ impl<'src> Lexer<'src> {
         self.advance();
         self.advance();
         if !self.peek_byte().is_some_and(is_hex_digit) {
-            return Err(self.invalid_number());
+            return Err(self.invalid_int());
         }
         while self
             .peek_byte()
@@ -339,7 +339,7 @@ impl<'src> Lexer<'src> {
         self.advance();
         self.advance();
         if !self.peek_byte().is_some_and(|b| b == b'0' || b == b'1') {
-            return Err(self.invalid_number());
+            return Err(self.invalid_int());
         }
         while self
             .peek_byte()
@@ -398,7 +398,7 @@ impl<'src> Lexer<'src> {
             self.advance();
         }
         if !self.peek_byte().is_some_and(|b| b.is_ascii_digit()) {
-            return Err(self.invalid_number());
+            return Err(self.invalid_float());
         }
         while self
             .peek_byte()
@@ -425,7 +425,7 @@ impl<'src> Lexer<'src> {
             FloatSuffix::None => lexeme,
         };
         let stripped = strip_underscores(numeric);
-        let value: f64 = stripped.parse().map_err(|_| self.invalid_number())?;
+        let value: f64 = stripped.parse().map_err(|_| self.invalid_float())?;
         Ok(TokenKind::Float { value, suffix })
     }
 
@@ -443,7 +443,7 @@ impl<'src> Lexer<'src> {
             lexeme
         };
         if numeric_lexeme.is_empty() {
-            return Err(self.invalid_number());
+            return Err(self.invalid_int());
         }
         let value = match base {
             IntegerBase::Decimal => {
@@ -729,7 +729,14 @@ impl<'src> Lexer<'src> {
         u32::try_from(self.cursor).unwrap_or(u32::MAX)
     }
 
-    fn invalid_number(&self) -> LexError {
+    fn invalid_int(&self) -> LexError {
+        LexError::InvalidInt {
+            start: self.span_start(),
+            end: self.span_end(),
+        }
+    }
+
+    fn invalid_float(&self) -> LexError {
         LexError::InvalidFloat {
             start: self.span_start(),
             end: self.span_end(),

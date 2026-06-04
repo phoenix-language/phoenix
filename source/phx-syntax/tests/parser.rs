@@ -9,7 +9,7 @@
     clippy::too_many_lines
 )]
 
-use phx_diagnostics::{ExpectedToken, LexError, ParseError};
+use phx_diagnostics::{ExpectedToken, LexError, ParseBag, ParseError};
 use phx_syntax::ast::decl::{FnDirective, StructBody, TopLevelDecl, Variant};
 use phx_syntax::ast::expr::{AssignOp, Expr};
 use phx_syntax::ast::stmt::{BlockItem, Stmt};
@@ -45,8 +45,16 @@ mod support {
         )
     }
 
-    pub fn parse_err(source: &str) -> ParseError {
+    pub fn parse_err(source: &str) -> ParseBag {
         parse(source).expect_err("expected parse error")
+    }
+
+    pub fn parse_err_first(source: &str) -> ParseError {
+        let bag = parse_err(source);
+        bag.errors()
+            .first()
+            .cloned()
+            .expect("expected at least one parse error")
     }
 
     pub fn assert_ok(source: &str) {
@@ -54,7 +62,7 @@ mod support {
     }
 
     pub fn assert_unsupported(source: &str, feature: &str) {
-        match parse_err(source) {
+        match parse_err_first(source) {
             ParseError::UnsupportedSyntax { feature: f, .. } => {
                 assert_eq!(f, feature, "source: {source:?}");
             }
@@ -63,7 +71,7 @@ mod support {
     }
 
     pub fn assert_parse_err(source: &str, check: fn(&ParseError) -> bool) {
-        let err = parse_err(source);
+        let err = parse_err_first(source);
         assert!(
             check(&err),
             "unexpected error {err:?} for source {source:?}"
@@ -87,8 +95,8 @@ mod support {
 }
 
 use support::{
-    assert_ok, assert_parse_err, assert_unsupported, in_main, in_main_expr, main_fn, parse_ok,
-    with_type_alias,
+    assert_ok, assert_parse_err, assert_unsupported, in_main, in_main_expr, main_fn, parse_err,
+    parse_ok, with_type_alias,
 };
 
 // -----------------------------------------------------------------------------
@@ -923,6 +931,25 @@ fn expr_struct_literal_spread() {
 }
 
 #[test]
+fn expr_struct_literal_generics() {
+    let src = &format!(
+        "Point :: struct {{ x: s32, y: s32 }}; {}",
+        in_main_expr("Point::<s32> { x: 1, y: 2 }")
+    );
+    let program = parse_ok(src);
+    let expr = support::first_stmt_expr(&main_fn(&program).body);
+    match expr {
+        Expr::StructLit { generics, .. } => {
+            assert!(
+                generics.as_ref().is_some_and(|g| !g.is_empty()),
+                "expected generic type arguments"
+            );
+        }
+        other => panic!("expected StructLit, got {other:?}"),
+    }
+}
+
+#[test]
 fn expr_path_type_only() {
     assert_ok(&in_main_expr("MyType"));
 }
@@ -974,6 +1001,23 @@ fn stmt_continue() {
 #[test]
 fn stmt_while() {
     assert_ok(&in_main("while true { };"));
+}
+
+/// `while` conditions use logical-or precedence (same as `if`), not assignment.
+#[test]
+fn stmt_while_equality_condition() {
+    assert_ok(&in_main("while a == b { };"));
+}
+
+/// Assignment is not valid at `while` condition precedence.
+#[test]
+fn stmt_while_assignment_in_condition_is_parse_error() {
+    assert_parse_err(&in_main("while x = 1 { };"), |e| {
+        matches!(
+            e,
+            ParseError::UnexpectedToken { .. } | ParseError::UnexpectedEof { .. }
+        )
+    });
 }
 
 #[test]
@@ -1089,70 +1133,76 @@ fn pat_tuple() {
 }
 
 // -----------------------------------------------------------------------------
-// Unsupported syntax (grammar-deferred)
+// Parse recovery (multiple errors per file)
 // -----------------------------------------------------------------------------
 
 #[test]
-fn unsupported_for_in_loop() {
-    assert_unsupported(&in_main("for x in xs { };"), "for-in loop");
-}
-
-#[test]
-fn unsupported_range_expr_dot_dot() {
-    assert_unsupported(&in_main_expr("0..1"), "range expression");
-}
-
-#[test]
-fn unsupported_range_expr_dot_dot_eq() {
-    assert_unsupported(&in_main_expr("0..=1"), "range expression");
-}
-
-#[test]
-fn unsupported_lambda_empty() {
-    assert_unsupported(&in_main_expr("() => 1"), "lambda expression");
-}
-
-#[test]
-fn unsupported_lambda_with_param() {
-    assert_parse_err(&in_main_expr("(x, y) => x"), |e| {
-        matches!(
-            e,
-            ParseError::UnsupportedSyntax { .. } | ParseError::UnexpectedToken { .. }
-        )
-    });
-}
-
-#[test]
-fn unsupported_at_spawn() {
-    assert_unsupported(&in_main("@spawn f();"), "@spawn directive");
-}
-
-#[test]
-fn unsupported_at_send() {
-    assert_unsupported(&in_main("@send(a, b);"), "@send directive");
-}
-
-#[test]
-fn unsupported_at_receive() {
-    assert_unsupported(&in_main("@receive(m);"), "@receive directive");
-}
-
-#[test]
-fn unsupported_at_reply() {
-    assert_unsupported(&in_main("@reply(v);"), "@reply directive");
-}
-
-#[test]
-fn unsupported_hash_derive_top_level() {
-    assert_unsupported("#derive(Clone)\nmain :: () => { };", "#derive directive");
-}
-
-#[test]
-fn unsupported_hash_derive_on_fn() {
-    assert_unsupported(
-        "#derive(Clone)\nf :: () => { }; main :: () => { };",
-        "#derive directive",
+fn parse_recovery_collects_multiple_errors() {
+    let bag = parse_err("main :: () => { const x = ; const y: s32 = ; };");
+    assert!(
+        bag.errors().len() >= 2,
+        "expected at least two parse errors, got {:?}",
+        bag.errors()
     );
+}
+
+// -----------------------------------------------------------------------------
+// Deferred syntax (parse-only; typeck rejects — see typeck integration tests)
+// -----------------------------------------------------------------------------
+
+#[test]
+fn deferred_parse_for_in_loop() {
+    assert_ok(&in_main("for x in xs { };"));
+}
+
+#[test]
+fn deferred_parse_range_expr_dot_dot() {
+    assert_ok(&in_main_expr("0..1"));
+}
+
+#[test]
+fn deferred_parse_range_expr_dot_dot_eq() {
+    assert_ok(&in_main_expr("0..=1"));
+}
+
+#[test]
+fn deferred_parse_lambda_empty() {
+    assert_ok(&in_main_expr("() => 1"));
+}
+
+#[test]
+fn deferred_parse_lambda_with_param() {
+    assert_ok(&in_main_expr("(x: s32) => x"));
+}
+
+#[test]
+fn deferred_parse_at_spawn() {
+    assert_ok(&in_main("@spawn(f);"));
+}
+
+#[test]
+fn deferred_parse_at_send() {
+    assert_ok(&in_main("@send(a, b);"));
+}
+
+#[test]
+fn deferred_parse_at_receive() {
+    assert_ok(&in_main("@receive(m);"));
+}
+
+#[test]
+fn deferred_parse_at_reply() {
+    assert_ok(&in_main("@reply(v);"));
+}
+
+#[test]
+fn deferred_parse_hash_derive_top_level() {
+    assert_ok("#derive(Clone)\nmain :: () => { };");
+}
+
+#[test]
+fn deferred_parse_hash_derive_on_fn() {
+    assert_ok("#derive(Clone)\nf :: () => { }; main :: () => { };");
 }
 
 // -----------------------------------------------------------------------------

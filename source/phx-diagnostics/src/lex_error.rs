@@ -4,6 +4,8 @@
 
 use core::fmt;
 
+use crate::Span;
+
 /// A lexical error produced while tokenizing Phoenix source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LexError {
@@ -31,6 +33,13 @@ pub enum LexError {
     },
     /// Integer literal does not fit in the parsed representation.
     IntegerOverflow {
+        /// Inclusive start byte offset of the lexeme.
+        start: u32,
+        /// Exclusive end byte offset of the lexeme.
+        end: u32,
+    },
+    /// Integer literal is malformed (empty radix prefix, invalid digits, etc.).
+    InvalidInt {
         /// Inclusive start byte offset of the lexeme.
         start: u32,
         /// Exclusive end byte offset of the lexeme.
@@ -73,6 +82,9 @@ impl fmt::Display for LexError {
             Self::IntegerOverflow { start, end } => {
                 write!(f, "integer literal overflow at bytes {start}..{end}")
             }
+            Self::InvalidInt { start, end } => {
+                write!(f, "invalid integer literal at bytes {start}..{end}")
+            }
             Self::InvalidFloat { start, end } => {
                 write!(f, "invalid float literal at bytes {start}..{end}")
             }
@@ -84,3 +96,22 @@ impl fmt::Display for LexError {
 }
 
 impl std::error::Error for LexError {}
+
+impl LexError {
+    /// Source span for caret rendering when the error refers to a lexeme range.
+    #[must_use]
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::UnterminatedString { start } | Self::UnterminatedBlockComment { start } => {
+                Some(Span::new(*start, *start))
+            }
+            Self::InvalidEscape { offset } | Self::UnexpectedChar { offset, .. } => {
+                Some(Span::new(*offset, *offset))
+            }
+            Self::IntegerOverflow { start, end }
+            | Self::InvalidInt { start, end }
+            | Self::InvalidFloat { start, end }
+            | Self::LexemeTooLong { start, end } => Some(Span::new(*start, *end)),
+        }
+    }
+}

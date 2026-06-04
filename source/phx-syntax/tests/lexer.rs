@@ -1342,12 +1342,12 @@ fn error_integer_overflow() {
 
 #[test]
 fn error_invalid_float_hex_no_digits() {
-    assert_lex_err("0x", |e| matches!(e, LexError::InvalidFloat { .. }));
+    assert_lex_err("0x", |e| matches!(e, LexError::InvalidInt { .. }));
 }
 
 #[test]
 fn error_invalid_float_binary_no_digits() {
-    assert_lex_err("0b", |e| matches!(e, LexError::InvalidFloat { .. }));
+    assert_lex_err("0b", |e| matches!(e, LexError::InvalidInt { .. }));
 }
 
 #[test]

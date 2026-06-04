@@ -50,6 +50,15 @@ pub enum Stmt {
         /// Loop body.
         body: BlockNode,
     },
+    /// `for binding in iter { … }`
+    ForIn {
+        /// Loop binding.
+        binding: Ident,
+        /// Iterable expression.
+        iter: ExprNode,
+        /// Loop body.
+        body: BlockNode,
+    },
     /// `loop { … }`
     Loop(BlockNode),
     /// `given pat = expr { … }`

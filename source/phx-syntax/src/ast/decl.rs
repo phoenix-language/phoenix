@@ -28,6 +28,13 @@ pub enum Param {
     },
 }
 
+/// `#derive(Trait, …)` — parsed; codegen deferred.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DeriveDirective {
+    /// Trait names to derive.
+    pub traits: Vec<TypeName>,
+}
+
 /// Compile-time function directive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -136,6 +143,8 @@ pub struct FunctionSig {
 /// Function definition with body.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
+    /// `#derive` attributes (no codegen in MVP).
+    pub derives: Vec<DeriveDirective>,
     /// Directives (`#inline`, …).
     pub directives: Vec<FnDirective>,
     /// `#unsafe` on the function.
@@ -160,6 +169,8 @@ pub enum TopLevelDecl {
     Struct {
         /// Type name.
         name: TypeName,
+        /// `#derive` attributes.
+        derives: Vec<DeriveDirective>,
         /// Generic parameters.
         generics: Option<Vec<GenericParam>>,
         /// Struct body.
@@ -169,6 +180,8 @@ pub enum TopLevelDecl {
     Enum {
         /// Type name.
         name: TypeName,
+        /// `#derive` attributes.
+        derives: Vec<DeriveDirective>,
         /// Generic parameters.
         generics: Option<Vec<GenericParam>>,
         /// Variants.
@@ -187,6 +200,8 @@ pub enum TopLevelDecl {
     Trait {
         /// Trait name.
         name: TypeName,
+        /// `#derive` attributes.
+        derives: Vec<DeriveDirective>,
         /// Generic parameters.
         generics: Option<Vec<GenericParam>>,
         /// Trait items.

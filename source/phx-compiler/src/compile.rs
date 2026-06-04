@@ -9,7 +9,7 @@ use std::path::Path;
 use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
-    DiagnosticBag, ParseError, TypeCheckBag, format_span_message, format_typecheck_error,
+    DiagnosticBag, ParseBag, TypeCheckBag, format_span_message, format_typecheck_error,
 };
 use phx_syntax::parse;
 
@@ -23,8 +23,8 @@ use crate::unit::CompilationUnit;
 /// Failure during `compile_source` or `check_file`.
 #[derive(Debug)]
 pub enum CompileError {
-    /// Lexical or parse failure.
-    Parse(ParseError),
+    /// Lexical or parse failures.
+    Parse(ParseBag),
     /// One or more resolve errors.
     Resolve(DiagnosticBag),
     /// One or more type-check errors.
@@ -48,7 +48,7 @@ impl CompileError {
         modules: Option<&[SourceModule]>,
     ) -> String {
         match self {
-            Self::Parse(e) => format_parse_error(e, entry_source),
+            Self::Parse(bag) => format_parse_bag(bag, entry_source),
             Self::Resolve(bag) => format_resolve_bag(bag, entry_source, modules),
             Self::TypeCheck(bag) => format_typecheck_bag(bag, entry_source, modules),
             Self::Io(e) => format!("I/O error: {e}"),
@@ -56,13 +56,19 @@ impl CompileError {
     }
 }
 
-fn format_parse_error(e: &ParseError, source: Option<&str>) -> String {
-    if let Some(src) = source
-        && let Some(span) = e.span()
-    {
-        return format_span_message(src, span, &e.to_string());
+fn format_parse_bag(bag: &ParseBag, source: Option<&str>) -> String {
+    let mut parts = Vec::new();
+    for err in bag.errors() {
+        let msg = if let Some(src) = source
+            && let Some(span) = err.span()
+        {
+            format_span_message(src, span, &err.to_string())
+        } else {
+            err.to_string()
+        };
+        parts.push(msg);
     }
-    e.to_string()
+    parts.join("\n---\n")
 }
 
 fn format_resolve_bag(
@@ -116,7 +122,7 @@ fn source_for_span<'a>(
 impl std::fmt::Display for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Parse(e) => write!(f, "{e}"),
+            Self::Parse(bag) => write!(f, "{bag}"),
             Self::Resolve(bag) => write!(f, "{bag}"),
             Self::TypeCheck(bag) => write!(f, "{bag}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
@@ -127,7 +133,7 @@ impl std::fmt::Display for CompileError {
 impl std::error::Error for CompileError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Parse(e) => Some(e),
+            Self::Parse(bag) => Some(bag),
             Self::Resolve(bag) => Some(bag),
             Self::TypeCheck(bag) => Some(bag),
             Self::Io(e) => Some(e),

@@ -80,7 +80,9 @@ pub fn bindings_from_pxi(
             });
         }
         for exp in &pxi.exports {
-            let sym = interner.intern(&exp.name);
+            let Some(sym) = interner.intern(&exp.name).ok() else {
+                continue;
+            };
             let id = DefId::from_raw(next_def_index);
             next_def_index = next_def_index.saturating_add(1);
             let is_type = matches!(exp.kind.as_str(), "struct" | "enum" | "type" | "trait");

@@ -4,12 +4,15 @@
 
 use crate::ast::Node;
 use crate::intern::Symbol;
+use phx_diagnostics::Span;
 
-/// A `snake_case` identifier.
+/// A `snake_case` identifier with its use-site span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ident {
     /// Interned name.
     pub symbol: Symbol,
+    /// Source span of this identifier token.
+    pub span: Span,
 }
 
 /// A `PascalCase` type name.

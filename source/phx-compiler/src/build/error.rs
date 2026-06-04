@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::project::ProjectError;
 use crate::pxi::PxiError;
 use phx_diagnostics::{DiagnosticBag, TypeCheckBag};
-use phx_syntax::ParseError;
+use phx_syntax::ParseBag;
 
 /// Failure during `phx build`.
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub enum BuildError {
     /// Project configuration.
     Project(ProjectError),
     /// Parse failure.
-    Parse(ParseError),
+    Parse(ParseBag),
     /// Resolve failure.
     Resolve(DiagnosticBag),
     /// Type-check failure.

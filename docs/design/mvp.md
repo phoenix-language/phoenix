@@ -52,6 +52,11 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Compile-time generation | `@derive(...)` or `#derive(...)` semantic codegen |
 | Deferred grammar/semantics | default trait body codegen, associated-type bounds, heap alloc surface syntax, full borrow checker — see [features/grammar-deferred.md](features/grammar-deferred.md) |
 
+## Lexer and identifiers (MVP)
+
+- **ASCII identifiers only** — `snake_case` value names and `PascalCase` type names use ASCII rules; Unicode identifiers are post-MVP ([features/ast-roadmap.md](features/ast-roadmap.md)).
+- **Deferred syntax is parsed, not lowered** — `for-in`, ranges, lambdas, `@` directives, and `#derive` build AST nodes; typeck reports `UnsupportedFeature` until std/runtime work lands ([features/grammar-deferred.md](features/grammar-deferred.md)).
+
 ## Core Primitive Policy (No Built-in String)
 
 MVP does not include a primitive `string` type.

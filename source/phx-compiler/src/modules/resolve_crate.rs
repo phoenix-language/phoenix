@@ -225,7 +225,10 @@ fn build_import_bindings(
                 .collect()
         } else {
             let (_, item) = ModulePath::split_import_target(&imp.inner.path, interner);
-            vec![interner.intern(&item)]
+            match interner.intern(&item) {
+                Ok(sym) => vec![sym],
+                Err(_) => Vec::new(),
+            }
         };
 
         for sym in import_symbols {

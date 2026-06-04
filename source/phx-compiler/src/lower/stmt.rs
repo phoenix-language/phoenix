@@ -49,6 +49,7 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
         }
         Stmt::Return(expr) => lower_return(ctx, expr.as_ref()),
         Stmt::While { cond, body } => lower_while(ctx, cond, &body.inner),
+        Stmt::ForIn { .. } => {}
         Stmt::Loop(body) => lower_loop(ctx, &body.inner),
         Stmt::Given {
             pattern,

@@ -132,11 +132,11 @@ pub fn load_crate_with_context(
         };
         let file = match parse_with_interner(&source, &mut interner) {
             Ok(f) => f,
-            Err(e) => {
+            Err(parse_bag) => {
                 bag.push(ResolveError::ModuleParse {
                     span: phx_diagnostics::Span::new(0, 0),
                     path: fs_path.display().to_string(),
-                    message: e.to_string(),
+                    message: parse_bag.to_string(),
                 });
                 continue;
             }

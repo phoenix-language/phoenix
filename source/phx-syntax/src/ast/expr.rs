@@ -3,6 +3,7 @@
 //! Covers literals through assignment, casts, postfix chains, and control-flow expressions.
 
 use crate::ast::Node;
+use crate::ast::decl::Param;
 use crate::ast::ident::{Ident, Path, TypeName};
 use crate::ast::lit::Literal;
 use crate::ast::pat::MatchArm;
@@ -112,6 +113,30 @@ pub enum PostfixOp {
     Try,
 }
 
+/// Post-MVP runtime directive (`@spawn`, `@send`, …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum RuntimeDirectiveKind {
+    /// `@spawn(expr)`
+    Spawn,
+    /// `@send(expr, expr)`
+    Send,
+    /// `@receive(expr)`
+    Receive,
+    /// `@reply(expr)`
+    Reply,
+}
+
+/// Body of a lambda expression.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum LambdaBody {
+    /// Single expression after `=>`.
+    Expr(Box<ExprNode>),
+    /// Block after `=>`.
+    Block(BlockNode),
+}
+
 /// An expression.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -196,6 +221,29 @@ pub enum Expr {
     },
     /// `#unsafe` block expression.
     Unsafe(BlockNode),
+    /// Range `start..end` or `start..=end`.
+    Range {
+        /// Left bound.
+        start: Box<ExprNode>,
+        /// Right bound.
+        end: Box<ExprNode>,
+        /// `true` for `..=`.
+        inclusive: bool,
+    },
+    /// Closure `(params) => body`.
+    Lambda {
+        /// Parameters.
+        params: Vec<Param>,
+        /// Body expression or block.
+        body: LambdaBody,
+    },
+    /// Runtime directive expression (`@spawn`, …).
+    RuntimeDirective {
+        /// Which directive.
+        kind: RuntimeDirectiveKind,
+        /// Arguments (arity depends on `kind`).
+        args: Vec<ExprNode>,
+    },
 }
 
 /// Struct literal field `field: expr` or `..base`.

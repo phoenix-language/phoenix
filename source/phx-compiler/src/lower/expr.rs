@@ -183,6 +183,7 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
             }
         }
         Expr::Unsafe(block) => lower_block_expr(ctx, block),
+        Expr::Range { .. } | Expr::Lambda { .. } | Expr::RuntimeDirective { .. } => {}
         _ => {}
     }
 }

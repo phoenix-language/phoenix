@@ -5,6 +5,24 @@
 //! symbols outlive the original source borrows and deduplication is stable).
 
 use core::fmt;
+use std::collections::HashMap;
+
+/// Failure while interning an identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InternError {
+    /// No free symbol indices remain.
+    TableFull,
+}
+
+impl fmt::Display for InternError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TableFull => f.write_str("identifier intern table is full"),
+        }
+    }
+}
+
+impl std::error::Error for InternError {}
 
 /// An interned identifier index into an [`Interner`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -40,10 +58,12 @@ impl fmt::Display for Symbol {
 ///
 /// Each new spelling is stored once in `strings`; later [`intern`](Self::intern) calls reuse
 /// the same [`Symbol`].
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Interner {
     /// Owned spellings indexed by [`Symbol::index`].
     strings: Vec<String>,
+    /// Maps spelling → symbol index for O(1) deduplication.
+    index: HashMap<String, u32>,
 }
 
 impl Interner {
@@ -54,15 +74,19 @@ impl Interner {
     }
 
     /// Interns `text`, returning an existing symbol when already present.
-    #[must_use]
-    pub fn intern(&mut self, text: &str) -> Symbol {
-        if let Some(index) = self.strings.iter().position(|s| s == text) {
-            return Symbol(u32::try_from(index).unwrap_or(u32::MAX));
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InternError::TableFull`] when the next index would not fit in `u32`.
+    pub fn intern(&mut self, text: &str) -> Result<Symbol, InternError> {
+        if let Some(&idx) = self.index.get(text) {
+            return Ok(Symbol(idx));
         }
         let index = self.strings.len();
-        // Own the spelling: AST and diagnostics may outlive the source `&str` buffer.
+        let idx = u32::try_from(index).map_err(|_| InternError::TableFull)?;
         self.strings.push(text.to_owned());
-        Symbol(u32::try_from(index).unwrap_or(u32::MAX))
+        self.index.insert(text.to_owned(), idx);
+        Ok(Symbol(idx))
     }
 
     /// Resolves a symbol to its text.

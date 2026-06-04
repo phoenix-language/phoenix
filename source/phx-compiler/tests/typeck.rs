@@ -299,6 +299,22 @@ fn struct_lit_unknown_field() {
 }
 
 #[test]
+fn struct_lit_generic_args_unsupported() {
+    let bag = typeck_err(
+        "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point::<s32> { x: 1, y: 2 }; };",
+    );
+    assert!(bag.errors().iter().any(|e| {
+        matches!(
+            e,
+            TypeCheckError::UnsupportedFeature {
+                feature: "struct literal type arguments",
+                ..
+            }
+        )
+    }));
+}
+
+#[test]
 fn struct_lit_missing_field() {
     let bag = typeck_err(
         "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point { x: 1 }; };",
@@ -442,5 +458,49 @@ fn match_unreachable_duplicate_enum_variant() {
         bag.errors()
             .iter()
             .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
+    );
+}
+
+#[test]
+fn deferred_typeck_for_in_loop() {
+    let bag = typeck_err("main :: () => { for x in 0 { }; };");
+    assert!(has_unsupported(&bag, "for-in"));
+}
+
+#[test]
+fn deferred_typeck_range_expr() {
+    let bag = typeck_err("main :: () => { const _ = 0..1; };");
+    assert!(has_unsupported(&bag, "range"));
+}
+
+#[test]
+fn deferred_typeck_lambda() {
+    let bag = typeck_err("main :: () => { const _ = () => 1; };");
+    assert!(has_unsupported(&bag, "lambda"));
+}
+
+#[test]
+fn deferred_typeck_at_spawn() {
+    let bag = typeck_err("f :: () => { }; main :: () => { @spawn(f); };");
+    assert!(has_unsupported(&bag, "@spawn"));
+}
+
+#[test]
+fn deferred_typeck_hash_derive() {
+    let bag = typeck_err("#derive(Clone)\nmain :: () => { };");
+    assert!(has_unsupported(&bag, "#derive"));
+}
+
+#[test]
+fn parse_recovery_formats_multiple_carets() {
+    let source = "main :: () => { const x = ; const y: s32 = ; };";
+    let err = match compile_source(source, None) {
+        Err(CompileError::Parse(bag)) => bag,
+        other => panic!("expected parse error, got {other:?}"),
+    };
+    let formatted = CompileError::Parse(err).format_with_source(Some(source));
+    assert!(
+        formatted.matches("---").count() >= 1,
+        "expected multiple formatted errors separated by ---:\n{formatted}"
     );
 }

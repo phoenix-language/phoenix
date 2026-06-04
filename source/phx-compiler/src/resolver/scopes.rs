@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn scope_push_pop_lookup() {
         let mut interner = Interner::new();
-        let sym = interner.intern("a");
+        let sym = interner.intern("a").expect("test intern");
         let _sf = SourceFile::new(
             Program {
                 imports: vec![],

@@ -12,7 +12,7 @@ mod types;
 
 use std::borrow::Cow;
 
-use phx_diagnostics::{ExpectedToken, ParseError, Span};
+use phx_diagnostics::{ExpectedToken, ParseBag, ParseError, Span};
 
 use crate::ast::Program;
 use crate::intern::Interner;
@@ -30,6 +30,8 @@ pub(crate) struct Parser<'src> {
     pub(crate) pos: usize,
     /// Intern table filled while parsing identifiers.
     pub(crate) interner: Interner,
+    /// When set, parse errors are collected and parsing continues at sync points.
+    recovery: Option<*mut ParseBag>,
 }
 
 impl<'src> Parser<'src> {
@@ -44,21 +46,117 @@ impl<'src> Parser<'src> {
             tokens,
             pos: 0,
             interner,
+            recovery: None,
+        }
+    }
+
+    /// Enables error recovery into `bag` for the remainder of this parse.
+    pub(crate) fn enable_recovery(&mut self, bag: &mut ParseBag) {
+        self.recovery = Some(std::ptr::from_mut(bag));
+    }
+
+    fn recovery_bag(&mut self) -> Option<&mut ParseBag> {
+        self.recovery.map(|ptr| {
+            // SAFETY: `enable_recovery` sets this from `&mut ParseBag` on the same parser instance.
+            unsafe { &mut *ptr }
+        })
+    }
+
+    fn record_error(&mut self, error: ParseError) {
+        if let Some(bag) = self.recovery_bag() {
+            bag.push(error);
+        }
+    }
+
+    fn in_recovery_mode(&self) -> bool {
+        self.recovery.is_some()
+    }
+
+    /// Advances until `;`, `}`, or EOF (always consumes at least one token).
+    pub(crate) fn sync_stmt(&mut self) {
+        let start = self.pos;
+        while !self.at_end() {
+            match self.peek_kind() {
+                TokenKind::Semicolon => {
+                    let _ = self.bump();
+                    return;
+                }
+                TokenKind::RBrace | TokenKind::Eof => return,
+                _ => {
+                    let _ = self.bump();
+                }
+            }
+        }
+        if self.pos == start && !self.at_end() {
+            let _ = self.bump();
+        }
+    }
+
+    /// Advances until a plausible top-level item start, `;`, `}`, or EOF.
+    pub(crate) fn sync_top_level(&mut self) {
+        let start = self.pos;
+        while !self.at_end() {
+            match self.peek_kind() {
+                TokenKind::Semicolon => {
+                    let _ = self.bump();
+                    return;
+                }
+                TokenKind::RBrace
+                | TokenKind::HashImport
+                | TokenKind::HashDerive
+                | TokenKind::HashInline
+                | TokenKind::HashCold
+                | TokenKind::HashHot
+                | TokenKind::HashUnsafe
+                | TokenKind::Ident(_)
+                | TokenKind::TypeIdent(_)
+                | TokenKind::Keyword(
+                    Keyword::Pub | Keyword::Type | Keyword::Const | Keyword::Var,
+                ) => {
+                    return;
+                }
+                _ => {
+                    let _ = self.bump();
+                }
+            }
+        }
+        if self.pos == start && !self.at_end() {
+            let _ = self.bump();
         }
     }
 
     /// Interns `text` as a value identifier (`snake_case` name).
-    pub(crate) fn intern_ident(&mut self, text: &str) -> crate::ast::Ident {
-        crate::ast::Ident {
-            symbol: self.interner.intern(text),
-        }
+    /// Consumes the current identifier token and interns it.
+    pub(crate) fn bump_ident(&mut self, text: &str) -> Result<crate::ast::Ident, ParseError> {
+        let span = self.current_span();
+        self.bump();
+        self.intern_ident(text, span)
+    }
+
+    pub(crate) fn intern_ident(
+        &mut self,
+        text: &str,
+        span: Span,
+    ) -> Result<crate::ast::Ident, ParseError> {
+        let symbol = self
+            .interner
+            .intern(text)
+            .map_err(|_| ParseError::InternTableFull { span })?;
+        Ok(crate::ast::Ident { symbol, span })
     }
 
     /// Interns `text` as a type identifier (`PascalCase` name).
-    pub(crate) fn intern_type_name(&mut self, text: &str) -> crate::ast::TypeName {
-        crate::ast::TypeName {
-            symbol: self.interner.intern(text),
-        }
+    pub(crate) fn intern_type_name(
+        &mut self,
+        text: &str,
+    ) -> Result<crate::ast::TypeName, ParseError> {
+        let symbol = self
+            .interner
+            .intern(text)
+            .map_err(|_| ParseError::InternTableFull {
+                span: self.current_span(),
+            })?;
+        Ok(crate::ast::TypeName { symbol })
     }
 
     /// Returns `true` when the cursor is at EOF.
@@ -138,19 +236,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Rejects post-MVP `@` / `#derive` directives at the current token.
-    pub(crate) fn reject_deferred_directive(&self) -> ParseError {
-        let feature = match self.peek_kind() {
-            TokenKind::AtSpawn => "@spawn directive",
-            TokenKind::AtSend => "@send directive",
-            TokenKind::AtReceive => "@receive directive",
-            TokenKind::AtReply => "@reply directive",
-            TokenKind::HashDerive => "#derive directive",
-            _ => "runtime directive",
-        };
-        self.reject_unsupported(feature)
-    }
-
     /// Human-readable label for a token kind in diagnostics.
     ///
     /// Uses [`Cow::Borrowed`] for fixed phrases; allocates only when the message embeds a
@@ -221,8 +306,9 @@ impl<'src> Parser<'src> {
     pub(crate) fn parse_ident(&mut self) -> Result<crate::ast::Ident, ParseError> {
         match self.peek_kind() {
             TokenKind::Ident(name) => {
+                let span = self.current_span();
                 self.bump();
-                Ok(self.intern_ident(name))
+                self.intern_ident(name, span)
             }
             _ => Err(self.error_unexpected(ExpectedToken::Ident)),
         }
@@ -233,11 +319,11 @@ impl<'src> Parser<'src> {
         match self.peek_kind() {
             TokenKind::TypeIdent(name) => {
                 self.bump();
-                Ok(self.intern_type_name(name))
+                self.intern_type_name(name)
             }
             TokenKind::Keyword(Keyword::SelfUpper) => {
                 self.bump();
-                Ok(self.intern_type_name("Self"))
+                self.intern_type_name("Self")
             }
             _ => Err(self.error_unexpected(ExpectedToken::TypeIdent)),
         }
@@ -287,14 +373,35 @@ impl<'src> Parser<'src> {
     fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut imports = Vec::new();
         while matches!(self.peek_kind(), TokenKind::HashImport) {
-            imports.push(self.parse_import()?);
+            match self.parse_import() {
+                Ok(imp) => imports.push(imp),
+                Err(e) => {
+                    if self.in_recovery_mode() {
+                        self.record_error(e);
+                        self.sync_top_level();
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
         let mut items = Vec::new();
         while !self.at_end() {
-            if matches!(self.peek_kind(), TokenKind::HashDerive) {
-                return Err(self.reject_unsupported("#derive directive"));
+            let at_start = self.pos;
+            match self.parse_top_level_item() {
+                Ok(item) => items.push(item),
+                Err(e) => {
+                    if self.in_recovery_mode() {
+                        self.record_error(e);
+                        self.sync_top_level();
+                        if self.at_end() || self.pos == at_start {
+                            break;
+                        }
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
-            items.push(self.parse_top_level_item()?);
         }
         Ok(Program { imports, items })
     }
@@ -304,8 +411,8 @@ impl<'src> Parser<'src> {
 ///
 /// # Errors
 ///
-/// Returns [`ParseError`] on lexical or syntactic failure.
-pub fn parse(source: &str) -> Result<SourceFile, ParseError> {
+/// Returns [`ParseBag`] when lexical or syntactic errors were collected.
+pub fn parse(source: &str) -> Result<SourceFile, ParseBag> {
     parse_with_interner(source, &mut Interner::new())
 }
 
@@ -313,14 +420,25 @@ pub fn parse(source: &str) -> Result<SourceFile, ParseError> {
 ///
 /// # Errors
 ///
-/// Returns [`ParseError`] on lexical or syntactic failure.
-pub fn parse_with_interner(
-    source: &str,
-    interner: &mut Interner,
-) -> Result<SourceFile, ParseError> {
-    let tokens = lex(source).map_err(ParseError::Lex)?;
+/// Returns [`ParseBag`] when any parse errors were collected.
+pub fn parse_with_interner(source: &str, interner: &mut Interner) -> Result<SourceFile, ParseBag> {
+    let tokens = match lex(source) {
+        Ok(t) => t,
+        Err(e) => return Err(ParseBag::from_single(ParseError::Lex(e))),
+    };
+    let mut bag = ParseBag::new();
     let mut parser = Parser::with_interner(source, &tokens, std::mem::take(interner));
-    let program = parser.parse_program()?;
+    parser.enable_recovery(&mut bag);
+    let program = match parser.parse_program() {
+        Ok(p) => p,
+        Err(e) => {
+            bag.push(e);
+            return Err(bag);
+        }
+    };
     *interner = parser.interner;
+    if bag.has_errors() {
+        return Err(bag);
+    }
     Ok(SourceFile::new(program, interner.clone()))
 }

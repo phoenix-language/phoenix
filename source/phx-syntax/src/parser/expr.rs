@@ -7,7 +7,11 @@ use phx_diagnostics::ExpectedToken;
 
 use crate::ast::Node;
 use crate::ast::TypeName;
-use crate::ast::expr::{AssignOp, BinOp, Expr, ExprNode, PostfixOp, StructFieldInit, UnaryOp};
+use crate::ast::decl::Param;
+use crate::ast::expr::{
+    AssignOp, BinOp, Expr, ExprNode, LambdaBody, PostfixOp, RuntimeDirectiveKind, StructFieldInit,
+    UnaryOp,
+};
 use crate::ast::ident::Ident;
 use crate::ast::lit::{FloatLit, IntLit, Literal};
 use crate::intern::impl_receiver_symbol;
@@ -62,7 +66,7 @@ impl Parser<'_> {
     // Precedence (low → high): `||`, `&&`, equality, relational, `|`, `^`, `&`, shifts, `+/-`, `*`, `**`.
 
     /// Parses left-associative `||`.
-    fn parse_logical_or_expr(&mut self) -> Result<ExprNode, ParseError> {
+    pub(crate) fn parse_logical_or_expr(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_binary_chain(Self::parse_logical_and_expr, BinOp::Or, &TokenKind::OrOr)
     }
 
@@ -71,13 +75,30 @@ impl Parser<'_> {
         self.parse_binary_chain(Self::parse_range_expr, BinOp::And, &TokenKind::AndAnd)
     }
 
-    /// Parses relational/equality level; rejects `..` range syntax (post-MVP).
+    /// Parses `equality_expr` with optional `..` / `..=` range suffix.
     fn parse_range_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let expr = self.parse_equality_expr()?;
-        if matches!(self.peek_kind(), TokenKind::DotDot | TokenKind::DotDotEq) {
-            return Err(self.reject_unsupported("range expression"));
-        }
-        Ok(expr)
+        let start = self.pos;
+        let left = self.parse_equality_expr()?;
+        let inclusive = match self.peek_kind() {
+            TokenKind::DotDot => {
+                self.bump();
+                false
+            }
+            TokenKind::DotDotEq => {
+                self.bump();
+                true
+            }
+            _ => return Ok(left),
+        };
+        let right = self.parse_equality_expr()?;
+        Ok(Node::new(
+            Expr::Range {
+                start: Box::new(left),
+                end: Box::new(right),
+                inclusive,
+            },
+            self.span_from(start),
+        ))
     }
 
     fn parse_equality_expr(&mut self) -> Result<ExprNode, ParseError> {
@@ -89,7 +110,7 @@ impl Parser<'_> {
             let op = match tok.kind {
                 TokenKind::EqEq => BinOp::Eq,
                 TokenKind::Ne => BinOp::Ne,
-                _ => unreachable!(),
+                _ => return Err(self.error_unexpected(ExpectedToken::Token)),
             };
             let right = self.parse_relational_expr()?;
             let span = left.span.merge(right.span);
@@ -301,12 +322,6 @@ impl Parser<'_> {
                     self.bump();
                     ops.push(PostfixOp::Try);
                 }
-                TokenKind::AtSpawn
-                | TokenKind::AtSend
-                | TokenKind::AtReceive
-                | TokenKind::AtReply => {
-                    return Err(self.reject_deferred_directive());
-                }
                 _ => break,
             }
         }
@@ -324,12 +339,6 @@ impl Parser<'_> {
 
     /// Parses literals, paths, blocks, `if`/`match`, and parenthesized forms.
     fn parse_primary_expr(&mut self) -> Result<ExprNode, ParseError> {
-        if matches!(
-            self.peek_kind(),
-            TokenKind::AtSpawn | TokenKind::AtSend | TokenKind::AtReceive | TokenKind::AtReply
-        ) {
-            return Err(self.reject_deferred_directive());
-        }
         let start = self.pos;
         match self.peek_kind() {
             TokenKind::Integer { .. }
@@ -344,9 +353,10 @@ impl Parser<'_> {
                 if matches!(self.peek_at(1), TokenKind::ColonColon | TokenKind::LBrace) {
                     return self.parse_path_or_struct_literal();
                 }
+                let span = self.current_span();
                 self.bump();
                 Ok(Node::new(
-                    Expr::Ident(self.intern_ident(name)),
+                    Expr::Ident(self.intern_ident(name, span)?),
                     self.span_from(start),
                 ))
             }
@@ -355,6 +365,7 @@ impl Parser<'_> {
                 Ok(Node::new(
                     Expr::Ident(Ident {
                         symbol: impl_receiver_symbol(),
+                        span: self.span_from(start),
                     }),
                     self.span_from(start),
                 ))
@@ -370,6 +381,9 @@ impl Parser<'_> {
                 let block = self.parse_block()?;
                 Ok(Node::new(Expr::Unsafe(block), self.span_from(start)))
             }
+            TokenKind::AtSpawn | TokenKind::AtSend | TokenKind::AtReceive | TokenKind::AtReply => {
+                self.parse_runtime_directive()
+            }
             TokenKind::LParen => self.parse_paren_or_tuple_or_lambda(),
             TokenKind::LBracket => self.parse_array_literal(),
             TokenKind::TypeIdent(_) => self.parse_path_or_struct_literal(),
@@ -382,15 +396,19 @@ impl Parser<'_> {
         self.bump();
         if self.eat_kind(&TokenKind::RParen) {
             if self.eat_kind(&TokenKind::FatArrow) {
-                return Err(self.reject_unsupported("lambda expression"));
+                return self.parse_lambda_body(start, Vec::new());
             }
             return Ok(Node::new(Expr::Tuple(Vec::new()), self.span_from(start)));
         }
+        if self.lambda_params_start() {
+            let params = self.parse_lambda_params()?;
+            if self.eat_kind(&TokenKind::FatArrow) {
+                return self.parse_lambda_body(start, params);
+            }
+            return Err(self.error_unexpected(ExpectedToken::Punct("=>")));
+        }
         let first = self.parse_expr()?;
         if self.eat_kind(&TokenKind::RParen) {
-            if self.eat_kind(&TokenKind::FatArrow) {
-                return Err(self.reject_unsupported("lambda expression"));
-            }
             return Ok(first);
         }
         if !self.eat_kind(&TokenKind::Comma) {
@@ -433,12 +451,11 @@ impl Parser<'_> {
         let (type_name, first_segment, from_type_ident) = match self.peek_kind() {
             TokenKind::TypeIdent(n) => {
                 self.bump();
-                let tn = self.intern_type_name(n);
+                let tn = self.intern_type_name(n)?;
                 (tn, crate::ast::PathSegment::Type(tn), true)
             }
             TokenKind::Ident(n) => {
-                self.bump();
-                let id = self.intern_ident(n);
+                let id = self.bump_ident(n)?;
                 (
                     TypeName { symbol: id.symbol },
                     crate::ast::PathSegment::Ident(id),
@@ -447,16 +464,28 @@ impl Parser<'_> {
             }
             _ => return Err(self.error_unexpected(ExpectedToken::Ident)),
         };
-        if from_type_ident && self.eat_kind(&TokenKind::Lt) {
-            let _generics = self.parse_generic_args()?;
-        }
+        let generics = if from_type_ident {
+            if matches!(self.peek_kind(), TokenKind::ColonColon)
+                && matches!(self.peek_at(1), TokenKind::Lt)
+            {
+                self.bump();
+                self.bump();
+                Some(self.parse_generic_args()?)
+            } else if self.eat_kind(&TokenKind::Lt) {
+                Some(self.parse_generic_args()?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         if self.brace_starts_struct_literal_body(from_type_ident) {
             self.bump();
             let fields = self.parse_struct_field_inits()?;
             return Ok(Node::new(
                 Expr::StructLit {
                     name: type_name,
-                    generics: None,
+                    generics,
                     fields,
                 },
                 self.span_from(start),
@@ -468,11 +497,10 @@ impl Parser<'_> {
                 match self.peek_kind() {
                     TokenKind::TypeIdent(seg) => {
                         self.bump();
-                        segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)));
+                        segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)?));
                     }
                     TokenKind::Ident(seg) => {
-                        self.bump();
-                        segments.push(crate::ast::PathSegment::Ident(self.intern_ident(seg)));
+                        segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
                     }
                     _ => break,
                 }
@@ -630,6 +658,80 @@ impl Parser<'_> {
             );
         }
         Ok(left)
+    }
+
+    /// Returns `true` when `(` is followed by lambda parameter syntax.
+    fn lambda_params_start(&self) -> bool {
+        matches!(self.peek_kind(), TokenKind::Ident(_))
+            && matches!(self.peek_at(1), TokenKind::Colon)
+            || matches!(
+                self.peek_kind(),
+                TokenKind::Keyword(Keyword::Mut | Keyword::SelfLower)
+            )
+    }
+
+    /// Parses lambda parameters after `(` (opening paren already consumed).
+    fn parse_lambda_params(&mut self) -> Result<Vec<Param>, ParseError> {
+        let mut params = Vec::new();
+        loop {
+            params.push(self.parse_param()?);
+            if self.eat_kind(&TokenKind::RParen) {
+                break;
+            }
+            self.expect_kind(ExpectedToken::Punct(","), &TokenKind::Comma)?;
+        }
+        Ok(params)
+    }
+
+    /// Parses `=>` body for a lambda with `params` already parsed.
+    fn parse_lambda_body(
+        &mut self,
+        start: usize,
+        params: Vec<Param>,
+    ) -> Result<ExprNode, ParseError> {
+        let body = if matches!(self.peek_kind(), TokenKind::LBrace) {
+            LambdaBody::Block(self.parse_block()?)
+        } else {
+            LambdaBody::Expr(Box::new(self.parse_expr()?))
+        };
+        Ok(Node::new(
+            Expr::Lambda { params, body },
+            self.span_from(start),
+        ))
+    }
+
+    /// Parses `@spawn` / `@send` / `@receive` / `@reply` primary expressions.
+    fn parse_runtime_directive(&mut self) -> Result<ExprNode, ParseError> {
+        let start = self.pos;
+        let kind = match self.peek_kind() {
+            TokenKind::AtSpawn => RuntimeDirectiveKind::Spawn,
+            TokenKind::AtSend => RuntimeDirectiveKind::Send,
+            TokenKind::AtReceive => RuntimeDirectiveKind::Receive,
+            TokenKind::AtReply => RuntimeDirectiveKind::Reply,
+            _ => return Err(self.error_unexpected(ExpectedToken::Expr)),
+        };
+        self.bump();
+        self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
+        let args = match kind {
+            RuntimeDirectiveKind::Spawn
+            | RuntimeDirectiveKind::Receive
+            | RuntimeDirectiveKind::Reply => {
+                let arg = self.parse_expr()?;
+                self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
+                vec![arg]
+            }
+            RuntimeDirectiveKind::Send => {
+                let a = self.parse_expr()?;
+                self.expect_kind(ExpectedToken::Punct(","), &TokenKind::Comma)?;
+                let b = self.parse_expr()?;
+                self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
+                vec![a, b]
+            }
+        };
+        Ok(Node::new(
+            Expr::RuntimeDirective { kind, args },
+            self.span_from(start),
+        ))
     }
 }
 

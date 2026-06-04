@@ -20,7 +20,7 @@ mod type_error;
 
 pub use format::{format_span_message, format_span_message_with_note, format_typecheck_error};
 pub use lex_error::LexError;
-pub use parse_error::{ExpectedToken, ParseError, ParseResult};
+pub use parse_error::{ExpectedToken, ParseBag, ParseError, ParseResult};
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};
 pub use span::Span;
 pub use type_error::{TypeCheckBag, TypeCheckError, TypeCheckResult};

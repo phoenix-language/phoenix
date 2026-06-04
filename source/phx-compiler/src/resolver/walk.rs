@@ -369,6 +369,15 @@ impl Resolver<'_> {
                 self.resolve_expr_node(cond);
                 self.resolve_block_node(body);
             }
+            Stmt::ForIn {
+                binding,
+                iter,
+                body,
+            } => {
+                self.define_value(binding.symbol, name_span_ident(binding), DefKind::Local);
+                self.resolve_expr_node(iter);
+                self.resolve_block_node(body);
+            }
             Stmt::Loop(body) => self.resolve_block_node(body),
             Stmt::Given {
                 pattern,
@@ -447,6 +456,7 @@ impl Resolver<'_> {
         self.resolve_expr(&expr.inner, expr.span);
     }
 
+    #[allow(clippy::too_many_lines)]
     fn resolve_expr(&mut self, expr: &Expr, span: Span) {
         match expr {
             Expr::Literal(_) => {}
@@ -521,6 +531,36 @@ impl Resolver<'_> {
                 }
             }
             Expr::Unsafe(block) => self.resolve_block_node(block),
+            Expr::Range { start, end, .. } => {
+                self.resolve_expr_node(start);
+                self.resolve_expr_node(end);
+            }
+            Expr::Lambda { params, body } => {
+                for p in params {
+                    match p {
+                        Param::Named { name, ty, .. } => {
+                            self.resolve_ident(name, span);
+                            self.resolve_type_node(ty);
+                        }
+                        Param::Receiver { ty, .. } => {
+                            if let Some(t) = ty {
+                                self.resolve_type_node(t);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                match body {
+                    phx_syntax::ast::expr::LambdaBody::Expr(e) => self.resolve_expr_node(e),
+                    phx_syntax::ast::expr::LambdaBody::Block(b) => self.resolve_block_node(b),
+                    _ => {}
+                }
+            }
+            Expr::RuntimeDirective { args, .. } => {
+                for arg in args {
+                    self.resolve_expr_node(arg);
+                }
+            }
             _ => {}
         }
     }
@@ -672,8 +712,8 @@ fn type_is_unit(ty: &Type) -> bool {
     matches!(ty, Type::Unit)
 }
 
-fn name_span_ident(_ident: &Ident) -> Span {
-    Span::new(0, 0)
+fn name_span_ident(ident: &Ident) -> Span {
+    ident.span
 }
 
 fn name_span_type(_name: &TypeName) -> Span {

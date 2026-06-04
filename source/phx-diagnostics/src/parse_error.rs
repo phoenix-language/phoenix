@@ -80,6 +80,11 @@ pub enum ParseError {
         /// Span of the invalid pattern.
         span: Span,
     },
+    /// The identifier intern table is full (`u32` index space exhausted).
+    InternTableFull {
+        /// Span of the identifier being interned.
+        span: Span,
+    },
 }
 
 impl ParseError {
@@ -94,13 +99,15 @@ impl ParseError {
                     Some(Span::new(*offset, *offset))
                 }
                 LexError::IntegerOverflow { start, end }
+                | LexError::InvalidInt { start, end }
                 | LexError::InvalidFloat { start, end }
                 | LexError::LexemeTooLong { start, end } => Some(Span::new(*start, *end)),
             },
             Self::UnexpectedToken { span, .. }
             | Self::UnexpectedEof { span, .. }
             | Self::UnsupportedSyntax { span, .. }
-            | Self::InvalidPattern { span, .. } => Some(*span),
+            | Self::InvalidPattern { span, .. }
+            | Self::InternTableFull { span, .. } => Some(*span),
         }
     }
 }
@@ -119,6 +126,7 @@ impl fmt::Display for ParseError {
                 write!(f, "unsupported syntax: {feature}")
             }
             Self::InvalidPattern { .. } => f.write_str("invalid pattern"),
+            Self::InternTableFull { .. } => f.write_str("identifier intern table is full"),
         }
     }
 }
@@ -130,7 +138,8 @@ impl std::error::Error for ParseError {
             Self::UnexpectedToken { .. }
             | Self::UnexpectedEof { .. }
             | Self::UnsupportedSyntax { .. }
-            | Self::InvalidPattern { .. } => None,
+            | Self::InvalidPattern { .. }
+            | Self::InternTableFull { .. } => None,
         }
     }
 }
@@ -160,3 +169,62 @@ impl<T> ParseResult<T> {
         !self.errors.is_empty()
     }
 }
+
+/// Collected parse diagnostics; parsing may continue after non-fatal errors.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ParseBag {
+    errors: Vec<ParseError>,
+}
+
+impl ParseBag {
+    /// Creates an empty bag.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records a single error (convenience for lex failures).
+    #[must_use]
+    pub fn from_single(error: ParseError) -> Self {
+        Self {
+            errors: vec![error],
+        }
+    }
+
+    /// Records an error.
+    pub fn push(&mut self, error: ParseError) {
+        self.errors.push(error);
+    }
+
+    /// Returns `true` if any errors were recorded.
+    #[must_use]
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Borrows collected errors.
+    #[must_use]
+    pub fn errors(&self) -> &[ParseError] {
+        &self.errors
+    }
+
+    /// Consumes the bag and returns errors.
+    #[must_use]
+    pub fn into_errors(self) -> Vec<ParseError> {
+        self.errors
+    }
+}
+
+impl fmt::Display for ParseBag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, e) in self.errors.iter().enumerate() {
+            if i > 0 {
+                f.write_str("\n---\n")?;
+            }
+            write!(f, "{e}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ParseBag {}

@@ -70,7 +70,7 @@ impl Parser<'_> {
                 self.bump();
                 Ok(Node::new(
                     Type::Named {
-                        name: self.intern_type_name(name),
+                        name: self.intern_type_name(name)?,
                         generics: None,
                     },
                     self.span_from(start),
@@ -80,7 +80,7 @@ impl Parser<'_> {
                 self.bump();
                 Ok(Node::new(
                     Type::Named {
-                        name: self.intern_type_name("Self"),
+                        name: self.intern_type_name("Self")?,
                         generics: None,
                     },
                     self.span_from(start),

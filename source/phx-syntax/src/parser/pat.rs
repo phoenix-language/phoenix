@@ -61,6 +61,7 @@ impl Parser<'_> {
         Ok(Node::new(
             Pattern::Ident(crate::ast::Ident {
                 symbol: name.symbol,
+                span: self.span_from(start),
             }),
             self.span_from(start),
         ))

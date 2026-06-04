@@ -17,7 +17,20 @@ impl Parser<'_> {
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
         let mut items = Vec::new();
         while !self.eat_kind(&TokenKind::RBrace) {
-            items.push(self.parse_block_item()?);
+            if self.at_end() {
+                break;
+            }
+            match self.parse_block_item() {
+                Ok(item) => items.push(item),
+                Err(e) => {
+                    if self.in_recovery_mode() {
+                        self.record_error(e);
+                        self.sync_stmt();
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
         Ok(Node::new(Block { items }, self.span_from(start)))
     }
@@ -73,6 +86,7 @@ impl Parser<'_> {
     }
 
     /// Parses a single statement (must include `;` where required by grammar).
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_stmt(&mut self) -> Result<StmtNode, ParseError> {
         let start = self.pos;
         let stmt = match self.peek_kind() {
@@ -126,13 +140,25 @@ impl Parser<'_> {
             }
             TokenKind::Keyword(Keyword::While) => {
                 self.bump();
-                let cond = self.parse_expr()?;
+                let cond = self.parse_logical_or_expr()?;
                 let body = self.parse_block()?;
                 let _ = self.eat_kind(&TokenKind::Semicolon);
                 Stmt::While { cond, body }
             }
             TokenKind::Keyword(Keyword::For) => {
-                return Err(self.reject_unsupported("for-in loop"));
+                self.bump();
+                let binding = self.parse_ident()?;
+                if !self.eat_keyword(Keyword::In) {
+                    return Err(self.error_unexpected(ExpectedToken::Token));
+                }
+                let iter = self.parse_expr()?;
+                let body = self.parse_block()?;
+                let _ = self.eat_kind(&TokenKind::Semicolon);
+                Stmt::ForIn {
+                    binding,
+                    iter,
+                    body,
+                }
             }
             TokenKind::Keyword(Keyword::Loop) => {
                 self.bump();

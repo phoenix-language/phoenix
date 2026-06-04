@@ -7,8 +7,8 @@ use phx_diagnostics::ExpectedToken;
 
 use crate::ast::Node;
 use crate::ast::decl::{
-    EnumVariant, FnDirective, Function, FunctionSig, ImportDirective, ImportItem, ImportItems,
-    Param, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem, Variant,
+    DeriveDirective, EnumVariant, FnDirective, Function, FunctionSig, ImportDirective, ImportItem,
+    ImportItems, Param, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
@@ -60,11 +60,10 @@ impl Parser<'_> {
             match self.peek_kind() {
                 TokenKind::TypeIdent(seg) => {
                     self.bump();
-                    segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)));
+                    segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)?));
                 }
                 TokenKind::Ident(seg) => {
-                    self.bump();
-                    segments.push(crate::ast::PathSegment::Ident(self.intern_ident(seg)));
+                    segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
                 }
                 _ => break,
             }
@@ -90,11 +89,10 @@ impl Parser<'_> {
             match self.peek_kind() {
                 TokenKind::TypeIdent(seg) => {
                     self.bump();
-                    segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)));
+                    segments.push(crate::ast::PathSegment::Type(self.intern_type_name(seg)?));
                 }
                 TokenKind::Ident(seg) => {
-                    self.bump();
-                    segments.push(crate::ast::PathSegment::Ident(self.intern_ident(seg)));
+                    segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
                 }
                 _ => break,
             }
@@ -181,6 +179,7 @@ impl Parser<'_> {
 
     /// Parses `Name :: struct | enum | trait | impl`.
     fn parse_named_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
+        let derives = self.parse_derive_directives()?;
         let name = self.parse_type_name()?;
         self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
         let generics = if self.peek_kind() == TokenKind::Lt {
@@ -194,6 +193,7 @@ impl Parser<'_> {
                 let body = self.parse_struct_body()?;
                 Ok(TopLevelDecl::Struct {
                     name,
+                    derives,
                     generics,
                     body,
                 })
@@ -203,6 +203,7 @@ impl Parser<'_> {
                 let variants = self.parse_enum_variants()?;
                 Ok(TopLevelDecl::Enum {
                     name,
+                    derives,
                     generics,
                     variants,
                 })
@@ -212,6 +213,7 @@ impl Parser<'_> {
                 let items = self.parse_trait_items()?;
                 Ok(TopLevelDecl::Trait {
                     name,
+                    derives,
                     generics,
                     items,
                 })
@@ -324,10 +326,12 @@ impl Parser<'_> {
         let mut items = Vec::new();
         while !self.eat_kind(&TokenKind::RBrace) {
             if self.eat_keyword(Keyword::Type) {
+                let span = self.current_span();
                 let name = self.parse_type_name()?;
                 self.expect_semi()?;
                 items.push(TraitItem::AssociatedType(crate::ast::Ident {
                     symbol: name.symbol,
+                    span,
                 }));
             } else {
                 let sig = self.parse_function_sig()?;
@@ -389,7 +393,8 @@ impl Parser<'_> {
 
     /// Parses a full function (directives, name, sig, body).
     fn parse_function_decl_body(&mut self, name_only: bool) -> Result<Function, ParseError> {
-        let directives = self.parse_fn_directives()?;
+        let derives = self.parse_derive_directives()?;
+        let directives = self.parse_fn_directives();
         let unsafe_ = self.eat_kind(&TokenKind::HashUnsafe);
         let name = if name_only {
             self.parse_ident()?
@@ -407,6 +412,7 @@ impl Parser<'_> {
         let ret = self.parse_optional_return_type()?;
         let body = self.parse_block()?;
         Ok(Function {
+            derives,
             directives,
             unsafe_,
             name,
@@ -430,7 +436,7 @@ impl Parser<'_> {
     }
 
     /// Parses leading `#inline` / `#cold` / `#hot` on a function.
-    fn parse_fn_directives(&mut self) -> Result<Vec<FnDirective>, ParseError> {
+    fn parse_fn_directives(&mut self) -> Vec<FnDirective> {
         let mut dirs = Vec::new();
         loop {
             match self.peek_kind() {
@@ -446,13 +452,26 @@ impl Parser<'_> {
                     self.bump();
                     dirs.push(FnDirective::Hot);
                 }
-                TokenKind::HashDerive => {
-                    return Err(self.reject_unsupported("#derive directive"));
-                }
                 _ => break,
             }
         }
-        Ok(dirs)
+        dirs
+    }
+
+    /// Parses leading `#derive(Trait, …)` attributes.
+    pub(crate) fn parse_derive_directives(&mut self) -> Result<Vec<DeriveDirective>, ParseError> {
+        let mut derives = Vec::new();
+        while self.peek_kind() == TokenKind::HashDerive {
+            self.bump();
+            self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
+            let mut traits = vec![self.parse_type_name()?];
+            while self.eat_kind(&TokenKind::Comma) {
+                traits.push(self.parse_type_name()?);
+            }
+            self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
+            derives.push(DeriveDirective { traits });
+        }
+        Ok(derives)
     }
 
     /// Parses `(param, …)`.
@@ -473,7 +492,7 @@ impl Parser<'_> {
     }
 
     /// Parses one parameter (`self` or `name: Ty`).
-    fn parse_param(&mut self) -> Result<Param, ParseError> {
+    pub(crate) fn parse_param(&mut self) -> Result<Param, ParseError> {
         if matches!(
             self.peek_kind(),
             TokenKind::Keyword(Keyword::Mut | Keyword::SelfLower)
