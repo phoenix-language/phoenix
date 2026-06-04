@@ -38,4 +38,4 @@ Trait bound names are resolved as types. Full generic inference, orphan rules, a
 |-------|----------|
 | AST roadmap | [ast-roadmap.md](ast-roadmap.md) |
 | Deferred lambda semantics | [grammar-deferred.md](grammar-deferred.md) |
-| Review findings | [../../review/03-resolver.md](../../review/03-resolver.md) |
+| Review findings | [../../finished-review/03-resolver.md](../../finished-review/03-resolver.md) |

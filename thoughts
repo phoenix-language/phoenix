@@ -1,0 +1,35 @@
+So once we get the basic lexr setup, we need a way to start building the language foundation. Early on we start to run into a problem where feature a requires feature b before it can exist but 
+feature b can't exist without feature a. So we need to create a "built-in" list of universal data types and functions the compiler knows about at built time. This is how none-primative types 
+can feel like first class functions in the app. E.g global functions or traits implemented by the caller without the need to import from the std itself. We need a good system for how the compiler
+can know about the built-ins in the language without having an std. 
+
+We also need to think about the module system. Having simple #import std::core:alloc::{Areana}; will not cut it. I want to steal packaging from odin. I like the idea of a module simply being a file.
+We dont need any complex scopes with-in files, we use the foler name as the namespace and each file a module with-in that package. We can use .toml files for a config in the future and dependancies. The directives api could also play a cool part in creating an ecosystem where @/#import could allow url based dependencies to be added to the project at compile time or runtime.
+Comtime might be useful for bundling your packages into a single .pbc (Phoenix Bytecode Concept) file or at runtime the dependency is dynamically linked into the project. This could be cool for platform code where you dont want to bundle it into your app unless you need it.
+
+I would like to have a package manager. However this will really just be a simple copy paste tool for the compiler. You could rust `nest add <raylib>` and it would simply copy the std source into your local
+file tree under '/lib' or maybe packages. We could also have the std just already bundled into the compiler itself so you dont need to install it, though i do like the idea of giving the developer the
+choice to not depend on it if they want. The package manager will be a light wrapper around the compiler cli which provies commands for help, docs, build, run, test, init, etc.im thinking of using a toml file for the project config and idk about the dependancy format. Im thinking of hosting the registry on github and packages are simply links to any code repo source. One problem with this is things not staying around forever and no versioning enforcement. We can think about this later after we get a MVP and see how it goes with feedback from others devs.
+
+I also need to think about platform compatibility. We need to be able to compile for windows, linux, and macos. We need to be able to compile for x86 and arm. We need to be able to compile for 32 bit and 64 bit. This is a lot of ground to cover. Since i program on macos, mac will be the primary target for now as thats what i can test on. As the project grows and I have a test suit in place, 
+we can add more targets. Phoenix will compile to bite-code and run on a vm. This is sort of like java, the byte-code is platform agnostic and the vm is the platform specific implementation. The cool
+thing about this is even though the language is compiled, it can all happen in memory and the vm does not management the runtime memory directly because theres no GC. its more like a lifetime manager and concurrent execution scheduler. This means code could be injected at runtime into the vm, without forcing the developer to restart the process effectly meaning no down time for the app. 
+Ofc this can be solved by pushing an update to a different vm and switching traffic but I like the idea of code level orchestration of the vm. Idk just some ideas for now.
+
+Directives could be extended to take multiple arguments. Basically turning them into macros that can happen at comptime or runtime like rust but with a different syntax api lol. i still need to think about how the vm layer will interpiert the bytecode on many platoforms. I will need to write a lot of asm i fear...
+
+Librarys we can use (maybe), for now we are using the std:
+
+- https://crates.io/crates/chumsky
+- https://crates.io/crates/logos
+- https://crates.io/crates/parking_lot
+- https://crates.io/crates/crossbeam
+- https://crates.io/crates/flume
+- https://crates.io/crates/hashbrown
+- https://crates.io/crates/bytes
+- https://crates.io/crates/smartstring
+- https://crates.io/crates/smol (For an async vm runtime)
+
+Some ideas i have for FFI:
+
+We can have a directive called foreign/ffi/extern that can be used to declare funcitons outside of the current module. We could have this work for runtime and compile time like .dll for window dynamic librarys or at compile time to be included in the binary of the application. 
