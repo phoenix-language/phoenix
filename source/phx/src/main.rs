@@ -29,7 +29,8 @@ fn print_usage() {
            phx compile [--module-src <dir>] <file.phx> -o <out>\n\
            phx run [--module-src <dir>] [--project-root <dir>] [--no-build] [--build] [entry.phx]\n\
          \n\
-         `build` and `run` require phoenix.toml at the project root."
+         `build` and `run` require phoenix.toml at the project root.\n\
+         Single-file check/run use the file's parent as module root; #import needs --module-src or a project."
     );
 }
 

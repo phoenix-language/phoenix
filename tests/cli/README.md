@@ -20,6 +20,20 @@ tests/cli/compile.sh   # phx compile -o
 
 CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `compile.sh`, and `help.sh` are covered by `just test-cli` locally and integration tests.
 
+## Module root (`#import`)
+
+Phoenix resolves `#import` paths relative to a **module root** directory (the folder that mirrors `::` path segments). How you set that root depends on the workflow:
+
+| Workflow | Module root | Entry |
+|----------|-------------|-------|
+| **Single-file** | Parent directory of the `.phx` file (default for `phx check` / `phx run` on one file) | `phx run tests/cli/fixtures/sample.phx` |
+| **M1 multi-file** | Explicit via `--module-src` | `phx run --module-src tests/cli/fixtures/modules tests/cli/fixtures/modules/main.phx` |
+| **M2 project** | `src/` (or `[package] module_src` in `phoenix.toml`) | `phx build` / `phx run` from project dir |
+
+- **`phx check <file>`** and **`phx run <file>`** (no project): use the file’s parent as module root — same as [`check_file`](../../source/phx-compiler/src/compile.rs) / default `compile_to_module`.
+- **`compile_source(..., None)`** (in-process API, no path): **no** module root — `#import` fails with `ImportNotSupported`. Use [`check_file_with_module_path`](../../source/phx-compiler/src/compile.rs) or a project build instead.
+- **M2:** `discover_project` + `build_project` load all modules under the configured `src` tree.
+
 ## Fixture inventory
 
 ### Positive — compile + run (`run.sh`)
@@ -52,6 +66,8 @@ CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `
 | [`ref_local.phx`](fixtures/ref_local.phx) | positive | `run.sh` | Exit 0; address-of local |
 | [`deref_ptr.phx`](fixtures/deref_ptr.phx) | positive | `run.sh` | Exit 0; pointer deref |
 | [`slice_from_array.phx`](fixtures/slice_from_array.phx) | positive | `run.sh` | Exit 0; array → slice cast |
+| [`factorial.phx`](fixtures/factorial.phx) | positive | `run.sh`, `run_semantics.rs` | Exit 0; recursive `fac(5)` → 120 |
+| [`given_enum_single_variant.phx`](fixtures/given_enum_single_variant.phx) | positive | `run.sh`, `run_semantics.rs` | Exit 0; exhaustive `given` on single-variant enum |
 | [`modules/main.phx`](fixtures/modules/main.phx) | positive (multi-file) | `run.sh`, `check.sh` | Exit 0 with `--module-src fixtures/modules` |
 
 ### Negative — check fails (`check.sh`)

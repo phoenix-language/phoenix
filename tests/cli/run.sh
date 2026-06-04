@@ -34,6 +34,8 @@ FIXTURES=(
   ref_local.phx
   deref_ptr.phx
   slice_from_array.phx
+  factorial.phx
+  given_enum_single_variant.phx
 )
 
 cd "${ROOT}"

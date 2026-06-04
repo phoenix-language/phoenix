@@ -1,0 +1,12 @@
+fac :: (n: s32) => s32 {
+    if n <= 1 {
+        1
+    } else {
+        n * fac(n - 1)
+    }
+};
+
+main :: () => {
+    const r: s32 = fac(5);
+    const _ = r;
+};

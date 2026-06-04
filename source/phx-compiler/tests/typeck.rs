@@ -152,6 +152,18 @@ fn given_enum_non_exhaustive() {
 }
 
 #[test]
+fn given_enum_single_variant_ok() {
+    ok(include_str!(
+        "../../../tests/cli/fixtures/given_enum_single_variant.phx"
+    ));
+}
+
+#[test]
+fn factorial_recursion_ok() {
+    ok(include_str!("../../../tests/cli/fixtures/factorial.phx"));
+}
+
+#[test]
 fn unary_neg_not_and_comparisons_ok() {
     ok(include_str!(
         "../../../tests/cli/fixtures/compare_unary.phx"

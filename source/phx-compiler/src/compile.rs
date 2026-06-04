@@ -135,7 +135,12 @@ impl std::error::Error for CompileError {
     }
 }
 
-/// Parses and resolves Phoenix `source`.
+/// Parses and resolves Phoenix `source` as a **single compilation unit** (no crate loader).
+///
+/// `#import` is not supported here: resolution uses [`resolve`] on one file only, so imports
+/// fail with [`crate::resolver::ResolveError::ImportNotSupported`]. For multi-file programs use
+/// [`check_file`] / [`check_file_with_module_path`] (CLI: parent dir or `--module-src`) or
+/// [`compile_to_module_with_module_path`] / project [`crate::build_project`].
 ///
 /// # Errors
 ///
@@ -153,6 +158,10 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
 
 /// Reads `path` and runs the full front-end (multi-file when `#import` is used).
 ///
+/// Module root defaults to `path.parent()` (or `"."` if missing), matching `phx check` / `phx run`
+/// on a single path. Pass an explicit root via [`check_file_with_module_path`] or CLI
+/// `--module-src`.
+///
 /// # Errors
 ///
 /// Returns I/O errors, [`CompileError::Parse`], [`CompileError::Resolve`], or [`CompileError::TypeCheck`].
@@ -160,7 +169,7 @@ pub fn check_file(path: &Path) -> Result<CompilationUnit, CompileError> {
     check_file_with_module_path(path, path.parent().unwrap_or(Path::new(".")))
 }
 
-/// Reads `path` using `module_root` for `#import` resolution.
+/// Reads `path` using `module_root` for `#import` resolution (`::` paths under that directory).
 ///
 /// # Errors
 ///

@@ -191,3 +191,15 @@ fn mvp_acceptance_along_plus_pick_is_four() {
     let module = compile_mvp_acceptance();
     main_locals_contain_i32(&module, 4);
 }
+
+#[test]
+fn factorial_computes_one_twenty() {
+    let module = compile_fixture("factorial.phx");
+    main_locals_contain_i32(&module, 120);
+}
+
+#[test]
+fn given_enum_single_variant_binds_payload() {
+    let module = compile_fixture("given_enum_single_variant.phx");
+    main_locals_contain_i32(&module, 12);
+}
