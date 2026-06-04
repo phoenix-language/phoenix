@@ -30,8 +30,8 @@ mod unit;
 pub use build::{BuildError, BuildResult, build_project, load_project_binary};
 pub use codegen::{build_type_table, codegen, codegen_module};
 pub use compile::{
-    CompileError, check_file, check_file_with_module_path, compile_source, compile_to_module,
-    compile_to_module_with_module_path,
+    CompileError, DiagnosticContext, check_file, check_file_with_module_path, compile_source,
+    compile_to_module, compile_to_module_with_module_path,
 };
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use link::{LinkError, LinkInput, link_modules};

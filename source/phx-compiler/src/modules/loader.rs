@@ -104,15 +104,20 @@ pub fn load_crate_with_context(
 
     let dep_names: Vec<&str> = ctx.dep_names();
     let mut interner = Interner::new();
-    let mut pending: Vec<(ModulePath, PathBuf)> = Vec::new();
+    let mut pending: Vec<(ModulePath, PathBuf, phx_diagnostics::Span, u32)> = Vec::new();
     let mut loaded_paths: HashMap<String, PathBuf> = HashMap::new();
 
-    pending.push((entry_logical.clone(), entry_file.clone()));
+    pending.push((
+        entry_logical.clone(),
+        entry_file.clone(),
+        phx_diagnostics::Span::new(0, 1),
+        0,
+    ));
     loaded_paths.insert(entry_logical.display(), entry_file.clone());
 
     let mut modules_raw: Vec<(ModulePath, PathBuf, String, Program)> = Vec::new();
 
-    while let Some((logical, fs_path)) = pending.pop() {
+    while let Some((logical, fs_path, import_span, importer_module)) = pending.pop() {
         if modules_raw
             .iter()
             .any(|(p, _, _, _)| p.display() == logical.display())
@@ -122,26 +127,33 @@ pub fn load_crate_with_context(
         let source = match std::fs::read_to_string(&fs_path) {
             Ok(s) => s,
             Err(e) => {
-                bag.push(ResolveError::ModuleIo {
-                    span: phx_diagnostics::Span::new(0, 0),
-                    path: fs_path.display().to_string(),
-                    message: e.to_string(),
-                });
+                bag.push(
+                    importer_module,
+                    ResolveError::ModuleIo {
+                        span: import_span,
+                        path: fs_path.display().to_string(),
+                        message: e.to_string(),
+                    },
+                );
                 continue;
             }
         };
         let file = match parse_with_interner(&source, &mut interner) {
             Ok(f) => f,
             Err(parse_bag) => {
-                bag.push(ResolveError::ModuleParse {
-                    span: phx_diagnostics::Span::new(0, 0),
-                    path: fs_path.display().to_string(),
-                    message: parse_bag.to_string(),
-                });
+                bag.push(
+                    importer_module,
+                    ResolveError::ModuleParse {
+                        span: import_span,
+                        path: fs_path.display().to_string(),
+                        message: parse_bag.to_string(),
+                    },
+                );
                 continue;
             }
         };
         let program = file.program;
+        let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
 
         for imp in &program.imports {
             let raw_target = super::graph::import_target_module(&imp.inner, &interner);
@@ -155,10 +167,13 @@ pub fn load_crate_with_context(
                 continue;
             }
             let Some(pkg) = ctx.package_for_logical(&key) else {
-                bag.push(ResolveError::ModuleNotFound {
-                    span: imp.span,
-                    path: key,
-                });
+                bag.push(
+                    current_module,
+                    ResolveError::ModuleNotFound {
+                        span: imp.span,
+                        path: key,
+                    },
+                );
                 continue;
             };
             let Some(dep_fs) = ModulePath::resolve_existing_file(
@@ -167,14 +182,17 @@ pub fn load_crate_with_context(
                 &pkg.name,
                 pkg.package_type,
             ) else {
-                bag.push(ResolveError::ModuleNotFound {
-                    span: imp.span,
-                    path: key,
-                });
+                bag.push(
+                    current_module,
+                    ResolveError::ModuleNotFound {
+                        span: imp.span,
+                        path: key,
+                    },
+                );
                 continue;
             };
             loaded_paths.insert(key.clone(), dep_fs.clone());
-            pending.push((canonical, dep_fs));
+            pending.push((canonical, dep_fs, imp.span, current_module));
         }
 
         modules_raw.push((logical, fs_path, source, program));
@@ -217,7 +235,7 @@ pub fn load_crate_with_context(
             &mut local_bag,
         );
         for err in local_bag.into_errors() {
-            bag.push(err);
+            bag.push_located(err);
         }
         edges.append(&mut e);
     }

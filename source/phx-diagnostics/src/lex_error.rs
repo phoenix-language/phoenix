@@ -5,6 +5,7 @@
 use core::fmt;
 
 use crate::Span;
+use crate::code::DiagnosticCode;
 
 /// A lexical error produced while tokenizing Phoenix source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +99,21 @@ impl fmt::Display for LexError {
 impl std::error::Error for LexError {}
 
 impl LexError {
+    /// Stable diagnostic code for this error.
+    #[must_use]
+    pub const fn code(&self) -> DiagnosticCode {
+        match self {
+            Self::UnterminatedString { .. } => DiagnosticCode::new("E0001"),
+            Self::UnterminatedBlockComment { .. } => DiagnosticCode::new("E0002"),
+            Self::InvalidEscape { .. } => DiagnosticCode::new("E0003"),
+            Self::UnexpectedChar { .. } => DiagnosticCode::new("E0004"),
+            Self::IntegerOverflow { .. } => DiagnosticCode::new("E0005"),
+            Self::InvalidInt { .. } => DiagnosticCode::new("E0006"),
+            Self::InvalidFloat { .. } => DiagnosticCode::new("E0007"),
+            Self::LexemeTooLong { .. } => DiagnosticCode::new("E0008"),
+        }
+    }
+
     /// Source span for caret rendering when the error refers to a lexeme range.
     #[must_use]
     pub fn span(&self) -> Option<Span> {

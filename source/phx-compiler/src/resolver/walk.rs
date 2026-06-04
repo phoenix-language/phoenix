@@ -34,19 +34,33 @@ impl Resolver<'_> {
     pub(crate) fn resolve_program(&mut self) {
         if !self.allow_imports {
             for import in &self.source.program.imports {
-                self.bag
-                    .push(ResolveError::ImportNotSupported { span: import.span });
+                self.bag.push(
+                    self.current_module,
+                    ResolveError::ImportNotSupported { span: import.span },
+                );
             }
         }
 
         self.scopes.push();
-        for &(sym, id, is_type) in &self.import_bindings {
+        for &(sym, id, is_type, bind_span) in &self.import_bindings {
             if is_type {
-                self.scopes
-                    .define_type(&self.defs, &mut self.bag, sym, id, Span::new(0, 0));
+                self.scopes.define_type(
+                    &self.defs,
+                    &mut self.bag,
+                    self.current_module,
+                    sym,
+                    id,
+                    bind_span,
+                );
             } else {
-                self.scopes
-                    .define_value(&self.defs, &mut self.bag, sym, id, Span::new(0, 0));
+                self.scopes.define_value(
+                    &self.defs,
+                    &mut self.bag,
+                    self.current_module,
+                    sym,
+                    id,
+                    bind_span,
+                );
             }
         }
         if self.collect_only {
@@ -102,7 +116,7 @@ impl Resolver<'_> {
                     if self.current_module == self.root_module {
                         self.main_fn = Some(id);
                     } else {
-                        self.bag.push(ResolveError::MainNotInEntry {
+                        self.bag.push(self.current_module, ResolveError::MainNotInEntry {
                             span,
                             module: self.logical_path.to_owned(),
                         });
@@ -132,12 +146,24 @@ impl Resolver<'_> {
                 | DefKind::TypeAlias
                 | DefKind::Trait
                 | DefKind::GenericParam => {
-                    self.scopes
-                        .define_type(&self.defs, &mut self.bag, def.name, id, def.span);
+                    self.scopes.define_type(
+                        &self.defs,
+                        &mut self.bag,
+                        self.current_module,
+                        def.name,
+                        id,
+                        def.span,
+                    );
                 }
                 DefKind::Fn | DefKind::Const | DefKind::Var | DefKind::EnumVariant => {
-                    self.scopes
-                        .define_value(&self.defs, &mut self.bag, def.name, id, def.span);
+                    self.scopes.define_value(
+                        &self.defs,
+                        &mut self.bag,
+                        self.current_module,
+                        def.name,
+                        id,
+                        def.span,
+                    );
                 }
                 DefKind::StructField
                 | DefKind::Param
@@ -436,7 +462,7 @@ impl Resolver<'_> {
         if def_id.is_some() {
             self.record_resolution(span, name.symbol, def_id);
         } else {
-            self.bag.push(ResolveError::UnresolvedType {
+            self.bag.push(self.current_module, ResolveError::UnresolvedType {
                 symbol_index: name.symbol.index(),
                 span,
             });
@@ -634,7 +660,7 @@ impl Resolver<'_> {
         if let Some(id) = def_id {
             self.record_resolution(span, ident.symbol, Some(id));
         } else {
-            self.bag.push(ResolveError::UnresolvedIdent {
+            self.bag.push(self.current_module, ResolveError::UnresolvedIdent {
                 symbol_index: ident.symbol.index(),
                 span,
             });
@@ -666,11 +692,17 @@ impl Resolver<'_> {
     /// Validates MVP entry `main :: () => { … }`.
     pub(crate) fn check_main(&mut self) {
         if self.main_fn.is_none() {
-            self.bag.push(ResolveError::MissingMain);
+            self.bag.push(
+                self.current_module,
+                ResolveError::MissingMain {
+                    span: self.program_hint_span(),
+                },
+            );
             return;
         }
 
         let mut has_params = false;
+        let mut params_span = None;
         let mut bad_ret_span = None;
 
         for item in &self.source.program.items {
@@ -681,6 +713,7 @@ impl Resolver<'_> {
                 continue;
             }
             has_params = !f.params.is_empty();
+            params_span = Some(f.name.span);
             if let Some(ret) = &f.ret {
                 if !type_is_unit(&ret.inner) {
                     bad_ret_span = Some(ret.span);
@@ -690,13 +723,13 @@ impl Resolver<'_> {
         }
 
         if has_params {
-            self.bag.push(ResolveError::InvalidMainSignature {
-                span: Span::new(0, 0),
+            self.bag.push(self.current_module, ResolveError::InvalidMainSignature {
+                span: params_span.unwrap_or_else(|| self.program_hint_span()),
                 reason: InvalidMainReason::HasParameters,
             });
         }
         if let Some(span) = bad_ret_span {
-            self.bag.push(ResolveError::InvalidMainSignature {
+            self.bag.push(self.current_module, ResolveError::InvalidMainSignature {
                 span,
                 reason: InvalidMainReason::NonUnitReturn,
             });
@@ -705,6 +738,16 @@ impl Resolver<'_> {
 
     pub(crate) fn is_main_name(&self, symbol: Symbol) -> bool {
         self.source.interner.resolve(symbol) == "main"
+    }
+
+    fn program_hint_span(&self) -> Span {
+        if let Some(item) = self.source.program.items.first() {
+            item.span
+        } else if let Some(imp) = self.source.program.imports.first() {
+            imp.span
+        } else {
+            Span::new(0, 1)
+        }
     }
 }
 

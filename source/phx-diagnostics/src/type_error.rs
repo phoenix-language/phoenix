@@ -4,7 +4,9 @@
 
 use core::fmt;
 
+use crate::LocatedError;
 use crate::Span;
+use crate::code::DiagnosticCode;
 
 /// A type-check error produced while analyzing the AST.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +167,33 @@ pub enum TypeCheckError {
 }
 
 impl TypeCheckError {
+    /// Stable diagnostic code for this error.
+    #[must_use]
+    pub const fn code(&self) -> DiagnosticCode {
+        match self {
+            Self::Mismatch { .. } => DiagnosticCode::new("E2001"),
+            Self::UnknownType { .. } => DiagnosticCode::new("E2002"),
+            Self::ArityMismatch { .. } => DiagnosticCode::new("E2003"),
+            Self::NotCallable { .. } => DiagnosticCode::new("E2004"),
+            Self::UnresolvedMethod { .. } => DiagnosticCode::new("E2005"),
+            Self::AmbiguousMethod { .. } => DiagnosticCode::new("E2006"),
+            Self::NonUnifyingBranches { .. } => DiagnosticCode::new("E2007"),
+            Self::NonExhaustiveMatch { .. } => DiagnosticCode::new("E2008"),
+            Self::UnreachableMatchArm { .. } => DiagnosticCode::new("E2009"),
+            Self::UnknownStructField { .. } => DiagnosticCode::new("E2010"),
+            Self::MissingStructField { .. } => DiagnosticCode::new("E2011"),
+            Self::UnknownEnumVariantField { .. } => DiagnosticCode::new("E2012"),
+            Self::MissingEnumVariantField { .. } => DiagnosticCode::new("E2013"),
+            Self::InvalidCast { .. } => DiagnosticCode::new("E2014"),
+            Self::InvalidOperator { .. } => DiagnosticCode::new("E2015"),
+            Self::UnsupportedFeature { .. } => DiagnosticCode::new("E2016"),
+            Self::UseAfterMove { .. } => DiagnosticCode::new("E2017"),
+            Self::MovedAssignTarget { .. } => DiagnosticCode::new("E2018"),
+            Self::UnresolvedValue { .. } => DiagnosticCode::new("E2019"),
+            Self::LoopControlOutsideLoop { .. } => DiagnosticCode::new("E2020"),
+        }
+    }
+
     /// Returns the primary span for this error, if any.
     #[must_use]
     pub const fn span(&self) -> Option<Span> {
@@ -280,7 +309,7 @@ pub type TypeCheckResult<T> = Result<T, TypeCheckBag>;
 /// Collected type-check diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TypeCheckBag {
-    errors: Vec<TypeCheckError>,
+    errors: Vec<LocatedError<TypeCheckError>>,
 }
 
 impl TypeCheckBag {
@@ -290,9 +319,14 @@ impl TypeCheckBag {
         Self::default()
     }
 
-    /// Records an error.
-    pub fn push(&mut self, error: TypeCheckError) {
-        self.errors.push(error);
+    /// Records an error for `module`.
+    pub fn push(&mut self, module: u32, error: TypeCheckError) {
+        self.errors.push(LocatedError::new(module, error));
+    }
+
+    /// Records an already-located error.
+    pub fn push_located(&mut self, located: LocatedError<TypeCheckError>) {
+        self.errors.push(located);
     }
 
     /// Returns `true` if any errors were recorded.
@@ -301,26 +335,26 @@ impl TypeCheckBag {
         !self.errors.is_empty()
     }
 
-    /// Borrows collected errors.
+    /// Borrows collected located errors.
     #[must_use]
-    pub fn errors(&self) -> &[TypeCheckError] {
+    pub fn errors(&self) -> &[LocatedError<TypeCheckError>] {
         &self.errors
     }
 
-    /// Consumes the bag and returns errors.
+    /// Consumes the bag and returns located errors.
     #[must_use]
-    pub fn into_errors(self) -> Vec<TypeCheckError> {
+    pub fn into_errors(self) -> Vec<LocatedError<TypeCheckError>> {
         self.errors
     }
 }
 
 impl fmt::Display for TypeCheckBag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, e) in self.errors.iter().enumerate() {
+        for (i, located) in self.errors.iter().enumerate() {
             if i > 0 {
                 f.write_str("\n")?;
             }
-            write!(f, "{e}")?;
+            write!(f, "{}", located.error)?;
         }
         Ok(())
     }

@@ -11,11 +11,13 @@ use super::path::ModulePath;
 use crate::project::BuildLayout;
 use crate::pxi::PxiFile;
 
-/// Directed edges: importer → imported module path string.
-fn topo_sort_inner(module_count: usize, edges: &[(ModuleId, ModuleId)]) -> Option<Vec<ModuleId>> {
+/// Import edge: `from` module imports `to`, at `#import` span `span`.
+pub(crate) type ImportEdge = (ModuleId, ModuleId, Span);
+
+fn topo_sort_inner(module_count: usize, edges: &[ImportEdge]) -> Option<Vec<ModuleId>> {
     let mut indegree = vec![0usize; module_count];
     let mut adj: Vec<Vec<ModuleId>> = vec![Vec::new(); module_count];
-    for &(from, to) in edges {
+    for &(from, to, _) in edges {
         if from.index() as usize >= module_count || to.index() as usize >= module_count {
             continue;
         }
@@ -48,10 +50,33 @@ fn topo_sort_inner(module_count: usize, edges: &[(ModuleId, ModuleId)]) -> Optio
     Some(order)
 }
 
+fn cycle_edge(edges: &[ImportEdge], module_count: usize) -> Option<(Span, u32)> {
+    let mut indegree = vec![0usize; module_count];
+    for &(_, to, _) in edges {
+        if (to.index() as usize) < module_count {
+            indegree[to.index() as usize] += 1;
+        }
+    }
+    let cyclic: HashSet<u32> = indegree
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| **d > 0)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
+        .collect();
+    for &(from, to, span) in edges {
+        if cyclic.contains(&from.index()) && cyclic.contains(&to.index()) {
+            return Some((span, from.index()));
+        }
+    }
+    edges
+        .first()
+        .map(|&(from, _, span)| (span, from.index()))
+}
+
 /// Topological order, or cycle escape when every cyclic module has a fresh `.pxi`.
 pub(crate) fn topo_sort_with_pxi_escape(
     module_count: usize,
-    edges: &[(ModuleId, ModuleId)],
+    edges: &[ImportEdge],
     roots: ModuleId,
     modules: &[LoadedModule],
     layout: Option<&BuildLayout>,
@@ -70,21 +95,25 @@ pub(crate) fn topo_sort_with_pxi_escape(
                 .collect(),
         );
     }
-    bag.push(ResolveError::CircularImport {
-        span: Span::new(0, 0),
-        cycle: format!("module graph cycle (entry module id {})", roots.index()),
-    });
+    let (span, module) = cycle_edge(edges, module_count).unwrap_or((Span::new(0, 0), 0));
+    bag.push(
+        module,
+        ResolveError::CircularImport {
+            span,
+            cycle: format!("module graph cycle (entry module id {})", roots.index()),
+        },
+    );
     None
 }
 
 fn cycle_modules_have_fresh_pxi(
     module_count: usize,
-    edges: &[(ModuleId, ModuleId)],
+    edges: &[ImportEdge],
     modules: &[LoadedModule],
     layout: &BuildLayout,
 ) -> bool {
     let mut indegree = vec![0usize; module_count];
-    for &(_, to) in edges {
+    for &(_, to, _) in edges {
         if (to.index() as usize) < module_count {
             indegree[to.index() as usize] += 1;
         }
@@ -127,7 +156,7 @@ pub(crate) fn collect_edges(
     workspace_name: &str,
     dep_names: &[&str],
     bag: &mut DiagnosticBag,
-) -> Vec<(ModuleId, ModuleId)> {
+) -> Vec<ImportEdge> {
     let mut edges = Vec::new();
     let mut seen = HashSet::new();
     for imp in imports {
@@ -138,14 +167,17 @@ pub(crate) fn collect_edges(
             continue;
         }
         let Some(&dep) = path_index.get(&key) else {
-            bag.push(ResolveError::ModuleNotFound {
-                span: imp.span,
-                path: key,
-            });
+            bag.push(
+                importer.index(),
+                ResolveError::ModuleNotFound {
+                    span: imp.span,
+                    path: key,
+                },
+            );
             continue;
         };
-        let edge = (importer, dep);
-        if seen.insert(edge) {
+        let edge = (importer, dep, imp.span);
+        if seen.insert((importer, dep)) {
             edges.push(edge);
         }
     }

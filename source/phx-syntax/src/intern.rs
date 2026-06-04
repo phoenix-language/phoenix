@@ -7,6 +7,8 @@
 use core::fmt;
 use std::collections::HashMap;
 
+use phx_diagnostics::SymbolNames;
+
 /// Failure while interning an identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InternError {
@@ -95,5 +97,11 @@ impl Interner {
         self.strings
             .get(symbol.0 as usize)
             .map_or("<invalid-symbol>", String::as_str)
+    }
+}
+
+impl SymbolNames for Interner {
+    fn symbol_name(&self, symbol_index: u32) -> &str {
+        self.resolve(Symbol::from_raw(symbol_index))
     }
 }

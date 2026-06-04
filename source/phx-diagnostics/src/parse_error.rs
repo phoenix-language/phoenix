@@ -7,6 +7,7 @@ use std::borrow::Cow;
 
 use crate::LexError;
 use crate::Span;
+use crate::code::DiagnosticCode;
 
 /// Human-readable description of an expected token class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +89,19 @@ pub enum ParseError {
 }
 
 impl ParseError {
+    /// Stable diagnostic code for this error.
+    #[must_use]
+    pub const fn code(&self) -> DiagnosticCode {
+        match self {
+            Self::Lex(e) => e.code(),
+            Self::UnexpectedToken { .. } => DiagnosticCode::new("E3001"),
+            Self::UnexpectedEof { .. } => DiagnosticCode::new("E3002"),
+            Self::UnsupportedSyntax { .. } => DiagnosticCode::new("E3003"),
+            Self::InvalidPattern { .. } => DiagnosticCode::new("E3004"),
+            Self::InternTableFull { .. } => DiagnosticCode::new("E3005"),
+        }
+    }
+
     /// Returns the primary span for this error, if any.
     #[must_use]
     pub const fn span(&self) -> Option<Span> {

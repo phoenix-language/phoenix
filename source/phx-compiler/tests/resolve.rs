@@ -11,7 +11,7 @@ fn ok(source: &str) {
 
 fn resolve_err(source: &str) -> DiagnosticBag {
     match compile_source(source, None) {
-        Err(CompileError::Resolve(bag)) => bag,
+        Err(CompileError::Resolve { bag, .. }) => bag,
         Err(other) => panic!("expected resolve error, got {other}"),
         Ok(_) => panic!("expected resolve error"),
     }
@@ -33,7 +33,7 @@ fn missing_main_only_const() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::MissingMain))
+            .any(|e| matches!(e.error, ResolveError::MissingMain { .. }))
     );
 }
 
@@ -47,7 +47,7 @@ fn duplicate_function() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::DuplicateDefinition { .. }))
+            .any(|e| matches!(&e.error, ResolveError::DuplicateDefinition { .. }))
     );
 }
 
@@ -57,7 +57,7 @@ fn unresolved_ident() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::UnresolvedIdent { .. }))
+            .any(|e| matches!(&e.error, ResolveError::UnresolvedIdent { .. }))
     );
 }
 
@@ -67,11 +67,12 @@ fn import_not_supported() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(e, ResolveError::ImportNotSupported { .. }))
+        .find(|e| matches!(&e.error, ResolveError::ImportNotSupported { .. }))
         .expect("ImportNotSupported");
     assert!(
-        err.to_string().contains("module root"),
-        "expected module-root hint, got: {err}"
+        err.error.to_string().contains("module root"),
+        "expected module-root hint, got: {}",
+        err.error
     );
 }
 
@@ -81,7 +82,7 @@ fn main_with_params_invalid() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::InvalidMainSignature { .. }))
+            .any(|e| matches!(&e.error, ResolveError::InvalidMainSignature { .. }))
     );
 }
 
@@ -91,7 +92,7 @@ fn main_non_unit_return_invalid() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::InvalidMainSignature { .. }))
+            .any(|e| matches!(&e.error, ResolveError::InvalidMainSignature { .. }))
     );
 }
 
@@ -101,7 +102,7 @@ fn ok_ctor_unresolved_until_std() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+            .any(|e| matches!(&e.error, ResolveError::UnresolvedType { .. }))
     );
 }
 
@@ -111,7 +112,7 @@ fn result_type_unresolved_until_std() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+            .any(|e| matches!(&e.error, ResolveError::UnresolvedType { .. }))
     );
 }
 
@@ -121,7 +122,7 @@ fn some_ctor_unresolved_until_std() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+            .any(|e| matches!(&e.error, ResolveError::UnresolvedType { .. }))
     );
 }
 
@@ -131,7 +132,7 @@ fn err_ctor_unresolved_until_std() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+            .any(|e| matches!(&e.error, ResolveError::UnresolvedType { .. }))
     );
 }
 
@@ -141,6 +142,6 @@ fn none_ctor_unresolved_until_std() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, ResolveError::UnresolvedType { .. }))
+            .any(|e| matches!(&e.error, ResolveError::UnresolvedType { .. }))
     );
 }

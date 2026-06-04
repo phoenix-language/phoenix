@@ -39,6 +39,7 @@ impl ScopeStack {
         &mut self,
         defs: &[Def],
         bag: &mut DiagnosticBag,
+        module: u32,
         name: Symbol,
         def_id: DefId,
         span: Span,
@@ -47,7 +48,7 @@ impl ScopeStack {
             return;
         };
         if let Some(&first_id) = scope.values.get(&name) {
-            bag.push(ResolveError::DuplicateDefinition {
+            bag.push(module, ResolveError::DuplicateDefinition {
                 symbol_index: name.index(),
                 first_span: defs[first_id.index() as usize].span,
                 span,
@@ -61,6 +62,7 @@ impl ScopeStack {
         &mut self,
         defs: &[Def],
         bag: &mut DiagnosticBag,
+        module: u32,
         name: Symbol,
         def_id: DefId,
         span: Span,
@@ -69,7 +71,7 @@ impl ScopeStack {
             return;
         };
         if let Some(&first_id) = scope.types.get(&name) {
-            bag.push(ResolveError::DuplicateDefinition {
+            bag.push(module, ResolveError::DuplicateDefinition {
                 symbol_index: name.index(),
                 first_span: defs[first_id.index() as usize].span,
                 span,
@@ -124,7 +126,7 @@ mod tests {
         scopes.push();
         let id = DefId::from_raw(0);
         defs.push(Def::new(DefKind::Local, sym, Span::new(0, 1), 0, false));
-        scopes.define_value(&defs, &mut bag, sym, id, Span::new(0, 1));
+        scopes.define_value(&defs, &mut bag, 0, sym, id, Span::new(0, 1));
         assert!(scopes.lookup_value(sym).is_some());
         scopes.pop();
         assert!(scopes.lookup_value(sym).is_none());

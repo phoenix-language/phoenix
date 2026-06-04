@@ -4,7 +4,9 @@
 
 use core::fmt;
 
+use crate::LocatedError;
 use crate::Span;
+use crate::code::DiagnosticCode;
 
 /// Reason a `main` function fails the MVP entry contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,7 +122,10 @@ pub enum ResolveError {
         module: String,
     },
     /// No `main` function in the compilation unit.
-    MissingMain,
+    MissingMain {
+        /// Hint span in the entry module (e.g. first top-level item).
+        span: Span,
+    },
     /// `main` is not allowed in a `lib` package.
     MainForbiddenInLib {
         /// `main` definition span.
@@ -138,6 +143,28 @@ pub enum ResolveError {
 }
 
 impl ResolveError {
+    /// Stable diagnostic code for this error.
+    #[must_use]
+    pub const fn code(&self) -> DiagnosticCode {
+        match self {
+            Self::UnresolvedIdent { .. } => DiagnosticCode::new("E1001"),
+            Self::UnresolvedType { .. } => DiagnosticCode::new("E1002"),
+            Self::DuplicateDefinition { .. } => DiagnosticCode::new("E1003"),
+            Self::ImportNotSupported { .. } => DiagnosticCode::new("E1004"),
+            Self::ModuleNotFound { .. } => DiagnosticCode::new("E1005"),
+            Self::ModuleIo { .. } => DiagnosticCode::new("E1006"),
+            Self::ModuleParse { .. } => DiagnosticCode::new("E1007"),
+            Self::CircularImport { .. } => DiagnosticCode::new("E1008"),
+            Self::ImportNotExported { .. } => DiagnosticCode::new("E1009"),
+            Self::ImportNotFound { .. } => DiagnosticCode::new("E1010"),
+            Self::DuplicateImport { .. } => DiagnosticCode::new("E1011"),
+            Self::MainNotInEntry { .. } => DiagnosticCode::new("E1012"),
+            Self::MissingMain { .. } => DiagnosticCode::new("E1013"),
+            Self::MainForbiddenInLib { .. } => DiagnosticCode::new("E1014"),
+            Self::InvalidMainSignature { .. } => DiagnosticCode::new("E1015"),
+        }
+    }
+
     /// Returns the primary span for this error, if any.
     #[must_use]
     pub const fn span(&self) -> Option<Span> {
@@ -155,8 +182,8 @@ impl ResolveError {
             | Self::DuplicateImport { span, .. }
             | Self::MainNotInEntry { span, .. }
             | Self::InvalidMainSignature { span, .. }
-            | Self::MainForbiddenInLib { span, .. } => Some(*span),
-            Self::MissingMain => None,
+            | Self::MainForbiddenInLib { span, .. }
+            | Self::MissingMain { span, .. } => Some(*span),
         }
     }
 }
@@ -204,7 +231,7 @@ impl fmt::Display for ResolveError {
                     "`main` must be defined in the entry module, not in `{module}`"
                 )
             }
-            Self::MissingMain => f.write_str("missing entry function `main`"),
+            Self::MissingMain { .. } => f.write_str("missing entry function `main`"),
             Self::MainForbiddenInLib { module, .. } => {
                 write!(
                     f,
@@ -226,7 +253,7 @@ pub type ResolveResult<T> = Result<T, DiagnosticBag>;
 /// Collected resolve diagnostics; resolution may continue after non-fatal errors.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DiagnosticBag {
-    errors: Vec<ResolveError>,
+    errors: Vec<LocatedError<ResolveError>>,
 }
 
 impl DiagnosticBag {
@@ -236,9 +263,14 @@ impl DiagnosticBag {
         Self::default()
     }
 
-    /// Records an error.
-    pub fn push(&mut self, error: ResolveError) {
-        self.errors.push(error);
+    /// Records an error for `module`.
+    pub fn push(&mut self, module: u32, error: ResolveError) {
+        self.errors.push(LocatedError::new(module, error));
+    }
+
+    /// Records an already-located error (e.g. when merging sub-pass bags).
+    pub fn push_located(&mut self, located: LocatedError<ResolveError>) {
+        self.errors.push(located);
     }
 
     /// Returns `true` if any errors were recorded.
@@ -247,26 +279,26 @@ impl DiagnosticBag {
         !self.errors.is_empty()
     }
 
-    /// Borrows collected errors.
+    /// Borrows collected located errors.
     #[must_use]
-    pub fn errors(&self) -> &[ResolveError] {
+    pub fn errors(&self) -> &[LocatedError<ResolveError>] {
         &self.errors
     }
 
-    /// Consumes the bag and returns errors, for formatting.
+    /// Consumes the bag and returns located errors.
     #[must_use]
-    pub fn into_errors(self) -> Vec<ResolveError> {
+    pub fn into_errors(self) -> Vec<LocatedError<ResolveError>> {
         self.errors
     }
 }
 
 impl fmt::Display for DiagnosticBag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, e) in self.errors.iter().enumerate() {
+        for (i, located) in self.errors.iter().enumerate() {
             if i > 0 {
                 f.write_str("\n")?;
             }
-            write!(f, "{e}")?;
+            write!(f, "{}", located.error)?;
         }
         Ok(())
     }

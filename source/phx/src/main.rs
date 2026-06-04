@@ -39,7 +39,21 @@ fn read_source(path: &Path) -> Result<String, CompileError> {
 }
 
 fn report_compile_error(err: &CompileError, entry_source: Option<&str>) {
-    eprintln!("{}", err.format_with_source(entry_source));
+    let (modules, interner) = match err {
+        CompileError::Resolve { context, .. } => (
+            context.as_ref().map(|c| c.modules.as_slice()),
+            context.as_ref().map(|c| &c.interner),
+        ),
+        CompileError::TypeCheck { context, .. } => (
+            Some(context.modules.as_slice()),
+            Some(&context.interner),
+        ),
+        _ => (None, None),
+    };
+    eprintln!(
+        "{}",
+        err.format_with_modules(entry_source, modules, interner)
+    );
 }
 
 struct ProjectArgs {

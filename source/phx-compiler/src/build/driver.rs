@@ -180,7 +180,12 @@ fn build_package(
             .and_then(|d| global_fn.get(&d).copied())
             .ok_or_else(|| {
                 let mut bag = phx_diagnostics::DiagnosticBag::new();
-                bag.push(phx_diagnostics::ResolveError::MissingMain);
+                bag.push(
+                    0,
+                    phx_diagnostics::ResolveError::MissingMain {
+                        span: phx_diagnostics::Span::new(0, 1),
+                    },
+                );
                 BuildError::Resolve(bag)
             })?,
         PackageType::Lib => 0,
@@ -381,8 +386,8 @@ impl From<CompileError> for BuildError {
     fn from(e: CompileError) -> Self {
         match e {
             CompileError::Parse(p) => Self::Parse(p),
-            CompileError::Resolve(b) => Self::Resolve(b),
-            CompileError::TypeCheck(b) => Self::TypeCheck(b),
+            CompileError::Resolve { bag, .. } => Self::Resolve(bag),
+            CompileError::TypeCheck { bag, .. } => Self::TypeCheck(bag),
             CompileError::Io(e) => Self::Io {
                 path: PathBuf::new(),
                 message: e.to_string(),

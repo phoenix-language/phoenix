@@ -121,7 +121,7 @@ pub(crate) struct Resolver<'a> {
     pub(crate) logical_path: &'a str,
     pub(crate) allow_imports: bool,
     pub(crate) collect_only: bool,
-    pub(crate) import_bindings: Vec<(Symbol, DefId, bool)>,
+    pub(crate) import_bindings: Vec<(Symbol, DefId, bool, Span)>,
 }
 
 impl Resolver<'_> {
@@ -142,16 +142,28 @@ impl Resolver<'_> {
     /// Registers a value name in the current scope (records duplicates in the bag).
     pub(crate) fn define_value(&mut self, name: Symbol, span: Span, kind: DefKind) -> DefId {
         let id = self.alloc_def(kind, name, span, false);
-        self.scopes
-            .define_value(&self.defs, &mut self.bag, name, id, span);
+        self.scopes.define_value(
+            &self.defs,
+            &mut self.bag,
+            self.current_module,
+            name,
+            id,
+            span,
+        );
         id
     }
 
     /// Registers a type name in the current scope (records duplicates in the bag).
     pub(crate) fn define_type(&mut self, name: Symbol, span: Span, kind: DefKind) -> DefId {
         let id = self.alloc_def(kind, name, span, false);
-        self.scopes
-            .define_type(&self.defs, &mut self.bag, name, id, span);
+        self.scopes.define_type(
+            &self.defs,
+            &mut self.bag,
+            self.current_module,
+            name,
+            id,
+            span,
+        );
         id
     }
 
@@ -165,11 +177,23 @@ impl Resolver<'_> {
     ) -> DefId {
         let id = self.alloc_def(kind, name, span, exported);
         if is_type_kind(kind) {
-            self.scopes
-                .define_type(&self.defs, &mut self.bag, name, id, span);
+            self.scopes.define_type(
+                &self.defs,
+                &mut self.bag,
+                self.current_module,
+                name,
+                id,
+                span,
+            );
         } else {
-            self.scopes
-                .define_value(&self.defs, &mut self.bag, name, id, span);
+            self.scopes.define_value(
+                &self.defs,
+                &mut self.bag,
+                self.current_module,
+                name,
+                id,
+                span,
+            );
         }
         id
     }

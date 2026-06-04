@@ -2,9 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use phx_diagnostics::{DiagnosticBag, ResolveError};
+use phx_diagnostics::{DiagnosticBag, ResolveError, Span};
 use phx_syntax::Interner;
-use phx_syntax::ast::decl::ImportItem;
+use phx_syntax::ast::decl::{ImportItem, Program, TopLevelDecl};
 use phx_syntax::{SourceFile, Symbol};
 
 use crate::resolver::scopes::ScopeStack;
@@ -70,10 +70,15 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         resolver.resolve_program();
         if resolver.main_fn.is_some() {
             if package_type == PackageType::Lib {
-                bag.push(ResolveError::MainForbiddenInLib {
-                    span: phx_diagnostics::Span::new(0, 0),
-                    module: source_modules[idx].logical_path.clone(),
-                });
+                let span = main_function_span(&module.program, &interner)
+                    .unwrap_or_else(|| Span::new(0, 1));
+                bag.push(
+                    module.id.index(),
+                    ResolveError::MainForbiddenInLib {
+                        span,
+                        module: source_modules[idx].logical_path.clone(),
+                    },
+                );
             } else if module.id == root {
                 main_fn = resolver.main_fn;
             }
@@ -82,7 +87,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             resolver.check_main();
         }
         for e in resolver.bag.into_errors() {
-            bag.push(e);
+            bag.push_located(e);
         }
         for def in resolver.defs {
             let id = DefId::from_raw(u32::try_from(defs.len()).unwrap_or(u32::MAX));
@@ -127,13 +132,17 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         };
         resolver.resolve_program();
         for e in resolver.bag.into_errors() {
-            bag.push(e);
+            bag.push_located(e);
         }
         resolutions.extend(resolver.resolutions);
     }
 
     if package_type == PackageType::Bin && main_fn.is_none() {
-        bag.push(ResolveError::MissingMain);
+        let span = root_hint_span(&source_modules, root.index());
+        bag.push(
+            root.index(),
+            ResolveError::MissingMain { span },
+        );
     }
 
     if bag.has_errors() {
@@ -174,7 +183,7 @@ fn build_import_bindings(
     workspace_name: &str,
     dep_names: &[&str],
     bag: &mut DiagnosticBag,
-) -> Vec<(Symbol, DefId, bool)> {
+) -> Vec<(Symbol, DefId, bool, Span)> {
     let mut bindings = Vec::new();
     let mut seen: HashSet<Symbol> = HashSet::new();
 
@@ -200,14 +209,17 @@ fn build_import_bindings(
         if glob {
             for (&sym, &def_id) in dep_exports {
                 if !seen.insert(sym) {
-                    bag.push(ResolveError::DuplicateImport {
-                        span: imp.span,
-                        name: interner.resolve(sym).to_owned(),
-                    });
+                    bag.push(
+                        module.id.index(),
+                        ResolveError::DuplicateImport {
+                            span: imp.span,
+                            name: interner.resolve(sym).to_owned(),
+                        },
+                    );
                     continue;
                 }
                 let is_type = is_type_def(defs, def_id);
-                bindings.push((sym, def_id, is_type));
+                bindings.push((sym, def_id, is_type, imp.span));
             }
             continue;
         }
@@ -234,31 +246,64 @@ fn build_import_bindings(
         for sym in import_symbols {
             if let Some(&def_id) = dep_exports.get(&sym) {
                 if !seen.insert(sym) {
-                    bag.push(ResolveError::DuplicateImport {
-                        span: imp.span,
-                        name: interner.resolve(sym).to_owned(),
-                    });
+                    bag.push(
+                        module.id.index(),
+                        ResolveError::DuplicateImport {
+                            span: imp.span,
+                            name: interner.resolve(sym).to_owned(),
+                        },
+                    );
                     continue;
                 }
                 let is_type = is_type_def(defs, def_id);
-                bindings.push((sym, def_id, is_type));
+                bindings.push((sym, def_id, is_type, imp.span));
             } else if find_private_in_module(defs, u32::try_from(dep_idx).unwrap_or(u32::MAX), sym)
                 .is_some()
             {
-                bag.push(ResolveError::ImportNotExported {
-                    span: imp.span,
-                    name: interner.resolve(sym).to_owned(),
-                });
+                bag.push(
+                    module.id.index(),
+                    ResolveError::ImportNotExported {
+                        span: imp.span,
+                        name: interner.resolve(sym).to_owned(),
+                    },
+                );
             } else {
-                bag.push(ResolveError::ImportNotFound {
-                    span: imp.span,
-                    name: interner.resolve(sym).to_owned(),
-                    module: key.clone(),
-                });
+                bag.push(
+                    module.id.index(),
+                    ResolveError::ImportNotFound {
+                        span: imp.span,
+                        name: interner.resolve(sym).to_owned(),
+                        module: key.clone(),
+                    },
+                );
             }
         }
     }
     bindings
+}
+
+fn main_function_span(program: &Program, interner: &Interner) -> Option<Span> {
+    for item in &program.items {
+        if let TopLevelDecl::Function(f) = &item.inner.decl
+            && interner.resolve(f.name.symbol) == "main"
+        {
+            return Some(f.name.span);
+        }
+    }
+    None
+}
+
+fn root_hint_span(modules: &[SourceModule], root: u32) -> Span {
+    let Some(m) = modules.iter().find(|m| m.id == root) else {
+        return Span::new(0, 1);
+    };
+    if let Some(item) = m.program.items.first() {
+        item.span
+    } else if let Some(imp) = m.program.imports.first() {
+        imp.span
+    } else {
+        Span::new(0, 1)
+    }
 }
 
 fn is_type_def(defs: &[Def], def_id: DefId) -> bool {

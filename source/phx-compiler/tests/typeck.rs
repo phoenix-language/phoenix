@@ -11,7 +11,7 @@ fn ok(source: &str) {
 
 fn typeck_err(source: &str) -> TypeCheckBag {
     match compile_source(source, None) {
-        Err(CompileError::TypeCheck(bag)) => bag,
+        Err(CompileError::TypeCheck { bag, .. }) => bag,
         Err(other) => panic!("expected type-check error, got {other}"),
         Ok(_) => panic!("expected type-check error"),
     }
@@ -19,7 +19,7 @@ fn typeck_err(source: &str) -> TypeCheckBag {
 
 fn has_unsupported(bag: &TypeCheckBag, needle: &str) -> bool {
     bag.errors().iter().any(|e| {
-        matches!(e, TypeCheckError::UnsupportedFeature { feature, .. } if feature.contains(needle))
+        matches!(&e.error, TypeCheckError::UnsupportedFeature { feature, .. } if feature.contains(needle))
     })
 }
 
@@ -44,7 +44,7 @@ fn break_outside_loop() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::LoopControlOutsideLoop { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
     );
 }
 
@@ -54,7 +54,7 @@ fn continue_outside_loop() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::LoopControlOutsideLoop { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
     );
 }
 
@@ -68,7 +68,7 @@ fn if_branch_mismatch() {
     let bag = typeck_err("main :: () => { const x: s32 = { if true { 1 } else { false } }; };");
     assert!(bag.errors().iter().any(|e| {
         matches!(
-            e,
+            &e.error,
             TypeCheckError::NonUnifyingBranches { .. } | TypeCheckError::Mismatch { .. }
         )
     }));
@@ -87,12 +87,13 @@ fn use_after_move_error() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(e, TypeCheckError::UseAfterMove { .. }))
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
         .expect("use-after-move");
-    if let TypeCheckError::UseAfterMove { name, .. } = err {
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
-    let msg = phx_diagnostics::format_typecheck_error(source, err);
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
     assert!(msg.contains("moved"));
     assert!(msg.contains("note:"));
 }
@@ -113,7 +114,7 @@ fn function_body_return_mismatch() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. }))
     );
 }
 
@@ -123,7 +124,7 @@ fn invalid_cast() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::InvalidCast { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::InvalidCast { .. }))
     );
 }
 
@@ -147,7 +148,7 @@ fn given_enum_non_exhaustive() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::NonExhaustiveMatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
     );
 }
 
@@ -189,7 +190,7 @@ fn call_arity_mismatch() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::ArityMismatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::ArityMismatch { .. }))
     );
 }
 
@@ -199,7 +200,7 @@ fn call_not_callable() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::NotCallable { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::NotCallable { .. }))
     );
 }
 
@@ -233,7 +234,7 @@ fn assign_type_mismatch() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. }))
     );
 }
 
@@ -245,7 +246,7 @@ fn assign_to_moved() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::MovedAssignTarget { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::MovedAssignTarget { .. }))
     );
 }
 
@@ -257,7 +258,7 @@ fn assign_moves_non_copyable() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::UseAfterMove { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
     );
 }
 
@@ -272,7 +273,7 @@ fn enum_struct_variant_match_ok() {
 fn enum_struct_variant_lit_unknown_field() {
     let bag = typeck_err("R :: enum { Ok { v: s32 }, }; main :: () => { const _ = Ok { z: 1 }; };");
     assert!(bag.errors().iter().any(|e| {
-        matches!(e, TypeCheckError::UnknownEnumVariantField { name, .. } if name == "z")
+        matches!(&e.error, TypeCheckError::UnknownEnumVariantField { name, .. } if name == "z")
     }));
 }
 
@@ -282,7 +283,7 @@ fn enum_struct_variant_lit_missing_field() {
         "R :: enum { Ok { v: s32, w: s32 }, }; main :: () => { const _ = Ok { v: 1 }; };",
     );
     assert!(bag.errors().iter().any(|e| {
-        matches!(e, TypeCheckError::MissingEnumVariantField { name, .. } if name == "w")
+        matches!(&e.error, TypeCheckError::MissingEnumVariantField { name, .. } if name == "w")
     }));
 }
 
@@ -293,7 +294,7 @@ fn struct_lit_unknown_field() {
     );
     assert!(
         bag.errors().iter().any(|e| {
-            matches!(e, TypeCheckError::UnknownStructField { name, .. } if name == "z")
+            matches!(&e.error, TypeCheckError::UnknownStructField { name, .. } if name == "z")
         })
     );
 }
@@ -305,7 +306,7 @@ fn struct_lit_generic_args_unsupported() {
     );
     assert!(bag.errors().iter().any(|e| {
         matches!(
-            e,
+            &e.error,
             TypeCheckError::UnsupportedFeature {
                 feature: "struct literal type arguments",
                 ..
@@ -321,7 +322,7 @@ fn struct_lit_missing_field() {
     );
     assert!(
         bag.errors().iter().any(|e| {
-            matches!(e, TypeCheckError::MissingStructField { name, .. } if name == "y")
+            matches!(&e.error, TypeCheckError::MissingStructField { name, .. } if name == "y")
         })
     );
 }
@@ -334,14 +335,14 @@ fn enum_match_non_exhaustive() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::NonExhaustiveMatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
     );
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(e, TypeCheckError::NonExhaustiveMatch { .. }))
+        .find(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
         .expect("non-exhaustive match");
-    if let TypeCheckError::NonExhaustiveMatch { missing, .. } = err {
+    if let TypeCheckError::NonExhaustiveMatch { missing, .. } = &err.error {
         assert!(missing.iter().any(|n| n == "None"));
     }
 }
@@ -364,7 +365,7 @@ fn index_non_indexable_error() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::InvalidOperator { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::InvalidOperator { .. }))
     );
 }
 
@@ -376,7 +377,7 @@ fn enum_pattern_on_non_enum_scrutinee() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. }))
     );
 }
 
@@ -388,7 +389,7 @@ fn enum_tuple_pattern_on_non_enum_scrutinee() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. }))
     );
 }
 
@@ -423,7 +424,7 @@ fn type_alias_mismatch_still_errors() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. }))
     );
 }
 
@@ -434,7 +435,7 @@ fn match_unreachable_after_wildcard() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::UnreachableMatchArm { .. }))
     );
 }
 
@@ -445,7 +446,7 @@ fn match_unreachable_duplicate_literal() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::UnreachableMatchArm { .. }))
     );
 }
 
@@ -457,7 +458,7 @@ fn match_unreachable_duplicate_enum_variant() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
+            .any(|e| matches!(&e.error, TypeCheckError::UnreachableMatchArm { .. }))
     );
 }
 
