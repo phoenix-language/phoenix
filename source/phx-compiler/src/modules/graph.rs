@@ -62,13 +62,14 @@ pub(crate) fn topo_sort_with_pxi_escape(
         return Some(order);
     }
     if let Some(layout) = layout
-        && cycle_modules_have_fresh_pxi(module_count, edges, modules, layout) {
-            return Some(
-                (0..module_count)
-                    .map(|i| ModuleId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
-                    .collect(),
-            );
-        }
+        && cycle_modules_have_fresh_pxi(module_count, edges, modules, layout)
+    {
+        return Some(
+            (0..module_count)
+                .map(|i| ModuleId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+                .collect(),
+        );
+    }
     bag.push(ResolveError::CircularImport {
         span: Span::new(0, 0),
         cycle: format!("module graph cycle (entry module id {})", roots.index()),

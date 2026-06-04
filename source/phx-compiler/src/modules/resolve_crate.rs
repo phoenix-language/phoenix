@@ -144,11 +144,13 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
     let program = if let Some(m) = source_modules.iter().find(|m| m.id == root_index) {
         m.program.clone()
     } else {
-        source_modules
-            .first().map_or_else(|| phx_syntax::ast::decl::Program {
+        source_modules.first().map_or_else(
+            || phx_syntax::ast::decl::Program {
                 imports: Vec::new(),
                 items: Vec::new(),
-            }, |m| m.program.clone())
+            },
+            |m| m.program.clone(),
+        )
     };
 
     Ok(ResolvedProgram {
@@ -237,12 +239,8 @@ fn build_import_bindings(
                 }
                 let is_type = is_type_def(defs, def_id);
                 bindings.push((sym, def_id, is_type));
-            } else if find_private_in_module(
-                defs,
-                u32::try_from(dep_idx).unwrap_or(u32::MAX),
-                sym,
-            )
-            .is_some()
+            } else if find_private_in_module(defs, u32::try_from(dep_idx).unwrap_or(u32::MAX), sym)
+                .is_some()
             {
                 bag.push(ResolveError::ImportNotExported {
                     span: imp.span,

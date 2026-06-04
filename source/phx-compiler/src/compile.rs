@@ -58,9 +58,10 @@ impl CompileError {
 
 fn format_parse_error(e: &ParseError, source: Option<&str>) -> String {
     if let Some(src) = source
-        && let Some(span) = e.span() {
-            return format_span_message(src, span, &e.to_string());
-        }
+        && let Some(span) = e.span()
+    {
+        return format_span_message(src, span, &e.to_string());
+    }
     e.to_string()
 }
 
@@ -71,9 +72,10 @@ fn format_resolve_bag(
 ) -> String {
     if let Some(err) = bag.errors().first()
         && let Some(span) = err.span()
-            && let Some((label, src)) = source_for_span(entry_source, modules, span) {
-                return format_span_message(src, span, &format!("{label}: {err}"));
-            }
+        && let Some((label, src)) = source_for_span(entry_source, modules, span)
+    {
+        return format_span_message(src, span, &format!("{label}: {err}"));
+    }
     bag.to_string()
 }
 
@@ -84,10 +86,11 @@ fn format_typecheck_bag(
 ) -> String {
     if let Some(err) = bag.errors().first() {
         if let Some(span) = err.span()
-            && let Some((label, src)) = source_for_span(entry_source, modules, span) {
-                let body = format_typecheck_error(src, err);
-                return format!("{label}:\n{body}");
-            }
+            && let Some((label, src)) = source_for_span(entry_source, modules, span)
+        {
+            let body = format_typecheck_error(src, err);
+            return format!("{label}:\n{body}");
+        }
         if let Some(src) = entry_source {
             return format_typecheck_error(src, err);
         }

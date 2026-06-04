@@ -57,19 +57,26 @@ fn export_signature(def: &Def, def_id: DefId, typed: &TypedProgram, names: &Inte
         DefKind::Fn => typed
             .functions
             .iter()
-            .find(|f| f.def == def_id).map_or_else(|| "() => ()".to_owned(), |f| {
-                let params: Vec<_> = f
-                    .bindings
-                    .iter()
-                    .filter(|b| b.kind == BindingKind::Param)
-                    .map(|p| format_type(&typed.types, names, &typed.resolved.defs, p.ty))
-                    .collect();
-                let ret = format_type(&typed.types, names, &typed.resolved.defs, f.return_type);
-                format!("({}) => {}", params.join(", "), ret)
-            }),
-        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias => typed
-            .layout
-            .type_id(def_id).map_or_else(|| def_kind_to_pxi(def.kind).to_owned(), |tid| format!("type_id({tid})")),
+            .find(|f| f.def == def_id)
+            .map_or_else(
+                || "() => ()".to_owned(),
+                |f| {
+                    let params: Vec<_> = f
+                        .bindings
+                        .iter()
+                        .filter(|b| b.kind == BindingKind::Param)
+                        .map(|p| format_type(&typed.types, names, &typed.resolved.defs, p.ty))
+                        .collect();
+                    let ret = format_type(&typed.types, names, &typed.resolved.defs, f.return_type);
+                    format!("({}) => {}", params.join(", "), ret)
+                },
+            ),
+        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias => {
+            typed.layout.type_id(def_id).map_or_else(
+                || def_kind_to_pxi(def.kind).to_owned(),
+                |tid| format!("type_id({tid})"),
+            )
+        }
         _ => def_kind_to_pxi(def.kind).to_owned(),
     }
 }
@@ -97,7 +104,8 @@ pub fn module_dependencies(
             continue;
         }
         let pxi_path = layout.module_artifacts(&key).pxi;
-        let pxi_hash = std::fs::read_to_string(&pxi_path).map_or_else(|_| String::new(), |t| digest_bytes(t.as_bytes()));
+        let pxi_hash = std::fs::read_to_string(&pxi_path)
+            .map_or_else(|_| String::new(), |t| digest_bytes(t.as_bytes()));
         deps.push(PxiDependency {
             logical_module: key,
             pxi_hash,

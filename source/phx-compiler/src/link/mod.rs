@@ -208,9 +208,10 @@ fn patch_instruction(inst: &Instruction, const_base: u32, type_base: u32) -> Ins
             ops[0] = ops[0].saturating_add(const_base);
         }
         Opcode::MakeStruct | Opcode::MakeEnum | Opcode::MakeArray | Opcode::MakeTuple
-            if !ops.is_empty() => {
-                ops[0] = ops[0].saturating_add(type_base);
-            }
+            if !ops.is_empty() =>
+        {
+            ops[0] = ops[0].saturating_add(type_base);
+        }
         _ => {}
     }
     Instruction {

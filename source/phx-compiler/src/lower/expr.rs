@@ -772,7 +772,8 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
         .layout
         .bindings
         .iter()
-        .find(|b| b.slot == temp).map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
+        .find(|b| b.slot == temp)
+        .map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
 
     lower_expr(ctx, scrutinee);
     ctx.emit(IrInst::StoreLocal {

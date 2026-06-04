@@ -64,17 +64,9 @@ impl BuildManifest {
             let comma = if i + 1 < keys.len() { "," } else { "" };
             let _ = writeln!(out, "    {}: {{", json_str(key));
             let _ = writeln!(out, "      \"source\": {},", json_str(&m.source));
-            let _ = writeln!(
-                out,
-                "      \"source_hash\": {},",
-                json_str(&m.source_hash)
-            );
+            let _ = writeln!(out, "      \"source_hash\": {},", json_str(&m.source_hash));
             let _ = writeln!(out, "      \"pxi_hash\": {},", json_str(&m.pxi_hash));
-            let _ = writeln!(
-                out,
-                "      \"phx0_path\": {},",
-                json_str(&m.phx0_path)
-            );
+            let _ = writeln!(out, "      \"phx0_path\": {},", json_str(&m.phx0_path));
             let _ = writeln!(out, "      \"pxi_path\": {}", json_str(&m.pxi_path));
             let _ = writeln!(out, "    }}{comma}");
         }
@@ -151,13 +143,15 @@ fn extract_module_keys(text: &str) -> Vec<(String, ())> {
     let slice = &text[mods..];
     for line in slice.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('"') && trimmed.contains("::") && trimmed.ends_with(": {")
+        if trimmed.starts_with('"')
+            && trimmed.contains("::")
+            && trimmed.ends_with(": {")
             && let Some(name) = trimmed
                 .strip_prefix('"')
                 .and_then(|s| s.strip_suffix("\": {"))
-            {
-                out.push((name.to_owned(), ()));
-            }
+        {
+            out.push((name.to_owned(), ()));
+        }
     }
     out
 }

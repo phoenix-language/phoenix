@@ -77,12 +77,13 @@ fn build_package(
 
     if !needs_full
         && let Some(ref old) = old_manifest
-            && all_modules_fresh(old, &loaded, &layout, &ctx) {
-                return Ok(BuildResult {
-                    output_path,
-                    entry_logical,
-                });
-            }
+        && all_modules_fresh(old, &loaded, &layout, &ctx)
+    {
+        return Ok(BuildResult {
+            output_path,
+            entry_logical,
+        });
+    }
 
     let resolved = resolve_crate(loaded.clone()).map_err(BuildError::Resolve)?;
     let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;

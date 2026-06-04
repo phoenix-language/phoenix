@@ -133,8 +133,7 @@ impl PxiFile {
 
     /// Returns true when `source_path` bytes match `source_hash`.
     pub fn source_is_fresh(&self, source_path: &Path) -> bool {
-        std::fs::read(source_path)
-            .is_ok_and(|b| digest_bytes(&b) == self.source_hash)
+        std::fs::read(source_path).is_ok_and(|b| digest_bytes(&b) == self.source_hash)
     }
 
     /// Digest of this file's canonical JSON (for dependency tracking).
