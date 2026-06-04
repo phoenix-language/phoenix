@@ -1,4 +1,5 @@
 //! Integration tests for [`phx_compiler::compile_source`] (parse + resolve).
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use phx_compiler::CompileError;
 use phx_compiler::compile_source;

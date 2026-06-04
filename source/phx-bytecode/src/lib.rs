@@ -34,6 +34,7 @@ pub use types::{TypeKind, TypeRecord, TypeTable};
 pub use verify::{VerifyError, verify};
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 

@@ -305,6 +305,7 @@ fn trim_quotes(s: &str) -> &str {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

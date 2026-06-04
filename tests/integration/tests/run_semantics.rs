@@ -1,4 +1,5 @@
 //! End-to-end semantic tests: verify computed values, not just clean execution.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::Path;
 

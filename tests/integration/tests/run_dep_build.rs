@@ -1,4 +1,5 @@
 //! Path dependency build populates `build/deps/`.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::Path;
 

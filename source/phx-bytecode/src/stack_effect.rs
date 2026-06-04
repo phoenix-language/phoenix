@@ -29,7 +29,7 @@ pub fn apply_stack_effect(
     field_count: Option<u32>,
 ) -> Result<(), StackEffectError> {
     match opcode {
-        Opcode::Const | Opcode::LoadLocal => {
+        Opcode::Const | Opcode::LoadLocal | Opcode::AddressOfLocal | Opcode::Alloc => {
             *depth = depth.saturating_add(1);
         }
         Opcode::StoreLocal
@@ -80,7 +80,7 @@ pub fn apply_stack_effect(
             *depth -= n;
             *depth += 1;
         }
-        Opcode::GetField | Opcode::MatchTag => {
+        Opcode::GetField | Opcode::MatchTag | Opcode::MakeSlice | Opcode::PtrLoad => {
             if *depth == 0 {
                 return Err(StackEffectError::Underflow);
             }
@@ -91,30 +91,19 @@ pub fn apply_stack_effect(
             }
             *depth -= 1;
         }
-        Opcode::Cast | Opcode::Neg | Opcode::Not | Opcode::BitNot => {}
-        Opcode::MakeSlice => {
-            if *depth == 0 {
-                return Err(StackEffectError::Underflow);
-            }
-        }
-        Opcode::AddressOfLocal => {
-            *depth = depth.saturating_add(1);
-        }
-        Opcode::Alloc => {
-            *depth = depth.saturating_add(1);
-        }
-        Opcode::PtrLoad => {
-            if *depth == 0 {
-                return Err(StackEffectError::Underflow);
-            }
-        }
+        Opcode::Cast
+        | Opcode::Neg
+        | Opcode::Not
+        | Opcode::BitNot
+        | Opcode::Jump
+        | Opcode::Return
+        | Opcode::Trap => {}
         Opcode::PtrStore => {
             if *depth < 2 {
                 return Err(StackEffectError::Underflow);
             }
             *depth -= 2;
         }
-        Opcode::Jump | Opcode::Return | Opcode::Trap => {}
     }
     Ok(())
 }

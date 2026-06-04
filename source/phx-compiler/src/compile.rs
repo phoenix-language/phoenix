@@ -192,6 +192,10 @@ pub fn compile_to_module(path: &Path) -> Result<BytecodeModule, CompileError> {
 }
 
 /// Same as [`compile_to_module`] with an explicit `--module-path` root.
+///
+/// # Errors
+///
+/// Same as [`check_file_with_module_path`].
 pub fn compile_to_module_with_module_path(
     path: &Path,
     module_root: &Path,

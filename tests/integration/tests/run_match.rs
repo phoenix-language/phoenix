@@ -1,4 +1,5 @@
 //! End-to-end: compile match fixtures, verify, run on VM.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::Path;
 

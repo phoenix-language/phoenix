@@ -1128,8 +1128,63 @@ impl<'a> TypeChecker<'a> {
                 }),
             });
         }
+        self.check_match_unreachable_arms(s, arms);
         self.check_match_exhaustiveness(s, arms, span);
         acc.unwrap_or(self.unit)
+    }
+
+    fn check_match_unreachable_arms(
+        &mut self,
+        scrutinee: TypeId,
+        arms: &[phx_syntax::ast::pat::MatchArm],
+    ) {
+        let is_enum = self.scrutinee_enum_def(scrutinee).is_some();
+        let mut after_unconditional_wildcard = false;
+        let mut covered_variants = std::collections::HashSet::new();
+        let mut covered_literals: Vec<phx_syntax::ast::lit::Literal> = Vec::new();
+
+        for arm in arms {
+            let pat_span = arm.pattern.span;
+            if after_unconditional_wildcard {
+                self.bag.push(TypeCheckError::UnreachableMatchArm {
+                    reason: "a previous `_` arm matches all remaining values",
+                    span: pat_span,
+                });
+                continue;
+            }
+
+            match &arm.pattern.inner {
+                Pattern::Wildcard => {
+                    if arm.guard.is_none() {
+                        after_unconditional_wildcard = true;
+                    }
+                }
+                Pattern::Literal(lit) => {
+                    if covered_literals
+                        .iter()
+                        .any(|prev| pattern_literal_eq(prev, lit))
+                    {
+                        self.bag.push(TypeCheckError::UnreachableMatchArm {
+                            reason: "an earlier arm already matches this literal",
+                            span: pat_span,
+                        });
+                    } else {
+                        covered_literals.push(lit.clone());
+                    }
+                }
+                _ if is_enum => {
+                    if let Some(variant) = self.pattern_covered_variant(&arm.pattern.inner) {
+                        if !covered_variants.insert(variant) {
+                            self.bag.push(TypeCheckError::UnreachableMatchArm {
+                                reason: "an earlier arm already matches this enum variant",
+                                span: pat_span,
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     fn symbol_name(&self, symbol: Symbol) -> String {
@@ -1464,6 +1519,17 @@ fn find_trait_method_def(layout: &ProgramLayout, type_def: DefId, method: Symbol
         Some(matches[0])
     } else {
         None
+    }
+}
+
+fn pattern_literal_eq(a: &Literal, b: &Literal) -> bool {
+    match (a, b) {
+        (Literal::Int(x), Literal::Int(y)) => x.value == y.value && x.suffix == y.suffix,
+        (Literal::Float(x), Literal::Float(y)) => x.value == y.value && x.suffix == y.suffix,
+        (Literal::Bool(x), Literal::Bool(y)) => x == y,
+        (Literal::ByteChar(x), Literal::ByteChar(y)) => x == y,
+        (Literal::ByteString(x), Literal::ByteString(y)) => x == y,
+        _ => false,
     }
 }
 

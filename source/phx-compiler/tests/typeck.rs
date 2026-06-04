@@ -1,4 +1,5 @@
 //! Integration tests for the type-checking pass.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use phx_compiler::CompileError;
 use phx_compiler::compile_source;
@@ -395,5 +396,39 @@ fn type_alias_mismatch_still_errors() {
         bag.errors()
             .iter()
             .any(|e| matches!(e, TypeCheckError::Mismatch { .. }))
+    );
+}
+
+#[test]
+fn match_unreachable_after_wildcard() {
+    let bag =
+        typeck_err("main :: () => { const x: s32 = match 0 { _ => 1; 2 => 2; }; const _ = x; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
+    );
+}
+
+#[test]
+fn match_unreachable_duplicate_literal() {
+    let bag =
+        typeck_err("main :: () => { const x: s32 = match 0 { 0 => 1; 0 => 2; }; const _ = x; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
+    );
+}
+
+#[test]
+fn match_unreachable_duplicate_enum_variant() {
+    let bag = typeck_err(
+        "Maybe :: enum { None, Some(s32) }; main :: () => { const m: Maybe = Some(1); const x: s32 = match m { Some(a) => a; Some(b) => b; }; const _ = x; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::UnreachableMatchArm { .. }))
     );
 }

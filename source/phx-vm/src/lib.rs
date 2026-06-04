@@ -1,4 +1,10 @@
 //! Phoenix VM — bytecode loader and stack interpreter (MVP).
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap
+)]
 //!
 //! Executes verified [`phx_bytecode::BytecodeModule`] images with a single-process stack machine.
 //!

@@ -92,7 +92,7 @@ impl ScalarValue {
     #[must_use]
     pub fn local_slot_from_ptr(ptr: u64) -> Option<u32> {
         if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
-            Some((ptr & !PTR_LOCAL_TAG) as u32)
+            u32::try_from(ptr & !PTR_LOCAL_TAG).ok()
         } else {
             None
         }
@@ -109,7 +109,7 @@ impl ScalarValue {
     pub fn to_le_bytes(self, kind: PrimitiveKind) -> Vec<u8> {
         match (kind, self) {
             (PrimitiveKind::Bool, Self::Bool(b)) => vec![u8::from(b)],
-            (PrimitiveKind::S8, Self::I8(v)) => vec![v as u8],
+            (PrimitiveKind::S8, Self::I8(v)) => vec![v.cast_unsigned()],
             (PrimitiveKind::U8, Self::U8(v)) => vec![v],
             (PrimitiveKind::S16, Self::I16(v)) => v.to_le_bytes().to_vec(),
             (PrimitiveKind::U16, Self::U16(v)) => v.to_le_bytes().to_vec(),
@@ -137,7 +137,7 @@ impl ScalarValue {
                 let b = bytes.first().copied().unwrap_or(0);
                 Some(Self::Bool(b != 0))
             }
-            PrimitiveKind::S8 => Some(Self::I8(*bytes.first()? as i8)),
+            PrimitiveKind::S8 => Some(Self::I8((*bytes.first()?).cast_signed())),
             PrimitiveKind::U8 => Some(Self::U8(*bytes.first()?)),
             PrimitiveKind::S16 => {
                 let b: [u8; 2] = bytes.get(0..2)?.try_into().ok()?;

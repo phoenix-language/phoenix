@@ -63,6 +63,7 @@ CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `
 | [`use_after_move.phx`](fixtures/use_after_move.phx) | negative | `check.sh` | Non-zero; use-after-move + move-site `note:` |
 | [`mixed_width.phx`](fixtures/mixed_width.phx) | negative | `check.sh` | Non-zero; implicit mixed-width arithmetic |
 | [`given_enum_non_exhaustive.phx`](fixtures/given_enum_non_exhaustive.phx) | negative | `check.sh` | Non-zero; non-exhaustive `given` on enum |
+| [`match_unreachable_arm.phx`](fixtures/match_unreachable_arm.phx) | negative | `check.sh` | Non-zero; unreachable `match` arm |
 | [`modules/import_private.phx`](fixtures/modules/import_private.phx) | negative | `check.sh` | Non-zero; import of non-`pub` symbol |
 | [`modules/cycle_a.phx`](fixtures/modules/cycle_a.phx) | negative | `check.sh` | Non-zero; circular `#import` |
 
@@ -81,6 +82,8 @@ CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `
 | [`project/`](fixtures/project/) | project (M2) | `build.sh`, `run_build.rs` | `phx build` → `build/bin/cli_project_test.phx0`; multi-module via `phoenix.toml` |
 | [`project/src/main.phx`](fixtures/project/src/main.phx) | project entry | `build.sh` | Imports `util::math::add` from sibling module |
 | [`project/src/util/math.phx`](fixtures/project/src/util/math.phx) | project module | `build.sh` | `pub` export consumed by `main.phx` |
+| [`mvp_acceptance/`](fixtures/mvp_acceptance/) | MVP smoke project | `build.sh`, `run_build.rs` | Struct + enum `match` + `#import` + `phx build` / `run` |
+| [`mvp_acceptance/src/main.phx`](fixtures/mvp_acceptance/src/main.phx) | MVP entry | `build.sh` | Imports `shapes::math::pick`; struct + `Result` match |
 | [`app_dep/`](fixtures/app_dep/) | path dependency | `run_dep_build.rs` | Builds app + `build/deps/math/` artifacts |
 | [`app_dep/src/main.phx`](fixtures/app_dep/src/main.phx) | app entry | `run_dep_build.rs` | `#import math::add` from path dep |
 | [`math_lib/`](fixtures/math_lib/) | library package | `app_dep` dependency | `[package] type = "lib"`; no `main` |

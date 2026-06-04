@@ -1,4 +1,5 @@
 //! Codegen integration tests.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::path::Path;
 
@@ -103,7 +104,7 @@ fn lower_logical_short_circuit_emits_jump_if() {
 
 #[test]
 fn lower_match_emits_eq_and_jump_if() {
-    let source = "main :: () => { var i: s32 = 1; const x: s32 = { match (i) { 0 => 10; _ => 20; } }; const _ = x; };";
+    let source = "main :: () => { var i: s32 = 1; const x: s32 = { match i { 0 => 10; _ => 20; } }; const _ = x; };";
     let unit = compile_source(source, None).unwrap();
     let ir = lower(&unit.typed);
     let mut eq_count = 0u32;

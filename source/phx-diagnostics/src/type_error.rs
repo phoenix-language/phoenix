@@ -72,6 +72,13 @@ pub enum TypeCheckError {
         /// `match` expression span.
         span: Span,
     },
+    /// `match` arm can never be reached because an earlier arm covers the same cases.
+    UnreachableMatchArm {
+        /// Short explanation for the diagnostic.
+        reason: &'static str,
+        /// Unreachable arm pattern span.
+        span: Span,
+    },
     /// Struct literal names a field that does not exist.
     UnknownStructField {
         /// Field name.
@@ -170,6 +177,7 @@ impl TypeCheckError {
             | Self::AmbiguousMethod { span, .. }
             | Self::NonUnifyingBranches { span }
             | Self::NonExhaustiveMatch { span, .. }
+            | Self::UnreachableMatchArm { span, .. }
             | Self::UnknownStructField { span, .. }
             | Self::MissingStructField { span, .. }
             | Self::UnknownEnumVariantField { span, .. }
@@ -225,6 +233,9 @@ impl fmt::Display for TypeCheckError {
                         missing.join(", ")
                     )
                 }
+            }
+            Self::UnreachableMatchArm { reason, .. } => {
+                write!(f, "unreachable `match` arm: {reason}")
             }
             Self::UnknownStructField { name, .. } => {
                 write!(f, "struct literal has no field `{name}`")

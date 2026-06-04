@@ -16,6 +16,7 @@ NEG_FIXTURES=(
   "use_after_move.phx:moved"
   "mixed_width.phx:invalid"
   "given_enum_non_exhaustive.phx:non-exhaustive"
+  "match_unreachable_arm.phx:unreachable"
 )
 
 cd "${ROOT}"

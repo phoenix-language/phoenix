@@ -47,6 +47,7 @@ pub type DecodedInst = (u32, Instruction);
 ///
 /// Returns [`StackFlowError::Underflow`] when an instruction would pop below the
 /// current depth, or [`StackFlowError::JoinDepthMismatch`] when predecessors disagree.
+#[allow(clippy::implicit_hasher)]
 pub fn analyze_stack_cfg(
     instructions: &[DecodedInst],
     inst_starts: &HashSet<u32>,
@@ -182,11 +183,13 @@ fn terminators_successors(inst: &Instruction, next: Option<&(u32, Instruction)>)
             }
         }
         Opcode::Return | Opcode::Trap => Vec::new(),
+        #[allow(clippy::match_same_arms)]
         _ => Vec::new(),
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_lossless, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::cast::PrimitiveKind;

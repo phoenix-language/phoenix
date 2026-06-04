@@ -1,4 +1,11 @@
 //! `phx` command-line driver.
+#![allow(
+    clippy::print_stderr,
+    clippy::manual_let_else,
+    clippy::single_match_else,
+    clippy::too_many_lines,
+    clippy::collapsible_if
+)]
 
 use std::env;
 use std::fs;

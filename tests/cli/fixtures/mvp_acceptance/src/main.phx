@@ -1,0 +1,21 @@
+#import shapes::math::pick;
+
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+Result :: enum {
+    Ok { v: s32 },
+    Err { code: s32 },
+};
+
+main :: () => {
+    const p: Point = Point { x: 3, y: 4 };
+    const r: Result = Ok { v: p.x };
+    const along: s32 = match r {
+        Ok { v } => v;
+        Err { code } => code;
+    };
+    const _ = along + pick();
+};

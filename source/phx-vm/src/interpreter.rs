@@ -156,19 +156,19 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
             Opcode::JumpIfTrue => {
                 let target = inst.operands.first().copied().unwrap_or(0);
                 let cond = pop_scalar(&mut machine.stack)?;
-                if cond.is_truthy() {
-                    if let Some(f) = machine.frames.last_mut() {
-                        f.pc = target;
-                    }
+                if cond.is_truthy()
+                    && let Some(f) = machine.frames.last_mut()
+                {
+                    f.pc = target;
                 }
             }
             Opcode::JumpIfFalse => {
                 let target = inst.operands.first().copied().unwrap_or(0);
                 let cond = pop_scalar(&mut machine.stack)?;
-                if !cond.is_truthy() {
-                    if let Some(f) = machine.frames.last_mut() {
-                        f.pc = target;
-                    }
+                if !cond.is_truthy()
+                    && let Some(f) = machine.frames.last_mut()
+                {
+                    f.pc = target;
                 }
             }
             Opcode::Call => {
@@ -687,12 +687,7 @@ fn read_heap_scalar(
     ScalarValue::from_le_bytes(kind, slice).ok_or(VmError::InvalidConstPayload)
 }
 
-fn write_heap_scalar(
-    heap: &mut Vec<u8>,
-    addr: usize,
-    size: u8,
-    bytes: &[u8],
-) -> Result<(), VmError> {
+fn write_heap_scalar(heap: &mut [u8], addr: usize, size: u8, bytes: &[u8]) -> Result<(), VmError> {
     let end = addr
         .checked_add(usize::from(size))
         .ok_or(VmError::HeapOutOfBounds)?;
@@ -845,7 +840,7 @@ fn scalar_as_i128(v: ScalarValue, kind: PrimitiveKind) -> i128 {
         (_, ScalarValue::Bool(b)) => i128::from(b),
         (_, ScalarValue::F32(x)) => f64::from(x) as i128,
         (_, ScalarValue::F64(x)) => x as i128,
-        (_, ScalarValue::Ptr(p)) => i128::try_from(p).unwrap_or(0),
+        (_, ScalarValue::Ptr(p)) => i128::from(p),
     }
 }
 

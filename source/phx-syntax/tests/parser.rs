@@ -39,9 +39,10 @@ mod support {
     }
 
     pub fn parse_ok(source: &str) -> Program {
-        parse(source)
-            .map(|sf| sf.program)
-            .unwrap_or_else(|e| panic!("expected parse ok for:\n{source}\nerror: {e}"))
+        parse(source).map_or_else(
+            |e| panic!("expected parse ok for:\n{source}\nerror: {e}"),
+            |sf| sf.program,
+        )
     }
 
     pub fn parse_err(source: &str) -> ParseError {
@@ -76,11 +77,9 @@ mod support {
         f
     }
 
-    pub fn first_stmt_expr<'a>(block: &'a BlockNode) -> &'a Expr {
+    pub fn first_stmt_expr(block: &BlockNode) -> &Expr {
         match &block.inner.items[0] {
-            BlockItem::Stmt(Stmt::Const { init, .. }) | BlockItem::Stmt(Stmt::Expr(init)) => {
-                &init.inner
-            }
+            BlockItem::Stmt(Stmt::Const { init, .. } | Stmt::Expr(init)) => &init.inner,
             BlockItem::Expr(e) => &e.inner,
             other => panic!("expected expr item, got {other:?}"),
         }

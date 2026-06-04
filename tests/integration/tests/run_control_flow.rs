@@ -1,4 +1,5 @@
-//! End-to-end: compile control_flow.phx, verify, run on VM.
+//! End-to-end: compile `control_flow.phx`, verify, run on VM.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::Path;
 

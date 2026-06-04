@@ -1,4 +1,5 @@
 //! Integration test: multi-file crate with `#import` and `pub`.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::PathBuf;
 

@@ -168,6 +168,7 @@ fn segment_to_string(seg: &PathSegment, interner: &Interner) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

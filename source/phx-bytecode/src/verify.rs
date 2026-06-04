@@ -279,7 +279,7 @@ fn verify_function_body(
         verify_operands(
             func,
             *rel,
-            &inst,
+            inst,
             &inst_starts,
             code_len,
             fn_arity,
@@ -289,11 +289,8 @@ fn verify_function_body(
 
     let summary =
         analyze_stack_cfg(&instructions, &inst_starts, fn_arity).map_err(|e| match e {
-            StackFlowError::Underflow { offset } => VerifyError::StackUnderflow {
-                function_id: func.function_id,
-                offset,
-            },
-            StackFlowError::JoinDepthMismatch { offset, .. } => VerifyError::StackUnderflow {
+            StackFlowError::Underflow { offset }
+            | StackFlowError::JoinDepthMismatch { offset, .. } => VerifyError::StackUnderflow {
                 function_id: func.function_id,
                 offset,
             },
@@ -311,6 +308,7 @@ fn verify_function_body(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn verify_operands(
     func: &FunctionRecord,
     offset: u32,
@@ -380,15 +378,15 @@ fn verify_operands(
         | Opcode::BitOr
         | Opcode::BitXor
         | Opcode::Shl
-        | Opcode::Shr => {
-            if inst.operands.len() != 1 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::Neg | Opcode::Not | Opcode::BitNot => {
+        | Opcode::Shr
+        | Opcode::Neg
+        | Opcode::Not
+        | Opcode::BitNot
+        | Opcode::MakeTuple
+        | Opcode::MakeArray
+        | Opcode::Trap
+        | Opcode::Alloc
+        | Opcode::MakeSlice => {
             if inst.operands.len() != 1 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,
@@ -404,31 +402,13 @@ fn verify_operands(
                 });
             }
         }
-        Opcode::Cast => {
-            if inst.operands.len() != 2 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::MakeTuple | Opcode::MakeArray => {
-            if inst.operands.len() != 1 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::Trap => {
-            if inst.operands.len() != 1 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::MakeStruct => {
+        Opcode::Cast
+        | Opcode::MakeStruct
+        | Opcode::GetField
+        | Opcode::SetField
+        | Opcode::MatchTag
+        | Opcode::PtrLoad
+        | Opcode::PtrStore => {
             if inst.operands.len() != 2 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,
@@ -438,38 +418,6 @@ fn verify_operands(
         }
         Opcode::MakeEnum => {
             if inst.operands.len() != 3 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::GetField | Opcode::SetField | Opcode::MatchTag => {
-            if inst.operands.len() != 2 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::Alloc => {
-            if inst.operands.len() != 1 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::PtrLoad | Opcode::PtrStore => {
-            if inst.operands.len() != 2 {
-                return Err(VerifyError::MalformedInstruction {
-                    function_id,
-                    offset,
-                });
-            }
-        }
-        Opcode::MakeSlice => {
-            if inst.operands.len() != 1 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,
                     offset,
@@ -493,6 +441,7 @@ fn verify_operands(
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_lossless, clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::{

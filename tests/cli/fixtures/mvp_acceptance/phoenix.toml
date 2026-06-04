@@ -1,0 +1,9 @@
+[project]
+name = "mvp_acceptance"
+version = "0.1.0"
+description = "MVP acceptance smoke project"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

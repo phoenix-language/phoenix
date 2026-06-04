@@ -17,6 +17,10 @@ use crate::project::PackageType;
 type ExportMap = HashMap<Symbol, DefId>;
 
 /// Resolves all modules in `loaded` into a [`ResolvedProgram`].
+///
+/// # Errors
+///
+/// Returns [`DiagnosticBag`] when imports, duplicates, or `main` validation fail.
 pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticBag> {
     let LoadedCrate {
         mut interner,
@@ -135,15 +139,23 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         return Err(bag);
     }
 
-    let root_module = source_modules
-        .iter()
-        .find(|m| m.id == root.index())
-        .expect("root module");
+    let root_index = root.index();
+    let program = if let Some(m) = source_modules.iter().find(|m| m.id == root_index) {
+        m.program.clone()
+    } else {
+        source_modules
+            .first()
+            .map(|m| m.program.clone())
+            .unwrap_or_else(|| phx_syntax::ast::decl::Program {
+                imports: Vec::new(),
+                items: Vec::new(),
+            })
+    };
 
     Ok(ResolvedProgram {
-        program: root_module.program.clone(),
+        program,
         modules: source_modules,
-        root: root.index(),
+        root: root_index,
         interner,
         defs,
         resolutions,

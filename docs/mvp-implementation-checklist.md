@@ -4,7 +4,7 @@
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
-**Last surveyed:** working tree @ `53beb46`. **`cargo test --workspace`:** all crates green. **`tests/cli/run.sh`:** 26 single-file fixtures + 1 multi-file module run.
+**Last surveyed:** working tree @ `ea154f7` (plus hygiene pass). **`cargo test --workspace`:** all crates green. **`cargo clippy --workspace --all-targets -- -D warnings`:** green. **`tests/cli/run.sh`:** 29 single-file fixtures + `modules/main.phx`. **MVP acceptance:** [tests/cli/fixtures/mvp_acceptance/](../tests/cli/fixtures/mvp_acceptance/). **CI:** `.github/workflows/ci.yml` `rust` (fmt, clippy, tests) + `cli` (check, run, build, compile, help).
 
 ---
 
@@ -28,7 +28,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Expressions + explicit `as` casts | **pass** | Cross-width/int/float explicit `as`; VM `Cast` opcode |
 | Modules `#import` + `pub` (M1) | **pass** | `--module-src` / `check_file_with_module_path` |
 | M2 project build (`phoenix.toml`, linker) | **pass** | `build.sh`, `run_build.rs`, `run_dep_build.rs` |
-| CLI (`phx check`, `run`, `compile`, `build`) | **pass** | CI runs `check.sh` + `run.sh` |
+| CLI (`phx check`, `run`, `compile`, `build`) | **pass** | CI: `rust` + `cli` jobs (`check`, `run`, `build`, `compile`, `help`) |
 | Use-after-move (MVP ownership) | **pass** | Move-site `note:` in `use_after_move.phx` |
 
 ### [mvp.md](design/mvp.md) — out of scope (correctly absent)
@@ -64,10 +64,11 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 
 | Issue | Impact |
 |-------|--------|
-| `#import` without module context | `compile_source` / bare `phx check file.phx` → `ImportNotSupported`; use `--module-src` or project build |
+| `#import` without module context | `compile_source` / bare `phx check file.phx` → `ImportNotSupported`; use `--module-src`, `check_file` parent dir, or `phoenix.toml` project |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
-| CI scope | Split Rust vs CLI jobs in GitHub Actions |
+| Generics | Local inference scaffold only; full generic fn/typeck incomplete |
+| Parser ergonomics | Bounded fixes (e.g. unclosed `(`); broader grammar ambiguities may remain |
 
 ---
 
@@ -78,17 +79,9 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Aggregates | Arena handles: struct, enum, tuple, fixed array, **slice** `(ptr, len)` |
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
 | Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (internal) |
+| Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
 | Lifetime / drop | **Not implemented** — values live until frame/arena teardown; see [Roadmap](#roadmap-beyond-single-file-mvp) |
 | Text | **No primitive `string`** — `[u8; N]`, `b"…"`, slices; std will own a string-like type over bytes |
-
-### Known gaps (do not assume done)
-
-| Issue | Impact |
-|-------|--------|
-| `#import` without module context | Bare `phx check` / `compile_source` → `ImportNotSupported`; use `--module-src` or `phoenix.toml` project |
-| Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
-| Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
-| Unreachable `match` arms | No warning for dead arms (exhaustiveness errors only) |
 
 ---
 
@@ -101,14 +94,14 @@ A credible MVP demo `.phx` should be able to:
 - [x] Use `const` / `var`, assignment, and `s32` arithmetic (`+`, `-`, `*`, `/`, comparisons)
 - [x] Use `if` / `else` as expressions with unified branch types
 - [x] Use `while`, `loop`, `break`, `continue`, `return`
-- [x] Use `match` on `s32` / `bool` literals and `_` (with `match (expr)` syntax)
+- [x] Use `match` on `s32` / `bool` literals and `_` (`match scrutinee { … }`, no required parens)
 - [x] Use short-circuit `&&` / `||` on `bool`
 - [x] Construct and use **user** `struct` / `enum` values with field/tag access at runtime
 - [x] Explicit `expr as Type` casts where types differ (per [type-system.md](design/features/type-system.md))
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
 
-**Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **`run.sh`:** 26 programs + `modules/main.phx`.
+**Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **`run.sh`:** 29 programs + `modules/main.phx`. **Acceptance project:** `mvp_acceptance/` via `build.sh`.
 
 ---
 
@@ -433,7 +426,9 @@ A credible MVP demo `.phx` should be able to:
 | Integration `run_sample`                  | done    | `tests/integration/tests/run_sample.rs` |                                                     |                                                      |
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |
 | Integration semantics                       | done    | `tests/integration/run_semantics.rs`    | Asserts computed locals                             | `sample_arithmetic_computes_sum`, etc.               |
-| Corpus of `.phx` programs                 | done    | `tests/cli/fixtures/`                   | 26 run + modules + project + app_dep                | [tests/cli/README.md](../tests/cli/README.md)        |
+| Corpus of `.phx` programs                 | done    | `tests/cli/fixtures/`                   | 29 run + modules + project + `mvp_acceptance` + app_dep | [tests/cli/README.md](../tests/cli/README.md)        |
+| MVP acceptance project                    | done    | `tests/cli/fixtures/mvp_acceptance/`    | Struct + enum `match` + `#import` + `phoenix.toml` build | `build.sh`, `run_build.rs`                           |
+| Unreachable `match` arm errors            | done    | `typeck/check.rs`, `match_unreachable_arm.phx` | Duplicate variant/literal/`_` arms rejected          | `check.sh`                                             |
 | Negative diagnostics fixtures             | done    | `check.sh`                              | `bad_type`, `missing_main`, `use_after_move`, `mixed_width`, module errors | Substring + caret assertions                         |
 
 
@@ -488,7 +483,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **26
 
 ### Phase 4 — Polish (mostly done)
 
-1. Parser ergonomics for known ambiguities (parenthesis rules or grammar fixes) — open.
+1. ~~Parser ergonomics (unclosed `(`)~~ — bounded fix in `parser/expr.rs`; broader grammar ambiguities may remain.
 2. ~~Checklist/table hygiene and negative fixtures~~ — `mixed_width.phx`, fixture inventory in `tests/cli/README.md`.
 3. ~~Use-after-move diagnostics cite source span at move site~~ — `format.rs` + `use_after_move.phx`.
 4. ~~Enum struct-variant `match` arms + exhaustiveness~~ — `enum_match_struct.phx`, `NonExhaustiveMatch`.

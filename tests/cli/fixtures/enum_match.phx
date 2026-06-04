@@ -5,7 +5,7 @@ Maybe :: enum {
 
 main :: () => {
     const m: Maybe = Some(42);
-    const n: s32 = match (m) {
+    const n: s32 = match m {
         None => 0;
         Some(x) => x;
     };

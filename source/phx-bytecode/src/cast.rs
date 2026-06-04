@@ -1,4 +1,14 @@
 //! Primitive cast targets shared by codegen and VM.
+//!
+//! Conversions use truncating/wrapping Rust casts on purpose — Phoenix `as` is explicit
+//! and may narrow or change representation (see design type-system.md).
+
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
 
 use crate::scalar::ScalarValue;
 
@@ -133,7 +143,7 @@ fn scalar_to_i128(value: ScalarValue, _from: PrimitiveKind) -> i128 {
         ScalarValue::Bool(b) => i128::from(b),
         ScalarValue::F32(v) => f64::from(v) as i128,
         ScalarValue::F64(v) => v as i128,
-        ScalarValue::Ptr(p) => i128::try_from(p).unwrap_or(0),
+        ScalarValue::Ptr(p) => i128::from(p),
     }
 }
 
