@@ -1,5 +1,6 @@
 //! `.pxi` v1 JSON read/write (minimal parser, no external deps).
 
+use std::fmt::Write;
 use std::path::Path;
 
 use super::hash::digest_bytes;
@@ -48,28 +49,33 @@ impl PxiFile {
     pub fn to_json(&self) -> String {
         let mut out = String::new();
         out.push_str("{\n");
-        out.push_str(&format!("  \"format_version\": {},\n", self.format_version));
-        out.push_str(&format!(
-            "  \"logical_module\": {},\n",
+        let _ = writeln!(out, "  \"format_version\": {},", self.format_version);
+        let _ = writeln!(
+            out,
+            "  \"logical_module\": {},",
             json_string(&self.logical_module)
-        ));
-        out.push_str(&format!(
-            "  \"source_hash\": {},\n",
+        );
+        let _ = writeln!(
+            out,
+            "  \"source_hash\": {},",
             json_string(&self.source_hash)
-        ));
+        );
         match &self.origin {
-            Some(o) => out.push_str(&format!("  \"origin\": {},\n", json_string(o))),
+            Some(o) => {
+                let _ = writeln!(out, "  \"origin\": {},", json_string(o));
+            }
             None => out.push_str("  \"origin\": null,\n"),
         }
         out.push_str("  \"exports\": [\n");
         for (i, e) in self.exports.iter().enumerate() {
             let comma = if i + 1 < self.exports.len() { "," } else { "" };
-            out.push_str(&format!(
-                "    {{\"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}\n",
+            let _ = writeln!(
+                out,
+                "    {{\"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}",
                 json_string(&e.name),
                 json_string(&e.kind),
                 json_string(&e.signature)
-            ));
+            );
         }
         out.push_str("  ],\n");
         out.push_str("  \"dependencies\": [\n");
@@ -79,11 +85,12 @@ impl PxiFile {
             } else {
                 ""
             };
-            out.push_str(&format!(
-                "    {{\"logical_module\": {}, \"pxi_hash\": {}}}{comma}\n",
+            let _ = writeln!(
+                out,
+                "    {{\"logical_module\": {}, \"pxi_hash\": {}}}{comma}",
                 json_string(&d.logical_module),
                 json_string(&d.pxi_hash)
-            ));
+            );
         }
         out.push_str("  ]\n");
         out.push('}');
@@ -127,8 +134,7 @@ impl PxiFile {
     /// Returns true when `source_path` bytes match `source_hash`.
     pub fn source_is_fresh(&self, source_path: &Path) -> bool {
         std::fs::read(source_path)
-            .map(|b| digest_bytes(&b) == self.source_hash)
-            .unwrap_or(false)
+            .is_ok_and(|b| digest_bytes(&b) == self.source_hash)
     }
 
     /// Digest of this file's canonical JSON (for dependency tracking).
@@ -246,7 +252,7 @@ fn extract_u32(text: &str, key: &str) -> Option<u32> {
     let pat = format!("\"{key}\":");
     let pos = text.find(&pat)? + pat.len();
     let rest = text[pos..].trim_start();
-    let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let num: String = rest.chars().take_while(char::is_ascii_digit).collect();
     num.parse().ok()
 }
 

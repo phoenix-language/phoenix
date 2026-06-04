@@ -87,6 +87,7 @@ pub fn load_crate(
 }
 
 /// Loads a crate from `entry_file` using workspace + dependency packages.
+#[allow(clippy::too_many_lines)]
 pub fn load_crate_with_context(
     entry_file: &Path,
     ctx: &CrateLoadContext,

@@ -29,19 +29,9 @@ pub fn emit_function(
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
 ) -> EmittedFunction {
-    pool.collect_from_function(func);
     let block_starts = compute_block_starts(func);
     let (code, stack_max) = emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts);
     EmittedFunction { code, stack_max }
-}
-
-impl ConstPoolBuilder {
-    /// Walks all instructions in `func` to intern constants.
-    pub fn collect_from_function(&mut self, func: &IrFunction) {
-        for block in &func.blocks {
-            self.collect_insts(&block.insts);
-        }
-    }
 }
 
 fn encoded_size(inst: &IrInst) -> u32 {
@@ -54,23 +44,24 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::Neg { .. }
         | IrInst::Not { .. }
         | IrInst::BitNot { .. }
-        | IrInst::MakeSlice { .. } => with_operands(1),
-        IrInst::Const { .. } | IrInst::LoadLocal { .. } | IrInst::StoreLocal { .. } => {
-            with_operands(2)
-        }
-        IrInst::Call { .. } | IrInst::Jump { .. } | IrInst::AddressOfLocal { .. } => {
-            with_operands(1)
-        }
-        IrInst::MakeStruct { .. } | IrInst::GetField { .. } | IrInst::SetField { .. } => {
-            with_operands(2)
-        }
+        | IrInst::MakeSlice { .. }
+        | IrInst::Call { .. }
+        | IrInst::Jump { .. }
+        | IrInst::AddressOfLocal { .. }
+        | IrInst::MakeTuple { .. }
+        | IrInst::MakeArray { .. }
+        | IrInst::TrapGivenMismatch => with_operands(1),
+        IrInst::Const { .. }
+        | IrInst::LoadLocal { .. }
+        | IrInst::StoreLocal { .. }
+        | IrInst::MakeStruct { .. }
+        | IrInst::GetField { .. }
+        | IrInst::SetField { .. }
+        | IrInst::MatchTag { .. }
+        | IrInst::Cast { .. }
+        | IrInst::PtrLoad { .. } => with_operands(2),
         IrInst::MakeEnum { .. } => with_operands(3),
-        IrInst::MatchTag { .. } => with_operands(2),
-        IrInst::Cast { .. } => with_operands(2),
-        IrInst::MakeTuple { .. } | IrInst::MakeArray { .. } => with_operands(1),
-        IrInst::TrapGivenMismatch => with_operands(1),
         IrInst::Return { .. } | IrInst::Index { .. } => 2,
-        IrInst::PtrLoad { .. } => with_operands(2),
     }
 }
 
@@ -257,12 +248,7 @@ fn compute_ir_stack_max(
         }
 
         // Empty merge blocks share the next block's bytecode offset; still enqueue fallthrough.
-        if block.insts.is_empty() {
-            let next = block_id.saturating_add(1);
-            if (next as usize) < func.blocks.len() {
-                try_enqueue_ir_block(next, depth, &mut entry_depth, &mut worklist);
-            }
-        } else if !block_terminates {
+        if block.insts.is_empty() || !block_terminates {
             let next = block_id.saturating_add(1);
             if (next as usize) < func.blocks.len() {
                 try_enqueue_ir_block(next, depth, &mut entry_depth, &mut worklist);
@@ -296,10 +282,11 @@ fn try_enqueue_ir_block(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn emit_inst(
     out: &mut Vec<u8>,
     inst: &IrInst,
-    pool: &mut ConstPoolBuilder,
+    _pool: &mut ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     block_starts: &[u32],
 ) {
@@ -307,7 +294,7 @@ fn emit_inst(
         IrInst::Const {
             index, prim_kind, ..
         } => {
-            let pool_idx = pool.pool_index_for_literal(*index);
+            let pool_idx = ConstPoolBuilder::pool_index_for_literal(*index);
             out.extend(encode(Opcode::Const, &[pool_idx, u32::from(*prim_kind)]));
         }
         IrInst::LoadLocal {

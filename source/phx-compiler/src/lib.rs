@@ -1,37 +1,4 @@
 //! Phoenix compiler — resolve, type-check, lower, and codegen to bytecode.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    clippy::cast_possible_wrap,
-    clippy::format_push_string,
-    clippy::too_many_lines,
-    clippy::map_unwrap_or,
-    clippy::for_kv_map,
-    clippy::assigning_clones,
-    clippy::match_same_arms,
-    clippy::needless_pass_by_value,
-    clippy::collapsible_if,
-    clippy::collapsible_match,
-    clippy::nonminimal_bool,
-    clippy::redundant_closure_for_method_calls,
-    clippy::zero_sized_map_values,
-    clippy::unused_self,
-    clippy::wrong_self_convention,
-    clippy::useless_conversion,
-    clippy::unnecessary_wraps,
-    clippy::unnecessary_lazy_evaluations,
-    clippy::unnecessary_fallible_conversions,
-    clippy::too_many_arguments,
-    clippy::single_match,
-    clippy::needless_range_loop,
-    clippy::needless_lifetimes,
-    clippy::len_zero,
-    clippy::implicit_hasher,
-    clippy::ignored_unit_patterns,
-    clippy::if_same_then_else,
-    clippy::if_not_else
-)]
 //!
 //! [`compile_source`] and [`check_file`] run parse → resolve → typeck.
 //! [`compile_to_module`] continues through [`lower::lower`] and [`codegen::codegen`].

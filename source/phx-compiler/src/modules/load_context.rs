@@ -41,7 +41,7 @@ impl CrateLoadContext {
     #[must_use]
     pub fn from_config(config: &ProjectConfig) -> Self {
         let mut dependencies = Vec::new();
-        for (_key, dep) in &config.dependencies {
+        for dep in config.dependencies.values() {
             let dep_root = config.root.join(&dep.path);
             if let Ok(dep_cfg) = ProjectConfig::load(&dep_root) {
                 dependencies.push(PackageRoot::from_config(&dep_cfg));

@@ -202,10 +202,10 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
             let inner = line[1..line.len() - 1].trim();
             if let Some(key) = inner.strip_prefix("dependencies.") {
                 dep_key = Some(key.to_owned());
-                section = "dependencies".to_owned();
+                "dependencies".clone_into(&mut section);
             } else {
                 dep_key = None;
-                section = inner.to_owned();
+                inner.clone_into(&mut section);
             }
             continue;
         }
@@ -217,18 +217,15 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         match section.as_str() {
             "project" => match key {
                 "name" => name = Some(value.to_owned()),
-                "version" => version = value.to_owned(),
-                "description" => description = value.to_owned(),
+                "version" => value.clone_into(&mut version),
+                "description" => value.clone_into(&mut description),
                 "type" => {
                     package_type = Some(parse_package_type(value)?);
                 }
                 "module_src" => module_src = PathBuf::from(value),
                 _ => {}
             },
-            "build" => match key {
-                "dir" => build_dir = PathBuf::from(value),
-                _ => {}
-            },
+            "build" if key == "dir" => build_dir = PathBuf::from(value),
             "dependencies" => {
                 if key == "path" {
                     let Some(ref dk) = dep_key else {

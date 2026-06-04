@@ -136,7 +136,7 @@ impl ModulePath {
         let segments: Vec<String> = path
             .segments
             .iter()
-            .filter_map(|s| segment_to_string(s, interner))
+            .map(|s| segment_to_string(s, interner))
             .collect();
         Self::new(segments)
     }
@@ -147,7 +147,7 @@ impl ModulePath {
         let segments: Vec<String> = path
             .segments
             .iter()
-            .filter_map(|s| segment_to_string(s, interner))
+            .map(|s| segment_to_string(s, interner))
             .collect();
         if segments.len() <= 1 {
             let item = segments.first().cloned().unwrap_or_default();
@@ -159,12 +159,12 @@ impl ModulePath {
     }
 }
 
-fn segment_to_string(seg: &PathSegment, interner: &Interner) -> Option<String> {
+fn segment_to_string(seg: &PathSegment, interner: &Interner) -> String {
     let sym = match seg {
         PathSegment::Ident(i) => i.symbol,
         PathSegment::Type(t) => t.symbol,
     };
-    Some(interner.resolve(sym).to_owned())
+    interner.resolve(sym).to_owned()
 }
 
 #[cfg(test)]

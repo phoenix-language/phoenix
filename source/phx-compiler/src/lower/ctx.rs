@@ -238,8 +238,7 @@ pub fn bool_ty(typed: &TypedProgram) -> TypeId {
 #[must_use]
 pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
     primitive_kind_for_type(&typed.types, ty)
-        .map(|k| k.as_u8())
-        .unwrap_or(SLOT_KIND_AGG)
+        .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8)
 }
 
 /// Maps slot for symbol in layout.

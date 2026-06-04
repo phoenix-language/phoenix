@@ -39,26 +39,25 @@ pub fn build_project(
     entry_file: Option<&Path>,
     force: bool,
 ) -> Result<BuildResult, BuildError> {
-    for (_key, dep) in &config.dependencies {
+    for dep in config.dependencies.values() {
         build_dependency(config, &config.root.join(&dep.path), force)?;
     }
     build_package(config, entry_file, force, None)
 }
 
+#[allow(clippy::too_many_lines)] // incremental build driver: single orchestration pass
 fn build_package(
     config: &ProjectConfig,
     entry_file: Option<&Path>,
     force: bool,
     layout_override: Option<BuildLayout>,
 ) -> Result<BuildResult, BuildError> {
-    let entry_file = entry_file
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| config.default_entry_file());
+    let entry_file = entry_file.map_or_else(|| config.default_entry_file(), Path::to_path_buf);
 
     let layout = layout_override.unwrap_or_else(|| BuildLayout::new(config));
     layout
         .ensure_workspace_dirs(config.package_type)
-        .map_err(io_err)?;
+        .map_err(|e| io_err(&e))?;
 
     let ctx = CrateLoadContext::from_config(config);
     let entry_logical = entry_logical_path(config, &entry_file)?;
@@ -76,16 +75,14 @@ fn build_package(
 
     let needs_full = force || !output_path.is_file() || old_manifest.is_none();
 
-    if !needs_full {
-        if let Some(ref old) = old_manifest {
-            if all_modules_fresh(old, &loaded, &layout, &ctx) {
+    if !needs_full
+        && let Some(ref old) = old_manifest
+            && all_modules_fresh(old, &loaded, &layout, &ctx) {
                 return Ok(BuildResult {
                     output_path,
                     entry_logical,
                 });
             }
-        }
-    }
 
     let resolved = resolve_crate(loaded.clone()).map_err(BuildError::Resolve)?;
     let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
@@ -138,16 +135,16 @@ fn build_package(
                 verify_pxi_exports(old, &logical, &pxi)?;
             }
             pxi.write_to_path(&artifacts.pxi)
-                .map_err(|e| io_err_path(&artifacts.pxi, e))?;
+                .map_err(|e| io_err_path(&artifacts.pxi, &e))?;
         }
 
         let module_ir = lower_module(&typed, module.id.index());
         let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root);
         let bytes = obj.encode();
         if let Some(parent) = artifacts.phx0.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, e))?;
+            std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;
         }
-        std::fs::write(&artifacts.phx0, &bytes).map_err(|e| io_err_path(&artifacts.phx0, e))?;
+        std::fs::write(&artifacts.phx0, &bytes).map_err(|e| io_err_path(&artifacts.phx0, &e))?;
 
         link_inputs.push(LinkInput {
             logical_path: logical.clone(),
@@ -191,7 +188,7 @@ fn build_package(
     let linked = link_modules(&link_inputs, entry_fn).map_err(BuildError::Link)?;
     write_module(&output_path, &linked)?;
 
-    manifest.write(&manifest_path).map_err(io_err)?;
+    manifest.write(&manifest_path).map_err(|e| io_err(&e))?;
 
     Ok(BuildResult {
         output_path,
@@ -206,12 +203,12 @@ fn build_dependency(
 ) -> Result<(), BuildError> {
     let dep_cfg = ProjectConfig::load(dep_root).map_err(BuildError::Project)?;
     let dep_layout = BuildLayout::for_dependency(consumer, &dep_cfg.name);
-    dep_layout.ensure_dep_dirs().map_err(io_err)?;
+    dep_layout.ensure_dep_dirs().map_err(|e| io_err(&e))?;
     let out = dep_layout.lib_path(&dep_cfg.name);
     if out.is_file() && !force {
         return Ok(());
     }
-    for (_key, nested) in &dep_cfg.dependencies {
+    for nested in dep_cfg.dependencies.values() {
         build_dependency(consumer, &dep_cfg.root.join(&nested.path), force)?;
     }
     build_package(&dep_cfg, None, force, Some(dep_layout))?;
@@ -222,7 +219,7 @@ fn append_dependency_link_inputs(
     config: &ProjectConfig,
     link_inputs: &mut Vec<LinkInput>,
 ) -> Result<(), BuildError> {
-    for (_key, dep) in &config.dependencies {
+    for dep in config.dependencies.values() {
         let dep_root = config.root.join(&dep.path);
         let dep_cfg = ProjectConfig::load(&dep_root).map_err(BuildError::Project)?;
         let dep_layout = BuildLayout::for_dependency(config, &dep_cfg.name);
@@ -267,7 +264,7 @@ pub fn load_project_binary(config: &ProjectConfig) -> Result<BytecodeModule, Bui
     }
     let layout = BuildLayout::new(config);
     let bin_path = layout.bin_path(config.output_name());
-    let bytes = std::fs::read(&bin_path).map_err(|e| io_err_path(&bin_path, e))?;
+    let bytes = std::fs::read(&bin_path).map_err(|e| io_err_path(&bin_path, &e))?;
     BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
         path: bin_path,
         message: format!("{e:?}"),
@@ -360,19 +357,19 @@ fn verify_pxi_exports(
 
 fn write_module(path: &Path, module: &BytecodeModule) -> Result<(), BuildError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(io_err)?;
+        std::fs::create_dir_all(parent).map_err(|e| io_err(&e))?;
     }
-    std::fs::write(path, module.encode()).map_err(|e| io_err_path(path, e))
+    std::fs::write(path, module.encode()).map_err(|e| io_err_path(path, &e))
 }
 
-fn io_err(e: std::io::Error) -> BuildError {
+fn io_err(e: &std::io::Error) -> BuildError {
     BuildError::Io {
         path: PathBuf::new(),
         message: e.to_string(),
     }
 }
 
-fn io_err_path(path: &Path, e: std::io::Error) -> BuildError {
+fn io_err_path(path: &Path, e: &std::io::Error) -> BuildError {
     BuildError::Io {
         path: path.to_path_buf(),
         message: e.to_string(),

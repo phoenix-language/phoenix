@@ -127,6 +127,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> BytecodeModule {
 
 /// Codegens one module's IR slice using global function ids for [`IrInst::Call`].
 #[must_use]
+#[allow(clippy::implicit_hasher)]
 pub fn codegen_module(
     ir: &IrModule,
     typed: &TypedProgram,

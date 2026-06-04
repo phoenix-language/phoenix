@@ -2,7 +2,7 @@
 
 use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
 
-use crate::ir::{IrConst, IrInst};
+use crate::ir::IrConst;
 
 /// Builder for a deduplicated [`ConstPool`].
 #[derive(Debug, Default)]
@@ -26,13 +26,8 @@ impl ConstPoolBuilder {
 
     /// Pool index equals `constants` index when built via [`Self::fill_from_ir`].
     #[must_use]
-    pub fn pool_index_for_literal(&self, literal_index: u32) -> u32 {
+    pub const fn pool_index_for_literal(literal_index: u32) -> u32 {
         literal_index
-    }
-
-    /// Collects all [`IrInst::Const`] from `insts` (no-op when literals are pre-filled).
-    pub fn collect_insts(&mut self, insts: &[IrInst]) {
-        let _ = insts;
     }
 
     /// Finishes the pool.
@@ -63,7 +58,11 @@ fn ir_const_to_entry(lit: &IrConst) -> ConstEntry {
                 _ => ConstTag::Float64,
             },
             payload: match kind {
-                PrimitiveKind::F32 => (*v as f32).to_le_bytes().to_vec(),
+                PrimitiveKind::F32 => {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let narrow = *v as f32;
+                    narrow.to_le_bytes().to_vec()
+                }
                 _ => v.to_le_bytes().to_vec(),
             },
         },
@@ -78,6 +77,13 @@ fn ir_const_to_entry(lit: &IrConst) -> ConstEntry {
     }
 }
 
+/// Narrowing/wrapping casts for literal pool bytes (Phoenix `as` semantics).
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
 fn scalar_bytes_i128(v: i128, kind: PrimitiveKind) -> Vec<u8> {
     match kind {
         PrimitiveKind::S8 => (v as i8).to_le_bytes().to_vec(),
@@ -97,11 +103,11 @@ fn scalar_bytes_i128(v: i128, kind: PrimitiveKind) -> Vec<u8> {
 }
 
 trait PrimUnsigned {
-    fn is_unsigned(self) -> bool;
+    fn is_unsigned(&self) -> bool;
 }
 
 impl PrimUnsigned for PrimitiveKind {
-    fn is_unsigned(self) -> bool {
+    fn is_unsigned(&self) -> bool {
         matches!(
             self,
             PrimitiveKind::U8

@@ -52,7 +52,7 @@ pub(crate) fn lower_one_function(
     })
 }
 
-fn find_function_in_crate<'a>(typed: &'a TypedProgram, def: DefId) -> Option<&'a Function> {
+fn find_function_in_crate(typed: &TypedProgram, def: DefId) -> Option<&Function> {
     let def_record = typed.resolved.defs.get(def.index() as usize)?;
     let module = typed
         .resolved

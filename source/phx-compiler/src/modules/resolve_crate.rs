@@ -1,6 +1,6 @@
 //! Cross-module name resolution for a loaded crate.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{DiagnosticBag, ResolveError};
 use phx_syntax::Interner;
@@ -21,6 +21,7 @@ type ExportMap = HashMap<Symbol, DefId>;
 /// # Errors
 ///
 /// Returns [`DiagnosticBag`] when imports, duplicates, or `main` validation fail.
+#[allow(clippy::too_many_lines)]
 pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticBag> {
     let LoadedCrate {
         mut interner,
@@ -144,12 +145,10 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         m.program.clone()
     } else {
         source_modules
-            .first()
-            .map(|m| m.program.clone())
-            .unwrap_or_else(|| phx_syntax::ast::decl::Program {
+            .first().map_or_else(|| phx_syntax::ast::decl::Program {
                 imports: Vec::new(),
                 items: Vec::new(),
-            })
+            }, |m| m.program.clone())
     };
 
     Ok(ResolvedProgram {
@@ -163,6 +162,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_import_bindings(
     module: &LoadedModule,
     path_index: &HashMap<String, ModuleId>,
@@ -174,7 +174,7 @@ fn build_import_bindings(
     bag: &mut DiagnosticBag,
 ) -> Vec<(Symbol, DefId, bool)> {
     let mut bindings = Vec::new();
-    let mut seen: HashMap<Symbol, ()> = HashMap::new();
+    let mut seen: HashSet<Symbol> = HashSet::new();
 
     for imp in &module.program.imports {
         let target_path = if imp.inner.items.is_some() {
@@ -197,7 +197,7 @@ fn build_import_bindings(
             .is_some_and(|list| list.items.iter().any(|i| matches!(i, ImportItem::Glob)));
         if glob {
             for (&sym, &def_id) in dep_exports {
-                if seen.insert(sym, ()).is_some() {
+                if !seen.insert(sym) {
                     bag.push(ResolveError::DuplicateImport {
                         span: imp.span,
                         name: interner.resolve(sym).to_owned(),
@@ -228,7 +228,7 @@ fn build_import_bindings(
 
         for sym in import_symbols {
             if let Some(&def_id) = dep_exports.get(&sym) {
-                if seen.insert(sym, ()).is_some() {
+                if !seen.insert(sym) {
                     bag.push(ResolveError::DuplicateImport {
                         span: imp.span,
                         name: interner.resolve(sym).to_owned(),
@@ -237,7 +237,13 @@ fn build_import_bindings(
                 }
                 let is_type = is_type_def(defs, def_id);
                 bindings.push((sym, def_id, is_type));
-            } else if find_private_in_module(defs, dep_idx as u32, sym).is_some() {
+            } else if find_private_in_module(
+                defs,
+                u32::try_from(dep_idx).unwrap_or(u32::MAX),
+                sym,
+            )
+            .is_some()
+            {
                 bag.push(ResolveError::ImportNotExported {
                     span: imp.span,
                     name: interner.resolve(sym).to_owned(),

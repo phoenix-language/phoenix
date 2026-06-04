@@ -209,6 +209,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn collect_top_level_decl(&mut self, decl: &TopLevelDecl) {
         match decl {
             TopLevelDecl::Struct {
@@ -616,11 +617,10 @@ impl<'a> TypeChecker<'a> {
                     let _ = self.check_expr_node(e);
                 }
             }
-            Stmt::Continue => {
-                if self.loop_depth == 0 {
+            Stmt::Continue
+                if self.loop_depth == 0 => {
                     self.error_loop_control_outside_loop("continue", loop_control_stmt_span(stmt));
                 }
-            }
             Stmt::While { cond, body } => {
                 let c = self.check_expr_node(cond);
                 if !self.types_equal(c, self.bool_ty) {
@@ -1154,11 +1154,10 @@ impl<'a> TypeChecker<'a> {
             }
 
             match &arm.pattern.inner {
-                Pattern::Wildcard => {
-                    if arm.guard.is_none() {
+                Pattern::Wildcard
+                    if arm.guard.is_none() => {
                         after_unconditional_wildcard = true;
                     }
-                }
                 Pattern::Literal(lit) => {
                     if covered_literals
                         .iter()

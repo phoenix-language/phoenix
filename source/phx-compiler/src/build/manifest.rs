@@ -1,6 +1,7 @@
 //! `build/manifest.json` for incremental rebuilds.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 use crate::pxi::digest_bytes;
@@ -54,26 +55,28 @@ impl BuildManifest {
 
     fn to_json(&self) -> String {
         let mut out = String::from("{\n");
-        out.push_str(&format!("  \"entry\": {},\n", json_str(&self.entry)));
-        out.push_str(&format!("  \"bin_path\": {},\n", json_str(&self.bin_path)));
+        let _ = writeln!(out, "  \"entry\": {},", json_str(&self.entry));
+        let _ = writeln!(out, "  \"bin_path\": {},", json_str(&self.bin_path));
         out.push_str("  \"modules\": {\n");
         let keys: Vec<_> = self.modules.keys().collect();
         for (i, key) in keys.iter().enumerate() {
             let m = &self.modules[*key];
             let comma = if i + 1 < keys.len() { "," } else { "" };
-            out.push_str(&format!("    {}: {{\n", json_str(key)));
-            out.push_str(&format!("      \"source\": {},\n", json_str(&m.source)));
-            out.push_str(&format!(
-                "      \"source_hash\": {},\n",
+            let _ = writeln!(out, "    {}: {{", json_str(key));
+            let _ = writeln!(out, "      \"source\": {},", json_str(&m.source));
+            let _ = writeln!(
+                out,
+                "      \"source_hash\": {},",
                 json_str(&m.source_hash)
-            ));
-            out.push_str(&format!("      \"pxi_hash\": {},\n", json_str(&m.pxi_hash)));
-            out.push_str(&format!(
-                "      \"phx0_path\": {},\n",
+            );
+            let _ = writeln!(out, "      \"pxi_hash\": {},", json_str(&m.pxi_hash));
+            let _ = writeln!(
+                out,
+                "      \"phx0_path\": {},",
                 json_str(&m.phx0_path)
-            ));
-            out.push_str(&format!("      \"pxi_path\": {}\n", json_str(&m.pxi_path)));
-            out.push_str(&format!("    }}{comma}\n"));
+            );
+            let _ = writeln!(out, "      \"pxi_path\": {}", json_str(&m.pxi_path));
+            let _ = writeln!(out, "    }}{comma}");
         }
         out.push_str("  }\n}\n");
         out
@@ -100,7 +103,7 @@ fn parse_manifest(text: &str) -> BuildManifest {
     if let Some(bin) = extract_string(text, "bin_path") {
         manifest.bin_path = bin;
     }
-    for (logical, _) in extract_module_keys(text) {
+    for (logical, ()) in extract_module_keys(text) {
         let prefix = format!("\"{logical}\"");
         if let Some(pos) = text.find(&prefix) {
             let chunk = &text[pos..];
@@ -148,14 +151,13 @@ fn extract_module_keys(text: &str) -> Vec<(String, ())> {
     let slice = &text[mods..];
     for line in slice.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('"') && trimmed.contains("::") && trimmed.ends_with(": {") {
-            if let Some(name) = trimmed
+        if trimmed.starts_with('"') && trimmed.contains("::") && trimmed.ends_with(": {")
+            && let Some(name) = trimmed
                 .strip_prefix('"')
                 .and_then(|s| s.strip_suffix("\": {"))
             {
                 out.push((name.to_owned(), ()));
             }
-        }
     }
     out
 }

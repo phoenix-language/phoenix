@@ -75,9 +75,7 @@ fn lower_given(
         .layout
         .bindings
         .iter()
-        .find(|b| b.slot == temp)
-        .map(|b| b.ty)
-        .unwrap_or_else(|| unit_ty(ctx.typed));
+        .find(|b| b.slot == temp).map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
 
     lower_expr(ctx, scrutinee);
     ctx.emit(IrInst::StoreLocal {

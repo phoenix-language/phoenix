@@ -33,6 +33,7 @@ fn lower_expr_typed(ctx: &mut LowerCtx<'_>, expr: &ExprNode) -> TypeId {
     ty
 }
 
+#[allow(clippy::too_many_lines)]
 fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
     match expr {
         Expr::Literal(lit) => lower_literal(ctx, lit, result_ty),
@@ -115,8 +116,7 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 {
                     if elem == slice_elem {
                         let elem_kind = primitive_kind_for_type(&ctx.typed.types, *elem)
-                            .map(|k| k.as_u8())
-                            .unwrap_or(SLOT_KIND_AGG);
+                            .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8);
                         ctx.emit(IrInst::MakeSlice { elem_kind });
                     }
                 } else if let (Some(from_k), Some(to_k)) = (
@@ -196,8 +196,8 @@ fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u
             } else {
                 PrimitiveKind::S32
             };
-            let raw = i128::try_from(i.value)
-                .unwrap_or_else(|_| if i.value < 0 { i128::MIN } else { i128::MAX });
+            let raw = i.value;
+            #[allow(clippy::cast_possible_truncation)]
             let stored = PrimitiveKind::apply_cast(ScalarValue::I32(raw as i32), from, to);
             let (value, kind) = scalar_to_ir_const(stored, to);
             Some(ctx.intern_const(IrConst::Int(value, kind)))
@@ -216,6 +216,11 @@ fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u
     }
 }
 
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss
+)]
 fn scalar_to_ir_const(v: ScalarValue, kind: PrimitiveKind) -> (i128, PrimitiveKind) {
     let n = match v {
         ScalarValue::I8(x) => i128::from(x),
@@ -227,11 +232,11 @@ fn scalar_to_ir_const(v: ScalarValue, kind: PrimitiveKind) -> (i128, PrimitiveKi
         ScalarValue::U16(x) => i128::from(x),
         ScalarValue::U32(x) => i128::from(x),
         ScalarValue::U64(x) => i128::from(x),
-        ScalarValue::U128(x) => x as i128,
+        ScalarValue::U128(x) => x.cast_signed(),
         ScalarValue::F32(x) => return (i128::from(x as i32), kind),
         ScalarValue::F64(x) => return (x as i128, kind),
         ScalarValue::Bool(b) => i128::from(b),
-        ScalarValue::Ptr(p) => i128::try_from(p).unwrap_or(0),
+        ScalarValue::Ptr(p) => i128::from(p),
     };
     (n, kind)
 }
@@ -767,9 +772,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
         .layout
         .bindings
         .iter()
-        .find(|b| b.slot == temp)
-        .map(|b| b.ty)
-        .unwrap_or_else(|| unit_ty(ctx.typed));
+        .find(|b| b.slot == temp).map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
 
     lower_expr(ctx, scrutinee);
     ctx.emit(IrInst::StoreLocal {
@@ -943,6 +946,7 @@ fn find_enum_variant_by_name(ctx: &LowerCtx<'_>, name: Symbol) -> Option<(u32, u
     None
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn bind_match_pattern(
     ctx: &mut LowerCtx<'_>,
     pat: &Pattern,

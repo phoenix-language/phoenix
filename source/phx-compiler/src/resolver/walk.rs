@@ -99,13 +99,13 @@ impl Resolver<'_> {
             TopLevelDecl::Function(f) => {
                 let id = self.define_exported(f.name.symbol, span, DefKind::Fn, exported);
                 if self.is_main_name(f.name.symbol) {
-                    if self.current_module != self.root_module {
+                    if self.current_module == self.root_module {
+                        self.main_fn = Some(id);
+                    } else {
                         self.bag.push(ResolveError::MainNotInEntry {
                             span,
                             module: self.logical_path.to_owned(),
                         });
-                    } else {
-                        self.main_fn = Some(id);
                     }
                 }
             }
