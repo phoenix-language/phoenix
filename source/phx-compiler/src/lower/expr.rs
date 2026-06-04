@@ -784,6 +784,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
         test_blocks.push(ctx.fresh_block());
         body_blocks.push(ctx.fresh_block());
     }
+    let trap_id = ctx.fresh_block();
     let merge_id = ctx.fresh_block();
 
     ctx.emit(IrInst::Jump {
@@ -792,7 +793,7 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
 
     for (i, arm) in arms.iter().enumerate() {
         let fail_id = if i + 1 == arms.len() {
-            merge_id
+            trap_id
         } else {
             test_blocks[i + 1]
         };
@@ -820,6 +821,9 @@ fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) 
         lower_expr(ctx, &arm.body);
         ctx.emit(IrInst::Jump { target: merge_id });
     }
+
+    ctx.set_current(trap_id);
+    ctx.emit(IrInst::TrapGivenMismatch);
 
     ctx.set_current(merge_id);
 }

@@ -12,7 +12,7 @@ use phx_syntax::ast::decl::{
 use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
-use phx_syntax::ast::pat::Pattern;
+use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
@@ -636,6 +636,7 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let s = self.check_expr_node(scrutinee);
                 self.check_pattern(&pattern.inner, s, pattern.span);
+                self.check_given_exhaustiveness(s, &pattern.inner, pattern.span);
                 self.check_block(&body.inner);
             }
             Stmt::Unsafe(body) => self.check_block(&body.inner),
@@ -1133,6 +1134,21 @@ impl<'a> TypeChecker<'a> {
 
     fn symbol_name(&self, symbol: Symbol) -> String {
         self.resolved.interner.resolve(symbol).to_owned()
+    }
+
+    fn check_given_exhaustiveness(&mut self, scrutinee: TypeId, pat: &Pattern, span: Span) {
+        let arm = MatchArm {
+            pattern: Node::new(pat.clone(), span),
+            guard: None,
+            body: Node::new(
+                Expr::Literal(Literal::Int(phx_syntax::ast::lit::IntLit {
+                    value: 0,
+                    suffix: phx_syntax::token::IntegerSuffix::None,
+                })),
+                span,
+            ),
+        };
+        self.check_match_exhaustiveness(scrutinee, std::slice::from_ref(&arm), span);
     }
 
     fn check_match_exhaustiveness(

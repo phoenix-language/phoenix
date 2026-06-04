@@ -185,6 +185,22 @@ fn codegen_struct_point_emits_make_struct() {
 }
 
 #[test]
+fn deep_logical_chain_verifies_and_runs() {
+    let source = include_str!("../../../tests/cli/fixtures/deep_logical_chain.phx");
+    let unit = compile_source(source, None).unwrap();
+    let module = codegen(&lower(&unit.typed), &unit.typed);
+    verify(&module).expect("deep && chain should verify");
+}
+
+#[test]
+fn deep_logical_or_chain_verifies() {
+    let source = include_str!("../../../tests/cli/fixtures/deep_logical_or_chain.phx");
+    let unit = compile_source(source, None).unwrap();
+    let module = codegen(&lower(&unit.typed), &unit.typed);
+    verify(&module).expect("deep || chain should verify");
+}
+
+#[test]
 fn assign_to_var_emits_store_local() {
     let source = "main :: () => { var i: s32 = 0; i = i + 1; const _ = i; };";
     let unit = compile_source(source, None).unwrap();

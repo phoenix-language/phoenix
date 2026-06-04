@@ -175,7 +175,7 @@ impl fmt::Display for ResolveError {
             }
             Self::ImportNotSupported { .. } => {
                 f.write_str(
-                    "#import requires a module root; use `phx check --module-src <dir> <file>` or `phx build` from a project with `phoenix.toml`",
+                    "#import requires a module root: pass `--module-src <dir>` with `phx check`/`phx run`, use `phx check path/to/file.phx` (parent directory is the default module root), or run `phx build` from a project with `phoenix.toml`",
                 )
             }
             Self::ModuleNotFound { path, .. } => write!(f, "module not found: `{path}`"),

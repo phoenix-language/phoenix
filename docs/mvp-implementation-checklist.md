@@ -24,8 +24,8 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Fixed arrays, slices | **partial** | Arrays + stack-backed slice views; no heap slices |
 | User `struct` / `enum` / type aliases | **pass** | Type aliases resolve + unify (`typeck.rs` tests) |
 | Traits: parse + `Type :: impl :: Trait` | **pass** | Static dispatch; `trait_eq.phx` |
-| Control flow (`if`, `match`, loops, `return`, `given`) | **partial** | `given` lowers without full pattern dispatch |
-| Expressions + explicit `as` casts | **partial** | Casts: same primitive kind only today |
+| Control flow (`if`, `match`, loops, `return`, `given`) | **pass** | `given` pattern dispatch + enum exhaustiveness |
+| Expressions + explicit `as` casts | **pass** | Cross-width/int/float explicit `as`; VM `Cast` opcode |
 | Modules `#import` + `pub` (M1) | **pass** | `--module-src` / `check_file_with_module_path` |
 | M2 project build (`phoenix.toml`, linker) | **pass** | `build.sh`, `run_build.rs`, `run_dep_build.rs` |
 | CLI (`phx check`, `run`, `compile`, `build`) | **pass** | CI runs `check.sh` + `run.sh` |
@@ -67,8 +67,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | `#import` without module context | `compile_source` / bare `phx check file.phx` → `ImportNotSupported`; use `--module-src` or project build |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
-| Cross-width `as` casts | Same primitive keyword family only (`primitive_cast_allowed`) |
-| CI scope | `build.sh` / `compile.sh` not in GitHub Actions (local `just test-cli`) |
+| CI scope | Split Rust vs CLI jobs in GitHub Actions |
 
 ---
 
@@ -89,7 +88,6 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | `#import` without module context | Bare `phx check` / `compile_source` → `ImportNotSupported`; use `--module-src` or `phoenix.toml` project |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
-| Cross-width `as` casts | Same primitive keyword family only today |
 | Unreachable `match` arms | No warning for dead arms (exhaustiveness errors only) |
 
 ---
@@ -136,7 +134,7 @@ A credible MVP demo `.phx` should be able to:
 | Lower → IR                                                                       | done    | `source/phx-compiler/src/lower/`                       | CFG blocks, `IrInst`                                                 | `lower_sample_produces_ir` test                          |
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
 | PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, **5** sections (incl. local layouts), minor v1           | Round-trip test in `codegen.rs`                          |
-| Bytecode verifier                                                                | partial | `source/phx-bytecode/src/verify.rs`                    | Jump targets, stack depth, locals — for **implemented** opcodes only | `verify(&module)` on `sample.phx` output                 |
+| Bytecode verifier                                                                | done    | `source/phx-bytecode/src/verify.rs`                    | All 43 opcodes: operands, jumps, stack depth, locals               | Negative tests: jump, local, stack underflow             |
 | VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (26 + modules) |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
@@ -192,7 +190,7 @@ A credible MVP demo `.phx` should be able to:
 | ------------------------------------------ | -------- | --------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------ |
 | Literal defaults (`s32`, `u`→`u32`, `f32`) | done     | `typeck/builtins.rs`              |                                                                               | `const_inference_ok`                                   |
 | No implicit numeric widening               | done     | `typeck/ops.rs`                   | Casts explicit only                                                           | Mismatch without `as`                                  |
-| Explicit cast `expr as Type`               | partial  | `typeck/ops.rs`                   | MVP: **same primitive keyword only** (`primitive_cast_allowed`)               | `1 as s64` allowed when designed; today same-kind only |
+| Explicit cast `expr as Type`               | done     | `typeck/ops.rs`, lower, VM `Cast` | Cross-width int/float/bool; array→slice                                       | `cast_width.phx`, `cross_width_cast_ok` test           |
 | Function params explicit; default ret `()` | done     | `typeck/check.rs`                 |                                                                               | Tests                                                  |
 | `if` branch unification                    | done     | `typeck/unify.rs`                 |                                                                               | `if_branch_mismatch`                                   |
 | `while` / `loop` / `break` / `continue`    | done     | `typeck/check.rs`                 | `loop_depth`                                                                  | typeck tests + `control_flow.phx`                      |
@@ -233,10 +231,10 @@ A credible MVP demo `.phx` should be able to:
 | `return`                                      | done    | `lower/stmt.rs`           |                                                                                    |                                          |
 | Function calls                                | done    | `lower/expr.rs`           | `IrInst::Call`                                                                     | Call in sample IR                        |
 | `match`                                       | done    | `lower/expr.rs`           | Primitives + struct/enum via `MatchTag` / `GetField`                               | `enum_match.phx`, `match_int.phx`        |
-| `given`                                       | partial | `lower/stmt.rs`           | Scrutinee + body; no pattern dispatch                                              | Runtime `given` test                     |
+| `given`                                       | done    | `lower/stmt.rs`           | Pattern dispatch via `emit_arm_condition` + `TrapGivenMismatch` on fail            | `given_struct.phx`, `given_enum_non_exhaustive` check  |
 | `?`                                           | deferred  | `lower/expr.rs`           | `PostfixOp::Try => {}`; post-MVP std only                                          | After std: early-return lowering         |
 | Struct / enum value construction              | done    | `lower/expr.rs`           | `MakeStruct`, `MakeEnum`, `GetField`, `SetField`                                  | `struct_point.phx`, `struct_assign.phx`  |
-| Casts                                         | partial | `lower/expr.rs`           | Value passed through unchanged                                                     | Cast changes representation when needed  |
+| Casts                                         | done    | `lower/expr.rs`           | `IrInst::Cast` with `from_kind`/`to_kind`                                          | `cast_width.phx`                         |
 | Field access `x.f`                            | done    | `lower/expr.rs`           | `GetField` / `SetField`                                                           | Aggregate fixtures                       |
 
 
@@ -281,9 +279,9 @@ A credible MVP demo `.phx` should be able to:
 | -------------------------------------- | ------- | ------------------- | ---------------------------------- | ------------------------- |
 | Integer `+ - * /`                      | done    | typeck → lower → VM |                                    | `sample.phx`              |
 | Comparisons `== <` (and `>` via lower) | done    | same                | `Eq`, `Lt` opcodes                 | `if sum > 0` in sample    |
-| `==` chained with bool                 | partial | lower               | `Ne`/`Le`/… partial in lower       | Full comparison set in VM |
+| `==` `!=` `<` `<=` `>` `>=`            | done    | typeck → lower → VM | `Ne`/`Le`/`Ge` + swapped `<` for `>`                             | `compare_unary.phx`       |
 | Logical `&&` `||`                      | done    | typeck → lower → VM       | Short-circuit branch lowering                                      | `logical.phx`             |
-| Unary `-` / `!`                        | partial | typeck              | Lowering drops unary in some paths | Tests                     |
+| Unary `-` / `!`                        | done    | typeck → lower → VM | `Neg`/`Not` opcodes                                                | `compare_unary.phx`       |
 | `bool` literals                        | partial | typeck + VM         |                                    | `const ok: bool = …` runs |
 
 
@@ -300,7 +298,7 @@ A credible MVP demo `.phx` should be able to:
 | `continue`                    | done    | full pipeline              |       | `continue_in_if.phx`                   |
 | `match` (primitives + enum/struct) | done    | full pipeline              |       | `match_int.phx`, `enum_match_struct.phx` |
 | `return`                      | done    | stmt lower + VM         |       | `function_return_stmt_ok`      |
-| `given`                       | partial | typeck; lower partial   |       | `given_struct.phx` runs        |
+| `given`                       | done    | typeck + lower          |       | `given_struct.phx`, exhaustiveness check |
 
 
 ---
@@ -431,7 +429,7 @@ A credible MVP demo `.phx` should be able to:
 | Parser unit tests                         | done    | `source/phx-syntax/tests/parser.rs`     | Includes deferred=unsupported                       |                                                      |
 | Resolver / typeck / lower / codegen tests | done    | `source/phx-compiler/tests/`            |                                                     |                                                      |
 | Verifier tests                            | done    | `source/phx-bytecode/src/verify.rs`     | `#[cfg(test)]`                                      |                                                      |
-| CLI shell tests                           | done    | `tests/cli/*.sh`                        | check, run, build, compile, help                  | CI: `check.sh` + `run.sh`                            |
+| CLI shell tests                           | done    | `tests/cli/*.sh`                        | check, run, build, compile, help                  | CI: `rust` job + `cli` job (all shell scripts)       |
 | Integration `run_sample`                  | done    | `tests/integration/tests/run_sample.rs` |                                                     |                                                      |
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |
 | Integration semantics                       | done    | `tests/integration/run_semantics.rs`    | Asserts computed locals                             | `sample_arithmetic_computes_sum`, etc.               |

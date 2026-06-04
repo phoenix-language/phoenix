@@ -197,17 +197,103 @@ fn emit_blocks(
     block_starts: &[u32],
 ) -> (Vec<u8>, u16) {
     let mut out = Vec::new();
-    let mut max_stack = 0u32;
-    let mut stack = 0u32;
     for block in &func.blocks {
         for inst in &block.insts {
-            apply_ir_stack_effect(inst, &mut stack, def_to_fn, fn_arity);
-            max_stack = max_stack.max(stack);
             emit_inst(&mut out, inst, pool, def_to_fn, block_starts);
         }
     }
+    let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity);
     let stack_max = u16::try_from(max_stack).unwrap_or(u16::MAX);
     (out, stack_max)
+}
+
+/// CFG-aware max stack depth for IR (short-circuit paths are not linear in block order).
+fn compute_ir_stack_max(
+    func: &IrFunction,
+    def_to_fn: &std::collections::HashMap<DefId, u32>,
+    fn_arity: &std::collections::HashMap<u32, u16>,
+) -> u32 {
+    use std::collections::{HashMap, VecDeque};
+
+    if func.blocks.is_empty() {
+        return 0;
+    }
+
+    let mut entry_depth: HashMap<u32, u32> = HashMap::new();
+    let mut max_stack = 0u32;
+    let mut worklist = VecDeque::from([0u32]);
+    entry_depth.insert(0, 0);
+
+    while let Some(block_id) = worklist.pop_front() {
+        let Some(block) = func.blocks.get(block_id as usize) else {
+            continue;
+        };
+        let mut depth = *entry_depth.get(&block_id).unwrap_or(&0);
+        max_stack = max_stack.max(depth);
+
+        let mut block_terminates = false;
+        for inst in &block.insts {
+            apply_ir_stack_effect(inst, &mut depth, def_to_fn, fn_arity);
+            max_stack = max_stack.max(depth);
+
+            match inst {
+                IrInst::Jump { target } => {
+                    try_enqueue_ir_block(*target, depth, &mut entry_depth, &mut worklist);
+                    block_terminates = true;
+                }
+                IrInst::JumpIf {
+                    then_block,
+                    else_block,
+                } => {
+                    try_enqueue_ir_block(*then_block, depth, &mut entry_depth, &mut worklist);
+                    try_enqueue_ir_block(*else_block, depth, &mut entry_depth, &mut worklist);
+                    block_terminates = true;
+                }
+                IrInst::Return { .. } | IrInst::TrapGivenMismatch => {
+                    block_terminates = true;
+                }
+                _ => {}
+            }
+        }
+
+        // Empty merge blocks share the next block's bytecode offset; still enqueue fallthrough.
+        if block.insts.is_empty() {
+            let next = block_id.saturating_add(1);
+            if (next as usize) < func.blocks.len() {
+                try_enqueue_ir_block(next, depth, &mut entry_depth, &mut worklist);
+            }
+        } else if !block_terminates {
+            let next = block_id.saturating_add(1);
+            if (next as usize) < func.blocks.len() {
+                try_enqueue_ir_block(next, depth, &mut entry_depth, &mut worklist);
+            }
+        }
+    }
+
+    max_stack
+}
+
+fn try_enqueue_ir_block(
+    target: u32,
+    depth: u32,
+    entry_depth: &mut std::collections::HashMap<u32, u32>,
+    worklist: &mut std::collections::VecDeque<u32>,
+) {
+    match entry_depth.get(&target).copied() {
+        None => {
+            entry_depth.insert(target, depth);
+            worklist.push_back(target);
+        }
+        Some(existing) if existing == depth => {}
+        Some(existing) => {
+            // Conservative stack allocation: merge with max depth and re-walk if increased.
+            let merged = existing.max(depth);
+            if merged != existing {
+                entry_depth.insert(target, merged);
+                worklist.push_back(target);
+            }
+        }
+    }
 }
 
 fn emit_inst(

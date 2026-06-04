@@ -393,7 +393,15 @@ impl Parser<'_> {
             }
             return Ok(first);
         }
-        self.expect_kind(ExpectedToken::Punct(","), &TokenKind::Comma)?;
+        if !self.eat_kind(&TokenKind::Comma) {
+            return Err(self
+                .expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)
+                .err()
+                .unwrap_or_else(|| ParseError::UnexpectedEof {
+                    expected: ExpectedToken::Punct(")"),
+                    span: self.current_span(),
+                }));
+        }
         let mut elems = vec![first];
         loop {
             elems.push(self.parse_expr()?);

@@ -126,6 +126,37 @@ fn invalid_cast() {
     );
 }
 
+#[test]
+fn cross_width_cast_ok() {
+    ok(
+        "main :: () => { const wide: s64 = 100 as s64; const narrow: u8 = 42 as u8; const bump: s64 = narrow as s64; const _ = wide + bump; };",
+    );
+}
+
+#[test]
+fn signed_unsigned_cast_ok() {
+    ok("main :: () => { const u: u32 = 7 as u32; const s: s64 = u as s64; const _ = s; };");
+}
+
+#[test]
+fn given_enum_non_exhaustive() {
+    let bag = typeck_err(include_str!(
+        "../../../tests/cli/fixtures/given_enum_non_exhaustive.phx"
+    ));
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(e, TypeCheckError::NonExhaustiveMatch { .. }))
+    );
+}
+
+#[test]
+fn unary_neg_not_and_comparisons_ok() {
+    ok(include_str!(
+        "../../../tests/cli/fixtures/compare_unary.phx"
+    ));
+}
+
 fn typed(source: &str) -> phx_compiler::TypedProgram {
     compile_source(source, None)
         .unwrap_or_else(|e| panic!("expected ok: {e}"))

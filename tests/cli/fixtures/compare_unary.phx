@@ -1,0 +1,14 @@
+main :: () => {
+    const a: s32 = 10;
+    const b: s32 = 3;
+    const neg: s32 = -a;
+    const not_ok: bool = !true;
+    const eq: bool = a == b;
+    const ne: bool = a != b;
+    const lt: bool = a < b;
+    const le: bool = a <= b;
+    const gt: bool = a > b;
+    const ge: bool = a >= b;
+    const score: s32 = if eq { 1 } else { 0 };
+    const _ = neg + score + (if ne { 1 } else { 0 }) + (if lt { 0 } else { 1 }) + (if le { 0 } else { 1 }) + (if gt { 1 } else { 0 }) + (if ge { 1 } else { 0 }) + (if not_ok { 0 } else { 1 });
+};

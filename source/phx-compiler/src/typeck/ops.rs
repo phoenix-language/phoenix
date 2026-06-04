@@ -131,7 +131,10 @@ pub fn check_unary(
     }
 }
 
-/// Returns `true` when `from` may be cast to `to` explicitly (MVP: same primitive kind only).
+/// Returns `true` when `from` may be cast to `to` explicitly (MVP: primitives and array→slice).
+///
+/// Numeric casts allow cross-width and signed/unsigned/float combinations via explicit `as`;
+/// there is no implicit widening in expressions.
 #[must_use]
 pub fn check_cast(env: &AliasEnv<'_>, from: TypeId, to: TypeId) -> bool {
     let from = normalize_type(env, from);

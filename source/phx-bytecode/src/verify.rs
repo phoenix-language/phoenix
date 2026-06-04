@@ -7,7 +7,7 @@ use super::header::MAGIC;
 use super::instr::{InstrError, Instruction};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
-use super::stack_effect::{StackEffectError, apply_stack_effect};
+use super::stack_flow::{StackFlowError, analyze_stack_cfg};
 
 /// Verifier failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -275,9 +275,6 @@ fn verify_function_body(
     }
 
     let code_len = func.code_len;
-    let mut depth = 0u32;
-    let mut max_depth = 0u32;
-
     for (rel, inst) in &instructions {
         verify_operands(
             func,
@@ -288,40 +285,20 @@ fn verify_function_body(
             fn_arity,
             const_count,
         )?;
-
-        let call_arity = if inst.opcode == Opcode::Call {
-            let callee = inst.operands.first().copied().unwrap_or(0);
-            Some(
-                *fn_arity
-                    .get(&callee)
-                    .ok_or(VerifyError::InvalidCallTarget {
-                        function_id: func.function_id,
-                        callee,
-                    })?,
-            )
-        } else {
-            None
-        };
-
-        let field_count = match inst.opcode {
-            Opcode::MakeStruct => Some(inst.operands.get(1).copied().unwrap_or(0)),
-            Opcode::MakeEnum => Some(inst.operands.get(2).copied().unwrap_or(0)),
-            Opcode::MakeTuple | Opcode::MakeArray => inst.operands.first().copied(),
-            _ => None,
-        };
-
-        apply_stack_effect(inst.opcode, &mut depth, call_arity, field_count).map_err(
-            |e| match e {
-                StackEffectError::Underflow
-                | StackEffectError::MissingCallArity
-                | StackEffectError::MissingFieldCount => VerifyError::StackUnderflow {
-                    function_id: func.function_id,
-                    offset: *rel,
-                },
-            },
-        )?;
-        max_depth = max_depth.max(depth);
     }
+
+    let summary =
+        analyze_stack_cfg(&instructions, &inst_starts, fn_arity).map_err(|e| match e {
+            StackFlowError::Underflow { offset } => VerifyError::StackUnderflow {
+                function_id: func.function_id,
+                offset,
+            },
+            StackFlowError::JoinDepthMismatch { offset, .. } => VerifyError::StackUnderflow {
+                function_id: func.function_id,
+                offset,
+            },
+        })?;
+    let max_depth = summary.max_depth;
 
     if max_depth > u32::from(func.stack_max) {
         return Err(VerifyError::StackExceedsMax {
@@ -644,6 +621,56 @@ mod tests {
                 limit: 0,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn reject_stack_underflow() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Add,
+                operands: vec![PrimitiveKind::S32.as_u8() as u32],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::StackUnderflow { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_malformed_cast_operands() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Cast,
+                operands: vec![PrimitiveKind::S32.as_u8() as u32],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
         ));
     }
 }

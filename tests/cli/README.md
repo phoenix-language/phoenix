@@ -39,6 +39,7 @@ CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `
 | [`enum_match_struct.phx`](fixtures/enum_match_struct.phx) | positive | `run.sh` | Exit 0; struct-payload enum `match` |
 | [`struct_method.phx`](fixtures/struct_method.phx) | positive | `run.sh` | Exit 0; inherent impl method call |
 | [`cast_width.phx`](fixtures/cast_width.phx) | positive | `run.sh` | Exit 0; explicit `as` cast |
+| [`compare_unary.phx`](fixtures/compare_unary.phx) | positive | `run.sh` | Exit 0; unary `-`/`!` and full comparisons |
 | [`mod_bitwise.phx`](fixtures/mod_bitwise.phx) | positive | `run.sh` | Exit 0; `%`, shifts, bitwise ops |
 | [`array_index.phx`](fixtures/array_index.phx) | positive | `run.sh` | Exit 0; fixed array index |
 | [`tuple_lit.phx`](fixtures/tuple_lit.phx) | positive | `run.sh` | Exit 0; tuple literal |
@@ -61,6 +62,7 @@ CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `
 | [`missing_main.phx`](fixtures/missing_main.phx) | negative | `check.sh` | Non-zero; missing `main` |
 | [`use_after_move.phx`](fixtures/use_after_move.phx) | negative | `check.sh` | Non-zero; use-after-move + move-site `note:` |
 | [`mixed_width.phx`](fixtures/mixed_width.phx) | negative | `check.sh` | Non-zero; implicit mixed-width arithmetic |
+| [`given_enum_non_exhaustive.phx`](fixtures/given_enum_non_exhaustive.phx) | negative | `check.sh` | Non-zero; non-exhaustive `given` on enum |
 | [`modules/import_private.phx`](fixtures/modules/import_private.phx) | negative | `check.sh` | Non-zero; import of non-`pub` symbol |
 | [`modules/cycle_a.phx`](fixtures/modules/cycle_a.phx) | negative | `check.sh` | Non-zero; circular `#import` |
 

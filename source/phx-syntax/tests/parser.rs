@@ -9,7 +9,7 @@
     clippy::too_many_lines
 )]
 
-use phx_diagnostics::{LexError, ParseError};
+use phx_diagnostics::{ExpectedToken, LexError, ParseError};
 use phx_syntax::ast::decl::{FnDirective, StructBody, TopLevelDecl, Variant};
 use phx_syntax::ast::expr::{AssignOp, Expr};
 use phx_syntax::ast::stmt::{BlockItem, Stmt};
@@ -1197,6 +1197,22 @@ fn error_missing_semicolon_top_level() {
         matches!(
             e,
             ParseError::UnexpectedToken { .. } | ParseError::UnexpectedEof { .. }
+        )
+    });
+}
+
+#[test]
+fn error_unclosed_paren_in_expr() {
+    assert_parse_err(&in_main_expr("(1 + 2;"), |e| {
+        matches!(
+            e,
+            ParseError::UnexpectedToken {
+                expected: ExpectedToken::Punct(")"),
+                ..
+            } | ParseError::UnexpectedEof {
+                expected: ExpectedToken::Punct(")"),
+                ..
+            }
         )
     });
 }

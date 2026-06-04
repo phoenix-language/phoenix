@@ -19,6 +19,9 @@ FIXTURES=(
   enum_match_struct.phx
   struct_method.phx
   cast_width.phx
+  compare_unary.phx
+  deep_logical_chain.phx
+  deep_logical_or_chain.phx
   mod_bitwise.phx
   array_index.phx
   tuple_lit.phx

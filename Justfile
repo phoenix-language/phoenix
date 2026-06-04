@@ -20,7 +20,7 @@ test:
 test-integration:
     cargo test -p phx-integration-tests
 
-test-cli:
+test-lang:
     tests/cli/check.sh
     tests/cli/run.sh
     tests/cli/help.sh
