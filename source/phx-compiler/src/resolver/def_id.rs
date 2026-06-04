@@ -55,6 +55,8 @@ pub enum DefKind {
     Impl,
     /// Generic type parameter.
     GenericParam,
+    /// Closure expression (synthetic name; capture table in [`super::ResolvedProgram::closures`]).
+    Closure,
     /// Trait associated type.
     TraitAssocType,
 }
@@ -72,18 +74,28 @@ pub struct Def {
     pub module: u32,
     /// `true` when the item is exported (`pub` on the top-level item).
     pub exported: bool,
+    /// Lexical scope depth when this binding was introduced.
+    pub scope_depth: u32,
 }
 
 impl Def {
     /// Creates a definition record.
     #[must_use]
-    pub const fn new(kind: DefKind, name: Symbol, span: Span, module: u32, exported: bool) -> Self {
+    pub const fn new(
+        kind: DefKind,
+        name: Symbol,
+        span: Span,
+        module: u32,
+        exported: bool,
+        scope_depth: u32,
+    ) -> Self {
         Self {
             kind,
             name,
             span,
             module,
             exported,
+            scope_depth,
         }
     }
 }

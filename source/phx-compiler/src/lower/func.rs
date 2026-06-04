@@ -27,7 +27,12 @@ pub(crate) fn lower_one_function(
     constants: &mut Vec<IrConst>,
 ) -> Option<IrFunction> {
     let source = find_function_in_crate(typed, layout.def)?;
-    let mut ctx = LowerCtx::new(typed, layout, constants);
+    let module = typed
+        .resolved
+        .defs
+        .get(layout.def.index() as usize)
+        .map_or(0, |d| d.module);
+    let mut ctx = LowerCtx::new(typed, module, layout, constants);
     lower_block_value(&mut ctx, &source.body.inner);
     lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
 

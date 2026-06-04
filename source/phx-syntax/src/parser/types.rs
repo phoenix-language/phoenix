@@ -24,7 +24,7 @@ impl Parser<'_> {
             self.expect_fat_arrow()?;
             let ret = self.parse_type_expr()?;
             let span = self.span_from(start);
-            return Ok(Node::new(
+            return Ok(self.node(
                 Type::Function {
                     params,
                     ret: Box::new(ret),
@@ -44,7 +44,7 @@ impl Parser<'_> {
                 Type::Named {
                     name,
                     generics: None,
-                } => Node::new(
+                } => self.node(
                     Type::Named {
                         name,
                         generics: Some(args),
@@ -64,14 +64,15 @@ impl Parser<'_> {
         match kind {
             TokenKind::Keyword(k) if is_primitive_keyword(k) => {
                 self.bump();
-                Ok(Node::new(Type::Primitive(k), self.span_from(start)))
+                Ok(self.node(Type::Primitive(k), self.span_from(start)))
             }
             TokenKind::TypeIdent(name) => {
                 let span = self.current_span();
                 self.bump();
-                Ok(Node::new(
+                let type_name = self.intern_type_name(name, span)?;
+                Ok(self.node(
                     Type::Named {
-                        name: self.intern_type_name(name, span)?,
+                        name: type_name,
                         generics: None,
                     },
                     self.span_from(start),
@@ -80,9 +81,10 @@ impl Parser<'_> {
             TokenKind::Keyword(Keyword::SelfUpper) => {
                 let span = self.current_span();
                 self.bump();
-                Ok(Node::new(
+                let type_name = self.intern_type_name("Self", span)?;
+                Ok(self.node(
                     Type::Named {
-                        name: self.intern_type_name("Self", span)?,
+                        name: type_name,
                         generics: None,
                     },
                     self.span_from(start),
@@ -94,7 +96,7 @@ impl Parser<'_> {
                     self.eat_kind(&TokenKind::Amp);
                 }
                 let inner = self.parse_type_expr()?;
-                Ok(Node::new(
+                Ok(self.node(
                     Type::Ref {
                         mut_,
                         inner: Box::new(inner),
@@ -108,7 +110,7 @@ impl Parser<'_> {
                     self.eat_kind(&TokenKind::Star);
                 }
                 let inner = self.parse_type_expr()?;
-                Ok(Node::new(
+                Ok(self.node(
                     Type::Ptr {
                         mut_,
                         inner: Box::new(inner),
@@ -119,7 +121,7 @@ impl Parser<'_> {
             TokenKind::LParen => {
                 self.bump();
                 if self.eat_kind(&TokenKind::RParen) {
-                    return Ok(Node::new(Type::Unit, self.span_from(start)));
+                    return Ok(self.node(Type::Unit, self.span_from(start)));
                 }
                 let first = self.parse_type_expr()?;
                 if self.eat_kind(&TokenKind::RParen) {
@@ -134,7 +136,7 @@ impl Parser<'_> {
                     }
                     self.expect_kind(ExpectedToken::Punct(","), &TokenKind::Comma)?;
                 }
-                Ok(Node::new(Type::Tuple(elems), self.span_from(start)))
+                Ok(self.node(Type::Tuple(elems), self.span_from(start)))
             }
             TokenKind::LBracket => {
                 self.bump();
@@ -142,7 +144,7 @@ impl Parser<'_> {
                 if self.eat_kind(&TokenKind::Semicolon) {
                     let len = self.parse_int_lit()?;
                     self.expect_kind(ExpectedToken::Punct("]"), &TokenKind::RBracket)?;
-                    return Ok(Node::new(
+                    return Ok(self.node(
                         Type::Array {
                             elem: Box::new(elem),
                             len,
@@ -151,10 +153,7 @@ impl Parser<'_> {
                     ));
                 }
                 self.expect_kind(ExpectedToken::Punct("]"), &TokenKind::RBracket)?;
-                Ok(Node::new(
-                    Type::Slice(Box::new(elem)),
-                    self.span_from(start),
-                ))
+                Ok(self.node(Type::Slice(Box::new(elem)), self.span_from(start)))
             }
             _ => Err(self.error_unexpected(ExpectedToken::Type)),
         }

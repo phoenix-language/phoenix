@@ -187,13 +187,12 @@ impl<'a> TypeChecker<'a> {
             .map(|(i, _)| DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
     }
 
-    fn lookup_resolution(&self, span: Span, symbol: Symbol) -> Option<DefId> {
+    fn lookup_resolution(&self, node_id: phx_syntax::AstNodeId) -> Option<DefId> {
         self.resolved
             .resolutions
             .get(&ResolutionKey {
-                start: span.start,
-                end: span.end,
-                symbol,
+                module: self.current_module,
+                node_id,
             })
             .copied()
     }
@@ -942,7 +941,7 @@ impl<'a> TypeChecker<'a> {
             );
         }
         if let Some(ty) = self.ownership.binding_type(ident.symbol).or_else(|| {
-            self.lookup_resolution(span, ident.symbol)
+            self.lookup_resolution(ident.id)
                 .and_then(|def| self.value_types.get(&def).copied())
         }) {
             if record_move && !is_copyable(&self.types, ty) {
@@ -950,7 +949,7 @@ impl<'a> TypeChecker<'a> {
             }
             return ty;
         }
-        if let Some(def) = self.lookup_resolution(span, ident.symbol) {
+        if let Some(def) = self.lookup_resolution(ident.id) {
             if let Some(fields) = self.struct_fields.get(&def) {
                 let _ = fields;
             }
@@ -970,7 +969,7 @@ impl<'a> TypeChecker<'a> {
             match &path.segments[0] {
                 PathSegment::Ident(ident) => return self.check_ident(ident, span),
                 PathSegment::Type(name) => {
-                    if let Some(def) = self.lookup_resolution(span, name.symbol) {
+                    if let Some(def) = self.lookup_resolution(name.id) {
                         if let Some(&fn_ty) = self.value_types.get(&def) {
                             if matches!(self.types.get(fn_ty), Ty::Fn { .. }) {
                                 return fn_ty;
@@ -1340,7 +1339,7 @@ impl<'a> TypeChecker<'a> {
 
     fn check_given_exhaustiveness(&mut self, scrutinee: TypeId, pat: &Pattern, span: Span) {
         let arm = MatchArm {
-            pattern: Node::new(pat.clone(), span),
+            pattern: Node::new(pat.clone(), span, phx_syntax::AstNodeId::synthetic(0)),
             guard: None,
             body: Node::new(
                 Expr::Literal(Literal::Int(phx_syntax::ast::lit::IntLit {
@@ -1348,6 +1347,7 @@ impl<'a> TypeChecker<'a> {
                     suffix: phx_syntax::token::IntegerSuffix::None,
                 })),
                 span,
+                phx_syntax::AstNodeId::synthetic(1),
             ),
         };
         self.check_match_exhaustiveness(scrutinee, std::slice::from_ref(&arm), span);

@@ -1,6 +1,5 @@
 //! Shared lowering context: expression-type cursor and CFG builder.
 
-use phx_diagnostics::Span;
 use phx_syntax::Symbol;
 
 use crate::ir::{IrBasicBlock, IrConst, IrInst};
@@ -26,6 +25,8 @@ pub struct LoopLabels {
 pub struct LowerCtx<'a> {
     /// Typed program (AST, types, resolutions).
     pub typed: &'a TypedProgram,
+    /// Module containing the function being lowered (for resolution keys).
+    pub module: u32,
     /// Current function slot layout.
     pub layout: &'a FunctionLayout,
     /// Next [`ExprId`] raw index (must match typeck visit order).
@@ -49,11 +50,13 @@ impl<'a> LowerCtx<'a> {
     #[must_use]
     pub fn new(
         typed: &'a TypedProgram,
+        module: u32,
         layout: &'a FunctionLayout,
         constants: &'a mut Vec<IrConst>,
     ) -> Self {
         Self {
             typed,
+            module,
             layout,
             next_expr: layout.expr_start,
             blocks: vec![IrBasicBlock::new()],
@@ -194,14 +197,14 @@ impl<'a> LowerCtx<'a> {
 
 /// Looks up a use-site resolution.
 #[must_use]
-pub fn lookup_resolution(resolved: &ResolvedProgram, span: Span, symbol: Symbol) -> Option<DefId> {
+pub fn lookup_resolution(
+    resolved: &ResolvedProgram,
+    module: u32,
+    node_id: phx_syntax::AstNodeId,
+) -> Option<DefId> {
     resolved
         .resolutions
-        .get(&ResolutionKey {
-            start: span.start,
-            end: span.end,
-            symbol,
-        })
+        .get(&ResolutionKey { module, node_id })
         .copied()
 }
 

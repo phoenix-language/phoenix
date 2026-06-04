@@ -62,6 +62,9 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             scopes: ScopeStack::default(),
             bag: DiagnosticBag::new(),
             resolutions: HashMap::new(),
+            closures: HashMap::new(),
+            closure_stack: Vec::new(),
+            trait_impls: Vec::new(),
             main_fn: None,
             current_module: module.id.index(),
             root_module: root.index(),
@@ -106,6 +109,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
 
     // Phase 2: resolve bodies with import prefaces (skip modules that failed phase 1).
     let mut resolutions = HashMap::new();
+    let mut closures = HashMap::new();
     for (idx, module) in modules.iter().enumerate() {
         if phase1_skip.contains(&module.id.index()) {
             continue;
@@ -129,6 +133,9 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             scopes: ScopeStack::default(),
             bag: DiagnosticBag::new(),
             resolutions: HashMap::new(),
+            closures: HashMap::new(),
+            closure_stack: Vec::new(),
+            trait_impls: Vec::new(),
             main_fn: None,
             current_module: module.id.index(),
             root_module: root.index(),
@@ -142,6 +149,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             bag.push_located(e);
         }
         resolutions.extend(resolver.resolutions);
+        closures.extend(resolver.closures);
     }
 
     if package_type == PackageType::Bin && main_fn.is_none() {
@@ -173,6 +181,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         interner,
         defs,
         resolutions,
+        closures,
         main_fn,
     })
 }

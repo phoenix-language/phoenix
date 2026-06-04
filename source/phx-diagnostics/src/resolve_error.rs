@@ -140,6 +140,20 @@ pub enum ResolveError {
         /// What failed.
         reason: InvalidMainReason,
     },
+    /// Generic type parameter used as a value identifier.
+    GenericParamInValue {
+        /// Interned parameter name.
+        symbol_index: u32,
+        /// Use site span.
+        span: Span,
+    },
+    /// Second `Type :: impl :: Trait` for the same type and trait.
+    DuplicateTraitImpl {
+        /// Span of the duplicate impl.
+        span: Span,
+        /// Span of the first impl.
+        first_span: Span,
+    },
 }
 
 impl ResolveError {
@@ -162,6 +176,8 @@ impl ResolveError {
             Self::MissingMain { .. } => DiagnosticCode::new("E1013"),
             Self::MainForbiddenInLib { .. } => DiagnosticCode::new("E1014"),
             Self::InvalidMainSignature { .. } => DiagnosticCode::new("E1015"),
+            Self::GenericParamInValue { .. } => DiagnosticCode::new("E1016"),
+            Self::DuplicateTraitImpl { .. } => DiagnosticCode::new("E1017"),
         }
     }
 
@@ -183,7 +199,9 @@ impl ResolveError {
             | Self::MainNotInEntry { span, .. }
             | Self::InvalidMainSignature { span, .. }
             | Self::MainForbiddenInLib { span, .. }
-            | Self::MissingMain { span, .. } => Some(*span),
+            | Self::MissingMain { span, .. }
+            | Self::GenericParamInValue { span, .. }
+            | Self::DuplicateTraitImpl { span, .. } => Some(*span),
         }
     }
 }
@@ -240,6 +258,12 @@ impl fmt::Display for ResolveError {
             }
             Self::InvalidMainSignature { reason, .. } => {
                 write!(f, "invalid `main` signature: {reason}")
+            }
+            Self::GenericParamInValue { symbol_index, .. } => {
+                write!(f, "generic type parameter used as value (sym#{symbol_index})")
+            }
+            Self::DuplicateTraitImpl { .. } => {
+                f.write_str("duplicate trait implementation for the same type and trait")
             }
         }
     }

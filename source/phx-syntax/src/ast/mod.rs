@@ -12,12 +12,14 @@
 //! - [`ident`] — [`Ident`], [`TypeName`], and [`Path`] segments.
 //! - [`lit`] — literal payloads (int, float, bool, byte string).
 //! - [`node`] — [`Node<T>`] span wrapper.
+//! - [`node_id`] — [`AstNodeId`] assigned at parse time.
 
 pub mod decl;
 pub mod expr;
 pub mod ident;
 pub mod lit;
 pub mod node;
+pub mod node_id;
 pub mod pat;
 pub mod stmt;
 pub mod types;
@@ -30,6 +32,7 @@ pub use expr::{AssignOp, BinOp, Expr, ExprNode, PostfixOp, StructFieldInit, Unar
 pub use ident::{Ident, Path, PathSegment, TypeName};
 pub use lit::{FloatLit, IntLit, Literal};
 pub use node::Node;
+pub use node_id::AstNodeId;
 pub use pat::{MatchArm, Pattern, PatternNode, StructPatternField};
 pub use stmt::{Block, BlockItem, BlockNode, Stmt, StmtNode};
 pub use types::{GenericParam, Type};

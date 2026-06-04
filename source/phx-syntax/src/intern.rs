@@ -50,6 +50,12 @@ pub const fn impl_receiver_symbol() -> Symbol {
     Symbol::from_raw(0x8000_0000)
 }
 
+/// Synthetic symbol for closure definitions in the resolver (not a user binding).
+#[must_use]
+pub const fn closure_def_symbol() -> Symbol {
+    Symbol::from_raw(0x8000_0001)
+}
+
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "sym#{}", self.0)

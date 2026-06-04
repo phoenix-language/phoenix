@@ -3,6 +3,7 @@
 //! [`Ident`] and [`TypeName`] store [`Symbol`] indices; [`Path`] is a `::`-separated sequence.
 
 use crate::ast::Node;
+use crate::ast::node_id::AstNodeId;
 use crate::intern::Symbol;
 use phx_diagnostics::Span;
 
@@ -13,6 +14,8 @@ pub struct Ident {
     pub symbol: Symbol,
     /// Source span of this identifier token.
     pub span: Span,
+    /// Parse-time id for name-use resolution.
+    pub id: AstNodeId,
 }
 
 /// A `PascalCase` type name.
@@ -22,6 +25,8 @@ pub struct TypeName {
     pub symbol: Symbol,
     /// Source span of this type name token.
     pub span: Span,
+    /// Parse-time id for type-name resolution.
+    pub id: AstNodeId,
 }
 
 /// A path segment in a module path.

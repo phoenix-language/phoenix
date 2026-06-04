@@ -2,10 +2,10 @@
 
 Reserved and planned AST shapes referenced by compiler reviews. Implementation order follows [mvp.md](../mvp.md).
 
-## Identifier spans
+## Identifier spans and node ids
 
-- **Done (MVP):** [`Ident`](../../source/phx-syntax/src/ast/ident.rs) carries `symbol` + `span` at use sites.
-- **Later:** `TypeName` / `PathSegment` spans for richer path diagnostics.
+- **Done (MVP):** [`Ident`](../../source/phx-syntax/src/ast/ident.rs) and [`TypeName`](../../source/phx-syntax/src/ast/ident.rs) carry `symbol` + `span` at use sites.
+- **Done:** [`AstNodeId`](../../source/phx-syntax/src/ast/node_id.rs) on [`Node<T>`](../../source/phx-syntax/src/ast/node.rs) and identifiers; resolver [`ResolutionKey`](../../source/phx-compiler/src/resolver/mod.rs) keys on `node_id`.
 
 ## Expression variants (planned)
 
@@ -13,7 +13,7 @@ Reserved and planned AST shapes referenced by compiler reviews. Implementation o
 |---------|---------|
 | `Expr::EnumCtor` | Unit/tuple/struct enum constructors without overloading `Postfix` |
 | `Expr::Range` | Parsed; typeck rejects until std range types |
-| `Expr::Lambda` | Parsed; closure typing/lowering TBD |
+| `Expr::Lambda` | Parsed; resolver capture table + `DefKind::Closure`; typeck/lowering TBD |
 | `Expr::RuntimeDirective` | Parsed `@spawn` / `@send` / …; post-MVP runtime |
 
 ## Statement variants (planned)

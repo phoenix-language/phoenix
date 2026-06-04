@@ -5,7 +5,7 @@
 use phx_diagnostics::ExpectedToken;
 
 use crate::ast::pat::{MatchArm, Pattern, StructPatternField};
-use crate::ast::{ExprNode, Node, PatternNode};
+use crate::ast::{ExprNode, PatternNode};
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
@@ -16,7 +16,7 @@ impl Parser<'_> {
         match self.peek_kind() {
             TokenKind::Ident("_") => {
                 self.bump();
-                Ok(Node::new(Pattern::Wildcard, self.span_from(start)))
+                Ok(self.node(Pattern::Wildcard, self.span_from(start)))
             }
             TokenKind::Integer { .. }
             | TokenKind::Float { .. }
@@ -24,12 +24,12 @@ impl Parser<'_> {
             | TokenKind::ByteChar(_)
             | TokenKind::ByteString(_) => {
                 let lit = self.parse_literal()?;
-                Ok(Node::new(Pattern::Literal(lit), self.span_from(start)))
+                Ok(self.node(Pattern::Literal(lit), self.span_from(start)))
             }
             TokenKind::TypeIdent(_) => self.parse_type_pattern(start),
             TokenKind::Ident(_) => {
                 let id = self.parse_ident()?;
-                Ok(Node::new(Pattern::Ident(id), self.span_from(start)))
+                Ok(self.node(Pattern::Ident(id), self.span_from(start)))
             }
             _ => Err(ParseError::InvalidPattern {
                 span: self.current_span(),
@@ -42,10 +42,7 @@ impl Parser<'_> {
         let name = self.parse_type_name()?;
         if self.eat_kind(&TokenKind::LBrace) {
             let fields = self.parse_struct_pattern_fields()?;
-            return Ok(Node::new(
-                Pattern::Struct { name, fields },
-                self.span_from(start),
-            ));
+            return Ok(self.node(Pattern::Struct { name, fields }, self.span_from(start)));
         }
         if self.eat_kind(&TokenKind::LParen) {
             let mut patterns = vec![self.parse_pattern()?];
@@ -53,17 +50,17 @@ impl Parser<'_> {
                 patterns.push(self.parse_pattern()?);
             }
             self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
-            return Ok(Node::new(
-                Pattern::Tuple { name, patterns },
-                self.span_from(start),
-            ));
+            return Ok(self.node(Pattern::Tuple { name, patterns }, self.span_from(start)));
         }
-        Ok(Node::new(
+        let pat_span = self.span_from(start);
+        let pat_id = self.alloc_node_id();
+        Ok(self.node(
             Pattern::Ident(crate::ast::Ident {
                 symbol: name.symbol,
-                span: self.span_from(start),
+                span: pat_span,
+                id: pat_id,
             }),
-            self.span_from(start),
+            pat_span,
         ))
     }
 
@@ -111,7 +108,7 @@ impl Parser<'_> {
         if self.peek_kind() == TokenKind::LBrace {
             let block = self.parse_block()?;
             let span = block.span;
-            return Ok(Node::new(crate::ast::Expr::Block(block), span));
+            return Ok(self.node(crate::ast::Expr::Block(block), span));
         }
         self.parse_expr()
     }

@@ -27,10 +27,7 @@ impl Parser<'_> {
             None
         };
         self.expect_semi()?;
-        Ok(Node::new(
-            ImportDirective { path, items },
-            self.span_from(start),
-        ))
+        Ok(self.node(ImportDirective { path, items }, self.span_from(start)))
     }
 
     /// Parses `{ item, … }` or `{ * }` after `#import path ::`.
@@ -118,10 +115,7 @@ impl Parser<'_> {
         let pub_ = self.eat_keyword(Keyword::Pub);
         let decl = self.parse_top_level_decl()?;
         self.expect_semi()?;
-        Ok(Node::new(
-            TopLevelItem { pub_, decl },
-            self.span_from(start),
-        ))
+        Ok(self.node(TopLevelItem { pub_, decl }, self.span_from(start)))
     }
 
     /// Parses `type`, `const`, `var`, `fn`, or `Name :: struct/enum/trait/impl`.
@@ -338,6 +332,7 @@ impl Parser<'_> {
                 items.push(TraitItem::AssociatedType(crate::ast::Ident {
                     symbol: name.symbol,
                     span,
+                    id: name.id,
                 }));
             } else {
                 let sig = self.parse_function_sig()?;

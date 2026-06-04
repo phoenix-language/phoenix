@@ -6,7 +6,7 @@
 use phx_diagnostics::ExpectedToken;
 
 use crate::ast::stmt::{Block, BlockItem, Stmt};
-use crate::ast::{BlockNode, ExprNode, Node, StmtNode};
+use crate::ast::{BlockNode, ExprNode, StmtNode};
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
@@ -32,7 +32,7 @@ impl Parser<'_> {
                 }
             }
         }
-        Ok(Node::new(Block { items }, self.span_from(start)))
+        Ok(self.node(Block { items }, self.span_from(start)))
     }
 
     /// Parses one block item (stmt, trailing expr, or expr-as-stmt).
@@ -196,7 +196,7 @@ impl Parser<'_> {
                 }
             }
         };
-        Ok(Node::new(stmt, self.span_from(start)))
+        Ok(self.node(stmt, self.span_from(start)))
     }
 }
 

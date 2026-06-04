@@ -14,7 +14,7 @@ use std::borrow::Cow;
 
 use phx_diagnostics::{ExpectedToken, ParseBag, ParseError, Span};
 
-use crate::ast::Program;
+use crate::ast::{AstNodeId, Node, Program};
 use crate::intern::Interner;
 use crate::lexer::lex;
 use crate::source_file::SourceFile;
@@ -32,6 +32,8 @@ pub(crate) struct Parser<'src> {
     pub(crate) interner: Interner,
     /// When set, parse errors are collected and parsing continues at sync points.
     recovery: Option<*mut ParseBag>,
+    /// Next [`AstNodeId`] to assign (monotonic per parse).
+    next_node_id: u32,
 }
 
 impl<'src> Parser<'src> {
@@ -47,7 +49,20 @@ impl<'src> Parser<'src> {
             pos: 0,
             interner,
             recovery: None,
+            next_node_id: 0,
         }
+    }
+
+    /// Allocates the next AST node id for this parse.
+    pub(crate) fn alloc_node_id(&mut self) -> AstNodeId {
+        let id = self.next_node_id;
+        self.next_node_id = id.saturating_add(1);
+        AstNodeId::from_raw(id)
+    }
+
+    /// Wraps `inner` in a [`Node`] with `span` and a fresh id.
+    pub(crate) fn node<T>(&mut self, inner: T, span: Span) -> Node<T> {
+        Node::new(inner, span, self.alloc_node_id())
     }
 
     /// Enables error recovery into `bag` for the remainder of this parse.
@@ -143,7 +158,11 @@ impl<'src> Parser<'src> {
             .interner
             .intern(text)
             .map_err(|_| ParseError::InternTableFull { span })?;
-        Ok(crate::ast::Ident { symbol, span })
+        Ok(crate::ast::Ident {
+            symbol,
+            span,
+            id: self.alloc_node_id(),
+        })
     }
 
     /// Interns `text` as a type identifier (`PascalCase` name) at `span`.
@@ -156,7 +175,11 @@ impl<'src> Parser<'src> {
             .interner
             .intern(text)
             .map_err(|_| ParseError::InternTableFull { span })?;
-        Ok(crate::ast::TypeName { symbol, span })
+        Ok(crate::ast::TypeName {
+            symbol,
+            span,
+            id: self.alloc_node_id(),
+        })
     }
 
     /// Returns `true` when the cursor is at EOF.

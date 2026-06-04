@@ -219,3 +219,48 @@ fn none_ctor_unresolved_until_std() {
             .any(|e| matches!(&e.error, ResolveError::UnresolvedType { .. }))
     );
 }
+
+#[test]
+fn generic_param_in_value_position() {
+    let bag = resolve_err("bad :: <t> () => s32 { t }; main :: () => { };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, ResolveError::GenericParamInValue { .. }) }),
+        "expected GenericParamInValue: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn duplicate_trait_impl_rejected() {
+    let bag = resolve_err(
+        "PartialEq :: trait { eq :: (self: Point, other: Point) => bool; };
+         Point :: struct { x: s32, y: s32, };
+         Point :: impl :: PartialEq {
+             eq :: (self: Point, other: Point) => bool { true };
+         };
+         Point :: impl :: PartialEq {
+             eq :: (self: Point, other: Point) => bool { false };
+         };
+         main :: () => { };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, ResolveError::DuplicateTraitImpl { .. }) })
+    );
+}
+
+#[test]
+fn lambda_closure_records_upvar() {
+    use phx_compiler::resolve;
+    use phx_syntax::parse;
+
+    let src = "main :: () => { const x = 1; const _f = () => x; };";
+    let sf = parse(src).expect("parse");
+    let resolved = resolve(&sf).expect("resolve");
+    assert!(!resolved.closures.is_empty(), "expected closure metadata");
+    let info = resolved.closures.values().next().expect("closure info");
+    assert!(!info.upvars.is_empty(), "expected captured outer binding");
+}

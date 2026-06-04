@@ -25,7 +25,7 @@ use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::{GenericParam, Type};
 use phx_syntax::ast::{BlockNode, ExprNode, Node, PatternNode};
-use phx_syntax::{Symbol, impl_receiver_symbol};
+use phx_syntax::{Symbol, closure_def_symbol, impl_receiver_symbol};
 
 use super::Resolver;
 use super::def_id::{DefId, DefKind};
@@ -174,6 +174,7 @@ impl Resolver<'_> {
                 | DefKind::Param
                 | DefKind::Local
                 | DefKind::Impl
+                | DefKind::Closure
                 | DefKind::TraitAssocType => {}
             }
         }
@@ -181,11 +182,28 @@ impl Resolver<'_> {
 
     fn resolve_top_level_items(&mut self) {
         for item in &self.source.program.items {
-            self.resolve_top_level_decl(&item.inner.decl);
+            self.resolve_top_level_decl(&item.inner.decl, item.span);
         }
     }
 
-    fn resolve_top_level_decl(&mut self, decl: &TopLevelDecl) {
+    fn register_trait_impl(&mut self, type_name: &TypeName, trait_: &Option<TypeName>, span: Span) {
+        let Some(trait_name) = trait_ else {
+            return;
+        };
+        let key = (type_name.symbol, trait_name.symbol);
+        for &(ty, tr, first_span) in &self.trait_impls {
+            if ty == key.0 && tr == Some(key.1) {
+                self.bag.push(
+                    self.current_module,
+                    ResolveError::DuplicateTraitImpl { span, first_span },
+                );
+                return;
+            }
+        }
+        self.trait_impls.push((key.0, Some(key.1), span));
+    }
+
+    fn resolve_top_level_decl(&mut self, decl: &TopLevelDecl, item_span: Span) {
         match decl {
             TopLevelDecl::Struct { generics, body, .. } => {
                 self.scopes.push();
@@ -220,8 +238,13 @@ impl Resolver<'_> {
                 self.scopes.pop();
             }
             TopLevelDecl::Impl {
-                generics, members, ..
+                type_name,
+                generics,
+                trait_,
+                members,
+                ..
             } => {
+                self.register_trait_impl(type_name, trait_, item_span);
                 self.scopes.push();
                 self.resolve_generics(generics);
                 for member in members {
@@ -308,7 +331,7 @@ impl Resolver<'_> {
                 self.define_type(param.name.symbol, span, DefKind::GenericParam);
                 if let Some(bounds) = &param.bounds {
                     for bound in bounds {
-                        self.resolve_type_name(bound, name_span_type(bound));
+                        self.resolve_type_name(bound);
                     }
                 }
             }
@@ -446,7 +469,8 @@ impl Resolver<'_> {
         match ty {
             Type::Primitive(_) => {}
             Type::Named { name, generics } => {
-                self.resolve_type_name(name, span);
+                self.resolve_type_name(name);
+                let _ = span;
                 if let Some(args) = generics {
                     for arg in args {
                         self.resolve_type_node(arg);
@@ -474,39 +498,40 @@ impl Resolver<'_> {
         }
     }
 
-    fn resolve_type_name(&mut self, name: &TypeName, span: Span) {
+    fn resolve_type_name(&mut self, name: &TypeName) {
         let def_id = self.scopes.lookup_type(name.symbol);
         if def_id.is_some() {
-            self.record_resolution(span, name.symbol, def_id);
+            self.record_resolution(name.id, def_id);
         } else {
             self.bag.push(
                 self.current_module,
                 ResolveError::UnresolvedType {
                     symbol_index: name.symbol.index(),
-                    span,
+                    span: name.span,
                 },
             );
         }
     }
 
     /// Resolves a `PascalCase` name in expression position (enum variant ctors before types).
-    fn resolve_type_or_value_name(&mut self, name: &TypeName, span: Span) {
+    fn resolve_type_or_value_name(&mut self, name: &TypeName, expr_span: Span) {
         if let Some(id) = self.scopes.lookup_value(name.symbol) {
-            self.record_resolution(span, name.symbol, Some(id));
+            self.record_resolution(name.id, Some(id));
             return;
         }
-        self.resolve_type_name(name, span);
+        self.resolve_type_name(name);
+        let _ = expr_span;
     }
 
     fn resolve_expr_node(&mut self, expr: &ExprNode) {
-        self.resolve_expr(&expr.inner, expr.span);
+        self.resolve_expr(&expr.inner, expr.id, expr.span);
     }
 
     #[allow(clippy::too_many_lines)]
-    fn resolve_expr(&mut self, expr: &Expr, span: Span) {
+    fn resolve_expr(&mut self, expr: &Expr, node_id: phx_syntax::AstNodeId, span: Span) {
         match expr {
             Expr::Literal(_) => {}
-            Expr::Ident(ident) => self.resolve_ident(ident, span),
+            Expr::Ident(ident) => self.resolve_ident(ident),
             Expr::Path(path) => self.resolve_path_expr(path, span),
             Expr::Tuple(items) | Expr::Array(items) => {
                 for item in items {
@@ -582,13 +607,22 @@ impl Resolver<'_> {
                 self.resolve_expr_node(end);
             }
             Expr::Lambda { params, body } => {
+                let closure_id =
+                    self.alloc_def(DefKind::Closure, closure_def_symbol(), span, false);
+                self.closure_stack.push(closure_id);
+                self.scopes.push();
                 for p in params {
                     match p {
                         Param::Named { name, ty, .. } => {
-                            self.resolve_ident(name, span);
+                            self.define_value(name.symbol, name_span_ident(name), DefKind::Param);
                             self.resolve_type_node(ty);
                         }
                         Param::Receiver { ty, .. } => {
+                            self.define_value(
+                                impl_receiver_symbol(),
+                                Span::new(0, 0),
+                                DefKind::Param,
+                            );
                             if let Some(t) = ty {
                                 self.resolve_type_node(t);
                             }
@@ -601,6 +635,9 @@ impl Resolver<'_> {
                     phx_syntax::ast::expr::LambdaBody::Block(b) => self.resolve_block_node(b),
                     _ => {}
                 }
+                self.scopes.pop();
+                self.closure_stack.pop();
+                let _ = node_id;
             }
             Expr::RuntimeDirective { args, .. } => {
                 for arg in args {
@@ -675,19 +712,46 @@ impl Resolver<'_> {
         }
     }
 
-    fn resolve_ident(&mut self, ident: &Ident, span: Span) {
-        let def_id = self.scopes.lookup_value(ident.symbol);
-        if let Some(id) = def_id {
-            self.record_resolution(span, ident.symbol, Some(id));
-        } else {
-            self.bag.push(
-                self.current_module,
-                ResolveError::UnresolvedIdent {
-                    symbol_index: ident.symbol.index(),
-                    span,
-                },
-            );
+    fn resolve_ident(&mut self, ident: &Ident) {
+        if let Some(id) = self.scopes.lookup_value(ident.symbol) {
+            if self
+                .defs
+                .get(id.index() as usize)
+                .is_some_and(|d| matches!(d.kind, DefKind::GenericParam))
+            {
+                self.push_generic_param_in_value(ident);
+                return;
+            }
+            self.record_resolution(ident.id, Some(id));
+            return;
         }
+        if let Some(id) = self.scopes.lookup_type(ident.symbol) {
+            if self
+                .defs
+                .get(id.index() as usize)
+                .is_some_and(|d| matches!(d.kind, DefKind::GenericParam))
+            {
+                self.push_generic_param_in_value(ident);
+                return;
+            }
+        }
+        self.bag.push(
+            self.current_module,
+            ResolveError::UnresolvedIdent {
+                symbol_index: ident.symbol.index(),
+                span: ident.span,
+            },
+        );
+    }
+
+    fn push_generic_param_in_value(&mut self, ident: &Ident) {
+        self.bag.push(
+            self.current_module,
+            ResolveError::GenericParamInValue {
+                symbol_index: ident.symbol.index(),
+                span: ident.span,
+            },
+        );
     }
 
     fn resolve_path_expr(&mut self, path: &Path, span: Span) {
@@ -695,20 +759,16 @@ impl Resolver<'_> {
             return;
         }
         match &path.segments[0] {
-            PathSegment::Ident(ident) => self.resolve_ident(ident, ident.span),
+            PathSegment::Ident(ident) => self.resolve_ident(ident),
             PathSegment::Type(name) => {
-                self.resolve_type_or_value_name(name, name_span_type(name));
+                self.resolve_type_or_value_name(name, span);
             }
         }
         if path.segments.len() > 1 {
             for seg in &path.segments[1..] {
                 match seg {
-                    PathSegment::Ident(ident) => {
-                        self.resolve_ident(ident, ident.span);
-                    }
-                    PathSegment::Type(name) => {
-                        self.resolve_type_name(name, name_span_type(name));
-                    }
+                    PathSegment::Ident(ident) => self.resolve_ident(ident),
+                    PathSegment::Type(name) => self.resolve_type_name(name),
                 }
             }
         } else {

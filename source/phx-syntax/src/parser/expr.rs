@@ -5,7 +5,6 @@
 
 use phx_diagnostics::ExpectedToken;
 
-use crate::ast::Node;
 use crate::ast::TypeName;
 use crate::ast::decl::Param;
 use crate::ast::expr::{
@@ -31,7 +30,7 @@ impl Parser<'_> {
         while self.eat_keyword(Keyword::As) {
             let ty = self.parse_type()?;
             let span = self.span_from(start);
-            expr = Node::new(
+            expr = self.node(
                 Expr::Cast {
                     expr: Box::new(expr),
                     ty: Box::new(ty),
@@ -51,7 +50,7 @@ impl Parser<'_> {
             self.bump();
             let right = self.parse_assign_expr()?;
             let span = self.span_from(start);
-            return Ok(Node::new(
+            return Ok(self.node(
                 Expr::Assign {
                     op,
                     target: Box::new(left),
@@ -91,7 +90,7 @@ impl Parser<'_> {
             _ => return Ok(left),
         };
         let right = self.parse_equality_expr()?;
-        Ok(Node::new(
+        Ok(self.node(
             Expr::Range {
                 start: Box::new(left),
                 end: Box::new(right),
@@ -114,7 +113,7 @@ impl Parser<'_> {
             };
             let right = self.parse_relational_expr()?;
             let span = left.span.merge(right.span);
-            left = Node::new(
+            left = self.node(
                 Expr::Binary {
                     op,
                     left: Box::new(left),
@@ -139,7 +138,7 @@ impl Parser<'_> {
             self.bump();
             let right = self.parse_bitwise_or_expr()?;
             let span = left.span.merge(right.span);
-            left = Node::new(
+            left = self.node(
                 Expr::Binary {
                     op,
                     left: Box::new(left),
@@ -178,7 +177,7 @@ impl Parser<'_> {
             self.bump();
             let right = self.parse_additive_expr()?;
             let span = left.span.merge(right.span);
-            left = Node::new(
+            left = self.node(
                 Expr::Binary {
                     op,
                     left: Box::new(left),
@@ -201,7 +200,7 @@ impl Parser<'_> {
             self.bump();
             let right = self.parse_multiplicative_expr()?;
             let span = left.span.merge(right.span);
-            left = Node::new(
+            left = self.node(
                 Expr::Binary {
                     op,
                     left: Box::new(left),
@@ -225,7 +224,7 @@ impl Parser<'_> {
             self.bump();
             let right = self.parse_power_expr()?;
             let span = left.span.merge(right.span);
-            left = Node::new(
+            left = self.node(
                 Expr::Binary {
                     op,
                     left: Box::new(left),
@@ -243,7 +242,7 @@ impl Parser<'_> {
         if self.eat_kind(&TokenKind::StarStar) {
             let exp = self.parse_unary_expr()?;
             let span = self.span_from(start);
-            return Ok(Node::new(
+            return Ok(self.node(
                 Expr::Binary {
                     op: BinOp::Pow,
                     left: Box::new(base),
@@ -270,7 +269,7 @@ impl Parser<'_> {
             self.bump();
             let operand = self.parse_unary_expr()?;
             let span = self.span_from(start);
-            return Ok(Node::new(
+            return Ok(self.node(
                 Expr::Unary {
                     op,
                     operand: Box::new(operand),
@@ -328,7 +327,7 @@ impl Parser<'_> {
         if ops.is_empty() {
             return Ok(base);
         }
-        Ok(Node::new(
+        Ok(self.node(
             Expr::Postfix {
                 base: Box::new(base),
                 ops,
@@ -347,7 +346,7 @@ impl Parser<'_> {
             | TokenKind::ByteChar(_)
             | TokenKind::ByteString(_) => {
                 let lit = self.parse_literal()?;
-                Ok(Node::new(Expr::Literal(lit), self.span_from(start)))
+                Ok(self.node(Expr::Literal(lit), self.span_from(start)))
             }
             TokenKind::Ident(name) => {
                 if matches!(self.peek_at(1), TokenKind::ColonColon | TokenKind::LBrace) {
@@ -355,31 +354,32 @@ impl Parser<'_> {
                 }
                 let span = self.current_span();
                 self.bump();
-                Ok(Node::new(
-                    Expr::Ident(self.intern_ident(name, span)?),
-                    self.span_from(start),
-                ))
+                let ident = self.intern_ident(name, span)?;
+                Ok(self.node(Expr::Ident(ident), self.span_from(start)))
             }
             TokenKind::Keyword(Keyword::SelfLower) => {
                 self.bump();
-                Ok(Node::new(
+                let self_span = self.span_from(start);
+                let self_id = self.alloc_node_id();
+                Ok(self.node(
                     Expr::Ident(Ident {
                         symbol: impl_receiver_symbol(),
-                        span: self.span_from(start),
+                        span: self_span,
+                        id: self_id,
                     }),
-                    self.span_from(start),
+                    self_span,
                 ))
             }
             TokenKind::LBrace => {
                 let block = self.parse_block()?;
-                Ok(Node::new(Expr::Block(block), self.span_from(start)))
+                Ok(self.node(Expr::Block(block), self.span_from(start)))
             }
             TokenKind::Keyword(Keyword::If) => self.parse_if_expr(),
             TokenKind::Keyword(Keyword::Match) => self.parse_match_expr(),
             TokenKind::HashUnsafe => {
                 self.bump();
                 let block = self.parse_block()?;
-                Ok(Node::new(Expr::Unsafe(block), self.span_from(start)))
+                Ok(self.node(Expr::Unsafe(block), self.span_from(start)))
             }
             TokenKind::AtSpawn | TokenKind::AtSend | TokenKind::AtReceive | TokenKind::AtReply => {
                 self.parse_runtime_directive()
@@ -398,7 +398,7 @@ impl Parser<'_> {
             if self.eat_kind(&TokenKind::FatArrow) {
                 return self.parse_lambda_body(start, Vec::new());
             }
-            return Ok(Node::new(Expr::Tuple(Vec::new()), self.span_from(start)));
+            return Ok(self.node(Expr::Tuple(Vec::new()), self.span_from(start)));
         }
         if self.lambda_params_start() {
             let params = self.parse_lambda_params()?;
@@ -428,7 +428,7 @@ impl Parser<'_> {
             }
             self.expect_kind(ExpectedToken::Punct(","), &TokenKind::Comma)?;
         }
-        Ok(Node::new(Expr::Tuple(elems), self.span_from(start)))
+        Ok(self.node(Expr::Tuple(elems), self.span_from(start)))
     }
 
     fn parse_array_literal(&mut self) -> Result<ExprNode, ParseError> {
@@ -442,7 +442,7 @@ impl Parser<'_> {
             }
             self.expect_kind(ExpectedToken::Punct("]"), &TokenKind::RBracket)?;
         }
-        Ok(Node::new(Expr::Array(elems), self.span_from(start)))
+        Ok(self.node(Expr::Array(elems), self.span_from(start)))
     }
 
     /// Parses `Type { … }`, `a::b`, or a single-segment path/ident.
@@ -461,6 +461,7 @@ impl Parser<'_> {
                     TypeName {
                         symbol: id.symbol,
                         span: id.span,
+                        id: id.id,
                     },
                     crate::ast::PathSegment::Ident(id),
                     false,
@@ -486,7 +487,7 @@ impl Parser<'_> {
         if self.brace_starts_struct_literal_body(from_type_ident) {
             self.bump();
             let fields = self.parse_struct_field_inits()?;
-            return Ok(Node::new(
+            return Ok(self.node(
                 Expr::StructLit {
                     name: type_name,
                     generics,
@@ -515,12 +516,12 @@ impl Parser<'_> {
                     break;
                 }
             }
-            return Ok(Node::new(
+            return Ok(self.node(
                 Expr::Path(crate::ast::Path { segments }),
                 self.span_from(start),
             ));
         }
-        Ok(Node::new(
+        Ok(self.node(
             Expr::Path(crate::ast::Path {
                 segments: vec![first_segment],
             }),
@@ -612,7 +613,7 @@ impl Parser<'_> {
         } else {
             None
         };
-        Ok(Node::new(
+        Ok(self.node(
             Expr::If {
                 cond: Box::new(cond),
                 then_block,
@@ -633,7 +634,7 @@ impl Parser<'_> {
         while !self.eat_kind(&TokenKind::RBrace) {
             arms.push(self.parse_match_arm()?);
         }
-        Ok(Node::new(
+        Ok(self.node(
             Expr::Match {
                 scrutinee: Box::new(scrutinee),
                 arms,
@@ -656,7 +657,7 @@ impl Parser<'_> {
             self.bump();
             let right = next(self)?;
             let span = left.span.merge(right.span);
-            left = Node::new(
+            left = self.node(
                 Expr::Binary {
                     op,
                     left: Box::new(left),
@@ -702,10 +703,7 @@ impl Parser<'_> {
         } else {
             LambdaBody::Expr(Box::new(self.parse_expr()?))
         };
-        Ok(Node::new(
-            Expr::Lambda { params, body },
-            self.span_from(start),
-        ))
+        Ok(self.node(Expr::Lambda { params, body }, self.span_from(start)))
     }
 
     /// Parses `@spawn` / `@send` / `@receive` / `@reply` primary expressions.
@@ -736,10 +734,7 @@ impl Parser<'_> {
                 vec![a, b]
             }
         };
-        Ok(Node::new(
-            Expr::RuntimeDirective { kind, args },
-            self.span_from(start),
-        ))
+        Ok(self.node(Expr::RuntimeDirective { kind, args }, self.span_from(start)))
     }
 }
 

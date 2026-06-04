@@ -206,6 +206,7 @@ pub fn def_kind_to_pxi(kind: DefKind) -> &'static str {
         | DefKind::Local
         | DefKind::Impl
         | DefKind::GenericParam
+        | DefKind::Closure
         | DefKind::TraitAssocType => "other",
     }
 }

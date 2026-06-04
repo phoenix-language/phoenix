@@ -14,19 +14,35 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use phx_diagnostics::{DiagnosticBag, Span};
-use phx_syntax::{Interner, Program, SourceFile, Symbol};
+use phx_syntax::{AstNodeId, Interner, Program, SourceFile, Symbol};
 
 pub use def_id::{Def, DefId, DefKind};
 
-/// Key for a name-use resolution entry.
+/// Key for a name-use resolution entry (module + parse-time [`AstNodeId`], not span alone).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResolutionKey {
-    /// Span start byte offset.
-    pub start: u32,
-    /// Span end byte offset.
-    pub end: u32,
-    /// Interned name at the use site.
+    /// Owning module (crate-global id).
+    pub module: u32,
+    /// AST node or identifier id at the use site (unique per module parse).
+    pub node_id: AstNodeId,
+}
+
+/// Captured outer binding for a closure body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosureUpvar {
+    /// Captured name.
     pub symbol: Symbol,
+    /// Definition being captured.
+    pub def_id: DefId,
+}
+
+/// Resolved closure metadata keyed by closure [`DefId`].
+#[derive(Debug, Clone, Default)]
+pub struct ClosureInfo {
+    /// Parent closure when nested, if any.
+    pub parent: Option<DefId>,
+    /// Outer bindings referenced from the closure body.
+    pub upvars: Vec<ClosureUpvar>,
 }
 
 /// One source module in a crate.
@@ -60,8 +76,10 @@ pub struct ResolvedProgram {
     pub interner: Interner,
     /// All definitions in this unit.
     pub defs: Vec<Def>,
-    /// Resolved uses keyed by span + symbol.
+    /// Resolved uses keyed by AST node id.
     pub resolutions: HashMap<ResolutionKey, DefId>,
+    /// Closure capture tables keyed by closure definition id.
+    pub closures: HashMap<DefId, ClosureInfo>,
     /// Definition id of `main` when present and valid.
     pub main_fn: Option<DefId>,
 }
@@ -78,6 +96,9 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         scopes: ScopeStack::default(),
         bag: DiagnosticBag::new(),
         resolutions: HashMap::new(),
+        closures: HashMap::new(),
+        closure_stack: Vec::new(),
+        trait_impls: Vec::new(),
         main_fn: None,
         current_module: 0,
         root_module: 0,
@@ -106,6 +127,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         interner,
         defs: resolver.defs,
         resolutions: resolver.resolutions,
+        closures: resolver.closures,
         main_fn: resolver.main_fn,
     })
 }
@@ -118,6 +140,11 @@ pub(crate) struct Resolver<'a> {
     pub(crate) scopes: ScopeStack,
     pub(crate) bag: DiagnosticBag,
     pub(crate) resolutions: HashMap<ResolutionKey, DefId>,
+    pub(crate) closures: HashMap<DefId, ClosureInfo>,
+    /// Active closure defs (innermost last) while resolving lambda bodies.
+    pub(crate) closure_stack: Vec<DefId>,
+    /// `(type, optional trait)` pairs for overlapping trait-impl detection.
+    pub(crate) trait_impls: Vec<(Symbol, Option<Symbol>, Span)>,
     pub(crate) main_fn: Option<DefId>,
     pub(crate) current_module: u32,
     pub(crate) root_module: u32,
@@ -137,8 +164,14 @@ impl Resolver<'_> {
         exported: bool,
     ) -> DefId {
         let id = DefId::from_raw(u32::try_from(self.defs.len()).unwrap_or(u32::MAX));
-        self.defs
-            .push(Def::new(kind, name, span, self.current_module, exported));
+        self.defs.push(Def::new(
+            kind,
+            name,
+            span,
+            self.current_module,
+            exported,
+            self.scopes.depth(),
+        ));
         id
     }
 
@@ -201,19 +234,47 @@ impl Resolver<'_> {
         id
     }
 
-    /// Records a successful name resolution at `span` for later phases.
-    pub(crate) fn record_resolution(&mut self, span: Span, symbol: Symbol, def_id: Option<DefId>) {
-        if let Some(id) = def_id {
-            self.resolutions.insert(
-                ResolutionKey {
-                    start: span.start,
-                    end: span.end,
-                    symbol,
-                },
-                id,
-            );
+    /// Records a successful name resolution at `node_id` for later phases.
+    pub(crate) fn record_resolution(&mut self, node_id: AstNodeId, def_id: Option<DefId>) {
+        let Some(id) = def_id else {
+            return;
+        };
+        self.resolutions.insert(
+            ResolutionKey {
+                module: self.current_module,
+                node_id,
+            },
+            id,
+        );
+        let Some(&closure_id) = self.closure_stack.last() else {
+            return;
+        };
+        let Some(def) = self.defs.get(id.index() as usize) else {
+            return;
+        };
+        if def.scope_depth < self.scopes.depth() {
+            let symbol = symbol_from_def(&self.defs, id);
+            self.record_upvar(closure_id, symbol, id);
         }
     }
+
+    fn record_upvar(&mut self, closure_id: DefId, symbol: Symbol, def_id: DefId) {
+        let info = self
+            .closures
+            .entry(closure_id)
+            .or_insert_with(|| ClosureInfo {
+                parent: self.closure_stack.iter().rev().nth(1).copied(),
+                upvars: Vec::new(),
+            });
+        if !info.upvars.iter().any(|u| u.def_id == def_id) {
+            info.upvars.push(ClosureUpvar { symbol, def_id });
+        }
+    }
+}
+
+fn symbol_from_def(defs: &[Def], id: DefId) -> Symbol {
+    defs.get(id.index() as usize)
+        .map_or_else(|| Symbol::from_raw(0), |d| d.name)
 }
 
 fn is_type_kind(kind: DefKind) -> bool {

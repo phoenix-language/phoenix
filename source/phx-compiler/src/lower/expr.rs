@@ -621,8 +621,8 @@ fn find_trait_method(ctx: &LowerCtx<'_>, type_def: DefId, method: Symbol) -> Opt
 }
 
 fn resolve_variant_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
-    let symbol = path_or_ident_symbol(&base.inner)?;
-    let def = lookup_resolution(&ctx.typed.resolved, base.span, symbol)?;
+    let node_id = path_or_ident_node_id(&base.inner)?;
+    let def = lookup_resolution(&ctx.typed.resolved, ctx.module, node_id)?;
     if ctx.typed.layout.variants.contains_key(&def) {
         Some(def)
     } else {
@@ -631,19 +631,17 @@ fn resolve_variant_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
 }
 
 fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> DefId {
-    if let Some(symbol) = path_or_ident_symbol(&base.inner) {
-        lookup_resolution(&ctx.typed.resolved, base.span, symbol).unwrap_or(DefId::from_raw(0))
-    } else {
-        DefId::from_raw(0)
-    }
+    path_or_ident_node_id(&base.inner)
+        .and_then(|id| lookup_resolution(&ctx.typed.resolved, ctx.module, id))
+        .unwrap_or(DefId::from_raw(0))
 }
 
-fn path_or_ident_symbol(expr: &Expr) -> Option<Symbol> {
+fn path_or_ident_node_id(expr: &Expr) -> Option<phx_syntax::AstNodeId> {
     match expr {
-        Expr::Ident(ident) => Some(ident.symbol),
+        Expr::Ident(ident) => Some(ident.id),
         Expr::Path(path) if path.segments.len() == 1 => match path.segments[0] {
-            PathSegment::Ident(ident) => Some(ident.symbol),
-            PathSegment::Type(TypeName { symbol, .. }) => Some(symbol),
+            PathSegment::Ident(ident) => Some(ident.id),
+            PathSegment::Type(TypeName { id, .. }) => Some(id),
             _ => None,
         },
         _ => None,
