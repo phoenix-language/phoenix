@@ -135,6 +135,10 @@ Block-scoped shadowing is respected: an inner `var x` does not affect move state
 
 Post-MVP ownership analysis will use path-sensitive last-use and move-through-call rules aligned with the full design above.
 
+### MVP: returning borrows of locals
+
+The MVP compiler rejects **returning** a `&T`, `&mut T`, or slice view (`[T]`) whose value is formed from a function-local binding (`var`, `const`, or `match` scrutinee temp). Examples that fail type-check: `return &x` when `x` is a local, or `return arr as [u8]` when `arr` is a local array. Storing a borrow into another local (`const p = &x;`) or using it only inside the function body remains allowed. Full borrow checking (lifetime parameters, borrow exclusivity across branches) is post-MVP.
+
 Large owned values should use borrow for read, move for transfer, and `.clone()` only when duplication is required.
 
 ---

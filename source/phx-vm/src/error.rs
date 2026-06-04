@@ -33,6 +33,10 @@ pub enum VmError {
     GivenMismatch,
     /// Pointer access outside the VM heap.
     HeapOutOfBounds,
+    /// `ConstTag::Bytes` is not loadable in MVP (use `MakeArray` lowering).
+    UnsupportedConst,
+    /// Header `entry_function_id` is `ENTRY_NONE` (library object).
+    NoEntryPoint,
 }
 
 impl std::fmt::Display for VmError {
@@ -53,6 +57,10 @@ impl std::fmt::Display for VmError {
             Self::FieldOutOfRange => write!(f, "field index out of range"),
             Self::GivenMismatch => write!(f, "given pattern did not match"),
             Self::HeapOutOfBounds => write!(f, "heap access out of bounds"),
+            Self::UnsupportedConst => {
+                write!(f, "byte constant pool entries are not loadable in MVP")
+            }
+            Self::NoEntryPoint => write!(f, "module has no entry function"),
         }
     }
 }

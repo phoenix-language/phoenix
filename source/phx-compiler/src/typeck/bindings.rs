@@ -140,6 +140,12 @@ impl FunctionLayoutBuilder {
         slot
     }
 
+    /// Looks up the innermost binding for `symbol` (shadowing-safe).
+    #[must_use]
+    pub fn binding(&self, symbol: Symbol) -> Option<&Binding> {
+        self.bindings.iter().rfind(|b| b.symbol == symbol)
+    }
+
     /// Allocates a slot and records `symbol` with `ty` and `kind`.
     #[must_use]
     pub fn alloc(&mut self, symbol: Symbol, ty: TypeId, kind: BindingKind) -> LocalSlot {

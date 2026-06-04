@@ -203,3 +203,21 @@ fn given_enum_single_variant_binds_payload() {
     let module = compile_fixture("given_enum_single_variant.phx");
     main_locals_contain_i32(&module, 12);
 }
+
+#[test]
+fn ref_local_derefs_to_ten() {
+    let module = compile_fixture("ref_local.phx");
+    main_locals_contain_i32(&module, 10);
+}
+
+#[test]
+fn deref_ptr_reads_seventy_seven() {
+    let module = compile_fixture("deref_ptr.phx");
+    main_locals_contain_u8(&module, 77);
+}
+
+#[test]
+fn byte_string_index_is_capital_b() {
+    let module = compile_fixture("byte_string.phx");
+    main_locals_contain_u8(&module, b'B');
+}

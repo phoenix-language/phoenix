@@ -1,14 +1,15 @@
 //! Opcode interpreter for one PHX0 module.
 
 use phx_bytecode::{
-    BytecodeModule, ConstTag, FunctionRecord, InstrError, Instruction, Opcode, PTR_AGG_TAG,
-    PTR_LOCAL_TAG, PrimitiveKind, ScalarValue,
+    BytecodeModule, ConstTag, ENTRY_NONE, FunctionRecord, InstrError, Instruction, Opcode,
+    PTR_AGG_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue,
 };
 
 use crate::VmError;
 use crate::frame::{Aggregate, Machine, Value};
 
-/// Captured VM state when the entry function returns.
+/// Captured VM state when the entry function returns (integration tests only).
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct VmRunCapture {
     /// Local slots for `main` at return.
@@ -28,11 +29,17 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
 
 /// Runs `module` and returns `main` local slots captured at entry return.
 ///
+/// Integration-test harness only; production callers use [`interpret`].
+///
 /// # Errors
 ///
 /// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
+#[doc(hidden)]
 pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
     let entry_id = module.header.entry_function_id;
+    if entry_id == ENTRY_NONE {
+        return Err(VmError::NoEntryPoint);
+    }
     let entry = find_function(module, entry_id).ok_or(VmError::MissingEntry)?;
     if entry.arity != 0 {
         return Err(VmError::EntryArityNotZero);
@@ -375,14 +382,14 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
             }
             Opcode::PtrStore => {
                 let kind = operand_prim_kind(&inst, 0)?;
-                let _signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
+                let signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
                 let val = pop_scalar(&mut machine.stack)?;
                 let addr_val = pop_scalar(&mut machine.stack)?;
                 let ptr = match addr_val {
                     ScalarValue::Ptr(p) => p,
                     _ => return Err(VmError::ExpectedScalar),
                 };
-                ptr_store(&mut machine, ptr, kind, val)?;
+                ptr_store(&mut machine, ptr, kind, signed, val)?;
             }
             Opcode::MakeSlice => {
                 let elem_kind = inst.operands.first().copied().unwrap_or(0) as u8;
@@ -494,7 +501,7 @@ fn load_const(
                 .ok_or(VmError::InvalidConstPayload)?;
             Ok(Value::Scalar(v))
         }
-        ConstTag::Bytes => Ok(Value::Scalar(ScalarValue::Ptr(0))),
+        ConstTag::Bytes => Err(VmError::UnsupportedConst),
     }
 }
 
@@ -551,12 +558,13 @@ fn ptr_store(
     machine: &mut Machine,
     ptr: u64,
     kind: PrimitiveKind,
+    signed: u8,
     value: ScalarValue,
 ) -> Result<(), VmError> {
     let size = kind.byte_size();
-    let bytes = value.to_le_bytes(kind);
     if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
         let slot = ScalarValue::local_slot_from_ptr(ptr).ok_or(VmError::InvalidConstPayload)?;
+        let bytes = value.to_le_bytes(kind);
         let frame = machine
             .frames
             .last_mut()
@@ -568,6 +576,7 @@ fn ptr_store(
         return slice_elem_store(machine, handle, 0, value);
     }
     let addr = usize::try_from(ptr).map_err(|_| VmError::HeapOutOfBounds)?;
+    let bytes = scalar_store_bytes(kind, signed, value)?;
     write_heap_scalar(&mut machine.heap, addr, size, &bytes)
 }
 
@@ -685,6 +694,69 @@ fn read_heap_scalar(
         }
     }
     ScalarValue::from_le_bytes(kind, slice).ok_or(VmError::InvalidConstPayload)
+}
+
+/// Encodes `value` for a heap store of width `kind`, honoring signed extension when `signed != 0`.
+fn scalar_store_bytes(
+    kind: PrimitiveKind,
+    signed: u8,
+    value: ScalarValue,
+) -> Result<Vec<u8>, VmError> {
+    let size = kind.byte_size();
+    if signed == 0 {
+        let mut bytes = value.to_le_bytes(kind);
+        bytes.truncate(usize::from(size));
+        return Ok(bytes);
+    }
+    let wide = match size {
+        1 => {
+            let v = match value {
+                ScalarValue::I8(x) => i64::from(x),
+                ScalarValue::U8(x) => i64::from(x),
+                ScalarValue::Bool(x) => i64::from(x),
+                _ => return Err(VmError::InvalidConstPayload),
+            };
+            v.to_le_bytes().to_vec()
+        }
+        2 => {
+            let v = match value {
+                ScalarValue::I16(x) => i64::from(x),
+                ScalarValue::U16(x) => i64::from(x),
+                _ => return Err(VmError::InvalidConstPayload),
+            };
+            v.to_le_bytes().to_vec()
+        }
+        4 => {
+            let v = match value {
+                ScalarValue::I32(x) => i64::from(x),
+                ScalarValue::U32(x) => i64::from(x),
+                ScalarValue::F32(x) => return Ok(x.to_le_bytes().to_vec()),
+                _ => return Err(VmError::InvalidConstPayload),
+            };
+            v.to_le_bytes().to_vec()
+        }
+        8 => {
+            let v = match value {
+                ScalarValue::I64(x) => x,
+                ScalarValue::U64(x) => x as i64,
+                ScalarValue::F32(x) => return Ok(x.to_le_bytes().to_vec()),
+                ScalarValue::F64(x) => return Ok(x.to_le_bytes().to_vec()),
+                _ => return Err(VmError::InvalidConstPayload),
+            };
+            v.to_le_bytes().to_vec()
+        }
+        16 => {
+            let v = match value {
+                ScalarValue::I128(x) => x,
+                ScalarValue::U128(x) => x as i128,
+                _ => return Err(VmError::InvalidConstPayload),
+            };
+            v.to_le_bytes().to_vec()
+        }
+        _ => return Err(VmError::InvalidConstPayload),
+    };
+    let start = wide.len().saturating_sub(usize::from(size));
+    Ok(wide[start..].to_vec())
 }
 
 fn write_heap_scalar(heap: &mut [u8], addr: usize, size: u8, bytes: &[u8]) -> Result<(), VmError> {

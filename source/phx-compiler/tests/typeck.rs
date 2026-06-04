@@ -571,3 +571,29 @@ fn parse_recovery_formats_multiple_carets() {
         "expected multiple formatted errors separated by ---:\n{formatted}"
     );
 }
+
+#[test]
+fn return_ref_to_local_errors() {
+    let source = "bad_ref :: () => &s32 { var x: s32 = 10; return &x; }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::ReturnEscapesLocal { .. }) }),
+        "expected ReturnEscapesLocal: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn return_slice_of_local_errors() {
+    let source = "bad_slice :: () => [u8] { var arr: [u8; 4] = b\"WXYZ\"; return arr as [u8]; }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::ReturnEscapesLocal { .. }) }),
+        "expected ReturnEscapesLocal: {:?}",
+        bag.errors()
+    );
+}

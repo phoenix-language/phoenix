@@ -169,6 +169,13 @@ pub enum TypeCheckError {
         /// Alias declaration span.
         span: Span,
     },
+    /// Returning a slice or reference that borrows a local binding.
+    ReturnEscapesLocal {
+        /// `return` or trailing value span.
+        span: Span,
+        /// Site where the borrow of the local was formed.
+        borrow_span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -197,6 +204,7 @@ impl TypeCheckError {
             Self::UnresolvedValue { .. } => DiagnosticCode::new("E2019"),
             Self::LoopControlOutsideLoop { .. } => DiagnosticCode::new("E2020"),
             Self::RecursiveTypeAlias { .. } => DiagnosticCode::new("E2021"),
+            Self::ReturnEscapesLocal { .. } => DiagnosticCode::new("E2022"),
         }
     }
 
@@ -224,7 +232,8 @@ impl TypeCheckError {
             | Self::MovedAssignTarget { span, .. }
             | Self::UnresolvedValue { span, .. }
             | Self::LoopControlOutsideLoop { span, .. }
-            | Self::RecursiveTypeAlias { span, .. } => Some(*span),
+            | Self::RecursiveTypeAlias { span, .. }
+            | Self::ReturnEscapesLocal { span, .. } => Some(*span),
         }
     }
 }
@@ -305,6 +314,9 @@ impl fmt::Display for TypeCheckError {
                 write!(f, "`{keyword}` outside of a loop")
             }
             Self::RecursiveTypeAlias { .. } => f.write_str("recursive type alias"),
+            Self::ReturnEscapesLocal { .. } => {
+                f.write_str("cannot return a borrow of a local variable")
+            }
         }
     }
 }

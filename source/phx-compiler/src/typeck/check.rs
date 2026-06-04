@@ -9,7 +9,7 @@ use phx_diagnostics::{Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
     Function, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
-use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit};
+use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit, UnaryOp};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
@@ -728,6 +728,11 @@ impl<'a> TypeChecker<'a> {
         if !self.types_equal(body_ty, ret) {
             self.error_mismatch(ret, body_ty, f.body.span);
         }
+        if self.is_borrow_type(body_ty) {
+            if let Some(expr) = trailing_value_expr(&f.body.inner) {
+                self.check_expr_escapes_local(expr);
+            }
+        }
         if emit_layout {
             if let Some(mut builder) = self.layout.take() {
                 builder.set_expr_range(expr_start, self.next_expr);
@@ -777,6 +782,9 @@ impl<'a> TypeChecker<'a> {
     fn check_return(&mut self, expr: Option<&ExprNode>) -> TypeId {
         if let Some(e) = expr {
             let got = self.check_expr_node(e);
+            if self.is_borrow_type(got) {
+                self.check_expr_escapes_local(e);
+            }
             if let Some(ret) = self.fn_ret {
                 if !self.types_equal(got, ret) {
                     self.error_mismatch(ret, got, e.span);
@@ -2077,6 +2085,65 @@ impl<'a> TypeChecker<'a> {
             self.value_types,
         )
     }
+
+    fn is_borrow_type(&self, ty: TypeId) -> bool {
+        matches!(self.types.get(ty), Ty::Slice(_) | Ty::Ref { .. })
+    }
+
+    fn binding_kind_for_ident(&self, ident: Ident) -> Option<BindingKind> {
+        self.layout.as_ref()?.binding(ident.symbol).map(|b| b.kind)
+    }
+
+    fn local_binding_escapes(kind: BindingKind) -> bool {
+        matches!(
+            kind,
+            BindingKind::Var | BindingKind::Const | BindingKind::MatchTemp
+        )
+    }
+
+    fn expr_borrow_site(&mut self, expr: &Expr) -> Option<Span> {
+        match expr {
+            Expr::Ident(ident) => {
+                let kind = self.binding_kind_for_ident(*ident)?;
+                if Self::local_binding_escapes(kind) {
+                    Some(ident.span)
+                } else {
+                    None
+                }
+            }
+            Expr::Unary {
+                op: UnaryOp::Ref | UnaryOp::RefMut,
+                operand,
+            } => self.expr_borrow_site(&operand.inner),
+            Expr::Unary {
+                op: UnaryOp::Deref,
+                operand,
+            } => self.expr_borrow_site(&operand.inner),
+            Expr::Cast { expr, ty } => {
+                let td = self.type_defs.clone();
+                let to = self.lower_ast_type_with_defs(ty, &td);
+                if matches!(self.types.get(to), Ty::Slice(_)) {
+                    self.expr_borrow_site(&expr.inner)
+                } else {
+                    None
+                }
+            }
+            Expr::Postfix { base, .. } => self.expr_borrow_site(&base.inner),
+            _ => None,
+        }
+    }
+
+    fn check_expr_escapes_local(&mut self, expr: &ExprNode) {
+        if let Some(borrow_span) = self.expr_borrow_site(&expr.inner) {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ReturnEscapesLocal {
+                    span: expr.span,
+                    borrow_span,
+                },
+            );
+        }
+    }
 }
 
 fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
@@ -2104,6 +2171,20 @@ fn find_trait_method_def(layout: &ProgramLayout, type_def: DefId, method: Symbol
     } else {
         None
     }
+}
+
+fn trailing_value_expr(block: &Block) -> Option<&ExprNode> {
+    for item in block.items.iter().rev() {
+        match item {
+            BlockItem::Expr(expr) => return Some(expr),
+            BlockItem::Stmt(Stmt::Return(expr)) => return expr.as_ref(),
+            BlockItem::Stmt(Stmt::Expr(expr)) if !matches!(expr.inner, Expr::Assign { .. }) => {
+                return Some(expr);
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn pattern_literal_eq(a: &Literal, b: &Literal) -> bool {

@@ -176,6 +176,15 @@ pub fn format_typecheck_error(
             *move_span,
             "value moved here",
         ),
+        TypeCheckError::ReturnEscapesLocal {
+            span, borrow_span, ..
+        } => format_span_message_with_note(
+            source,
+            *span,
+            "cannot return a borrow of a local variable",
+            *borrow_span,
+            "borrow of local created here",
+        ),
         other => {
             let message = typecheck_message(names, other);
             if let Some(span) = other.span() {
