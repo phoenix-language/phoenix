@@ -24,7 +24,7 @@ mod types;
 mod unify;
 
 #[allow(unused_imports)]
-pub use mono::{MonoInst, monomorphize};
+pub use mono::{MonoInst, TypeMonoInst, TypeMonoKind, monomorphize};
 
 pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
@@ -55,4 +55,6 @@ pub struct TypedProgram {
     pub layout: ProgramLayout,
     /// Monomorphized `DefId` → generic template `DefId` for AST lookup during lowering.
     pub specialized_from: std::collections::HashMap<DefId, DefId>,
+    /// Expanded monomorphized alias types keyed by `(template, args)`.
+    pub specialized_aliases: std::collections::HashMap<layout::TypeMonoKey, TypeId>,
 }

@@ -59,8 +59,14 @@ When a module imports from a dependency whose `.pxi` is fresh:
 2. Type checker seeds `value_types` (and struct layout hints where applicable) from v2 `type` objects.
 3. v1-only `.pxi` files continue to work; only `signature` is available for diagnostics.
 
+## Cross-crate generics
+
+Generic APIs in source appear in `.pxi` export lists as **monomorphized entries** only: each exported symbol has a mangled `export_id` (for example `sort$s32`) and a fully concrete signature. Parameterized signatures do not appear in v1/v2 `.pxi` today.
+
+Implementing mangled export ids in the build is a separate follow-up coordinated with [modules and build](../finished-review/08-modules-and-build.md).
+
 ## Non-goals (v2)
 
 - Trait method tables / associated types (post-MVP).
-- Generic inference across crate boundaries beyond monomorphized signatures in the export list.
+- Generic inference across crate boundaries (callers must name explicit specializations that appear as separate export entries).
 - Embedding PHX0 in `.pxi` (bytecode stays in `.phx0`).

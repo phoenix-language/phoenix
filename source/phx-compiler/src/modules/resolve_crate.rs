@@ -146,7 +146,11 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             collect_only: false,
             import_bindings: bindings,
         };
+        let def_base = defs.len();
         resolver.resolve_program();
+        if resolver.defs.len() > def_base {
+            defs.extend_from_slice(&resolver.defs[def_base..]);
+        }
         for e in resolver.bag.into_errors() {
             bag.push_located(e);
         }

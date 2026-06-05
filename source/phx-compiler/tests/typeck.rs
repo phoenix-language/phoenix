@@ -1,8 +1,10 @@
 //! Integration tests for the type-checking pass.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::path::Path;
+
 use phx_compiler::CompileError;
-use phx_compiler::compile_source;
+use phx_compiler::{check_file, compile_source};
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 
 fn ok(source: &str) {
@@ -362,7 +364,7 @@ fn struct_lit_unknown_field() {
 }
 
 #[test]
-fn struct_lit_generic_args_unsupported() {
+fn struct_lit_generic_args_on_non_generic_errors() {
     let bag = typeck_err(
         "Point :: struct { x: s32, y: s32, }; main :: () => { const _ = Point::<s32> { x: 1, y: 2 }; };",
     );
@@ -370,7 +372,7 @@ fn struct_lit_generic_args_unsupported() {
         matches!(
             &e.error,
             TypeCheckError::UnsupportedFeature {
-                feature: "struct literal type arguments",
+                feature: "type arguments on non-generic struct literal",
                 ..
             }
         )
@@ -592,6 +594,133 @@ fn recursive_type_alias_errors() {
 #[test]
 fn generic_fn_explicit_args_ok() {
     ok("id :: <t> (x: s32) => s32 { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
+}
+
+#[test]
+fn generic_fn_type_param_in_signature_ok() {
+    ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
+}
+
+#[test]
+fn generic_fn_wrong_type_arg_count_errors() {
+    let bag = typeck_err(
+        "pair :: <a, b> (x: a, y: b) => a { x }; main :: () => { const _ = pair :: <s32> (1, 2); };",
+    );
+    assert!(bag.errors().iter().any(|e| {
+        matches!(
+            &e.error,
+            TypeCheckError::ArityMismatch {
+                expected: 2,
+                found: 1,
+                ..
+            }
+        )
+    }));
+}
+
+#[test]
+fn generic_fn_on_non_generic_errors() {
+    let bag = typeck_err(
+        "add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { const _ = add :: <s32> (1, 2); };",
+    );
+    assert!(has_unsupported(&bag, "type arguments on non-generic call"));
+}
+
+#[test]
+fn generic_struct_lit_ok() {
+    ok(
+        "Box :: <t> struct { v: t, }; main :: () => { const x = Box::<s32> { v: 1 }; const _: s32 = x.v; };",
+    );
+}
+
+#[test]
+fn generic_struct_lit_arity_mismatch_errors() {
+    let bag = typeck_err(
+        "Box :: <t> struct { v: t, }; main :: () => { const _ = Box::<s32, u32> { v: 1 }; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::ArityMismatch { .. }) })
+    );
+}
+
+#[test]
+fn generic_enum_ctor_ok() {
+    ok("Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some :: <s32> (1); };");
+}
+
+#[test]
+fn generic_type_alias_ok() {
+    ok("type Pair<t> = (t, t); main :: () => { const p: Pair<s32> = (1, 2); };");
+}
+
+#[test]
+fn generic_fn_end_to_end_compile() {
+    ok("wrap :: <t> (x: t) => t { x }; main :: () => { const n: s32 = wrap :: <s32> (42); };");
+}
+
+#[test]
+fn generic_call_ast_has_args() {
+    let source = "id :: <t> (x: t) => t { x }; main :: () => { const n: s32 = id :: <s32> (42); };";
+    let sf = phx_syntax::parse(source).expect("parse");
+    let main = sf
+        .program
+        .items
+        .iter()
+        .find_map(|item| {
+            if let phx_syntax::ast::decl::TopLevelDecl::Function(f) = &item.inner.decl
+                && phx_syntax::Interner::resolve(&sf.interner, f.name.symbol) == "main"
+            {
+                return Some(f);
+            }
+            None
+        })
+        .expect("main");
+    let init =
+        main.body
+            .inner
+            .items
+            .iter()
+            .find_map(|item| {
+                if let phx_syntax::ast::stmt::BlockItem::Stmt(
+                    phx_syntax::ast::stmt::Stmt::Const { init, .. },
+                ) = item
+                {
+                    Some(init)
+                } else {
+                    None
+                }
+            })
+            .expect("const init");
+    match &init.inner {
+        phx_syntax::ast::expr::Expr::Postfix { ops, .. } => {
+            let call = ops
+                .iter()
+                .find_map(|op| {
+                    if let phx_syntax::ast::expr::PostfixOp::Call { args, .. } = op {
+                        Some(args.len())
+                    } else {
+                        None
+                    }
+                })
+                .expect("call op");
+            assert_eq!(call, 1, "expected one call argument in AST");
+        }
+        other => panic!("expected Postfix call init, got {other:?}"),
+    }
+}
+
+#[test]
+fn generic_cli_fixtures_check_file_ok() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures");
+    for name in ["generic_fn.phx", "generic_struct.phx", "generic_enum.phx"] {
+        let path = root.join(name);
+        let source = std::fs::read_to_string(&path).expect("read fixture");
+        compile_source(&source, Some(&path))
+            .unwrap_or_else(|e| panic!("compile_source {name}: {e}"));
+        check_file(&path).unwrap_or_else(|e| panic!("check_file {name}: {e}"));
+    }
 }
 
 #[test]

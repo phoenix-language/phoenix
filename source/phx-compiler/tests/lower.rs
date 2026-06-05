@@ -176,3 +176,40 @@ fn const_fold_byte_array_as_str_emits_make_str_not_make_array() {
         "only the arr initializer should MakeArray, not the cast"
     );
 }
+
+#[test]
+fn lower_generic_fn_emits_call() {
+    let source = include_str!("../../../tests/cli/fixtures/generic_fn.phx");
+    let path = Path::new("generic_fn.phx");
+    let unit = phx_compiler::check_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/generic_fn.phx"),
+    )
+    .unwrap_or_else(|e| panic!("check_file generic_fn.phx: {e}"));
+    let ir = lower(&unit.typed).expect("lower");
+    assert!(
+        ir.functions
+            .iter()
+            .flat_map(|f| &f.blocks)
+            .flat_map(|b| &b.insts)
+            .any(|i| matches!(i, IrInst::Call { .. })),
+        "expected Call in main"
+    );
+    let _ = source;
+    let _ = path;
+}
+
+#[test]
+fn lower_generic_struct_emits_make_struct() {
+    let source = include_str!("../../../tests/cli/fixtures/generic_struct.phx");
+    let unit = compile_source(source, Some(Path::new("generic_struct.phx")))
+        .unwrap_or_else(|e| panic!("compile generic_struct.phx: {e}"));
+    let ir = lower(&unit.typed).expect("lower");
+    assert!(
+        ir.functions
+            .iter()
+            .flat_map(|f| &f.blocks)
+            .flat_map(|b| &b.insts)
+            .any(|i| matches!(i, IrInst::MakeStruct { .. })),
+        "expected MakeStruct for generic struct literal"
+    );
+}

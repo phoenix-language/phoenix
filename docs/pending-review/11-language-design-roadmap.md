@@ -28,7 +28,11 @@ The implementation matches that story for MVP (single-threaded interpreter, byte
 
 **Recommendation:** MVP std library uses **`[u8]` / `&[u8]` views** over owned buffers; add a distinct **`str` slice type** in the type system before user-facing string APIs (length-prefixed UTF-8, no null termination). Do not add a hidden GC string.
 
-### 2. Generics strategy: monomorphization vs IR generics
+### 2. Generics strategy: monomorphization vs IR generics — **locked**
+
+**Decision:** **Monomorphization at compile time** per instantiation site (Zig/Rust-like), keeping runtime vtables only for explicit `dyn Trait` later.
+
+**Status (2026):** Explicit-args monomorphization is implemented for generic functions, struct literals, enum constructors, and type aliases. Layout specialization feeds lowering/codegen. Local inference, trait-bound enforcement, impl-member generics, and `.pxi` mangling remain follow-ups.
 
 | Tradeoff | Wrong choice cost |
 |----------|-------------------|
@@ -78,13 +82,13 @@ Without (1)–(3), error propagation and text are blocked; without (4)–(5), ru
 
 ## Generics: current state and cheapest path
 
-**State:** Parser and AST support generic params on structs, enums, functions, aliases (`phx-syntax/tests/parser.rs`); typeck registers `GenericParam` defs but **no `Ty::Var` solving** ([`04-type-system.md`](04-type-system.md)).
+**State:** Parser, resolver, and typeck support generic params on structs, enums, functions, and aliases. **Explicit-args monomorphization** is implemented end-to-end (typeck collection → layout specialization → lowering/VM). **`Ty::Var` / local inference** remains post-MVP ([`04-type-system.md`](04-type-system.md)).
 
-**Cheapest usable path:**
+**Next follow-ups (in order):**
 
-1. **Explicit generic args only** at call sites (`foo::<s32>()`).
-2. **Monomorphization pass** duplicates functions/types per concrete args before `lower`.
-3. **Mangle export names** in `.pxi` for link (`foo$s32`).
+1. **Local call-site inference** (`Ty::Var` + local unification only).
+2. **Trait bound enforcement** once impl tables are complete.
+3. **`.pxi` mangled export ids** for cross-crate specialized APIs.
 
 **Prior art fit:** **Zig comptime + Rust mono** fit bytecode VM goals better than Go erasure or Java-style runtime generics. Swift’s reification is closest but Phoenix lacks ARC—mono is simpler.
 

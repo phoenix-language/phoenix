@@ -19,12 +19,16 @@ pub fn lower_functions(
     constants: &mut Vec<IrConst>,
     bag: &mut LowerBag,
 ) -> Result<Vec<IrFunction>, LowerBag> {
-    let functions: Vec<IrFunction> = typed
-        .functions
-        .iter()
-        .enumerate()
-        .filter_map(|(index, layout)| lower_one_function(typed, layout, index, constants, bag))
-        .collect();
+    let mut functions = Vec::new();
+    for layout in &typed.functions {
+        if is_generic_template(typed, layout.def) {
+            continue;
+        }
+        if let Some(f) = lower_one_function(typed, layout, functions.len(), constants, bag) {
+            functions.push(f);
+        }
+    }
+    let functions = functions;
     if bag.has_errors() {
         Err(std::mem::take(bag))
     } else {
@@ -104,4 +108,9 @@ fn def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
         .defs
         .get(lookup.index() as usize)
         .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
+}
+
+/// Returns true when `def` is a generic function template replaced by monomorphization.
+fn is_generic_template(typed: &TypedProgram, def: DefId) -> bool {
+    typed.specialized_from.values().any(|&base| base == def)
 }

@@ -66,7 +66,7 @@ impl Parser<'_> {
                 self.bump();
                 Ok(self.node(Type::Primitive(k), self.span_from(start)))
             }
-            TokenKind::TypeIdent(name) => {
+            TokenKind::TypeIdent(name) | TokenKind::Ident(name) => {
                 let span = self.current_span();
                 self.bump();
                 let type_name = self.intern_type_name(name, span)?;

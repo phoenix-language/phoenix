@@ -164,8 +164,16 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
         Expr::Block(block) => lower_block_expr(ctx, block),
         Expr::StructLit { name, fields, .. } => {
             if let Some(def) = struct_def_by_name(&ctx.typed.resolved, name.symbol) {
-                if ctx.typed.layout.structs.contains_key(&def) {
-                    let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                let (type_def, args) = match ctx.typed.types.get(result_ty) {
+                    Ty::Named { def, args } => (*def, args.clone()),
+                    _ => (def, Vec::new()),
+                };
+                if ctx.typed.layout.struct_layout(type_def, &args).is_some() {
+                    let type_id = ctx
+                        .typed
+                        .layout
+                        .type_id_for_named(type_def, &args)
+                        .unwrap_or(0);
                     let mut field_count = 0u32;
                     for field in fields {
                         if let StructFieldInit::Field { value, .. } = field {
@@ -181,9 +189,28 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
             } else if let Some((enum_def, variant)) =
                 ctx.typed.layout.enum_variant_by_name(name.symbol)
             {
-                if let VariantKind::Struct(payload) = &variant.kind {
-                    let type_id = ctx.typed.layout.type_id(enum_def).unwrap_or(0);
-                    for (fname, _) in payload {
+                let args = match ctx.typed.types.get(result_ty) {
+                    Ty::Named { def, args } if *def == enum_def => args.clone(),
+                    _ => Vec::new(),
+                };
+                let payload = ctx
+                    .typed
+                    .layout
+                    .enum_layout(enum_def, &args)
+                    .and_then(|el| {
+                        el.variants
+                            .iter()
+                            .find(|v| v.name == name.symbol)
+                            .map(|v| v.kind.clone())
+                    })
+                    .unwrap_or_else(|| variant.kind.clone());
+                if let VariantKind::Struct(payload) = payload {
+                    let type_id = ctx
+                        .typed
+                        .layout
+                        .type_id_for_named(enum_def, &args)
+                        .unwrap_or(0);
+                    for (fname, _) in &payload {
                         if let Some(StructFieldInit::Field { value, .. }) =
                             fields.iter().find(|f| {
                                 matches!(
@@ -629,7 +656,15 @@ fn lower_postfix_inner(
                         for arg in args {
                             lower_expr(ctx, arg);
                         }
-                        let type_id = ctx.typed.layout.type_id(meta.enum_def).unwrap_or(0);
+                        let enum_args = match ctx.typed.types.get(result_ty) {
+                            Ty::Named { def, args } if *def == meta.enum_def => args.clone(),
+                            _ => Vec::new(),
+                        };
+                        let type_id = ctx
+                            .typed
+                            .layout
+                            .type_id_for_named(meta.enum_def, &enum_args)
+                            .unwrap_or(0);
                         let payload_count = u32::try_from(args.len()).unwrap_or(u32::MAX);
                         ctx.emit(IrInst::MakeEnum {
                             type_id,

@@ -8,6 +8,25 @@ use phx_bytecode::{BytecodeModule, ConstTag, Opcode};
 use phx_compiler::{IrBinOp, IrInst, codegen, compile_source, lower};
 
 #[test]
+fn codegen_generic_fn_inline_verifies() {
+    let source = "id :: <t> (x: t) => t { x }; main :: () => { const n: s32 = id :: <s32> (42); };";
+    let unit = compile_source(source, None).expect("compile_source");
+    let ir = lower(&unit.typed).expect("lower");
+    let module = codegen(&ir, &unit.typed).expect("codegen");
+    verify(&module).expect("verify inline generic_fn");
+}
+
+#[test]
+fn codegen_generic_fn_verifies() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/generic_fn.phx");
+    let unit = phx_compiler::check_file(&path).expect("check_file");
+    let ir = lower(&unit.typed).expect("lower");
+    let module = codegen(&ir, &unit.typed).expect("codegen");
+    verify(&module).expect("verify generic_fn");
+}
+
+#[test]
 fn codegen_sample_round_trip_and_verify() {
     let source = include_str!("../../../tests/cli/fixtures/sample.phx");
     let unit = compile_source(source, Some(Path::new("sample.phx")))

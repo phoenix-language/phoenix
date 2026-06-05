@@ -24,10 +24,10 @@ use super::builtins::{
 };
 use super::display::format_type;
 use super::layout::{
-    EnumLayout, ProgramLayout, StructLayout, VariantKind, VariantLayout, VariantMeta,
+    EnumLayout, ProgramLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout, VariantMeta,
 };
 use super::lower_ty::{TypeDefMap, build_type_def_map, error_type, lower_type, push_generics};
-use super::mono::MonoInst;
+use super::mono::{MonoInst, TypeMonoInst, TypeMonoKind, generic_param_defs_for_type};
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::primitive::is_int_keyword;
@@ -78,11 +78,29 @@ pub struct TypeChecker<'a> {
     subst: Option<Substitution>,
     /// Explicit generic instantiations to specialize after the main pass.
     mono_insts: Vec<MonoInst>,
+    /// Explicit generic type instantiations to specialize after the main pass.
+    type_mono_insts: Vec<TypeMonoInst>,
+    /// Expanded alias types keyed by monomorphization key (filled during checking).
+    specialized_aliases: HashMap<TypeMonoKey, TypeId>,
 }
 
 impl<'a> TypeChecker<'a> {
     fn new(resolved: &'a ResolvedProgram) -> Self {
-        let mut types = TypeInterner::new();
+        Self::new_with_types(resolved, TypeInterner::new())
+    }
+
+    /// Type-checker seeded with a substitution map for one monomorphized function body.
+    pub(crate) fn new_with_substitution(
+        resolved: &'a ResolvedProgram,
+        subst: Substitution,
+        types: TypeInterner,
+    ) -> Self {
+        let mut checker = Self::new_with_types(resolved, types);
+        checker.subst = Some(subst);
+        checker
+    }
+
+    fn new_with_types(resolved: &'a ResolvedProgram, mut types: TypeInterner) -> Self {
         let unit = unit(&mut types);
         let bool_ty = bool_type(&mut types);
         let named_paths = crate::pxi::build_named_def_paths(resolved);
@@ -121,21 +139,17 @@ impl<'a> TypeChecker<'a> {
             current_module: resolved.root,
             subst: None,
             mono_insts: Vec::new(),
+            type_mono_insts: Vec::new(),
+            specialized_aliases: HashMap::new(),
         }
-    }
-
-    /// Type-checker seeded with a substitution map for one monomorphized function body.
-    pub(crate) fn new_with_substitution(
-        resolved: &'a ResolvedProgram,
-        subst: Substitution,
-    ) -> Self {
-        let mut checker = Self::new(resolved);
-        checker.subst = Some(subst);
-        checker
     }
 
     pub(crate) fn take_mono_insts(&mut self) -> Vec<MonoInst> {
         std::mem::take(&mut self.mono_insts)
+    }
+
+    pub(crate) fn take_type_mono_insts(&mut self) -> Vec<TypeMonoInst> {
+        std::mem::take(&mut self.type_mono_insts)
     }
 
     pub(crate) fn set_expr_id_base(&mut self, base: u32) {
@@ -304,6 +318,11 @@ impl<'a> TypeChecker<'a> {
         } else {
             id
         };
+        if let Ty::Named { def, args } = self.types.get(id).clone() {
+            if !args.is_empty() {
+                return self.resolve_instantiated_named(def, args, ty.span);
+            }
+        }
         if is_error_type(&self.types, id) {
             if let Type::Named { name, .. } = &ty.inner {
                 self.bag.push(
@@ -702,9 +721,12 @@ impl<'a> TypeChecker<'a> {
         if !f.derives.is_empty() {
             self.push_unsupported("#derive directive", f.body.span);
         }
-        let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
         let is_generic = f.generics.as_ref().is_some_and(|g| !g.is_empty());
-        self.check_function_body(f, def, !is_generic);
+        if is_generic {
+            return;
+        }
+        let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
+        self.check_function_body(f, def, true);
     }
 
     fn check_function_body(&mut self, f: &Function, def: DefId, emit_layout: bool) {
@@ -1250,12 +1272,10 @@ impl<'a> TypeChecker<'a> {
 
     fn check_field(&mut self, base: TypeId, field: &Ident, span: Span) -> TypeId {
         let base = self.deref_for_field(base);
-        if let Ty::Named { def, .. } = self.types.get(base) {
-            let def = *def;
-            if let Some(sf) = self.struct_fields.get(&def) {
-                if let Some(&fty) = sf.fields.get(&field.symbol) {
-                    return fty;
-                }
+        if let Ty::Named { def, args } = self.types.get(base).clone() {
+            let field_map = self.struct_fields_for_named(def, &args);
+            if let Some(&fty) = field_map.get(&field.symbol) {
+                return fty;
             }
         }
         self.bag.push(
@@ -1313,6 +1333,134 @@ impl<'a> TypeChecker<'a> {
         });
     }
 
+    fn record_type_mono_inst(&mut self, base_def: DefId, kind: TypeMonoKind, args: Vec<TypeId>) {
+        if self
+            .type_mono_insts
+            .iter()
+            .any(|i| i.base_def == base_def && i.kind == kind && i.args == args)
+        {
+            return;
+        }
+        self.type_mono_insts.push(TypeMonoInst {
+            base_def,
+            kind,
+            args,
+        });
+    }
+
+    fn type_mono_kind_for_def(&self, def: DefId) -> Option<TypeMonoKind> {
+        let record = self.resolved.defs.get(def.index() as usize)?;
+        match record.kind {
+            DefKind::Struct => Some(TypeMonoKind::Struct),
+            DefKind::Enum => Some(TypeMonoKind::Enum),
+            DefKind::TypeAlias => Some(TypeMonoKind::Alias),
+            _ => None,
+        }
+    }
+
+    fn resolve_instantiated_named(&mut self, base: DefId, args: Vec<TypeId>, span: Span) -> TypeId {
+        let Some(kind) = self.type_mono_kind_for_def(base) else {
+            return self.types.intern(&Ty::Named { def: base, args });
+        };
+        let param_defs = generic_param_defs_for_type(self.resolved, base).unwrap_or_default();
+        if param_defs.is_empty() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: "type arguments on non-generic type",
+                    span,
+                },
+            );
+            return self.poison_type();
+        }
+        if param_defs.len() != args.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: args.len(),
+                    span,
+                },
+            );
+            return self.poison_type();
+        }
+        self.record_type_mono_inst(base, kind, args.clone());
+        if kind == TypeMonoKind::Alias {
+            let mut subst = Substitution::new();
+            for (param, arg) in param_defs.iter().zip(&args) {
+                subst.insert(*param, *arg);
+            }
+            let Some(&body) = self.value_types.get(&base) else {
+                return self.poison_type();
+            };
+            let expanded = Substitution::apply(&mut self.types, body, &subst);
+            self.specialized_aliases
+                .insert(TypeMonoKey::new(base, args), expanded);
+            return expanded;
+        }
+        self.types.intern(&Ty::Named { def: base, args })
+    }
+
+    fn struct_fields_for_named(&mut self, def: DefId, args: &[TypeId]) -> HashMap<Symbol, TypeId> {
+        let Some(template) = self.struct_fields.get(&def) else {
+            return HashMap::new();
+        };
+        if args.is_empty() {
+            return template.fields.clone();
+        }
+        let param_defs = generic_param_defs_for_type(self.resolved, def).unwrap_or_default();
+        let mut subst = Substitution::new();
+        for (param, arg) in param_defs.iter().zip(args) {
+            subst.insert(*param, *arg);
+        }
+        template
+            .fields
+            .iter()
+            .map(|(name, ty)| (*name, Substitution::apply(&mut self.types, *ty, &subst)))
+            .collect()
+    }
+
+    fn enum_def_for_variant(&self, variant_def: DefId) -> Option<DefId> {
+        self.program_layout
+            .variants
+            .get(&variant_def)
+            .map(|meta| meta.enum_def)
+    }
+
+    fn substituted_variant_payload(
+        &mut self,
+        variant_def: DefId,
+        args: &[TypeId],
+    ) -> Option<VariantKind> {
+        let meta = self.program_layout.variants.get(&variant_def)?.clone();
+        if args.is_empty() {
+            return Some(meta.payload);
+        }
+        let enum_def = meta.enum_def;
+        let param_defs = generic_param_defs_for_type(self.resolved, enum_def)?;
+        let mut subst = Substitution::new();
+        for (param, arg) in param_defs.iter().zip(args) {
+            subst.insert(*param, *arg);
+        }
+        Some(match meta.payload {
+            VariantKind::Unit => VariantKind::Unit,
+            VariantKind::Tuple(ts) => {
+                let pts: Vec<_> = ts
+                    .iter()
+                    .map(|t| Substitution::apply(&mut self.types, *t, &subst))
+                    .collect();
+                VariantKind::Tuple(pts)
+            }
+            VariantKind::Struct(fs) => {
+                let fields: Vec<_> = fs
+                    .iter()
+                    .map(|(n, t)| (*n, Substitution::apply(&mut self.types, *t, &subst)))
+                    .collect();
+                VariantKind::Struct(fields)
+            }
+        })
+    }
+
     fn generic_param_defs_for_fn(&self, f: &Function) -> Vec<DefId> {
         let Some(params) = f.generics.as_ref() else {
             return Vec::new();
@@ -1356,6 +1504,11 @@ impl<'a> TypeChecker<'a> {
             return self.check_call(callee, args, span);
         };
         let Some(f) = self.find_function_decl(fn_def) else {
+            if let Some(enum_def) = self.enum_def_for_variant(fn_def) {
+                return self.check_enum_variant_call_with_generics(
+                    enum_def, fn_def, callee, generics, args, span,
+                );
+            }
             return self.check_call(callee, args, span);
         };
         let param_defs = self.generic_param_defs_for_fn(f);
@@ -1391,6 +1544,7 @@ impl<'a> TypeChecker<'a> {
                     span,
                 },
             );
+            return self.unit;
         }
         let mut td = self.type_defs.clone();
         push_generics(&mut td, &self.resolved.defs, fn_generics.as_deref());
@@ -1430,6 +1584,88 @@ impl<'a> TypeChecker<'a> {
             self.record_mono_inst(fn_def, concrete_args, site);
         }
         ret
+    }
+
+    fn check_enum_variant_call_with_generics(
+        &mut self,
+        enum_def: DefId,
+        variant_def: DefId,
+        callee: TypeId,
+        generics: Option<&[Node<Type>]>,
+        args: &[ExprNode],
+        span: Span,
+    ) -> TypeId {
+        let param_defs = generic_param_defs_for_type(self.resolved, enum_def).unwrap_or_default();
+        if param_defs.is_empty() {
+            if generics.is_some() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "type arguments on non-generic enum constructor",
+                        span,
+                    },
+                );
+            }
+            return self.check_call(callee, args, span);
+        }
+        let Some(generic_nodes) = generics else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: "missing explicit type arguments on generic enum constructor",
+                    span,
+                },
+            );
+            return self.unit;
+        };
+        if generic_nodes.len() != param_defs.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: generic_nodes.len(),
+                    span,
+                },
+            );
+            return self.unit;
+        }
+        let mut concrete_args = Vec::new();
+        let mut subst = Substitution::new();
+        for (param_def, ty_node) in param_defs.iter().zip(generic_nodes) {
+            let concrete = self.lower_ast_type(ty_node);
+            subst.insert(*param_def, concrete);
+            concrete_args.push(concrete);
+        }
+        self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, concrete_args.clone());
+        let enum_ty = self.types.intern(&Ty::Named {
+            def: enum_def,
+            args: concrete_args.clone(),
+        });
+        let Some(payload) = self.substituted_variant_payload(variant_def, &concrete_args) else {
+            return self.check_call(callee, args, span);
+        };
+        let params = match payload {
+            VariantKind::Unit => vec![],
+            VariantKind::Tuple(ts) => ts,
+            VariantKind::Struct(fs) => fs.into_iter().map(|(_, t)| t).collect(),
+        };
+        if params.len() != args.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: params.len(),
+                    found: args.len(),
+                    span,
+                },
+            );
+        }
+        for (p, arg) in params.iter().zip(args.iter()) {
+            let got = self.check_expr_node(arg);
+            if !self.types_equal(got, *p) {
+                self.error_mismatch(*p, got, arg.span);
+            }
+        }
+        enum_ty
     }
 
     fn check_call(&mut self, callee: TypeId, args: &[ExprNode], span: Span) -> TypeId {
@@ -1948,122 +2184,16 @@ impl<'a> TypeChecker<'a> {
         fields: &[StructFieldInit],
         span: Span,
     ) -> TypeId {
-        if generics.is_some() {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::UnsupportedFeature {
-                    feature: "struct literal type arguments",
-                    span,
-                },
-            );
-        }
         if let Some(&def) = self.type_defs.get(&name.symbol) {
-            let ty = self.types.intern(&Ty::Named { def, args: vec![] });
-            if let Some(sl) = self.program_layout.structs.get(&def) {
-                let required_fields: Vec<Symbol> = sl.fields.iter().map(|(n, _)| *n).collect();
-                for field in fields {
-                    if matches!(field, StructFieldInit::Spread(_)) {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::UnsupportedFeature {
-                                feature: "struct literal spread",
-                                span,
-                            },
-                        );
-                    }
-                }
-                let mut seen = std::collections::HashSet::new();
-                for field in fields {
-                    let StructFieldInit::Field { name: fname, value } = field else {
-                        continue;
-                    };
-                    seen.insert(fname.symbol);
-                    if let Some(expected) = self
-                        .struct_fields
-                        .get(&def)
-                        .and_then(|sf| sf.fields.get(&fname.symbol).copied())
-                    {
-                        let got = self.check_expr_node(value);
-                        if !self.types_equal(got, expected) {
-                            self.error_mismatch(expected, got, value.span);
-                        }
-                    } else {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::UnknownStructField {
-                                name: self.symbol_name(fname.symbol),
-                                span: value.span,
-                            },
-                        );
-                    }
-                }
-                for fname in required_fields {
-                    if !seen.contains(&fname) {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::MissingStructField {
-                                name: self.symbol_name(fname),
-                                span,
-                            },
-                        );
-                    }
-                }
+            if self.resolved.defs[def.index() as usize].kind == DefKind::Struct {
+                return self.check_struct_type_lit(def, generics, fields, span);
             }
-            return ty;
         }
         if let Some((enum_def, variant)) = self.program_layout.enum_variant_by_name(name.symbol) {
-            let enum_ty = self.types.intern(&Ty::Named {
-                def: enum_def,
-                args: vec![],
-            });
-            if let VariantKind::Struct(payload) = &variant.kind {
-                let field_map: HashMap<Symbol, TypeId> = payload.iter().copied().collect();
-                let required_fields: Vec<Symbol> = payload.iter().map(|(n, _)| *n).collect();
-                for field in fields {
-                    if matches!(field, StructFieldInit::Spread(_)) {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::UnsupportedFeature {
-                                feature: "enum struct literal spread",
-                                span,
-                            },
-                        );
-                    }
-                }
-                let mut seen = std::collections::HashSet::new();
-                for field in fields {
-                    let StructFieldInit::Field { name: fname, value } = field else {
-                        continue;
-                    };
-                    seen.insert(fname.symbol);
-                    if let Some(expected) = field_map.get(&fname.symbol) {
-                        let got = self.check_expr_node(value);
-                        if !self.types_equal(got, *expected) {
-                            self.error_mismatch(*expected, got, value.span);
-                        }
-                    } else {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::UnknownEnumVariantField {
-                                name: self.symbol_name(fname.symbol),
-                                span: value.span,
-                            },
-                        );
-                    }
-                }
-                for fname in required_fields {
-                    if !seen.contains(&fname) {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::MissingEnumVariantField {
-                                name: self.symbol_name(fname),
-                                span,
-                            },
-                        );
-                    }
-                }
-            }
-            return enum_ty;
+            return self.check_enum_struct_variant_lit(enum_def, variant, generics, fields, span);
+        }
+        if let Some(&def) = self.type_defs.get(&name.symbol) {
+            return self.check_struct_type_lit(def, generics, fields, span);
         }
         self.bag.push(
             self.current_module,
@@ -2075,6 +2205,202 @@ impl<'a> TypeChecker<'a> {
         self.unit
     }
 
+    fn struct_lit_type_args(
+        &mut self,
+        def: DefId,
+        generics: Option<&[phx_syntax::ast::Node<phx_syntax::ast::Type>]>,
+        span: Span,
+        missing_feature: &'static str,
+    ) -> Vec<TypeId> {
+        let param_defs = generic_param_defs_for_type(self.resolved, def).unwrap_or_default();
+        if param_defs.is_empty() {
+            if generics.is_some() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "type arguments on non-generic struct literal",
+                        span,
+                    },
+                );
+            }
+            return vec![];
+        }
+        let Some(generic_nodes) = generics else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: missing_feature,
+                    span,
+                },
+            );
+            return vec![];
+        };
+        if generic_nodes.len() != param_defs.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: generic_nodes.len(),
+                    span,
+                },
+            );
+        }
+        generic_nodes
+            .iter()
+            .map(|ty_node| self.lower_ast_type(ty_node))
+            .collect()
+    }
+
+    fn check_struct_type_lit(
+        &mut self,
+        def: DefId,
+        generics: Option<&[phx_syntax::ast::Node<phx_syntax::ast::Type>]>,
+        fields: &[StructFieldInit],
+        span: Span,
+    ) -> TypeId {
+        let type_args = self.struct_lit_type_args(
+            def,
+            generics,
+            span,
+            "missing explicit type arguments on generic struct literal",
+        );
+        let ty = if type_args.is_empty() {
+            self.types.intern(&Ty::Named { def, args: vec![] })
+        } else {
+            self.resolve_instantiated_named(def, type_args.clone(), span)
+        };
+        if self.program_layout.structs.contains_key(&def) {
+            let field_map = self.struct_fields_for_named(def, &type_args);
+            let required_fields: Vec<Symbol> = field_map.keys().copied().collect();
+            for field in fields {
+                if matches!(field, StructFieldInit::Spread(_)) {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "struct literal spread",
+                            span,
+                        },
+                    );
+                }
+            }
+            let mut seen = std::collections::HashSet::new();
+            for field in fields {
+                let StructFieldInit::Field { name: fname, value } = field else {
+                    continue;
+                };
+                seen.insert(fname.symbol);
+                if let Some(expected) = field_map.get(&fname.symbol) {
+                    let got = self.check_expr_node(value);
+                    if !self.types_equal(got, *expected) {
+                        self.error_mismatch(*expected, got, value.span);
+                    }
+                } else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnknownStructField {
+                            name: self.symbol_name(fname.symbol),
+                            span: value.span,
+                        },
+                    );
+                }
+            }
+            for fname in required_fields {
+                if !seen.contains(&fname) {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::MissingStructField {
+                            name: self.symbol_name(fname),
+                            span,
+                        },
+                    );
+                }
+            }
+        }
+        ty
+    }
+
+    fn check_enum_struct_variant_lit(
+        &mut self,
+        enum_def: DefId,
+        variant: super::layout::VariantLayout,
+        generics: Option<&[phx_syntax::ast::Node<phx_syntax::ast::Type>]>,
+        fields: &[StructFieldInit],
+        span: Span,
+    ) -> TypeId {
+        let type_args = self.struct_lit_type_args(
+            enum_def,
+            generics,
+            span,
+            "missing explicit type arguments on generic enum struct literal",
+        );
+        if !type_args.is_empty() {
+            self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, type_args.clone());
+        }
+        let enum_ty = if type_args.is_empty() {
+            self.types.intern(&Ty::Named {
+                def: enum_def,
+                args: vec![],
+            })
+        } else {
+            self.types.intern(&Ty::Named {
+                def: enum_def,
+                args: type_args.clone(),
+            })
+        };
+        let payload = self
+            .substituted_variant_payload(variant.def, &type_args)
+            .unwrap_or(variant.kind);
+        if let VariantKind::Struct(payload) = payload {
+            let field_map: HashMap<Symbol, TypeId> = payload.iter().copied().collect();
+            let required_fields: Vec<Symbol> = payload.iter().map(|(n, _)| *n).collect();
+            for field in fields {
+                if matches!(field, StructFieldInit::Spread(_)) {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "enum struct literal spread",
+                            span,
+                        },
+                    );
+                }
+            }
+            let mut seen = std::collections::HashSet::new();
+            for field in fields {
+                let StructFieldInit::Field { name: fname, value } = field else {
+                    continue;
+                };
+                seen.insert(fname.symbol);
+                if let Some(expected) = field_map.get(&fname.symbol) {
+                    let got = self.check_expr_node(value);
+                    if !self.types_equal(got, *expected) {
+                        self.error_mismatch(*expected, got, value.span);
+                    }
+                } else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnknownEnumVariantField {
+                            name: self.symbol_name(fname.symbol),
+                            span: value.span,
+                        },
+                    );
+                }
+            }
+            for fname in required_fields {
+                if !seen.contains(&fname) {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::MissingEnumVariantField {
+                            name: self.symbol_name(fname),
+                            span,
+                        },
+                    );
+                }
+            }
+        }
+        enum_ty
+    }
+
+    #[allow(clippy::type_complexity)]
     fn finish(
         self,
     ) -> (
@@ -2083,6 +2409,7 @@ impl<'a> TypeChecker<'a> {
         TypeCheckBag,
         Vec<FunctionLayout>,
         ProgramLayout,
+        HashMap<TypeMonoKey, TypeId>,
     ) {
         (
             self.types,
@@ -2090,9 +2417,11 @@ impl<'a> TypeChecker<'a> {
             self.bag,
             self.functions,
             self.program_layout,
+            self.specialized_aliases,
         )
     }
 
+    #[allow(clippy::type_complexity)]
     #[allow(clippy::type_complexity)]
     pub(crate) fn finish_all(
         self,
@@ -2103,6 +2432,7 @@ impl<'a> TypeChecker<'a> {
         Vec<FunctionLayout>,
         ProgramLayout,
         HashMap<DefId, TypeId>,
+        HashMap<TypeMonoKey, TypeId>,
     ) {
         (
             self.types,
@@ -2111,6 +2441,7 @@ impl<'a> TypeChecker<'a> {
             self.functions,
             self.program_layout,
             self.value_types,
+            self.specialized_aliases,
         )
     }
 
@@ -2260,7 +2591,8 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
     let mut checker = TypeChecker::new(resolved);
     checker.check_program();
     let mono_insts = checker.take_mono_insts();
-    let (types, expr_types, bag, functions, layout) = checker.finish();
+    let type_mono_insts = checker.take_type_mono_insts();
+    let (types, expr_types, bag, functions, layout, specialized_aliases) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
@@ -2272,7 +2604,11 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         entry: resolved.main_fn,
         layout,
         specialized_from: HashMap::new(),
+        specialized_aliases,
     };
-    super::mono::monomorphize(&mut program, &mono_insts);
+    let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
+    if mono_bag.has_errors() {
+        return Err(mono_bag);
+    }
     Ok(program)
 }

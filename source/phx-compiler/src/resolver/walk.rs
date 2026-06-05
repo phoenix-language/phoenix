@@ -90,29 +90,42 @@ impl Resolver<'_> {
     fn collect_top_level_item(&mut self, item: &TopLevelItem, span: Span) {
         let exported = item.pub_;
         match &item.decl {
-            TopLevelDecl::Struct { name, .. } => {
+            TopLevelDecl::Struct { name, generics, .. } => {
+                self.collect_generic_params(generics);
                 self.define_exported(name.symbol, span, DefKind::Struct, exported);
             }
-            TopLevelDecl::Enum { name, variants, .. } => {
+            TopLevelDecl::Enum {
+                name,
+                generics,
+                variants,
+                ..
+            } => {
+                self.collect_generic_params(generics);
                 self.define_exported(name.symbol, span, DefKind::Enum, exported);
                 for v in variants {
                     let vspan = name_span_type(&v.name);
                     self.define_exported(v.name.symbol, vspan, DefKind::EnumVariant, exported);
                 }
             }
-            TopLevelDecl::TypeAlias { name, .. } => {
+            TopLevelDecl::TypeAlias { name, generics, .. } => {
+                self.collect_generic_params(generics);
                 self.define_exported(name.symbol, span, DefKind::TypeAlias, exported);
             }
-            TopLevelDecl::Trait { name, .. } => {
+            TopLevelDecl::Trait { name, generics, .. } => {
+                self.collect_generic_params(generics);
                 self.define_exported(name.symbol, span, DefKind::Trait, exported);
             }
-            TopLevelDecl::Impl { members, .. } => {
+            TopLevelDecl::Impl {
+                generics, members, ..
+            } => {
+                self.collect_generic_params(generics);
                 for member in members {
                     let mspan = name_span_ident(&member.name);
                     self.define_value(member.name.symbol, mspan, DefKind::Fn);
                 }
             }
             TopLevelDecl::Function(f) => {
+                self.collect_generic_params(&f.generics);
                 let id = self.define_exported(f.name.symbol, span, DefKind::Fn, exported);
                 if self.is_main_name(f.name.symbol) {
                     if self.current_module == self.root_module {
@@ -310,6 +323,43 @@ impl Resolver<'_> {
             }
             _ => {}
         }
+    }
+
+    fn collect_generic_params(&mut self, generics: &Option<Vec<GenericParam>>) {
+        if !self.collect_only {
+            return;
+        }
+        if let Some(params) = generics {
+            for param in params {
+                let span = name_span_ident(&param.name);
+                if self.existing_generic_param_def(param.name.symbol).is_some() {
+                    continue;
+                }
+                if let Some(id) = self.existing_generic_param_def(param.name.symbol) {
+                    self.scopes.define_type(
+                        &self.defs,
+                        &mut self.bag,
+                        self.current_module,
+                        param.name.symbol,
+                        id,
+                        span,
+                    );
+                } else {
+                    self.define_type(param.name.symbol, span, DefKind::GenericParam);
+                }
+            }
+        }
+    }
+
+    fn existing_generic_param_def(&self, name: Symbol) -> Option<DefId> {
+        self.defs.iter().enumerate().find_map(|(i, d)| {
+            if d.module == self.current_module && d.name == name && d.kind == DefKind::GenericParam
+            {
+                Some(DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+            } else {
+                None
+            }
+        })
     }
 
     fn resolve_generics(&mut self, generics: &Option<Vec<GenericParam>>) {

@@ -936,6 +936,25 @@ fn expr_struct_literal_spread() {
 }
 
 #[test]
+fn expr_struct_literal_generics_snake_case() {
+    let src = &format!(
+        "Box :: struct {{ v: s32 }}; {}",
+        in_main_expr("box :: <s32> { v: 1 }")
+    );
+    let program = parse_ok(src);
+    let expr = support::first_stmt_expr(&main_fn(&program).body);
+    match expr {
+        Expr::StructLit { generics, .. } => {
+            assert!(
+                generics.as_ref().is_some_and(|g| !g.is_empty()),
+                "expected generic type arguments on snake_case struct literal"
+            );
+        }
+        other => panic!("expected StructLit, got {other:?}"),
+    }
+}
+
+#[test]
 fn expr_struct_literal_generics() {
     let src = &format!(
         "Point :: struct {{ x: s32, y: s32 }}; {}",

@@ -2,7 +2,7 @@
 
 ## Summary
 
-MVP type checking matches design docs for **literal defaults, no implicit numeric widening, enum/bool/int `match` exhaustiveness, block-scoped use-after-move, explicit-args monomorphization for generic functions, and rejection of unresolved/`Option`/`Result` types**. Remaining gaps are documented MVP limits (move only through bare identifiers), display-only alias expansion, and post-MVP items (`str`, trait objects, global inference, `.pxi` mangling).
+MVP type checking matches design docs for **literal defaults, no implicit numeric widening, enum/bool/int `match` exhaustiveness, block-scoped use-after-move, explicit-args monomorphization for generic functions and user types, and rejection of unresolved/`Option`/`Result` types**. Remaining gaps are documented MVP limits (move only through bare identifiers), and post-MVP items (`str`, trait objects, local inference, trait-bound enforcement, `.pxi` mangling).
 
 ## Findings
 
@@ -21,8 +21,8 @@ MVP type checking matches design docs for **literal defaults, no implicit numeri
 5. **Unknown named type lowers to `()`** — **Addressed**
    `Ty::Error` + `UnknownType` (E2002) at use sites; user `Result`/`Option` type names still allowed when defined in source.
 
-6. **`Ty::Var` unused — generics scaffold** — **Partially addressed (MVP mono)**
-   Explicit `:: <…>` calls on generic functions; [`monomorphize`](../../../source/phx-compiler/src/typeck/mono.rs) before lowering. No global inference; generic struct literals still `UnsupportedFeature`. See [type-system.md](../design/features/type-system.md#monomorphization-mvp).
+6. **`Ty::Var` unused — generics scaffold** — **Addressed (explicit-args mono)**
+   Explicit `:: <…>` on generic functions, struct literals, enum ctors, and type aliases; [`monomorphize`](../../../source/phx-compiler/src/typeck/mono.rs) emits specialized layouts before lowering. No global inference yet. See [type-system.md](../design/features/type-system.md#generics-strategy-monomorphization).
 
 7. **Trait dispatch: static only** — **Deferred `[future]`**
    Unchanged; compatible with future `dyn Trait`.
@@ -46,7 +46,7 @@ MVP type checking matches design docs for **literal defaults, no implicit numeri
 
 ## Recommended next actions
 
-1. Enable generic struct/enum use sites with substitution (remove struct-literal generic `UnsupportedFeature` when ready).
+1. Local call-site inference (`Ty::Var`) and trait-bound enforcement.
 2. `.pxi` mangling for specialized symbols (coordinate with [`08-modules-and-build.md`](08-modules-and-build.md)).
 3. Optional alias expansion in diagnostics only (finding 8).
 4. Post-MVP: path-sensitive moves, `str` design, trait objects.

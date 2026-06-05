@@ -38,6 +38,9 @@ FIXTURES=(
   slice_from_array.phx
   factorial.phx
   given_enum_single_variant.phx
+  generic_fn.phx
+  generic_struct.phx
+  generic_enum.phx
 )
 
 cd "${ROOT}"

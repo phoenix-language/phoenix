@@ -7,6 +7,23 @@ use phx_syntax::Symbol;
 use super::types::TypeId;
 use crate::resolver::DefId;
 
+/// Key for a monomorphized struct, enum, or alias instantiation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeMonoKey {
+    /// Generic template definition.
+    pub base: DefId,
+    /// Concrete type arguments in generic-parameter order.
+    pub args: Vec<TypeId>,
+}
+
+impl TypeMonoKey {
+    /// Builds a layout lookup key from a template def and concrete type arguments.
+    #[must_use]
+    pub fn new(base: DefId, args: Vec<TypeId>) -> Self {
+        Self { base, args }
+    }
+}
+
 /// Ordered struct fields for codegen indices.
 #[derive(Debug, Clone)]
 pub struct StructLayout {
@@ -85,6 +102,12 @@ pub struct ProgramLayout {
     pub inherent_methods: HashMap<(DefId, Symbol), DefId>,
     /// Trait impl methods: `(type_def, trait_def, method_name) → fn_def`.
     pub trait_methods: HashMap<(DefId, DefId, Symbol), DefId>,
+    /// Monomorphized struct field layouts keyed by `(template, args)`.
+    pub specialized_structs: HashMap<TypeMonoKey, StructLayout>,
+    /// Monomorphized enum layouts keyed by `(template, args)`.
+    pub specialized_enums: HashMap<TypeMonoKey, EnumLayout>,
+    /// Bytecode `type_id` per monomorphized struct/enum key.
+    pub specialized_type_ids: HashMap<TypeMonoKey, u32>,
 }
 
 impl ProgramLayout {
@@ -92,6 +115,40 @@ impl ProgramLayout {
     #[must_use]
     pub fn type_id(&self, def: DefId) -> Option<u32> {
         self.type_ids.get(&def).copied()
+    }
+
+    /// Returns bytecode `type_id` for a named type, including monomorphized instantiations.
+    #[must_use]
+    pub fn type_id_for_named(&self, def: DefId, args: &[TypeId]) -> Option<u32> {
+        if args.is_empty() {
+            self.type_id(def)
+        } else {
+            self.specialized_type_ids
+                .get(&TypeMonoKey::new(def, args.to_vec()))
+                .copied()
+        }
+    }
+
+    /// Returns struct field layout for a template or monomorphized instantiation.
+    #[must_use]
+    pub fn struct_layout(&self, def: DefId, args: &[TypeId]) -> Option<&StructLayout> {
+        if args.is_empty() {
+            self.structs.get(&def)
+        } else {
+            self.specialized_structs
+                .get(&TypeMonoKey::new(def, args.to_vec()))
+        }
+    }
+
+    /// Returns enum layout for a template or monomorphized instantiation.
+    #[must_use]
+    pub fn enum_layout(&self, def: DefId, args: &[TypeId]) -> Option<&EnumLayout> {
+        if args.is_empty() {
+            self.enums.get(&def)
+        } else {
+            self.specialized_enums
+                .get(&TypeMonoKey::new(def, args.to_vec()))
+        }
     }
 
     /// Returns field index for a struct field name.

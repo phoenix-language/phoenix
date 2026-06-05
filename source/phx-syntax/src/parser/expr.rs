@@ -458,6 +458,7 @@ impl Parser<'_> {
     }
 
     /// Parses `Type { … }`, `a::b`, or a single-segment path/ident.
+    #[allow(clippy::too_many_lines, clippy::collapsible_if)]
     fn parse_path_or_struct_literal(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         let (type_name, first_segment, from_type_ident) = match self.peek_kind() {
@@ -472,6 +473,29 @@ impl Parser<'_> {
                 if matches!(self.peek_kind(), TokenKind::ColonColon)
                     && matches!(self.peek_at(1), TokenKind::Lt)
                 {
+                    let saved = self.pos;
+                    self.bump();
+                    self.bump();
+                    if let Ok(generic_args) = self.parse_generic_args() {
+                        if self.brace_starts_struct_literal_body(false) {
+                            let type_name = TypeName {
+                                symbol: id.symbol,
+                                span: id.span,
+                                id: id.id,
+                            };
+                            self.bump();
+                            let fields = self.parse_struct_field_inits()?;
+                            return Ok(self.node(
+                                Expr::StructLit {
+                                    name: type_name,
+                                    generics: Some(generic_args),
+                                    fields,
+                                },
+                                self.span_from(start),
+                            ));
+                        }
+                    }
+                    self.pos = saved;
                     return Ok(self.node(Expr::Ident(id), self.span_from(start)));
                 }
                 (
@@ -509,6 +533,23 @@ impl Parser<'_> {
                     name: type_name,
                     generics,
                     fields,
+                },
+                self.span_from(start),
+            ));
+        }
+        if generics.is_some() && matches!(self.peek_kind(), TokenKind::LParen) {
+            self.bump();
+            let args = self.parse_arg_list()?;
+            let base = self.node(
+                Expr::Path(crate::ast::Path {
+                    segments: vec![first_segment],
+                }),
+                self.span_from(start),
+            );
+            return Ok(self.node(
+                Expr::Postfix {
+                    base: Box::new(base),
+                    ops: vec![PostfixOp::Call { generics, args }],
                 },
                 self.span_from(start),
             ));

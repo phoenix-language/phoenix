@@ -161,6 +161,8 @@ max :: <T: PartialOrd + Copyable>(a: T, b: T) => T
 
 Trait bounds are compile-time contracts. If `T` does not satisfy the bound, generic instantiation fails at compile time.
 
+**MVP note:** bounds are parsed and resolved; **enforcement is deferred** until trait impl tables are complete. Monomorphization uses **static dispatch** only. `dyn Trait` is reserved for explicit runtime polymorphism ([type-system.md](type-system.md#generics-strategy-monomorphization)).
+
 Multiple bounds use `+`, for example `<T: PartialOrd + Copyable>` or `<T: PartialEq + Clone>`.
 
 ---

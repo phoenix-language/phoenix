@@ -33,7 +33,7 @@ Phoenix MVP does **not** include a primitive `string` type.
 - Fixed arrays: `[T; N]`
 - Slices/views: `[T]`
 - Unit: `()`
-- Built-in generics: `Option<T>`, `Result<T, E>`
+- Post-MVP std enums: `Option` and `Result` are library generic enums (see [type-system.md](../design/features/type-system.md)), not built-in generic syntax sugar here
 
 Literal defaults:
 
