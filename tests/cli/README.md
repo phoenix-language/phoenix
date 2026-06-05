@@ -64,6 +64,8 @@ Phoenix resolves `#import` paths relative to a **module root** directory (the fo
 | [`primitives_width.phx`](fixtures/primitives_width.phx) | positive | `run.sh` | Exit 0; width-faithful integers |
 | [`primitives_i128.phx`](fixtures/primitives_i128.phx) | positive | `run.sh` | Exit 0; `s128` / `u128` |
 | [`byte_string.phx`](fixtures/byte_string.phx) | positive | `run.sh` | Exit 0; `b"…"` → `[u8; N]` |
+| [`string_literal.phx`](fixtures/string_literal.phx) | positive | `run.sh` | Exit 0; `"…"` → `str`, `str as [u8]` |
+| [`byte_string_as_str.phx`](fixtures/byte_string_as_str.phx) | positive | `run.sh` | Exit 0; `const` `b"…"` → `str` (const-fold) |
 | [`ref_local.phx`](fixtures/ref_local.phx) | positive | `run.sh` | Exit 0; address-of local |
 | [`deref_ptr.phx`](fixtures/deref_ptr.phx) | positive | `run.sh` | Exit 0; pointer deref |
 | [`slice_from_array.phx`](fixtures/slice_from_array.phx) | positive | `run.sh` | Exit 0; array → slice cast |
@@ -79,6 +81,7 @@ Phoenix resolves `#import` paths relative to a **module root** directory (the fo
 | [`missing_main.phx`](fixtures/missing_main.phx) | negative | `check.sh` | Non-zero; missing `main` |
 | [`use_after_move.phx`](fixtures/use_after_move.phx) | negative | `check.sh` | Non-zero; use-after-move + move-site `note:` |
 | [`mixed_width.phx`](fixtures/mixed_width.phx) | negative | `check.sh` | Non-zero; implicit mixed-width arithmetic |
+| [`invalid_utf8_byte_as_str.phx`](fixtures/invalid_utf8_byte_as_str.phx) | negative | `check.sh` | Non-zero; invalid UTF-8 `b"…" as str` |
 | [`given_enum_non_exhaustive.phx`](fixtures/given_enum_non_exhaustive.phx) | negative | `check.sh` | Non-zero; non-exhaustive `given` on enum |
 | [`match_unreachable_arm.phx`](fixtures/match_unreachable_arm.phx) | negative | `check.sh` | Non-zero; unreachable `match` arm |
 | [`modules/import_private.phx`](fixtures/modules/import_private.phx) | negative | `check.sh` | Non-zero; import of non-`pub` symbol |

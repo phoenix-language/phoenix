@@ -252,6 +252,12 @@ fn string_literal_index_is_lowercase_o() {
 }
 
 #[test]
+fn byte_string_as_str_const_fold_index_is_lowercase_o() {
+    let module = compile_fixture("byte_string_as_str.phx");
+    assert_main_local_u8(&module, 3, b'o');
+}
+
+#[test]
 fn primitives_width_sums_to_two_fifty_five() {
     let module = compile_fixture("primitives_width.phx");
     assert_main_local_i64(&module, 3, 255);

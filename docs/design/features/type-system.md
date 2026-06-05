@@ -76,6 +76,48 @@ Fixed arrays `[T; N]` may be explicitly cast to slices `[T]`; slice values are `
 
 ---
 
+## Explicit cast tiers
+
+Phoenix uses a single conversion operator: postfix **`expr as Type`**. Casts are always explicit in source; there is no implicit widening at call sites, assignments, returns, or in binary operators.
+
+### Tier A — MVP (implemented)
+
+| Conversion | Semantics |
+|---|---|
+| Numeric primitive ↔ numeric primitive (ints, uints, floats; cross-width and signed/unsigned) | Truncating/wrapping; **`bool` excluded** |
+| `[T; N] as [T]` | Slice view over array storage (no copy) |
+| `str as [u8]` | Byte slice view over the same rodata / storage |
+| `[u8; N] as str` | Allowed when UTF-8 is provable at compile time: inline `b"…"` literal **or** a **`const`** binding initialized directly from such a literal; lowers to rodata (`MakeStr`) |
+
+Examples:
+
+```phoenix
+const wide: s64 = 100 as s64;
+const f: f32 = n as f32;
+const sl: [u8] = arr as [u8];
+const s: str = b"hi" as str;
+const s2: str = arr as str;  // when `const arr = b"hi";`
+const bytes: [u8] = msg as [u8];  // when `msg: str`
+```
+
+### Tier B — post-MVP / std (not implemented)
+
+- `[u8; N] as str` with **runtime** UTF-8 validation → std `Result`-returning API once `Result` exists
+- `#unsafe` pointer / reinterpret casts
+- User-defined conversions via traits (`From` / `Into` family — see [traits.md](traits.md))
+- Contextual literal typing (e.g. `const x: f32 = 1` without `as`) — optional DX only; not implicit call coercion
+
+### Tier C — forbidden via `as`
+
+- `bool` ↔ numeric
+- Struct / enum / layout punning (except identity `as SameType`)
+- Casts that silently allocate (e.g. `str` → owned std `String`)
+- Implicit numeric widening anywhere (calls, assignment, operators)
+
+See also [grammer.md](../grammer.md#explicit-casts) for surface syntax and precedence.
+
+---
+
 ## Deterministic MVP type rules
 
 1. Integer literals default to `s32`; with `u` suffix they default to `u32`.

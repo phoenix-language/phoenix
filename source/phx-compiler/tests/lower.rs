@@ -148,3 +148,31 @@ fn explicit_return_emits_single_return() {
         "explicit return must not get a second synthetic Return"
     );
 }
+
+#[test]
+fn const_fold_byte_array_as_str_emits_make_str_not_make_array() {
+    let source = "main :: () => { const arr = b\"hi\"; const s: str = arr as str; const _ = s; };";
+    let unit = compile_source(source, None).unwrap();
+    let ir = lower(&unit.typed).expect("lower");
+    let main = ir
+        .functions
+        .iter()
+        .find(|f| Some(f.def) == ir.entry)
+        .expect("main");
+    let make_str = main
+        .blocks
+        .iter()
+        .flat_map(|b| &b.insts)
+        .any(|i| matches!(i, IrInst::MakeStr { .. }));
+    let make_array_for_cast = main
+        .blocks
+        .iter()
+        .flat_map(|b| &b.insts)
+        .filter(|i| matches!(i, IrInst::MakeArray { .. }))
+        .count();
+    assert!(make_str, "const-folded arr as str should emit MakeStr");
+    assert_eq!(
+        make_array_for_cast, 1,
+        "only the arr initializer should MakeArray, not the cast"
+    );
+}

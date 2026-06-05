@@ -163,6 +163,48 @@ fn signed_unsigned_cast_ok() {
 }
 
 #[test]
+fn s32_as_f32_cast_ok() {
+    ok("main :: () => { const n: s32 = 42; const f: f32 = n as f32; const _ = f; };");
+}
+
+#[test]
+fn string_literal_and_str_as_u8_slice_ok() {
+    ok(include_str!(
+        "../../../tests/cli/fixtures/string_literal.phx"
+    ));
+}
+
+#[test]
+fn byte_string_as_str_literal_ok() {
+    ok("main :: () => { const s: str = b\"hi\" as str; const _ = s; };");
+}
+
+#[test]
+fn byte_string_as_str_const_fold_ok() {
+    ok("main :: () => { const arr = b\"hi\"; const s: str = arr as str; const _ = s; };");
+}
+
+#[test]
+fn invalid_utf8_byte_string_as_str() {
+    let bag = typeck_err("main :: () => { const _ = b\"\\xFF\" as str; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::InvalidCast { .. }))
+    );
+}
+
+#[test]
+fn var_byte_array_as_str_rejected() {
+    let bag = typeck_err("main :: () => { var arr: [u8; 2] = b\"hi\"; const _ = arr as str; };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::InvalidCast { .. }))
+    );
+}
+
+#[test]
 fn given_enum_non_exhaustive() {
     let bag = typeck_err(include_str!(
         "../../../tests/cli/fixtures/given_enum_non_exhaustive.phx"

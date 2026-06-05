@@ -418,7 +418,8 @@ fn emit_inst(
             out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)]));
         }
         IrInst::MakeStr { pool_index } => {
-            out.extend(encode(Opcode::MakeStr, &[*pool_index]));
+            let pool_idx = pool.pool_index_for_literal(*pool_index);
+            out.extend(encode(Opcode::MakeStr, &[pool_idx]));
         }
         IrInst::StrAsSlice => {
             out.extend(encode(Opcode::StrAsSlice, &[]));

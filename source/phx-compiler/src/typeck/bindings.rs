@@ -49,6 +49,9 @@ pub struct Binding {
     pub kind: BindingKind,
     /// Block nesting depth where this binding was introduced.
     pub scope_depth: u32,
+    /// When `kind` is [`BindingKind::Const`] and the initializer was a UTF-8 `b"…"` literal,
+    /// holds those bytes for compile-time `arr as str` lowering to rodata.
+    pub utf8_rodata: Option<Vec<u8>>,
 }
 
 /// Layout of locals for one function (for IR/codegen).
@@ -135,7 +138,7 @@ impl FunctionLayoutBuilder {
         let serial = self.match_temp_serial;
         self.match_temp_serial += 1;
         let symbol = Symbol::from_raw(0x9000_0000 | serial);
-        let slot = self.alloc(symbol, ty, BindingKind::MatchTemp);
+        let slot = self.alloc(symbol, ty, BindingKind::MatchTemp, None);
         self.match_temp_slots.push(slot);
         slot
     }
@@ -148,7 +151,13 @@ impl FunctionLayoutBuilder {
 
     /// Allocates a slot and records `symbol` with `ty` and `kind`.
     #[must_use]
-    pub fn alloc(&mut self, symbol: Symbol, ty: TypeId, kind: BindingKind) -> LocalSlot {
+    pub fn alloc(
+        &mut self,
+        symbol: Symbol,
+        ty: TypeId,
+        kind: BindingKind,
+        utf8_rodata: Option<Vec<u8>>,
+    ) -> LocalSlot {
         let slot = LocalSlot::from_raw(self.next_slot);
         self.next_slot += 1;
         self.bindings.push(Binding {
@@ -157,6 +166,7 @@ impl FunctionLayoutBuilder {
             ty,
             kind,
             scope_depth: self.scope_depth,
+            utf8_rodata,
         });
         slot
     }

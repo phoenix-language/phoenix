@@ -220,10 +220,30 @@ impl<'a> TypeChecker<'a> {
         super::unify::same_type(&self.alias_env(), a, b)
     }
 
-    fn define_local(&mut self, symbol: phx_syntax::Symbol, ty: TypeId, kind: BindingKind) {
+    fn utf8_rodata_for_const_init(init: &Expr) -> Option<Vec<u8>> {
+        if let Expr::Literal(Literal::ByteString(b)) = init {
+            if std::str::from_utf8(b).is_ok() {
+                return Some(b.clone());
+            }
+        }
+        None
+    }
+
+    fn define_local(
+        &mut self,
+        symbol: phx_syntax::Symbol,
+        ty: TypeId,
+        kind: BindingKind,
+        init: Option<&Expr>,
+    ) {
         self.ownership.define(symbol, ty);
         if let Some(layout) = &mut self.layout {
-            let _ = layout.alloc(symbol, ty, kind);
+            let utf8_rodata = if kind == BindingKind::Const {
+                init.and_then(Self::utf8_rodata_for_const_init)
+            } else {
+                None
+            };
+            let _ = layout.alloc(symbol, ty, kind, utf8_rodata);
         }
     }
 
@@ -706,7 +726,7 @@ impl<'a> TypeChecker<'a> {
             match p {
                 Param::Named { name, ty, .. } => {
                     let pty = self.lower_ast_type_with_defs(ty, &td);
-                    self.define_local(name.symbol, pty, BindingKind::Param);
+                    self.define_local(name.symbol, pty, BindingKind::Param, None);
                 }
                 Param::Receiver { ty, .. } => {
                     let pty = ty
@@ -714,14 +734,14 @@ impl<'a> TypeChecker<'a> {
                         .map(|t| self.lower_ast_type_with_defs(t, &td))
                         .or(self.impl_self_type)
                         .unwrap_or(self.unit);
-                    self.define_local(impl_receiver_symbol(), pty, BindingKind::Param);
+                    self.define_local(impl_receiver_symbol(), pty, BindingKind::Param, None);
                 }
                 _ => {}
             }
         }
         if self.impl_self_type.is_some() && !has_receiver {
             if let Some(self_ty) = self.impl_self_type {
-                self.define_local(impl_receiver_symbol(), self_ty, BindingKind::Param);
+                self.define_local(impl_receiver_symbol(), self_ty, BindingKind::Param, None);
             }
         }
         let body_ty = self.check_block_value(&f.body.inner);
@@ -813,7 +833,7 @@ impl<'a> TypeChecker<'a> {
                         self.error_mismatch(expected, got, init.span);
                     }
                 }
-                self.define_local(name.symbol, got, BindingKind::Const);
+                self.define_local(name.symbol, got, BindingKind::Const, Some(&init.inner));
             }
             Stmt::Var { name, ty, init } => {
                 let expected = self.lower_ast_type(ty);
@@ -822,7 +842,7 @@ impl<'a> TypeChecker<'a> {
                     self.error_mismatch(expected, got, init.span);
                 }
                 self.move_if_non_copyable(init, got);
-                self.define_local(name.symbol, expected, BindingKind::Var);
+                self.define_local(name.symbol, expected, BindingKind::Var, Some(&init.inner));
             }
             Stmt::Assign { expr } => {
                 if let Expr::Assign { target, value, .. } = &expr.inner {
@@ -1831,7 +1851,7 @@ impl<'a> TypeChecker<'a> {
                         self.error_enum_pattern_on_non_enum(scrutinee, span);
                     }
                 } else {
-                    self.define_local(ident.symbol, scrutinee, BindingKind::Var);
+                    self.define_local(ident.symbol, scrutinee, BindingKind::Var, None);
                 }
             }
             Pattern::Struct { name, fields } => {
@@ -1857,7 +1877,7 @@ impl<'a> TypeChecker<'a> {
                             if let Some(p) = &field.pattern {
                                 self.check_pattern(&p.inner, fty, span);
                             } else {
-                                self.define_local(field.name.symbol, fty, BindingKind::Var);
+                                self.define_local(field.name.symbol, fty, BindingKind::Var, None);
                             }
                         }
                     }
@@ -1878,7 +1898,12 @@ impl<'a> TypeChecker<'a> {
                                 if let Some(p) = &field.pattern {
                                     self.check_pattern(&p.inner, *fty, span);
                                 } else {
-                                    self.define_local(field.name.symbol, *fty, BindingKind::Var);
+                                    self.define_local(
+                                        field.name.symbol,
+                                        *fty,
+                                        BindingKind::Var,
+                                        None,
+                                    );
                                 }
                             }
                         }
@@ -2108,6 +2133,11 @@ impl<'a> TypeChecker<'a> {
         }
         match expr {
             Expr::Literal(Literal::ByteString(b)) => std::str::from_utf8(b).is_ok(),
+            Expr::Ident(ident) => self.layout.as_ref().is_some_and(|layout| {
+                layout
+                    .binding(ident.symbol)
+                    .is_some_and(|b| b.kind == BindingKind::Const && b.utf8_rodata.is_some())
+            }),
             _ => false,
         }
     }

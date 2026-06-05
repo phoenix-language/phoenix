@@ -174,11 +174,15 @@ Point :: impl
 
 ## Explicit casts
 
-No implicit numeric widening or narrowing. Use postfix `as`:
+No implicit numeric widening or narrowing. Use postfix `as` (full rules: [type-system.md — Explicit cast tiers](features/type-system.md#explicit-cast-tiers)):
 
 ```phoenix
 const n: u8 = 42 as u8;
 const wide: s64 = 100 as s64;
+const f: f32 = count as f32;
+const sl: [u8] = arr as [u8];
+const msg: str = b"hi" as str;
+const bytes: [u8] = text as [u8];
 ```
 
 Cast binds tighter than assignment (`=`, `+=`, …) and looser than unary operators.

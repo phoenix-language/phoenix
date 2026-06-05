@@ -32,6 +32,7 @@ FIXTURES=(
   primitives_i128.phx
   byte_string.phx
   string_literal.phx
+  byte_string_as_str.phx
   ref_local.phx
   deref_ptr.phx
   slice_from_array.phx

@@ -15,7 +15,7 @@ use crate::lower::ctx::{
 };
 use crate::resolver::DefId;
 use crate::typeck::{
-    LocalSlot, Ty, TypeId, VariantKind, primitive_kind_for_type, primitive_load_signed,
+    BindingKind, LocalSlot, Ty, TypeId, VariantKind, primitive_kind_for_type, primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -116,13 +116,9 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 .copied()
                 .unwrap_or(result_ty);
             if matches!(ctx.typed.types.get(result_ty), Ty::Str) {
-                if let Expr::Literal(Literal::ByteString(b)) = &expr.inner {
-                    let idx = ctx.intern_const(IrConst::Bytes(b.clone()));
-                    ctx.emit(IrInst::MakeStr { pool_index: idx });
-                    return;
-                }
-                if let Expr::Literal(Literal::String(s)) = &expr.inner {
-                    let idx = ctx.intern_const(IrConst::Bytes(s.as_bytes().to_vec()));
+                if let Some(bytes) = utf8_bytes_for_str_cast(ctx, &expr.inner) {
+                    let idx = ctx.intern_const(IrConst::Bytes(bytes));
+                    ctx.next_expr += 1;
                     ctx.emit(IrInst::MakeStr { pool_index: idx });
                     return;
                 }
@@ -272,6 +268,28 @@ fn scalar_to_ir_const(v: ScalarValue, kind: PrimitiveKind) -> (i128, PrimitiveKi
         ScalarValue::Ptr(p) => i128::from(p),
     };
     (n, kind)
+}
+
+/// UTF-8 bytes for `[u8; N] as str` / literal casts that lower to rodata [`IrInst::MakeStr`].
+fn utf8_bytes_for_str_cast(ctx: &LowerCtx<'_>, expr: &Expr) -> Option<Vec<u8>> {
+    match expr {
+        Expr::Literal(Literal::ByteString(b)) => {
+            if std::str::from_utf8(b).is_ok() {
+                Some(b.clone())
+            } else {
+                None
+            }
+        }
+        Expr::Literal(Literal::String(s)) => Some(s.clone().into_bytes()),
+        Expr::Ident(ident) => ctx.layout.binding(ident.symbol).and_then(|b| {
+            if b.kind == BindingKind::Const {
+                b.utf8_rodata.clone()
+            } else {
+                None
+            }
+        }),
+        _ => None,
+    }
 }
 
 fn literal_prim_kind(ctx: &LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u8 {
