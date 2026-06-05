@@ -9,7 +9,8 @@
 //! Executes verified [`phx_bytecode::BytecodeModule`] images with a single-process stack machine.
 //!
 //! [`run`] is the production entry point. [`run_captured`] is `#[doc(hidden)]` and exists only for
-//! integration tests that inspect `main` locals after execution.
+//! integration tests that inspect `main` locals (via [`VmRunCapture::main_local`]) or the stack
+//! return value after execution.
 //!
 //! ## Stack convention
 //!

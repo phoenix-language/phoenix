@@ -1,4 +1,4 @@
-//! End-to-end semantic tests: verify computed values, not just clean execution.
+//! End-to-end semantic tests: verify computed values at exact `main` local slots.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::Path;
@@ -49,6 +49,13 @@ fn scalar_i32(value: Value) -> Option<i32> {
     }
 }
 
+fn scalar_i8(value: Value) -> Option<i8> {
+    match value {
+        Value::Scalar(ScalarValue::I8(v)) => Some(v),
+        _ => None,
+    }
+}
+
 fn scalar_bool(value: Value) -> Option<bool> {
     match value {
         Value::Scalar(ScalarValue::Bool(v)) => Some(v),
@@ -70,154 +77,236 @@ fn scalar_i64(value: Value) -> Option<i64> {
     }
 }
 
-fn main_locals_contain_i32(module: &phx_bytecode::BytecodeModule, expected: i32) {
-    let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
-    assert!(
-        capture
-            .main_locals
-            .iter()
-            .any(|v| scalar_i32(*v) == Some(expected)),
-        "expected s32 {expected} in main locals: {:?}",
-        capture.main_locals
-    );
+fn scalar_f64(value: Value) -> Option<f64> {
+    match value {
+        Value::Scalar(ScalarValue::F64(v)) => Some(v),
+        _ => None,
+    }
 }
 
-fn main_locals_contain_bool(module: &phx_bytecode::BytecodeModule, expected: bool) {
+fn assert_main_local_i32(module: &phx_bytecode::BytecodeModule, slot: usize, expected: i32) {
     let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
-    assert!(
-        capture
-            .main_locals
-            .iter()
-            .any(|v| scalar_bool(*v) == Some(expected)),
-        "expected bool {expected} in main locals: {:?}",
-        capture.main_locals
-    );
+    let actual = capture
+        .main_local(slot)
+        .and_then(scalar_i32)
+        .unwrap_or_else(|| panic!("slot {slot} not s32: {:?}", capture.main_locals));
+    assert_eq!(actual, expected, "slot {slot}");
 }
 
-fn main_locals_contain_u8(module: &phx_bytecode::BytecodeModule, expected: u8) {
+fn assert_main_local_i8(module: &phx_bytecode::BytecodeModule, slot: usize, expected: i8) {
     let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
-    assert!(
-        capture
-            .main_locals
-            .iter()
-            .any(|v| scalar_u8(*v) == Some(expected)),
-        "expected u8 {expected} in main locals: {:?}",
-        capture.main_locals
-    );
+    let actual = capture
+        .main_local(slot)
+        .and_then(scalar_i8)
+        .unwrap_or_else(|| panic!("slot {slot} not s8: {:?}", capture.main_locals));
+    assert_eq!(actual, expected, "slot {slot}");
 }
 
-fn main_locals_contain_i64(module: &phx_bytecode::BytecodeModule, expected: i64) {
+fn assert_main_local_bool(module: &phx_bytecode::BytecodeModule, slot: usize, expected: bool) {
     let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
+    let actual = capture
+        .main_local(slot)
+        .and_then(scalar_bool)
+        .unwrap_or_else(|| panic!("slot {slot} not bool: {:?}", capture.main_locals));
+    assert_eq!(actual, expected, "slot {slot}");
+}
+
+fn assert_main_local_u8(module: &phx_bytecode::BytecodeModule, slot: usize, expected: u8) {
+    let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
+    let actual = capture
+        .main_local(slot)
+        .and_then(scalar_u8)
+        .unwrap_or_else(|| panic!("slot {slot} not u8: {:?}", capture.main_locals));
+    assert_eq!(actual, expected, "slot {slot}");
+}
+
+fn assert_main_local_i64(module: &phx_bytecode::BytecodeModule, slot: usize, expected: i64) {
+    let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
+    let actual = capture
+        .main_local(slot)
+        .and_then(scalar_i64)
+        .unwrap_or_else(|| panic!("slot {slot} not s64: {:?}", capture.main_locals));
+    assert_eq!(actual, expected, "slot {slot}");
+}
+
+fn assert_main_local_f64(module: &phx_bytecode::BytecodeModule, slot: usize, expected: f64) {
+    let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
+    let actual = capture
+        .main_local(slot)
+        .and_then(scalar_f64)
+        .unwrap_or_else(|| panic!("slot {slot} not f64: {:?}", capture.main_locals));
     assert!(
-        capture
-            .main_locals
-            .iter()
-            .any(|v| scalar_i64(*v) == Some(expected)),
-        "expected s64 {expected} in main locals: {:?}",
-        capture.main_locals
+        (actual - expected).abs() < f64::EPSILON,
+        "slot {slot}: expected {expected}, got {actual}"
     );
 }
 
 #[test]
 fn sample_arithmetic_computes_sum() {
     let module = compile_fixture("sample.phx");
-    main_locals_contain_i32(&module, 12);
-    main_locals_contain_bool(&module, true);
+    assert_main_local_i32(&module, 2, 12);
+    assert_main_local_bool(&module, 3, true);
 }
 
 #[test]
 fn enum_match_extracts_payload() {
     let module = compile_fixture("enum_match.phx");
-    main_locals_contain_i32(&module, 42);
+    assert_main_local_i32(&module, 2, 42);
 }
 
 #[test]
 fn struct_method_sums_fields() {
     let module = compile_fixture("struct_method.phx");
-    main_locals_contain_i32(&module, 7);
+    assert_main_local_i32(&module, 1, 7);
 }
 
 #[test]
 fn struct_point_sums_via_function() {
     let module = compile_fixture("struct_point.phx");
-    main_locals_contain_i32(&module, 7);
+    assert_main_local_i32(&module, 1, 7);
 }
 
 #[test]
 fn trait_eq_method_returns_true() {
     let module = compile_fixture("trait_eq.phx");
-    main_locals_contain_bool(&module, true);
+    assert_main_local_bool(&module, 2, true);
 }
 
 #[test]
 fn control_flow_loop_counter_reaches_ten() {
     let module = compile_fixture("control_flow.phx");
-    main_locals_contain_i32(&module, 10);
+    assert_main_local_i32(&module, 0, 10);
 }
 
 #[test]
 fn cast_width_sum_is_one_forty_two() {
     let module = compile_fixture("cast_width.phx");
-    main_locals_contain_i64(&module, 142);
+    assert_main_local_i64(&module, 3, 142);
 }
 
 #[test]
 fn match_int_selects_arm_value() {
     let module = compile_fixture("match_int.phx");
-    main_locals_contain_i32(&module, 20);
+    assert_main_local_i32(&module, 2, 20);
 }
 
 #[test]
 fn logical_short_circuit_ok_is_true() {
     let module = compile_fixture("logical.phx");
-    main_locals_contain_bool(&module, true);
+    assert_main_local_bool(&module, 4, true);
 }
 
 #[test]
 fn slice_from_array_index_byte() {
     let module = compile_fixture("slice_from_array.phx");
-    main_locals_contain_u8(&module, b'Y');
+    assert_main_local_u8(&module, 2, b'Y');
 }
 
 #[test]
 fn modules_import_adds_imported_values() {
     let module_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../cli/fixtures/modules");
     let module = compile_fixture_with_module_root("main.phx", &module_root);
-    main_locals_contain_i32(&module, 3);
+    assert_main_local_i32(&module, 0, 3);
 }
 
 #[test]
 fn mvp_acceptance_along_plus_pick_is_four() {
     let module = compile_mvp_acceptance();
-    main_locals_contain_i32(&module, 4);
+    assert_main_local_i32(&module, 6, 4);
 }
 
 #[test]
 fn factorial_computes_one_twenty() {
     let module = compile_fixture("factorial.phx");
-    main_locals_contain_i32(&module, 120);
+    assert_main_local_i32(&module, 0, 120);
 }
 
 #[test]
 fn given_enum_single_variant_binds_payload() {
     let module = compile_fixture("given_enum_single_variant.phx");
-    main_locals_contain_i32(&module, 12);
+    assert_main_local_i32(&module, 1, 12);
 }
 
 #[test]
 fn ref_local_derefs_to_ten() {
     let module = compile_fixture("ref_local.phx");
-    main_locals_contain_i32(&module, 10);
+    assert_main_local_i32(&module, 2, 10);
 }
 
 #[test]
 fn deref_ptr_reads_seventy_seven() {
     let module = compile_fixture("deref_ptr.phx");
-    main_locals_contain_u8(&module, 77);
+    assert_main_local_u8(&module, 2, 77);
 }
 
 #[test]
 fn byte_string_index_is_capital_b() {
     let module = compile_fixture("byte_string.phx");
-    main_locals_contain_u8(&module, b'B');
+    assert_main_local_u8(&module, 1, b'B');
+}
+
+#[test]
+fn primitives_width_sums_to_two_fifty_five() {
+    let module = compile_fixture("primitives_width.phx");
+    assert_main_local_i64(&module, 3, 255);
+}
+
+#[test]
+fn primitives_float_mixed_width_sum() {
+    let module = compile_fixture("primitives_float.phx");
+    assert_main_local_f64(&module, 6, 145.75);
+}
+
+#[test]
+fn primitives_i128_truncates_to_s8() {
+    let module = compile_fixture("primitives_i128.phx");
+    assert_main_local_i8(&module, 1, -24);
+}
+
+#[test]
+fn compare_unary_and_relations_score() {
+    let module = compile_fixture("compare_unary.phx");
+    assert_main_local_i32(&module, 11, -4);
+}
+
+#[test]
+fn mod_bitwise_ops_sum() {
+    let module = compile_fixture("mod_bitwise.phx");
+    assert_main_local_i32(&module, 5, -7);
+}
+
+#[test]
+fn array_index_reads_middle_element() {
+    let module = compile_fixture("array_index.phx");
+    assert_main_local_i32(&module, 1, 20);
+}
+
+#[test]
+fn tuple_lit_first_element() {
+    let module = compile_fixture("tuple_lit.phx");
+    assert_main_local_i32(&module, 1, 1);
+}
+
+#[test]
+fn match_bool_true_arm() {
+    let module = compile_fixture("match_bool.phx");
+    assert_main_local_i32(&module, 2, 1);
+}
+
+#[test]
+fn match_ident_wildcard_arm() {
+    let module = compile_fixture("match_ident.phx");
+    assert_main_local_i32(&module, 2, 20);
+}
+
+#[test]
+fn struct_assign_updates_field() {
+    let module = compile_fixture("struct_assign.phx");
+    assert_main_local_i32(&module, 1, 5);
+}
+
+#[test]
+fn enum_match_struct_extracts_payload() {
+    let module = compile_fixture("enum_match_struct.phx");
+    assert_main_local_i32(&module, 2, 42);
 }

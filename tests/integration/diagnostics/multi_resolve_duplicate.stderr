@@ -1,0 +1,23 @@
+<entry>:
+error: duplicate definition of `<invalid-symbol>`
+ --> line 3, column 1
+  |
+  | foo :: () => { };
+  | ^^^^^^^^^^^^^^^^^
+note: previous definition here
+ --> line 2, column 1
+  |
+  | foo :: () => { };
+  | ^^^^^^^^^^^^^^^^^ [E1003]
+---
+<entry>:
+error: duplicate definition of `<invalid-symbol>`
+ --> line 5, column 1
+  |
+  | bar :: () => { };
+  | ^^^^^^^^^^^^^^^^^
+note: previous definition here
+ --> line 4, column 1
+  |
+  | bar :: () => { };
+  | ^^^^^^^^^^^^^^^^^ [E1003]

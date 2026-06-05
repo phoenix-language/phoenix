@@ -3,7 +3,8 @@
 End-to-end tests for the `phx` binary. From the repo root:
 
 ```bash
-just test-cli          # check.sh + run.sh + help.sh
+just test-cli          # all CLI scripts (CI parity)
+just test-lang         # check.sh + run.sh + build.sh + help.sh (pre-commit subset)
 tests/cli/check.sh     # negative + module diagnostics
 tests/cli/run.sh       # compile + run positive fixtures
 tests/cli/build.sh     # phoenix.toml project build/run
@@ -18,7 +19,7 @@ tests/cli/compile.sh   # phx compile -o
 | [`compile.sh`](compile.sh) | `phx compile -o` writes verifiable `.phx0` |
 | [`help.sh`](help.sh) | Smoke test for `phx help` usage text |
 
-CI (`.github/workflows/ci.yml`) runs `check.sh` and `run.sh` only; `build.sh`, `compile.sh`, and `help.sh` are covered by `just test-cli` locally and integration tests.
+CI (`.github/workflows/ci.yml`) `cli` job runs all five scripts (`check.sh`, `run.sh`, `build.sh`, `compile.sh`, `help.sh`). Locally, `just test-cli` matches that job; `just pre-commit` runs `just test-lang` (check, run, build, help) plus fmt/clippy/doc — not `cargo test --workspace` (use `just test` for full Rust tests).
 
 ## Module root (`#import`)
 

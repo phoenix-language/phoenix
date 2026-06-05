@@ -1,0 +1,11 @@
+tests/cli/fixtures/use_after_move.phx:
+error: use of moved value `p`
+ --> line 9, column 15
+  |
+  |     const _ = p.x;
+  |               ^
+note: value moved here
+ --> line 8, column 20
+  |
+  |     var q: Point = p;
+  |                    ^ [E2017]

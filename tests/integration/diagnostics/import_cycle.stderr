@@ -1,0 +1,6 @@
+<entry>:
+error: circular module import: module graph cycle (entry module id 0)
+ --> line 1, column 1
+  |
+  | #import cycle_b::helper;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^ [E1008]

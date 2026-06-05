@@ -48,4 +48,4 @@ Multi-file M2 builds are in good shape: import graphs, path dependencies, increm
 3. `[workspace.members]` in `phoenix.toml` before a second in-repo package.
 4. `phx test` entry for `type = lib` crates.
 
-**Cross-references:** Resolver — [`03-resolver.md`](03-resolver.md). Diagnostics — [`02-diagnostics.md`](02-diagnostics.md). Tests — [`09-testing-strategy.md`](../pending-review/09-testing-strategy.md).
+**Cross-references:** Resolver — [`03-resolver.md`](03-resolver.md). Diagnostics — [`02-diagnostics.md`](02-diagnostics.md). Tests — [`09-testing-strategy.md`](09-testing-strategy.md).

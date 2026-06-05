@@ -23,7 +23,11 @@ test-integration:
 test-lang:
     tests/cli/check.sh
     tests/cli/run.sh
+    tests/cli/build.sh
     tests/cli/help.sh
+
+test-cli: test-lang
+    tests/cli/compile.sh
 
 pre-commit:
     just fmt-check lint doc-check test-lang

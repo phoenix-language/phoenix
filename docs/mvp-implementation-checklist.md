@@ -423,10 +423,13 @@ A credible MVP demo `.phx` should be able to:
 | Parser unit tests                         | done    | `source/phx-syntax/tests/parser.rs`     | Includes deferred=unsupported                       |                                                      |
 | Resolver / typeck / lower / codegen tests | done    | `source/phx-compiler/tests/`            |                                                     |                                                      |
 | Verifier tests                            | done    | `source/phx-bytecode/src/verify.rs`     | `#[cfg(test)]`                                      |                                                      |
+| Verifier mutation tests                   | done    | `source/phx-bytecode/tests/verify_mutation.rs` | Encode/decode/mutate; verify rejects; VM no panic | `cargo test -p phx-bytecode --test verify_mutation`  |
 | CLI shell tests                           | done    | `tests/cli/*.sh`                        | check, run, build, compile, help                  | CI: `rust` job + `cli` job (all shell scripts)       |
+| `just test-lang`                          | done    | `Justfile`                              | check + run + build + help                        | `just pre-commit`; `just test-cli` adds `compile.sh` |
 | Integration `run_sample`                  | done    | `tests/integration/tests/run_sample.rs` |                                                     |                                                      |
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |
-| Integration semantics                       | done    | `tests/integration/tests/run_semantics.rs` | `run_captured` + `main_locals_contain_*` on fixtures | See table below |
+| Integration semantics                       | done    | `tests/integration/tests/run_semantics.rs` | `VmRunCapture::main_local` slot-index assertions | See table below (28 tests) |
+| Diagnostic golden tests                   | done    | `tests/integration/tests/diagnostics.rs` | `.stderr` sidecars in `tests/integration/diagnostics/` | `UPDATE_GOLDEN=1` to refresh |
 | Corpus of `.phx` programs                 | done    | `tests/cli/fixtures/`                   | 31 run + modules + project + `mvp_acceptance` + app_dep | [tests/cli/README.md](../tests/cli/README.md)        |
 | MVP acceptance project                    | done    | `tests/cli/fixtures/mvp_acceptance/`    | Struct + enum `match` + `#import` + `phoenix.toml` build | `build.sh`, `run_build.rs`                           |
 | Unreachable `match` arm errors            | done    | `typeck/check.rs`, `match_unreachable_arm.phx` | Duplicate variant/literal/`_` arms rejected          | `check.sh`                                             |
@@ -451,7 +454,21 @@ A credible MVP demo `.phx` should be able to:
 | `modules_import_adds_imported_values` | `modules/main.phx` | `s32` 3 |
 | `mvp_acceptance_along_plus_pick_is_four` | `mvp_acceptance/` project | `s32` 4 |
 | `factorial_computes_one_twenty` | `factorial.phx` | `s32` 120 |
-| `given_enum_single_variant_binds_payload` | `given_enum_single_variant.phx` | `s32` 12 |
+| `given_enum_single_variant_binds_payload` | `given_enum_single_variant.phx` | slot 1: `s32` 12 |
+| `ref_local_derefs_to_ten` | `ref_local.phx` | slot 2: `s32` 10 |
+| `deref_ptr_reads_seventy_seven` | `deref_ptr.phx` | slot 2: `u8` 77 |
+| `byte_string_index_is_capital_b` | `byte_string.phx` | slot 1: `u8` `'B'` |
+| `primitives_width_sums_to_two_fifty_five` | `primitives_width.phx` | slot 3: `s64` 255 |
+| `primitives_float_mixed_width_sum` | `primitives_float.phx` | slot 6: `f64` 145.75 |
+| `primitives_i128_truncates_to_s8` | `primitives_i128.phx` | slot 1: `s8` -24 |
+| `compare_unary_and_relations_score` | `compare_unary.phx` | slot 11: `s32` -4 |
+| `mod_bitwise_ops_sum` | `mod_bitwise.phx` | slot 5: `s32` -7 |
+| `array_index_reads_middle_element` | `array_index.phx` | slot 1: `s32` 20 |
+| `tuple_lit_first_element` | `tuple_lit.phx` | slot 1: `s32` 1 |
+| `match_bool_true_arm` | `match_bool.phx` | slot 2: `s32` 1 |
+| `match_ident_wildcard_arm` | `match_ident.phx` | slot 2: `s32` 20 |
+| `struct_assign_updates_field` | `struct_assign.phx` | slot 1: `s32` 5 |
+| `enum_match_struct_extracts_payload` | `enum_match_struct.phx` | slot 2: `s32` 42 |
 
 `run_control_flow.rs` only smoke-runs `control_flow.phx` (overlap with row above); see [tests/integration/README.md](../tests/integration/README.md).
 

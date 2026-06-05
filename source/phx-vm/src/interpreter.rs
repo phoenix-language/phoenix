@@ -16,6 +16,16 @@ pub struct VmRunCapture {
     pub main_locals: Vec<Value>,
     /// Aggregate arena at return (for struct/enum inspection).
     pub aggregates: Vec<Aggregate>,
+    /// Stack value popped at top-level `Return`, if the stack was non-empty.
+    pub return_value: Option<Value>,
+}
+
+impl VmRunCapture {
+    /// Returns the value stored in `main` local slot `index`, if present.
+    #[must_use]
+    pub fn main_local(&self, index: usize) -> Option<Value> {
+        self.main_locals.get(index).copied()
+    }
 }
 
 /// Runs `module` starting at `entry` until `main` returns.
@@ -67,6 +77,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 return Ok(VmRunCapture {
                     main_locals,
                     aggregates: std::mem::take(&mut machine.aggregates),
+                    return_value: None,
                 });
             }
             return Err(VmError::TruncatedCode);
@@ -200,6 +211,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 }
             }
             Opcode::Return => {
+                let return_value = machine.stack.pop();
                 let main_locals = if machine.frames.len() == 1 {
                     machine.frames.last().map(|f| f.locals.clone())
                 } else {
@@ -210,7 +222,11 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                     return Ok(VmRunCapture {
                         main_locals: main_locals.unwrap_or_default(),
                         aggregates: std::mem::take(&mut machine.aggregates),
+                        return_value,
                     });
+                }
+                if let Some(v) = return_value {
+                    machine.stack.push(v);
                 }
             }
             Opcode::Pop => {
@@ -453,6 +469,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
     Ok(VmRunCapture {
         main_locals: Vec::new(),
         aggregates: std::mem::take(&mut machine.aggregates),
+        return_value: None,
     })
 }
 
