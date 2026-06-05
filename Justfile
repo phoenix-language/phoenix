@@ -29,8 +29,11 @@ test-lang:
 test-cli: test-lang
     tests/cli/compile.sh
 
+dep-check:
+    bash tests/ci/check-deps.sh
+
 pre-commit:
-    just fmt-check lint doc-check test-lang
+    just fmt-check lint doc-check dep-check test-lang
 
 doc-check:
     cargo doc --workspace --no-deps

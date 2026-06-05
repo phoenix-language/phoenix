@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use phx_diagnostics::{DiagnosticBag, ResolveError};
 use phx_syntax::{Interner, Program, parse_with_interner};
 
+use super::SourceText;
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
 use super::load_context::CrateLoadContext;
 use super::path::ModulePath;
@@ -39,7 +40,7 @@ pub struct LoadedModule {
     /// Absolute path to the `.phx` file.
     pub filesystem: PathBuf,
     /// Source text.
-    pub source: String,
+    pub source: SourceText,
     /// Parsed program (imports + items).
     pub program: Program,
 }
@@ -117,7 +118,7 @@ pub fn load_crate_with_context(
     ));
     loaded_paths.insert(entry_logical.display(), entry_file.clone());
 
-    let mut modules_raw: Vec<(ModulePath, PathBuf, String, Program)> = Vec::new();
+    let mut modules_raw: Vec<(ModulePath, PathBuf, SourceText, Program)> = Vec::new();
 
     while let Some((logical, fs_path, import_span, importer_module)) = pending.pop() {
         if modules_raw
@@ -197,7 +198,7 @@ pub fn load_crate_with_context(
             pending.push((canonical, dep_fs, imp.span, current_module));
         }
 
-        modules_raw.push((logical, fs_path, source, program));
+        modules_raw.push((logical, fs_path, SourceText::from(source), program));
     }
 
     if bag.has_errors() {

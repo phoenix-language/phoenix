@@ -8,9 +8,11 @@ mod load_context;
 mod loader;
 mod path;
 mod resolve_crate;
+mod source_text;
 
 pub use graph::import_target_module;
 pub use load_context::CrateLoadContext;
 pub use loader::{LoadedCrate, LoadedModule, ModuleId, load_crate, load_crate_with_context};
 pub use path::ModulePath;
 pub use resolve_crate::resolve_crate;
+pub use source_text::SourceText;

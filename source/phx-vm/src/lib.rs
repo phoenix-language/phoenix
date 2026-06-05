@@ -36,6 +36,7 @@ pub fn run(module: &BytecodeModule) -> Result<(), VmError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use phx_bytecode::{
         BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,

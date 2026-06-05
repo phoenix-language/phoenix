@@ -16,13 +16,16 @@
 //!
 //! ## API stability
 //!
-//! [`DefId`], [`ResolvedProgram`], and [`TypedProgram`] expose in-tree compiler graphs for the CLI
-//! and tests. External tools should not rely on their field layout until a narrower facade exists
-//! (see `docs/review/10-rust-code-quality.md`).
+//! External tools should use [`facade`] ([`check_file`], [`compile_to_module`], [`CompileOutput`],
+//! [`CheckOutput`]). [`ResolvedProgram`], [`TypedProgram`], and [`CompilationUnit`] are internal
+//! compiler graphs for the CLI and tests — their field layout is not stable.
+//!
+//! See `docs/finished-review/10-rust-code-quality.md`.
 
 mod build;
 mod codegen;
 mod compile;
+pub mod facade;
 mod ir;
 mod link;
 mod lower;
@@ -40,6 +43,7 @@ pub use compile::{
     compile_source, compile_source_with_module_root, compile_to_module,
     compile_to_module_with_module_path,
 };
+pub use facade::{CheckOutput, CompileOutput};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use link::{LinkError, LinkInput, link_modules};
 pub use lower::lower;
@@ -49,12 +53,15 @@ pub use project::{
     BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,
 };
 pub use pxi::{PxiExport, PxiFile, PxiType, digest_bytes, digest_file};
+#[doc(hidden)]
+pub use resolver::ResolvedProgram;
 pub use resolver::{
-    ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule,
-    resolve,
+    ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, SourceModule, resolve,
 };
+#[doc(hidden)]
+pub use typeck::TypedProgram;
 pub use typeck::{
-    Binding, BindingKind, ExprId, FunctionLayout, Ty, TypeId, TypeInterner, TypedProgram,
-    type_check,
+    Binding, BindingKind, ExprId, FunctionLayout, Ty, TypeId, TypeInterner, type_check,
 };
+#[doc(hidden)]
 pub use unit::CompilationUnit;

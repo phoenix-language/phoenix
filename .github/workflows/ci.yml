@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Dependency policy
+        run: bash tests/ci/check-deps.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

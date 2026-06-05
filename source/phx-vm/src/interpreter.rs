@@ -41,10 +41,16 @@ pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
 ///
 /// Integration-test harness only; production callers use [`interpret`].
 ///
+fn operand_prim_kind(inst: &Instruction, operand_index: usize) -> Result<PrimitiveKind, VmError> {
+    let byte = inst.operands.get(operand_index).copied().unwrap_or(0) as u8;
+    PrimitiveKind::from_u8(byte).ok_or(VmError::InvalidConstPayload)
+}
+
 /// # Errors
 ///
 /// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
 #[doc(hidden)]
+#[allow(clippy::too_many_lines)]
 pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
     let entry_id = module.header.entry_function_id;
     if entry_id == ENTRY_NONE {
@@ -92,14 +98,6 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
 
         if let Some(frame) = machine.frames.last_mut() {
             frame.pc = u32::try_from(next_pc).unwrap_or(u32::MAX);
-        }
-
-        fn operand_prim_kind(
-            inst: &Instruction,
-            operand_index: usize,
-        ) -> Result<PrimitiveKind, VmError> {
-            let byte = inst.operands.get(operand_index).copied().unwrap_or(0) as u8;
-            PrimitiveKind::from_u8(byte).ok_or(VmError::InvalidConstPayload)
         }
 
         match inst.opcode {
@@ -199,11 +197,14 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 }
                 let mut args = Vec::with_capacity(arity);
                 for _ in 0..arity {
-                    args.push(machine.stack.pop().expect("checked len"));
+                    args.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
                 }
                 args.reverse();
                 machine.push_frame(callee_id, callee.local_count, &module.local_layouts);
-                let callee_frame = machine.frames.last_mut().expect("callee");
+                let callee_frame = machine
+                    .frames
+                    .last_mut()
+                    .ok_or(VmError::InvalidFunctionId(callee_id))?;
                 for (i, arg) in args.iter().enumerate() {
                     if let Some(slot) = callee_frame.locals.get_mut(i) {
                         *slot = *arg;
@@ -276,9 +277,9 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                         .get(field_index)
                         .copied()
                         .ok_or(VmError::FieldOutOfRange)?,
-                    Some(Aggregate::Tuple { .. })
-                    | Some(Aggregate::Array { .. })
-                    | Some(Aggregate::Slice { .. }) => {
+                    Some(
+                        Aggregate::Tuple { .. } | Aggregate::Array { .. } | Aggregate::Slice { .. },
+                    ) => {
                         return Err(VmError::InvalidAggregate);
                     }
                     None => return Err(VmError::InvalidAggregate),
@@ -350,13 +351,13 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 machine.stack.push(Value::Scalar(bitnot_scalar(v, kind)));
             }
             Opcode::BitAnd => {
-                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::And)?
+                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::And)?;
             }
             Opcode::BitOr => {
-                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Or)?
+                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Or)?;
             }
             Opcode::BitXor => {
-                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Xor)?
+                binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Xor)?;
             }
             Opcode::Shl => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Shl)?,
             Opcode::Shr => binop_bit(&mut machine.stack, operand_prim_kind(&inst, 0)?, BitOp::Shr)?,
@@ -389,9 +390,8 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 let kind = operand_prim_kind(&inst, 0)?;
                 let signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
                 let addr_val = pop_scalar(&mut machine.stack)?;
-                let ptr = match addr_val {
-                    ScalarValue::Ptr(p) => p,
-                    _ => return Err(VmError::ExpectedScalar),
+                let ScalarValue::Ptr(ptr) = addr_val else {
+                    return Err(VmError::ExpectedScalar);
                 };
                 let v = ptr_load(&machine, ptr, kind, signed)?;
                 machine.stack.push(Value::Scalar(v));
@@ -401,9 +401,8 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 let signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
                 let val = pop_scalar(&mut machine.stack)?;
                 let addr_val = pop_scalar(&mut machine.stack)?;
-                let ptr = match addr_val {
-                    ScalarValue::Ptr(p) => p,
-                    _ => return Err(VmError::ExpectedScalar),
+                let ScalarValue::Ptr(ptr) = addr_val else {
+                    return Err(VmError::ExpectedScalar);
                 };
                 ptr_store(&mut machine, ptr, kind, signed, val)?;
             }
@@ -560,7 +559,7 @@ fn ptr_load(
             .frames
             .last()
             .ok_or(VmError::InvalidLocalSlot(slot))?;
-        let bytes = machine.local_scalar_bytes(frame, slot, kind)?;
+        let bytes = crate::frame::local_scalar_bytes(frame, slot, kind)?;
         return ScalarValue::from_le_bytes(kind, &bytes).ok_or(VmError::InvalidConstPayload);
     }
     if ptr & PTR_AGG_TAG == PTR_AGG_TAG {
@@ -787,6 +786,7 @@ fn write_heap_scalar(heap: &mut [u8], addr: usize, size: u8, bytes: &[u8]) -> Re
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 enum ArithOp {
     Add,
     Sub,
@@ -850,6 +850,7 @@ fn arith_scalar(
     Ok(scalar_from_i128(out, kind))
 }
 
+#[derive(Clone, Copy)]
 enum CmpOp {
     Eq,
     Lt,
@@ -879,6 +880,7 @@ fn binop_cmp(stack: &mut Vec<Value>, kind: PrimitiveKind, op: CmpOp) -> Result<(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 enum BitOp {
     And,
     Or,

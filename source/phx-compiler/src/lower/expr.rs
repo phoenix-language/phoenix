@@ -92,7 +92,13 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                         });
                     }
                 }
-                _ => {}
+                UnaryOp::Ref | UnaryOp::RefMut => {
+                    // `AddressOfLocal` emitted above; operand already consumed.
+                }
+                #[allow(unreachable_patterns)]
+                _ => {
+                    // Reserved for future `UnaryOp` variants (`#[non_exhaustive]`).
+                }
             }
         }
         Expr::Binary { op, left, right } => {
@@ -183,8 +189,12 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
             }
         }
         Expr::Unsafe(block) => lower_block_expr(ctx, block),
+        // Post-MVP / grammar-deferred — rejected by typeck in MVP (`grammar-deferred.md`).
         Expr::Range { .. } | Expr::Lambda { .. } | Expr::RuntimeDirective { .. } => {}
-        _ => {}
+        #[allow(unreachable_patterns)]
+        _ => {
+            // Reserved for future `Expr` variants (`#[non_exhaustive]`).
+        }
     }
 }
 
@@ -388,7 +398,9 @@ fn lower_binary(
                 });
             }
         }
+        #[allow(unreachable_patterns)]
         _ => {
+            // Reserved for future `BinOp` variants (`#[non_exhaustive]`).
             lower_expr(ctx, left);
             lower_expr(ctx, right);
         }
@@ -933,7 +945,9 @@ pub(crate) fn emit_arm_condition(
                 ctx.emit(IrInst::Jump { target: fail_id });
             }
         }
+        #[allow(unreachable_patterns)]
         _ => {
+            // Reserved for future `Pattern` variants (`#[non_exhaustive]`).
             ctx.emit(IrInst::Jump { target: fail_id });
         }
     }

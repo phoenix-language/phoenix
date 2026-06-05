@@ -152,26 +152,25 @@ impl Machine {
         self.heap.resize(start.saturating_add(size), 0);
         u64::try_from(start).unwrap_or(u64::MAX)
     }
+}
 
-    /// Reads primitive bytes from local `slot` for pointer loads.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::VmError::InvalidLocalSlot`] when `slot` is out of range or not a scalar.
-    pub fn local_scalar_bytes(
-        &self,
-        frame: &Frame,
-        slot: u32,
-        kind: PrimitiveKind,
-    ) -> Result<Vec<u8>, crate::VmError> {
-        let idx = usize::try_from(slot).map_err(|_| crate::VmError::InvalidLocalSlot(slot))?;
-        let local = frame
-            .locals
-            .get(idx)
-            .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
-        let scalar = local.as_scalar().ok_or(crate::VmError::ExpectedScalar)?;
-        Ok(scalar.to_le_bytes(kind))
-    }
+/// Reads primitive bytes from local `slot` for pointer loads.
+///
+/// # Errors
+///
+/// Returns [`crate::VmError::InvalidLocalSlot`] when `slot` is out of range or not a scalar.
+pub fn local_scalar_bytes(
+    frame: &Frame,
+    slot: u32,
+    kind: PrimitiveKind,
+) -> Result<Vec<u8>, crate::VmError> {
+    let idx = usize::try_from(slot).map_err(|_| crate::VmError::InvalidLocalSlot(slot))?;
+    let local = frame
+        .locals
+        .get(idx)
+        .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
+    let scalar = local.as_scalar().ok_or(crate::VmError::ExpectedScalar)?;
+    Ok(scalar.to_le_bytes(kind))
 }
 
 /// Writes primitive bytes into `frame` local `slot`.

@@ -290,7 +290,7 @@ fn source_for_module<'a>(
         } else {
             m.filesystem.display().to_string()
         };
-        return Some((label, m.source.as_str()));
+        return Some((label, m.source.as_ref()));
     }
     if module_id == 0 {
         return entry_source.map(|s| ("<entry>".to_owned(), s));

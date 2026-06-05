@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use phx_diagnostics::{DiagnosticBag, Span};
 use phx_syntax::{AstNodeId, Interner, Program, SourceFile, Symbol};
 
+use crate::modules::SourceText;
+
 pub use def_id::{Def, DefId, DefKind};
 
 /// Key for a name-use resolution entry (module + parse-time [`AstNodeId`], not span alone).
@@ -54,7 +56,7 @@ pub struct SourceModule {
     /// Path to the `.phx` file.
     pub filesystem: PathBuf,
     /// Source text.
-    pub source: String,
+    pub source: SourceText,
     /// Parsed AST for this file.
     pub program: Program,
 }
@@ -118,7 +120,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         id: 0,
         logical_path: "main".to_owned(),
         filesystem: PathBuf::new(),
-        source: String::new(),
+        source: SourceText::from(""),
         program: program.clone(),
     };
     Ok(ResolvedProgram {
