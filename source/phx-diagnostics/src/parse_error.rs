@@ -115,6 +115,7 @@ impl ParseError {
                 LexError::IntegerOverflow { start, end }
                 | LexError::InvalidInt { start, end }
                 | LexError::InvalidFloat { start, end }
+                | LexError::InvalidUtf8 { start, end }
                 | LexError::LexemeTooLong { start, end } => Some(Span::new(*start, *end)),
             },
             Self::UnexpectedToken { span, .. }

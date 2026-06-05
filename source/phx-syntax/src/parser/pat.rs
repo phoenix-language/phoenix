@@ -22,7 +22,8 @@ impl Parser<'_> {
             | TokenKind::Float { .. }
             | TokenKind::Bool(_)
             | TokenKind::ByteChar(_)
-            | TokenKind::ByteString(_) => {
+            | TokenKind::ByteString(_)
+            | TokenKind::String(_) => {
                 let lit = self.parse_literal()?;
                 Ok(self.node(Pattern::Literal(lit), self.span_from(start)))
             }

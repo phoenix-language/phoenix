@@ -36,4 +36,6 @@ pub enum Literal {
     ByteChar(u8),
     /// `b"…"`.
     ByteString(Vec<u8>),
+    /// `"…"` (validated UTF-8).
+    String(String),
 }

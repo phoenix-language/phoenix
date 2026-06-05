@@ -145,6 +145,9 @@ pub fn check_cast(env: &AliasEnv<'_>, from: TypeId, to: TypeId) -> bool {
     match (f, t) {
         (Ty::Primitive(a), Ty::Primitive(b)) => primitive_cast_allowed(*a, *b),
         (Ty::Array { elem, .. }, Ty::Slice(slice_elem)) => *elem == *slice_elem,
+        (Ty::Str, Ty::Slice(slice_elem)) => {
+            matches!(types.get(*slice_elem), Ty::Primitive(Keyword::U8))
+        }
         _ => from == to,
     }
 }

@@ -235,6 +235,7 @@ fn is_primitive_keyword(k: Keyword) -> bool {
     matches!(
         k,
         Keyword::Bool
+            | Keyword::Str
             | Keyword::S8
             | Keyword::S16
             | Keyword::S32

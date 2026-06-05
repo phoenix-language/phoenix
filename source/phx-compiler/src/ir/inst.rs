@@ -207,6 +207,13 @@ pub enum IrInst {
         /// Element primitive wire kind (or `0xFF` for aggregates).
         elem_kind: u8,
     },
+    /// Build UTF-8 `str` view from constant pool. Stack: `[] → [str]`
+    MakeStr {
+        /// Constant pool index (`ConstTag::Bytes`).
+        pool_index: u32,
+    },
+    /// Convert `str` to `[u8]` slice view. Stack: `[str] → [slice]`
+    StrAsSlice,
 }
 
 /// Binary operators mirrored from type-checked expressions.

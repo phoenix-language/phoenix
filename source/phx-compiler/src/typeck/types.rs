@@ -68,6 +68,8 @@ pub enum Ty {
     },
     /// Slice `[T]`.
     Slice(TypeId),
+    /// UTF-8 text view `str` (`ptr`, `len`).
+    Str,
     /// Borrow `&T` or `&mut T`.
     Ref {
         /// `true` for `&mut`.

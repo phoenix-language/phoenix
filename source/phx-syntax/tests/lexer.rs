@@ -30,6 +30,7 @@ mod support {
         Float { value: f64, suffix: FloatSuffix },
         ByteChar(u8),
         ByteString(&'a [u8]),
+        String(&'a str),
         Kind(TokenKind<'a>),
     }
 
@@ -87,6 +88,7 @@ mod support {
             ) if float_eq(*value, *v) && *suffix == *s => {}
             (Expect::ByteChar(w), TokenKind::ByteChar(got)) if *w == *got => {}
             (Expect::ByteString(w), TokenKind::ByteString(got)) if *w == got.as_slice() => {}
+            (Expect::String(w), TokenKind::String(got)) if *w == got.as_str() => {}
             (Expect::Kind(k), got) if discriminant_matches(k, got) => {}
             _ => fail("kind mismatch"),
         }
@@ -1199,6 +1201,31 @@ fn byte_string_all_escapes() {
             b'\n', b'\r', b'\t', 0, b'\\', b'"', b'\'', b'B',
         ])],
     );
+}
+
+#[test]
+fn string_empty() {
+    assert_tokens("\"\"", &[Expect::String("")]);
+}
+
+#[test]
+fn string_ascii() {
+    assert_tokens("\"hello\"", &[Expect::String("hello")]);
+}
+
+#[test]
+fn string_escape_newline() {
+    assert_tokens("\"\\n\"", &[Expect::String("\n")]);
+}
+
+#[test]
+fn string_utf8() {
+    assert_tokens("\"héllo\"", &[Expect::String("héllo")]);
+}
+
+#[test]
+fn keyword_str_type() {
+    assert_tokens("str", &[Expect::Kw(Keyword::Str)]);
 }
 
 // -----------------------------------------------------------------------------

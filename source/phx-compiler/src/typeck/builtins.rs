@@ -42,6 +42,12 @@ pub fn u8_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Primitive(Keyword::U8))
 }
 
+/// Returns `str` type id.
+#[must_use]
+pub fn str_type(types: &mut TypeInterner) -> TypeId {
+    types.intern(&Ty::Str)
+}
+
 /// Returns whether `id` is Copyable in MVP (primitives, unit, tuples of Copyable, etc.).
 #[must_use]
 pub fn is_copyable(types: &TypeInterner, id: TypeId) -> bool {
@@ -62,6 +68,7 @@ fn is_copyable_inner(types: &TypeInterner, id: TypeId, seen: &mut Vec<TypeId>) -
         | Ty::Named { .. }
         | Ty::Error => false,
         Ty::Slice(inner) => is_copyable_inner(types, *inner, seen),
+        Ty::Str => true,
         Ty::Tuple(elems) => elems.iter().all(|e| is_copyable_inner(types, *e, seen)),
         Ty::Array { elem, .. } => is_copyable_inner(types, *elem, seen),
     };

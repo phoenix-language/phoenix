@@ -39,7 +39,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Full borrow checker | **deferred** | MVP: use-after-move only |
 | Std I/O, networking, collections | **deferred** | No std I/O in VM |
 | JIT, hot reload, `#derive` codegen | **deferred** | — |
-| Primitive `string` | **deferred** | Byte-first: `u8`, arrays, slices, `b"…"` |
+| Primitive `string` (owned) | **done** | Core **`str`** UTF-8 view + `"…"` literals; std **`String`** deferred |
 
 **Rough in-scope pass rate:** ~12 **pass**, ~4 **partial**, 0 **missing** on MVP-required surface (excluding deferred rows).
 
@@ -82,7 +82,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (internal) |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
 | Lifetime / drop | **Not implemented** — values live until frame/arena teardown; see [Roadmap](#roadmap-beyond-single-file-mvp) |
-| Text | **No primitive `string`** — `[u8; N]`, `b"…"`, slices; std will own a string-like type over bytes |
+| Text | Core **`str`** view (`"…"` literals, rodata); **`[u8; N]`** / `b"…"` for binary; std **`String`** (owned) post-std |
 
 ---
 
@@ -480,7 +480,7 @@ Per [mvp.md](design/mvp.md) and [grammar-deferred.md](design/features/grammar-de
 
 - M:N scheduler, actors, mailboxes, supervision (`@spawn`, `@send`, …)
 - Std I/O, networking, collections, formatting APIs
-- Primitive `string` type (std owns byte-backed string-like types only)
+- Primitive owned `string` type (std owns growable `String` over bytes)
 - Full borrow checker / lifetimes / exclusivity of `&mut`
 - JIT, hot reload, `#derive` / `@derive` semantic codegen
 - `for` loops, range literals, closures/lambdas (parse rejected today)
@@ -547,7 +547,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **31
 | Scope end | Block `{ … }` should imply drop of owned non-`Copyable` values (Rust-like); compiler inserts drop/dealloc opcodes at scope exit |
 | Heap ownership | Likely explicit owning types (e.g. box/alloc handle) rather than implicit GC; syntax and `Copyable`/`Clone` interaction TBD |
 | Borrow checker | Full `&` / `&mut` exclusivity and lifetimes — builds on address-of + `PtrLoad` already in MVP |
-| Strings | **Never** a primitive `string`; core = `[u8]`, `b"…"`, pointers; std provides string-like struct over bytes |
+| Strings | Core **`str`** UTF-8 view; binary via `[u8]` / `b"…"`; std provides owned **`String`** |
 
 **Deferred (post memory model + MVP acceptance):** M:N scheduler, actors (`@spawn`), mailboxes, std I/O, networking, `#derive` codegen, JIT.
 

@@ -263,6 +263,7 @@ primitive_type     = signed_int
                    | unsigned_int
                    | float_type
                    | "bool"
+                   | "str"
                    | pointer_type
                    | "Option" , "<" , type_expr , ">"
                    | "Result" , "<" , type_expr , "," , type_expr , ">" ;
@@ -279,6 +280,7 @@ pointer_type       = "*" , [ "mut" ] , type_expr ;
 literal            = integer_literal
                    | float_literal
                    | boolean_literal
+                   | string_literal
                    | byte_char_literal
                    | byte_string_literal ;
 
@@ -304,6 +306,9 @@ byte_char_content  = ascii_byte | escape_sequence ;
 
 byte_string_literal = "b\"" , { byte_string_char } , "\"" ;
 byte_string_char   = ascii_byte_no_quote_backslash | escape_sequence ;
+
+string_literal     = "\"" , { string_char } , "\"" ;
+string_char        = utf8_codepoint | escape_sequence ;
 
 escape_sequence    = "\\n" | "\\r" | "\\t" | "\\0" | "\\\\" | "\\'" | "\\\"" | "\\x" , hex_digit , hex_digit ;
 
@@ -336,6 +341,7 @@ hex_digit          = digit | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C"
 
 ascii_byte         = ? any byte 0x00-0x7F ? ;
 ascii_byte_no_quote_backslash = ? any byte 0x00-0x7F except '"' and '\' ? ;
+utf8_codepoint     = ? valid UTF-8 code unit sequence excluding unescaped '"' and '\' ? ;
 
 line_comment       = "//" , { ? any char except line_break ? } ;
 block_comment      = "///" , { ? any char sequence not containing terminator ? } , "///" ;

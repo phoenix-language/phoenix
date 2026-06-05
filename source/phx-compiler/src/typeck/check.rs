@@ -20,7 +20,7 @@ use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
-    bool_type, float_literal_type, int_literal_type, is_copyable, u8_type, unit,
+    bool_type, float_literal_type, int_literal_type, is_copyable, str_type, u8_type, unit,
 };
 use super::display::format_type;
 use super::layout::{
@@ -1019,7 +1019,9 @@ impl<'a> TypeChecker<'a> {
                 let from = self.check_expr_node(expr);
                 let td = self.type_defs.clone();
                 let to = self.lower_ast_type_with_defs(ty, &td);
-                if !check_cast(&self.alias_env(), from, to) {
+                if !check_cast(&self.alias_env(), from, to)
+                    && !self.check_utf8_array_to_str_cast(from, to, &expr.inner)
+                {
                     self.bag.push(
                         self.current_module,
                         TypeCheckError::InvalidCast {
@@ -1097,6 +1099,7 @@ impl<'a> TypeChecker<'a> {
                 let u8 = u8_type(&mut self.types);
                 self.types.intern(&Ty::Array { elem: u8, len })
             }
+            Literal::String(_) => str_type(&mut self.types),
             _ => self.unit,
         }
     }
@@ -2087,7 +2090,26 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn is_borrow_type(&self, ty: TypeId) -> bool {
-        matches!(self.types.get(ty), Ty::Slice(_) | Ty::Ref { .. })
+        matches!(self.types.get(ty), Ty::Slice(_) | Ty::Str | Ty::Ref { .. })
+    }
+
+    fn check_utf8_array_to_str_cast(&self, from: TypeId, to: TypeId, expr: &Expr) -> bool {
+        if !matches!(self.types.get(to), Ty::Str) {
+            return false;
+        }
+        if !matches!(
+            self.types.get(from),
+            Ty::Array {
+                elem,
+                ..
+            } if matches!(self.types.get(*elem), Ty::Primitive(phx_syntax::token::Keyword::U8))
+        ) {
+            return false;
+        }
+        match expr {
+            Expr::Literal(Literal::ByteString(b)) => std::str::from_utf8(b).is_ok(),
+            _ => false,
+        }
     }
 
     fn binding_kind_for_ident(&self, ident: Ident) -> Option<BindingKind> {
@@ -2122,7 +2144,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Cast { expr, ty } => {
                 let td = self.type_defs.clone();
                 let to = self.lower_ast_type_with_defs(ty, &td);
-                if matches!(self.types.get(to), Ty::Slice(_)) {
+                if matches!(self.types.get(to), Ty::Slice(_) | Ty::Str) {
                     self.expr_borrow_site(&expr.inner)
                 } else {
                     None
@@ -2194,6 +2216,7 @@ fn pattern_literal_eq(a: &Literal, b: &Literal) -> bool {
         (Literal::Bool(x), Literal::Bool(y)) => x == y,
         (Literal::ByteChar(x), Literal::ByteChar(y)) => x == y,
         (Literal::ByteString(x), Literal::ByteString(y)) => x == y,
+        (Literal::String(x), Literal::String(y)) => x == y,
         _ => false,
     }
 }

@@ -102,6 +102,8 @@ pub enum Keyword {
     F32,
     /// `f64`
     F64,
+    /// `str` UTF-8 text view
+    Str,
 }
 
 impl Keyword {
@@ -148,6 +150,7 @@ impl Keyword {
             "u128" => Self::U128,
             "f32" => Self::F32,
             "f64" => Self::F64,
+            "str" => Self::Str,
             _ => return None,
         })
     }
@@ -185,6 +188,8 @@ pub enum TokenKind<'src> {
     ByteChar(u8),
     /// Byte string literal (`b"…"`).
     ByteString(Vec<u8>),
+    /// UTF-8 string literal (`"…"`).
+    String(String),
     /// `,`
     Comma,
     /// `;`

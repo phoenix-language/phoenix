@@ -28,6 +28,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | Feature | Why deferred | Notes |
 |---------|--------------|-------|
 | Heap `ALLOC` surface syntax | MVP lists a runtime intrinsic; no canonical spelling | Candidate when std exists: `core::alloc::alloc_bytes(size: u32) => *mut u8` lowering to `ALLOC` opcode |
+| Owned growable `String` | Core ships **`str`** view only; no primitive owned string | Post-`str` milestone: std `String` struct over `Alloc` + `Clone`; see [type-system.md](type-system.md) |
 | Associated types with bounds/defaults | Needs richer grammar than `type Item;` | Example target: `type IntoIter: Iterator<Item = Self::Item>;` |
 | Schedulable I/O types | Call-site syntax not locked | See [runtime-transparency.md](runtime-transparency.md); no `File.read` in MVP |
 | Keyword reservation policy | Lexer implementation detail | Reserve words from [grammer.md](../grammer.md); reject as user identifiers |

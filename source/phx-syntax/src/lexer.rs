@@ -98,6 +98,7 @@ impl<'src> Lexer<'src> {
             }
             b'#' => self.lex_hash_directive()?,
             b'@' => self.lex_at_directive()?,
+            b'"' => self.lex_string_literal()?,
             b'b' => {
                 if self.peek_byte_at(1) == Some(b'\'') || self.peek_byte_at(1) == Some(b'"') {
                     self.lex_byte_literal()?
@@ -545,6 +546,47 @@ impl<'src> Lexer<'src> {
         } else {
             Err(self.unexpected_char())
         }
+    }
+
+    fn lex_string_literal(&mut self) -> Result<TokenKind<'src>, LexError> {
+        let lit_start = self.span_start();
+        self.advance();
+        let mut bytes = Vec::new();
+        while !self.is_at_end() && self.peek_byte() != Some(b'"') {
+            if self.peek_byte() == Some(b'\\') {
+                bytes.push(self.read_escape()?);
+            } else {
+                let ch = self
+                    .next_char()?
+                    .ok_or(LexError::UnterminatedString { start: lit_start })?;
+                let mut buf = [0u8; 4];
+                bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+            }
+        }
+        if !self.consume_byte(b'"') {
+            return Err(LexError::UnterminatedString { start: lit_start });
+        }
+        let lit_end = self.span_end();
+        let text = String::from_utf8(bytes).map_err(|_| LexError::InvalidUtf8 {
+            start: lit_start,
+            end: lit_end,
+        })?;
+        Ok(TokenKind::String(text))
+    }
+
+    fn next_char(&mut self) -> Result<Option<char>, LexError> {
+        if self.is_at_end() {
+            return Ok(None);
+        }
+        let rest = &self.source[self.cursor..];
+        let Some(ch) = rest.chars().next() else {
+            return Err(LexError::InvalidUtf8 {
+                start: self.span_start(),
+                end: self.span_end(),
+            });
+        };
+        self.cursor += ch.len_utf8();
+        Ok(Some(ch))
     }
 
     fn read_byte_char_content(&mut self) -> Result<u8, LexError> {

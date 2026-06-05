@@ -123,3 +123,15 @@ fn golden_multi_resolve_duplicate() {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     assert_golden("multi_resolve_duplicate", &format_compile_source(&source));
 }
+
+#[test]
+fn golden_return_local_str() {
+    let path = diagnostics_dir().join("return_local_str.phx");
+    assert_golden("return_local_str", &format_check_file(&path));
+}
+
+#[test]
+fn golden_invalid_utf8_string() {
+    let path = diagnostics_dir().join("invalid_utf8_string.phx");
+    assert_golden("invalid_utf8_string", &format_check_file(&path));
+}

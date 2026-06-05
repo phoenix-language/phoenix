@@ -1,0 +1,30 @@
+tests/integration/diagnostics/return_local_str.phx:
+error: invalid cast from `[U8; 3]` to `str`
+ --> line 3, column 12
+  |
+  |     return arr as str;
+  |            ^^^^^^^^^^ [E2014]
+---
+tests/integration/diagnostics/return_local_str.phx:
+error: cannot return a borrow of a local variable
+ --> line 3, column 12
+  |
+  |     return arr as str;
+  |            ^^^^^^^^^^
+note: borrow of local created here
+ --> line 3, column 12
+  |
+  |     return arr as str;
+  |            ^^^ [E2022]
+---
+tests/integration/diagnostics/return_local_str.phx:
+error: cannot return a borrow of a local variable
+ --> line 3, column 12
+  |
+  |     return arr as str;
+  |            ^^^^^^^^^^
+note: borrow of local created here
+ --> line 3, column 12
+  |
+  |     return arr as str;
+  |            ^^^ [E2022]

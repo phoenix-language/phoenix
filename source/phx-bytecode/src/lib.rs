@@ -30,7 +30,7 @@ pub use instr::{InstrError, Instruction};
 pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
 pub use module::{BytecodeModule, ModuleError};
 pub use opcode::{Opcode, OpcodeError};
-pub use scalar::{PTR_AGG_TAG, PTR_LOCAL_TAG, ScalarValue};
+pub use scalar::{PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, ScalarValue};
 pub use section::{SectionEntry, SectionError, SectionKind};
 pub use stack_effect::{StackEffectError, apply_stack_effect};
 pub use stack_flow::{StackFlowError, StackFlowSummary, analyze_stack_cfg};

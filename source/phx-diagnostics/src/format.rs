@@ -55,6 +55,7 @@ fn lex_message(err: &LexError) -> String {
         LexError::IntegerOverflow { .. } => "integer literal overflow".to_owned(),
         LexError::InvalidInt { .. } => "invalid integer literal".to_owned(),
         LexError::InvalidFloat { .. } => "invalid float literal".to_owned(),
+        LexError::InvalidUtf8 { .. } => "invalid UTF-8 in string literal".to_owned(),
         LexError::LexemeTooLong { .. } => "lexeme too long".to_owned(),
     }
 }

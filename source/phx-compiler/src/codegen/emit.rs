@@ -45,6 +45,8 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::Not { .. }
         | IrInst::BitNot { .. }
         | IrInst::MakeSlice { .. }
+        | IrInst::MakeStr { .. }
+        | IrInst::StrAsSlice
         | IrInst::Call { .. }
         | IrInst::Jump { .. }
         | IrInst::AddressOfLocal { .. }
@@ -148,6 +150,12 @@ fn apply_ir_stack_effect(
         }
         IrInst::MakeSlice { .. } => {
             let _ = apply_stack_effect(Opcode::MakeSlice, stack, None, none);
+        }
+        IrInst::MakeStr { .. } => {
+            let _ = apply_stack_effect(Opcode::MakeStr, stack, None, none);
+        }
+        IrInst::StrAsSlice => {
+            let _ = apply_stack_effect(Opcode::StrAsSlice, stack, None, none);
         }
         IrInst::AddressOfLocal { .. } => {
             let _ = apply_stack_effect(Opcode::AddressOfLocal, stack, None, none);
@@ -408,6 +416,12 @@ fn emit_inst(
         }
         IrInst::MakeSlice { elem_kind } => {
             out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)]));
+        }
+        IrInst::MakeStr { pool_index } => {
+            out.extend(encode(Opcode::MakeStr, &[*pool_index]));
+        }
+        IrInst::StrAsSlice => {
+            out.extend(encode(Opcode::StrAsSlice, &[]));
         }
         IrInst::TrapGivenMismatch => {
             out.extend(encode(Opcode::Trap, &[0]));

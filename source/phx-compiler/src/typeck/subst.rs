@@ -92,7 +92,7 @@ impl Substitution {
                 let ret = Self::apply_inner(types, ret, subst, depth);
                 types.intern(&Ty::Fn { params, ret })
             }
-            Ty::Primitive(_) | Ty::Unit | Ty::Error | Ty::Var(_) => id,
+            Ty::Primitive(_) | Ty::Unit | Ty::Error | Ty::Var(_) | Ty::Str => id,
         };
         depth.pop();
         out

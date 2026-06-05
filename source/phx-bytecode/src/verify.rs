@@ -654,7 +654,19 @@ fn verify_operands(
                 });
             }
         }
-        Opcode::Index | Opcode::Pop | Opcode::Return => {
+        Opcode::MakeStr => {
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+            let index = inst.operands.first().copied().unwrap_or(0);
+            if index >= const_count {
+                return Err(VerifyError::InvalidConstIndex { function_id, index });
+            }
+        }
+        Opcode::StrAsSlice | Opcode::Index | Opcode::Pop | Opcode::Return => {
             if !inst.operands.is_empty() {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

@@ -50,6 +50,7 @@ fn format_type_inner(
             format_type_inner(types, names, defs, *elem, depth)
         ),
         Ty::Slice(inner) => format!("[{}]", format_type_inner(types, names, defs, *inner, depth)),
+        Ty::Str => "str".to_owned(),
         Ty::Ref { mut_, inner } => {
             let prefix = if *mut_ { "&mut " } else { "&" };
             format!(

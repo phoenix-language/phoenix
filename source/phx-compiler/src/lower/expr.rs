@@ -115,6 +115,18 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 .get(&from_id)
                 .copied()
                 .unwrap_or(result_ty);
+            if matches!(ctx.typed.types.get(result_ty), Ty::Str) {
+                if let Expr::Literal(Literal::ByteString(b)) = &expr.inner {
+                    let idx = ctx.intern_const(IrConst::Bytes(b.clone()));
+                    ctx.emit(IrInst::MakeStr { pool_index: idx });
+                    return;
+                }
+                if let Expr::Literal(Literal::String(s)) = &expr.inner {
+                    let idx = ctx.intern_const(IrConst::Bytes(s.as_bytes().to_vec()));
+                    ctx.emit(IrInst::MakeStr { pool_index: idx });
+                    return;
+                }
+            }
             lower_expr(ctx, expr);
             if from_ty != result_ty {
                 if let (Ty::Array { elem, .. }, Ty::Slice(slice_elem)) =
@@ -124,6 +136,15 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                         let elem_kind = primitive_kind_for_type(&ctx.typed.types, *elem)
                             .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8);
                         ctx.emit(IrInst::MakeSlice { elem_kind });
+                    }
+                } else if matches!(ctx.typed.types.get(from_ty), Ty::Str) {
+                    if let Ty::Slice(inner) = ctx.typed.types.get(result_ty) {
+                        if matches!(
+                            ctx.typed.types.get(*inner),
+                            Ty::Primitive(phx_syntax::token::Keyword::U8)
+                        ) {
+                            ctx.emit(IrInst::StrAsSlice);
+                        }
                     }
                 } else if let (Some(from_k), Some(to_k)) = (
                     primitive_kind_for_type(&ctx.typed.types, from_ty),
@@ -223,6 +244,7 @@ fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u
             Some(ctx.intern_const(IrConst::Int(i128::from(*c), u8_ty)))
         }
         Literal::ByteString(b) => Some(ctx.intern_const(IrConst::Bytes(b.clone()))),
+        Literal::String(s) => Some(ctx.intern_const(IrConst::Bytes(s.clone().into_bytes()))),
         _ => None,
     }
 }
@@ -266,6 +288,11 @@ fn literal_prim_kind(ctx: &LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u8 {
 }
 
 fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
+    if let Literal::String(s) = lit {
+        let idx = ctx.intern_const(IrConst::Bytes(s.clone().into_bytes()));
+        ctx.emit(IrInst::MakeStr { pool_index: idx });
+        return;
+    }
     if let Literal::ByteString(b) = lit {
         let elem_ty = match ctx.typed.types.get(ty) {
             Ty::Array { elem, .. } => *elem,

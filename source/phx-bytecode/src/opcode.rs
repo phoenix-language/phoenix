@@ -96,6 +96,10 @@ pub enum Opcode {
     MakeSlice = 41,
     /// Push address of local slot. Stack: `[] → [ptr]` — operand: slot index.
     AddressOfLocal = 42,
+    /// Build UTF-8 `str` view from constant pool bytes. Stack: `[] → [str]` — operand: pool index.
+    MakeStr = 43,
+    /// Convert `str` aggregate to `[u8]` slice view. Stack: `[str] → [slice]`
+    StrAsSlice = 44,
 }
 
 impl Opcode {
@@ -149,6 +153,8 @@ impl Opcode {
             40 => Ok(Self::PtrStore),
             41 => Ok(Self::MakeSlice),
             42 => Ok(Self::AddressOfLocal),
+            43 => Ok(Self::MakeStr),
+            44 => Ok(Self::StrAsSlice),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

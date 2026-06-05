@@ -53,6 +53,13 @@ pub enum LexError {
         /// Exclusive end byte offset of the lexeme.
         end: u32,
     },
+    /// String literal bytes are not valid UTF-8.
+    InvalidUtf8 {
+        /// Inclusive start byte offset of the literal (opening quote).
+        start: u32,
+        /// Exclusive end byte offset of the literal (closing quote or error site).
+        end: u32,
+    },
     /// Identifier or literal exceeds internal limits.
     LexemeTooLong {
         /// Inclusive start byte offset of the lexeme.
@@ -89,6 +96,9 @@ impl fmt::Display for LexError {
             Self::InvalidFloat { start, end } => {
                 write!(f, "invalid float literal at bytes {start}..{end}")
             }
+            Self::InvalidUtf8 { start, end } => {
+                write!(f, "invalid UTF-8 in string literal at bytes {start}..{end}")
+            }
             Self::LexemeTooLong { start, end } => {
                 write!(f, "lexeme too long at bytes {start}..{end}")
             }
@@ -110,6 +120,7 @@ impl LexError {
             Self::IntegerOverflow { .. } => DiagnosticCode::new("E0005"),
             Self::InvalidInt { .. } => DiagnosticCode::new("E0006"),
             Self::InvalidFloat { .. } => DiagnosticCode::new("E0007"),
+            Self::InvalidUtf8 { .. } => DiagnosticCode::new("E0009"),
             Self::LexemeTooLong { .. } => DiagnosticCode::new("E0008"),
         }
     }
@@ -127,6 +138,7 @@ impl LexError {
             Self::IntegerOverflow { start, end }
             | Self::InvalidInt { start, end }
             | Self::InvalidFloat { start, end }
+            | Self::InvalidUtf8 { start, end }
             | Self::LexemeTooLong { start, end } => Some(Span::new(*start, *end)),
         }
     }

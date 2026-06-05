@@ -259,8 +259,8 @@ Loader must reject bytecode when:
 
 - Production entry is `phx_vm::run` on **verified** bytecode. `run_captured` is `#[doc(hidden)]` for integration tests that assert `main` local slots via [`VmRunCapture::main_local`](../../source/phx-vm/src/interpreter.rs) or the optional stack `return_value` after return.
 - Header `entry_function_id` must name a zero-arity `main` for executables. Library objects use `ENTRY_NONE` (`0xFFFF_FFFF`); the VM returns an error if execution is attempted.
-- `ConstTag::Bytes` pool entries are not loadable via `Const` in MVP (byte string literals lower to `MakeArray` in the compiler).
-- Typeck rejects returning `&T`, `&mut T`, or `[T]` views that borrow function-local bindings; see [`ownership.md`](ownership.md).
+- `ConstTag::Bytes` pool entries are not loadable via generic `Const` (operand pushes scalars only). UTF-8 string literals `"…"` lower to `ConstTag::Bytes` in the pool plus opcode **`MakeStr`** (pool index → rodata `str` view). Byte string literals `b"…"` still lower to per-byte `Const` + `MakeArray`.
+- Typeck rejects returning `&T`, `&mut T`, `[T]` slice views, or **`str`** views formed from function-local bindings; see [`ownership.md`](ownership.md).
 
 ---
 

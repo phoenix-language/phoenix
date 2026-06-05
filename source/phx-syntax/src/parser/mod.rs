@@ -274,6 +274,7 @@ impl<'src> Parser<'src> {
             TokenKind::Bool(b) => Cow::Owned(format!("boolean `{b}`")),
             TokenKind::ByteChar(_) => Cow::Borrowed("byte character literal"),
             TokenKind::ByteString(_) => Cow::Borrowed("byte string literal"),
+            TokenKind::String(_) => Cow::Borrowed("string literal"),
             other => Cow::Owned(format!("{other:?}")),
         }
     }

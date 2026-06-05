@@ -6,6 +6,8 @@ use crate::cast::PrimitiveKind;
 pub const PTR_LOCAL_TAG: u64 = 0x8000_0000_0000_0000;
 /// Address tag for aggregate arena handles used as slice data pointers.
 pub const PTR_AGG_TAG: u64 = 0x4000_0000_0000_0000;
+/// Address tag for constant-pool indices (`pool_index` in low bits).
+pub const PTR_CONST_TAG: u64 = 0x2000_0000_0000_0000;
 
 /// A primitive value with storage matching its Phoenix type width.
 #[derive(Debug, Clone, Copy, PartialEq)]

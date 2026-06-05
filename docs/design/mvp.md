@@ -34,7 +34,7 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Core compilation | lexer, parser, AST, type checker, bytecode lowering |
 | Runtime model | single-process stack VM interpreter |
 | Declarations | `const`, `var`, function declarations |
-| Types | numeric primitives, `bool`, tuples, unit `()`, raw pointers, borrow types (`&T`, `&mut T`), fixed arrays, slices/views |
+| Types | numeric primitives, `bool`, tuples, unit `()`, raw pointers, borrow types (`&T`, `&mut T`), fixed arrays, slices/views, **`str` UTF-8 text view** |
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution) |
 | Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given` |
@@ -57,20 +57,19 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 - **ASCII identifiers only** — `snake_case` value names and `PascalCase` type names use ASCII rules; Unicode identifiers are post-MVP ([features/ast-roadmap.md](features/ast-roadmap.md)).
 - **Deferred syntax is parsed, not lowered** — `for-in`, ranges, lambdas, `@` directives, and `#derive` build AST nodes; typeck reports `UnsupportedFeature` until std/runtime work lands ([features/grammar-deferred.md](features/grammar-deferred.md)).
 
-## Core Primitive Policy (No Built-in String)
+## Core Primitive Policy (Text View, Not Owned String)
 
-MVP does not include a primitive `string` type.
+MVP does not include a primitive **owned** `string` type (no GC string, no growable string builtin).
 
-The core language provides raw building blocks:
+The core language provides:
 
-- `u8`
-- fixed arrays: `[T; N]`
-- slices/views over contiguous memory
-- raw pointer types
-- explicit heap allocation primitive (runtime intrinsic)
+- **`str`** — UTF-8 text view `(ptr, len)`; `"…"` literals; Copyable fat pointer; rodata-backed for literals
+- **`u8`**, fixed arrays `[T; N]`, byte slices `[T]`, and `b"…"` for binary data
+- raw pointer types and borrow types (`&T`, `&mut T`)
+- explicit heap allocation primitive (runtime intrinsic; surface syntax deferred)
 - unsafe pointer operations at VM-level boundaries
 
-Higher-level text and ergonomic string utilities are post-MVP library design.
+Owned growable text (`String`), formatting, and rich text APIs are **std library** design (post-MVP std pipeline).
 
 ## Deterministic MVP Type Rules
 
@@ -113,7 +112,7 @@ Full runtime model (principle and taxonomy): [features/runtime-transparency.md](
 ## Acceptance Checklist
 
 - `main` requirement is defined and enforced in grammar/spec docs.
-- Primitive inventory excludes built-in `string`.
+- Primitive inventory includes **`str` view**; excludes built-in owned `string`.
 - Type rules are explicit and non-contradictory.
 - Bytecode format is detailed enough to implement loader + VM without guessing.
 - Deferred features are labeled post-MVP in all related docs.

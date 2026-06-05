@@ -35,7 +35,7 @@ Phoenix separates core language types from library-provided behavior.
 
 Important MVP decision:
 
-- `string` is **not** a primitive type in MVP.
+- There is no primitive **owned** `string` in MVP; core text is the **`str`** UTF-8 view (`"…"` literals). Owned growable text is std **`String`** (deferred).
 - MVP text/data handling is byte-first (`u8`, arrays, slices/views, pointers, allocation primitives).
 
 ---

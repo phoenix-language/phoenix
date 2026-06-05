@@ -17,7 +17,13 @@ pub fn lower_type(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type) -
 
 fn lower_type_inner(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type) -> TypeId {
     match ty {
-        Type::Primitive(k) => types.intern(&Ty::Primitive(*k)),
+        Type::Primitive(k) => {
+            if *k == phx_syntax::token::Keyword::Str {
+                types.intern(&Ty::Str)
+            } else {
+                types.intern(&Ty::Primitive(*k))
+            }
+        }
         Type::Named { name, generics } => {
             let def = lookup_type_def(type_defs, name);
             let args = generics

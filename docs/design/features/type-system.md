@@ -17,7 +17,7 @@ How Phoenix divides compiler-known types from library-defined behavior, and the 
 
 Notes:
 
-- `string` is not a core primitive in MVP.
+- There is no primitive **owned** `string` type in MVP; owned growable text lives in std (`String` over `Alloc`). Core text is the **`str` UTF-8 view** (see below).
 - `ActorRef<T>` is not a primitive type; actor contracts are post-MVP trait-level design.
 - **Scheduler context** is a VM runtime primitive: all user code (including `main`) runs under scheduler management in the full runtime vision.
 - Safe std I/O is **type-visible schedulable I/O** at call sites (concrete syntax TBD); it lowers to schedulable VM operations. Raw blocking syscalls belong only behind `#unsafe`/FFI with documented worker-stall risk.
@@ -51,6 +51,7 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 - Borrow types: `&T`, `&mut T`
 - Fixed arrays: `[T; N]`
 - Slices/views: `[T]`
+- Text view: `str` (UTF-8 `(ptr, len)`; Copyable fat pointer, same convention as `[T]` slices)
 - Tuples: `(T1, T2, ...)`
 - Unit: `()`
 
@@ -60,9 +61,18 @@ Each numeric primitive occupies **its declared width** in constants, local slots
 
 `bool` is a 1-byte cell, not an integer alias. Raw pointers and borrow references are `u64` addresses at runtime; MVP does not enforce borrow exclusivity (see [ownership.md](ownership.md)).
 
+UTF-8 string literals `"…"` have type `str` and lower to a `(ptr, len)` view over module constant-pool rodata (no heap allocation).
+
 Byte string literals `b"…"` have type `[u8; N]` and lower to a fixed array of `u8` elements.
 
 Fixed arrays `[T; N]` may be explicitly cast to slices `[T]`; slice values are `(ptr, len)` views over existing array storage (no heap allocation in MVP).
+
+**Text vs binary casts (MVP):**
+
+- `expr as [u8]` when `expr` has type `str` — safe projection to a byte slice view.
+- `expr as str` when `expr` has type `[u8; N]` — allowed only when the array bytes are valid UTF-8 at compile time (e.g. a `b"…"` literal whose contents are UTF-8). Runtime validation belongs in std once `Result` exists.
+
+`str` values are **Copyable** (bitwise copy of the fat pointer). Indexing and equality on `str` are std/trait concerns, not compiler builtins.
 
 ---
 
@@ -124,7 +134,7 @@ pub Result :: enum<Ok, Err> {
 
 **Grammar note:** [grammar.ebnf](../grammar.ebnf) may still parse `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, and `?` for forward compatibility; MVP type-check reports them as post-MVP std features.
 
-**Already aligned:** `Clone` and phased `Copyable` live in std ([traits.md](traits.md), [ownership.md](ownership.md)); no primitive `string`; collections and I/O are post-MVP ([mvp.md](../mvp.md)).
+**Already aligned:** `Clone` and phased `Copyable` live in std ([traits.md](traits.md), [ownership.md](ownership.md)); no primitive owned `string` (std `String` only); core `str` view is a language primitive; collections and I/O are post-MVP ([mvp.md](../mvp.md)).
 
 ---
 

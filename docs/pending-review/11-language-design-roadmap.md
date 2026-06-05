@@ -114,7 +114,9 @@ A **full borrow checker** is the right long-term goal for a no-GC language, but 
 | Length-prefixed UTF-8 | **Best default** for VM + FFI |
 | Immutable interned atoms | Good for identifiers/keywords, not general text |
 
-**Recommendation:** Language **`str` = UTF-8 slice** (`ptr + len`); **`String` = owned buffer** in std using `Alloc`. Source literals stay **`b"..."`** until `str` literals are designed.
+**Recommendation:** Language **`str` = UTF-8 slice** (`ptr + len`); **`String` = owned buffer** in std using `Alloc`. Source literals use **`"..."`** for `str`; **`b"..."`** remains binary `[u8; N]`.
+
+**Status:** Design locked in [`type-system.md`](../../design/features/type-system.md) and [`mvp.md`](../../design/mvp.md); implementation in progress.
 
 ---
 
@@ -150,7 +152,7 @@ A **full borrow checker** is the right long-term goal for a no-GC language, but 
 
 ## Recommended next actions (strategic, ordered)
 
-1. Lock **string/`str` design doc** update (length-prefixed UTF-8).
+1. ~~Lock **string/`str` design doc** update (length-prefixed UTF-8).~~ Done — see `type-system.md`.
 2. Ship **monomorphization-only generics** before inference.
 3. Implement **`.pxi` v2** and import typecheck without parsing deps.
 4. Fix **ownership shadowing**; publish phased borrow roadmap in `ownership.md`.

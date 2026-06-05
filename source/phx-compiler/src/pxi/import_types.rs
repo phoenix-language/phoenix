@@ -39,8 +39,12 @@ fn pxi_type_to_ty_inner(
     }
     let id = match pxi {
         PxiType::Primitive(name) => {
-            let k = parse_keyword(name).unwrap_or(Keyword::S32);
-            ctx.types.intern(&Ty::Primitive(k))
+            if name == "str" {
+                ctx.types.intern(&Ty::Str)
+            } else {
+                let k = parse_keyword(name).unwrap_or(Keyword::S32);
+                ctx.types.intern(&Ty::Primitive(k))
+            }
         }
         PxiType::Unit => ctx.types.intern(&Ty::Unit),
         PxiType::Named { path, args } => {
@@ -135,6 +139,7 @@ fn parse_keyword(name: &str) -> Option<Keyword> {
         "bool" => Keyword::Bool,
         "f32" => Keyword::F32,
         "f64" => Keyword::F64,
+        "str" => Keyword::Str,
         _ => return None,
     })
 }

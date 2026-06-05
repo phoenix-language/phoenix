@@ -29,7 +29,11 @@ pub fn apply_stack_effect(
     field_count: Option<u32>,
 ) -> Result<(), StackEffectError> {
     match opcode {
-        Opcode::Const | Opcode::LoadLocal | Opcode::AddressOfLocal | Opcode::Alloc => {
+        Opcode::Const
+        | Opcode::LoadLocal
+        | Opcode::AddressOfLocal
+        | Opcode::Alloc
+        | Opcode::MakeStr => {
             *depth = depth.saturating_add(1);
         }
         Opcode::StoreLocal
@@ -80,7 +84,11 @@ pub fn apply_stack_effect(
             *depth -= n;
             *depth += 1;
         }
-        Opcode::GetField | Opcode::MatchTag | Opcode::MakeSlice | Opcode::PtrLoad => {
+        Opcode::GetField
+        | Opcode::MatchTag
+        | Opcode::MakeSlice
+        | Opcode::StrAsSlice
+        | Opcode::PtrLoad => {
             if *depth == 0 {
                 return Err(StackEffectError::Underflow);
             }

@@ -68,6 +68,7 @@ fn ty_to_pxi_inner(
             logical_module,
             *elem,
         ))),
+        Ty::Str => PxiType::Primitive("str".to_owned()),
         Ty::Ref { mut_, inner } => PxiType::Ref {
             mut_: *mut_,
             inner: Box::new(ty_to_pxi_inner(
@@ -235,6 +236,7 @@ fn keyword_name(k: Keyword) -> &'static str {
         Keyword::Bool => "bool",
         Keyword::F32 => "f32",
         Keyword::F64 => "f64",
+        Keyword::Str => "str",
         _ => "s32",
     }
 }

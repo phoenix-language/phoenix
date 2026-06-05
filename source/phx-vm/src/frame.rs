@@ -67,9 +67,16 @@ pub enum Aggregate {
     Slice {
         /// Element primitive wire kind, or aggregate tag `0xFF`.
         elem_kind: u8,
-        /// Data pointer (heap offset, local tag, or aggregate tag).
+        /// Data pointer (heap offset, local tag, aggregate tag, or const-pool tag).
         ptr: u64,
         /// Element count.
+        len: u64,
+    },
+    /// UTF-8 text view over module constant pool rodata.
+    Str {
+        /// Const-pool pointer tag + index (`PTR_CONST_TAG | index`).
+        ptr: u64,
+        /// Byte length (UTF-8).
         len: u64,
     },
 }

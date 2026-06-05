@@ -355,7 +355,8 @@ impl Parser<'_> {
             | TokenKind::Float { .. }
             | TokenKind::Bool(_)
             | TokenKind::ByteChar(_)
-            | TokenKind::ByteString(_) => {
+            | TokenKind::ByteString(_)
+            | TokenKind::String(_) => {
                 let lit = self.parse_literal()?;
                 Ok(self.node(Expr::Literal(lit), self.span_from(start)))
             }
@@ -590,6 +591,10 @@ impl Parser<'_> {
             TokenKind::ByteString(b) => {
                 self.bump();
                 Ok(Literal::ByteString(b))
+            }
+            TokenKind::String(s) => {
+                self.bump();
+                Ok(Literal::String(s))
             }
             _ => Err(self.error_unexpected(ExpectedToken::Literal)),
         }

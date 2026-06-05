@@ -587,6 +587,11 @@ fn expr_literal_byte_string() {
     assert_ok(&in_main_expr("b\"hi\""));
 }
 
+#[test]
+fn expr_literal_string() {
+    assert_ok(&in_main_expr("\"hi\""));
+}
+
 // -----------------------------------------------------------------------------
 // Binary operators (each BinOp)
 // -----------------------------------------------------------------------------

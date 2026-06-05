@@ -2,7 +2,7 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstTag, ENTRY_NONE, FunctionRecord, InstrError, Instruction, Opcode,
-    PTR_AGG_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue,
+    PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue,
 };
 
 use crate::VmError;
@@ -278,7 +278,10 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                         .copied()
                         .ok_or(VmError::FieldOutOfRange)?,
                     Some(
-                        Aggregate::Tuple { .. } | Aggregate::Array { .. } | Aggregate::Slice { .. },
+                        Aggregate::Tuple { .. }
+                        | Aggregate::Array { .. }
+                        | Aggregate::Slice { .. }
+                        | Aggregate::Str { .. },
                     ) => {
                         return Err(VmError::InvalidAggregate);
                     }
@@ -305,7 +308,8 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                     Aggregate::Enum { .. }
                     | Aggregate::Tuple { .. }
                     | Aggregate::Array { .. }
-                    | Aggregate::Slice { .. } => {
+                    | Aggregate::Slice { .. }
+                    | Aggregate::Str { .. } => {
                         return Err(VmError::InvalidAggregate);
                     }
                 }
@@ -428,6 +432,38 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                     .stack
                     .push(Value::Scalar(ScalarValue::local_ptr(slot)));
             }
+            Opcode::MakeStr => {
+                let idx = inst.operands.first().copied().unwrap_or(0);
+                let entry = module
+                    .constants
+                    .entries
+                    .get(idx as usize)
+                    .ok_or(VmError::InvalidConstIndex(idx))?;
+                if entry.tag != ConstTag::Bytes {
+                    return Err(VmError::InvalidConstPayload);
+                }
+                let len = u64::try_from(entry.payload.len()).unwrap_or(0);
+                let ptr = PTR_CONST_TAG | u64::from(idx);
+                let handle = machine.push_aggregate(Aggregate::Str { ptr, len });
+                machine.stack.push(handle);
+            }
+            Opcode::StrAsSlice => {
+                let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
+                let Aggregate::Str { ptr, len } = machine
+                    .aggregate(handle)
+                    .ok_or(VmError::InvalidAggregate)?
+                    .clone()
+                else {
+                    return Err(VmError::InvalidAggregate);
+                };
+                let slice = machine.push_aggregate(Aggregate::Slice {
+                    elem_kind: PrimitiveKind::U8.as_u8(),
+                    ptr,
+                    len,
+                });
+                machine.stack.push(slice);
+            }
             Opcode::Index => {
                 let index = pop_scalar(&mut machine.stack)?;
                 let idx = scalar_to_usize(index)?;
@@ -447,8 +483,9 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                             if idx >= usize::try_from(*len).unwrap_or(0) {
                                 return Err(VmError::FieldOutOfRange);
                             }
-                            slice_elem_load(&machine, *elem_kind, *ptr, idx)?
+                            slice_elem_load(module, &machine, *elem_kind, *ptr, idx)?
                         }
+                        Aggregate::Str { .. } => return Err(VmError::InvalidAggregate),
                         Aggregate::Struct { .. } | Aggregate::Enum { .. } => {
                             return Err(VmError::InvalidAggregate);
                         }
@@ -597,11 +634,18 @@ fn ptr_store(
 }
 
 fn slice_elem_load(
+    module: &BytecodeModule,
     machine: &Machine,
     elem_kind: u8,
     ptr: u64,
     index: usize,
 ) -> Result<Value, VmError> {
+    if ptr & PTR_CONST_TAG == PTR_CONST_TAG {
+        let idx = u32::try_from(ptr & !PTR_CONST_TAG).map_err(|_| VmError::InvalidConstPayload)?;
+        let bytes = const_pool_bytes(module, idx)?;
+        let byte = bytes.get(index).ok_or(VmError::FieldOutOfRange)?;
+        return Ok(Value::Scalar(ScalarValue::U8(*byte)));
+    }
     if ptr & PTR_AGG_TAG == PTR_AGG_TAG {
         let handle = (ptr & !PTR_AGG_TAG) as u32;
         if elem_kind == phx_bytecode::SLOT_KIND_AGG {
@@ -616,6 +660,18 @@ fn slice_elem_load(
         return Ok(Value::Scalar(scalar));
     }
     Err(VmError::InvalidAggregate)
+}
+
+fn const_pool_bytes(module: &BytecodeModule, index: u32) -> Result<&[u8], VmError> {
+    let entry = module
+        .constants
+        .entries
+        .get(index as usize)
+        .ok_or(VmError::InvalidConstIndex(index))?;
+    if entry.tag != ConstTag::Bytes {
+        return Err(VmError::InvalidConstPayload);
+    }
+    Ok(entry.payload.as_slice())
 }
 
 fn slice_elem_scalar(
