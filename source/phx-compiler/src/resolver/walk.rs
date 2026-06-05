@@ -245,9 +245,11 @@ impl Resolver<'_> {
             } => {
                 self.scopes.push();
                 self.resolve_generics(generics);
+                self.self_type_depth += 1;
                 for item in items {
                     self.resolve_trait_item(item);
                 }
+                self.self_type_depth -= 1;
                 self.scopes.pop();
             }
             TopLevelDecl::Impl {
@@ -260,9 +262,11 @@ impl Resolver<'_> {
                 self.register_trait_impl(type_name, trait_, item_span);
                 self.scopes.push();
                 self.resolve_generics(generics);
+                self.self_type_depth += 1;
                 for member in members {
                     self.resolve_function(member, true);
                 }
+                self.self_type_depth -= 1;
                 self.scopes.pop();
             }
             TopLevelDecl::Function(f) => self.resolve_function(f, false),
@@ -381,7 +385,7 @@ impl Resolver<'_> {
                 self.define_type(param.name.symbol, span, DefKind::GenericParam);
                 if let Some(bounds) = &param.bounds {
                     for bound in bounds {
-                        self.resolve_type_name(bound);
+                        self.resolve_trait_bound(bound);
                     }
                 }
             }
@@ -549,6 +553,9 @@ impl Resolver<'_> {
     }
 
     fn resolve_type_name(&mut self, name: &TypeName) {
+        if self.is_self_type_name(name) && self.self_type_depth > 0 {
+            return;
+        }
         let def_id = self.scopes.lookup_type(name.symbol);
         if def_id.is_some() {
             self.record_resolution(name.id, def_id);
@@ -561,6 +568,21 @@ impl Resolver<'_> {
                 },
             );
         }
+    }
+
+    fn resolve_trait_bound(&mut self, bound: &TypeName) {
+        if self.is_bootstrap_trait_bound(bound.symbol) {
+            return;
+        }
+        self.resolve_type_name(bound);
+    }
+
+    fn is_self_type_name(&self, name: &TypeName) -> bool {
+        self.source.interner.resolve(name.symbol) == "Self"
+    }
+
+    fn is_bootstrap_trait_bound(&self, trait_symbol: Symbol) -> bool {
+        self.source.interner.resolve(trait_symbol) == "Copyable"
     }
 
     /// Resolves a `PascalCase` name in expression position (enum variant ctors before types).

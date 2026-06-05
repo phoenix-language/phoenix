@@ -109,6 +109,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         allow_imports: false,
         collect_only: false,
         import_bindings: Vec::new(),
+        self_type_depth: 0,
     };
     resolver.resolve_program();
     if resolver.bag.has_errors() {
@@ -156,6 +157,8 @@ pub(crate) struct Resolver<'a> {
     pub(crate) allow_imports: bool,
     pub(crate) collect_only: bool,
     pub(crate) import_bindings: Vec<(Symbol, DefId, bool, Span)>,
+    /// Nesting depth where `Self` is a valid type name (trait / impl method signatures).
+    pub(crate) self_type_depth: u32,
 }
 
 impl Resolver<'_> {

@@ -139,23 +139,40 @@ Phoenix uses **compile-time monomorphization** as the **permanent** generics str
 
 | Rule | Behavior |
 |---|---|
-| Syntax | Explicit `:: <t1, …>` (or `::<t1, …>`) at every instantiation site |
-| Function calls | `name :: <s32> (args…)` on value identifiers; `:: <…>` before `(` in postfix chains |
-| Struct literals | `Box :: <s32> { v: 1 }` or `Box::<s32> { v: 1 }` when the struct template has generic parameters |
-| Enum constructors | `Some :: <s32> (1)` or `Opt::<s32>::Some(1)` when the enum template has generic parameters |
+| Syntax | Explicit `:: <t1, …>` (or `::<t1, …>`) at instantiation sites; **local inference** may omit args when constraints are unambiguous |
+| Function calls | `id(1)` infers `s32`, or `id :: <s32> (1)`; `:: <…>` before `(` in postfix chains |
+| Struct literals | `Box :: <s32> { v: 1 }` or `Box::<s32> { v: 1 }` when the struct template has generic parameters (field inference from literals is **not** in v1) |
+| Enum constructors | `Some(1)` infers payload type, or `Some :: <s32> (1)` |
 | Type annotations | `Pair<s32>`, `const x: Box<s32>`, generic type aliases with explicit args |
+| Impl methods | `v.get()` and `v.id(2)` on generic impls; explicit `:: <…>` on methods when needed |
 | Specialization | Each distinct `(template, args…)` gets mangled symbols such as `id$s32` and concrete [`ProgramLayout`](../../../source/phx-compiler/src/typeck/layout.rs) entries for lowering |
+| Trait bounds | Checked when concrete type arguments are known (monomorphization / type instantiation) |
 | Trait dispatch | Static (monomorphized) only; `dyn Trait` reserved for explicit runtime polymorphism |
 
-Type parameters in templates are checked once; the monomorphization pass re-checks specialized function bodies under a substitution map and emits substituted struct/enum layouts for each collected type instantiation.
+Type parameters in templates are checked once; the monomorphization pass validates trait bounds, re-checks specialized bodies where needed, and emits substituted struct/enum layouts for each collected type instantiation.
 
-**In scope today:** monomorphized function bodies, struct/enum/alias use sites with explicit args, static trait dispatch assumptions.
+**In scope today:** local call-site inference for generic functions and enum ctors; trait-bound enforcement at instantiation (`Copyable` bootstrap + user `Type :: impl :: Trait`); generic inherent impl methods with mono + inference; monomorphized function bodies and struct/enum/alias use sites.
 
-**Out of scope / follow-up:** local call-site inference, trait-bound enforcement, generic impl members (`.method::<T>()`), `.pxi` export mangling, `dyn Trait` vtables.
+### Local inference (v1)
 
-### Follow-up: local inference
+Call sites may omit `:: <…>` when argument types constrain all generic parameters:
 
-Future work may add `Ty::Var` and **local** call-site unification (rule 10 above): constraints are solved at the call site only, with no global search. Explicit `:: <…>` remains valid when inference is added.
+- **In:** generic function calls (`id(1)`), enum constructor calls (`Some(1)`).
+- **Out (v1):** struct-literal field inference (`Box { v: 1 }` without `::<s32>`), cross-function constraint propagation, return-only inference with zero arguments.
+
+Inference uses fresh `Ty::Var` nodes and local unification at the call site only (rule 10). Explicit `:: <…>` always takes precedence.
+
+### Deferred: `.pxi` export mangling
+
+Cross-crate linking needs **stable `export_id`** across builds (session `DefId` ≠ link-stable id). Emitting/consuming mangled names such as `sort$s32` in `.pxi` export lists is **build-driver + linker** work, not typeck-only. Single-crate and same-crate mono already works without `.pxi` mangling.
+
+**Trigger to implement:** path dependencies must call specialized generics from another package without re-parsing source. See [pxi-format.md](pxi-format.md#deferred-pxi-mangling-for-generics).
+
+### Deferred: `dyn Trait`
+
+Runtime trait objects need fat-pointer layout, vtables, object-safety rules, and `IndirectCall` through vtable slots — a large VM + typeck surface. Phoenix prioritizes **static mono** + **fn pointers for C FFI** ([Callable values: four layers](#callable-values-four-layers)); `dyn Trait` is in-language dynamism, not FFI.
+
+**Trigger to implement:** plugin registries, `Vec<dyn Draw>`, or trait-returning factories without monomorphization explosion.
 
 When a generic function accepts a comparator or callback, monomorphization specializes the callee (`sort :: <s32> (…)`) at compile time; the callback argument is a **concrete function pointer type** (`:: (s32, s32) => bool`), not an erased generic fn value. See [Callable values: four layers](#callable-values-four-layers).
 

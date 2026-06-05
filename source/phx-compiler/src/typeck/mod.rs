@@ -10,9 +10,11 @@
 //! Consumes [`ResolvedProgram`] and produces [`TypedProgram`] with interned types per expression.
 
 mod bindings;
+mod bounds;
 mod builtins;
 mod check;
 mod display;
+mod infer;
 mod layout;
 mod lower_ty;
 mod mono;

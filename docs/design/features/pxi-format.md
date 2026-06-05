@@ -61,9 +61,19 @@ When a module imports from a dependency whose `.pxi` is fresh:
 
 ## Cross-crate generics
 
-Generic APIs in source appear in `.pxi` export lists as **monomorphized entries** only: each exported symbol has a mangled `export_id` (for example `sort$s32`) and a fully concrete signature. Parameterized signatures do not appear in v1/v2 `.pxi` today.
+Generic APIs in source are intended to appear in `.pxi` export lists as **monomorphized entries** only: each exported symbol would have a mangled `export_id` (for example `sort$s32`) and a fully concrete signature. Parameterized signatures do not appear in v1/v2 `.pxi` today.
 
-Implementing mangled export ids in the build is a separate follow-up coordinated with [modules and build](../finished-review/08-modules-and-build.md).
+### Deferred: `.pxi` mangling for generics
+
+**Status:** not implemented; same-crate monomorphization is sufficient for MVP.
+
+**Why deferred:**
+
+- Cross-crate linking needs **stable `export_id`** across builds ([modules and build](../finished-review/08-modules-and-build.md) — session `DefId` ≠ link-stable id).
+- The build driver and linker must emit and consume mangled names in `.pxi` export lists; this is not typeck-only work.
+- Single-crate and same-crate mono already resolves specialized symbols without `.pxi` mangling.
+
+**Trigger to implement:** path dependencies need to call specialized generics from another package without re-parsing source. Coordinated with [type-system.md](type-system.md#deferred-pxi-export-mangling).
 
 ## Non-goals (v2)
 

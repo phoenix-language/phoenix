@@ -72,6 +72,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             allow_imports: true,
             collect_only: true,
             import_bindings: Vec::new(),
+            self_type_depth: 0,
         };
         resolver.resolve_program();
         if resolver.main_fn.is_some() {
@@ -145,6 +146,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
             allow_imports: true,
             collect_only: false,
             import_bindings: bindings,
+            self_type_depth: 0,
         };
         let def_base = defs.len();
         resolver.resolve_program();

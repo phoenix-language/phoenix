@@ -23,18 +23,22 @@ use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, str_type, u8_type, unit,
 };
 use super::display::format_type;
+use super::infer::InferenceCtx;
 use super::layout::{
     EnumLayout, ProgramLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout, VariantMeta,
 };
 use super::lower_ty::{TypeDefMap, build_type_def_map, error_type, lower_type, push_generics};
-use super::mono::{MonoInst, TypeMonoInst, TypeMonoKind, generic_param_defs_for_type};
+use super::mono::{
+    MonoInst, TypeMonoInst, TypeMonoKind, generic_param_defs_for_type, generic_params_for_def,
+};
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::primitive::is_int_keyword;
 use super::subst::Substitution;
 use super::types::is_error_type;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
-use super::unify::{AliasEnv, unify_branch};
+use super::unify::AliasEnv;
+use super::unify::unify_branch;
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
 use phx_syntax::token::Keyword;
 
@@ -156,10 +160,79 @@ impl<'a> TypeChecker<'a> {
         self.next_expr = base;
     }
 
-    pub(crate) fn check_function_specialized(&mut self, f: &Function, spec_def: DefId) {
+    /// Copies collected layout tables from the template type-check pass for mono re-checks.
+    pub(crate) fn seed_layout_tables(&mut self, layout: &ProgramLayout) {
+        self.program_layout = layout.clone();
+        for (def, struct_layout) in &layout.structs {
+            let fields: HashMap<Symbol, TypeId> = struct_layout.fields.iter().copied().collect();
+            self.struct_fields.insert(*def, StructFields { fields });
+        }
+    }
+
+    pub(crate) fn check_function_specialized(
+        &mut self,
+        f: &Function,
+        spec_def: DefId,
+        base_fn: DefId,
+        mono_args: &[TypeId],
+    ) {
         let fn_ty = self.fn_type_for_function(f);
         self.value_types.insert(spec_def, fn_ty);
+        if let Ty::Fn { ret, .. } = self.types.get(fn_ty).clone() {
+            self.fn_ret = Some(ret);
+        }
+        let method_is_generic = f.generics.as_ref().is_some_and(|g| !g.is_empty());
+        let on_generic_impl = self.impl_type_for_method(base_fn).is_some_and(|type_def| {
+            self.find_inherent_impl_generics(type_def)
+                .is_some_and(|params| !params.is_empty())
+        });
+        if on_generic_impl && !method_is_generic {
+            self.fn_ret = None;
+            return;
+        }
+        let saved_impl_self = self.impl_self_type;
+        if let Some(type_def) = self.impl_type_for_method(base_fn) {
+            let impl_count = self
+                .find_inherent_impl_generics(type_def)
+                .map(|params| params.len())
+                .unwrap_or(0);
+            if impl_count > 0 && mono_args.len() >= impl_count {
+                let self_ty = self.types.intern(&Ty::Named {
+                    def: type_def,
+                    args: mono_args[..impl_count].to_vec(),
+                });
+                self.impl_self_type = Some(self_ty);
+            }
+        }
         self.check_function_body(f, spec_def, true);
+        self.impl_self_type = saved_impl_self;
+        self.fn_ret = None;
+    }
+
+    fn impl_type_for_method(&self, fn_def: DefId) -> Option<DefId> {
+        let base_def = self.resolved.defs.get(fn_def.index() as usize)?;
+        for module in &self.resolved.modules {
+            if module.id != base_def.module {
+                continue;
+            }
+            for item in &module.program.items {
+                if let TopLevelDecl::Impl {
+                    type_name,
+                    members,
+                    trait_,
+                    ..
+                } = &item.inner.decl
+                {
+                    if trait_.is_some() {
+                        continue;
+                    }
+                    if members.iter().any(|m| self.fn_def_for(m) == Some(fn_def)) {
+                        return self.find_def(module.id, type_name.symbol, DefKind::Struct);
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn fn_type_for_function(&mut self, f: &Function) -> TypeId {
@@ -299,8 +372,54 @@ impl<'a> TypeChecker<'a> {
         error_type(&mut self.types)
     }
 
+    fn impl_self_type_id(
+        &mut self,
+        type_def: DefId,
+        impl_generics: Option<&[phx_syntax::ast::types::GenericParam]>,
+    ) -> TypeId {
+        let args = impl_generics
+            .map(|params| {
+                params
+                    .iter()
+                    .filter_map(|param| {
+                        self.find_def(
+                            self.current_module,
+                            param.name.symbol,
+                            DefKind::GenericParam,
+                        )
+                        .map(|def| self.types.intern(&Ty::Named { def, args: vec![] }))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.types.intern(&Ty::Named {
+            def: type_def,
+            args,
+        })
+    }
+
+    fn is_self_type_name(&self, symbol: Symbol) -> bool {
+        self.resolved.interner.resolve(symbol) == "Self"
+    }
+
     fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
-        if let Type::Named { name, .. } = &ty.inner {
+        if let Type::Named { name, generics } = &ty.inner {
+            if self.is_self_type_name(name.symbol) {
+                if let Some(self_ty) = self.impl_self_type {
+                    if let Some(gs) = generics {
+                        if !gs.is_empty() {
+                            self.bag.push(
+                                self.current_module,
+                                TypeCheckError::UnsupportedFeature {
+                                    feature: "generic arguments on Self",
+                                    span: ty.span,
+                                },
+                            );
+                        }
+                    }
+                    return self_ty;
+                }
+            }
             if self.is_post_mvp_std_type_name(name.symbol) {
                 self.bag.push(
                     self.current_module,
@@ -588,9 +707,16 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::Impl {
                 type_name,
                 trait_,
+                generics,
                 members,
                 ..
             } => {
+                let saved_defs = self.type_defs.clone();
+                push_generics(
+                    &mut self.type_defs,
+                    &self.resolved.defs,
+                    generics.as_deref(),
+                );
                 if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
                     for m in members {
                         self.collect_fn_sig(m);
@@ -617,6 +743,7 @@ impl<'a> TypeChecker<'a> {
                         self.collect_fn_sig(m);
                     }
                 }
+                self.type_defs = saved_defs;
             }
             TopLevelDecl::Trait { items, .. } => {
                 for item in items {
@@ -695,13 +822,19 @@ impl<'a> TypeChecker<'a> {
                 self.ownership.define(name.symbol, expected);
             }
             TopLevelDecl::Impl {
-                type_name, members, ..
+                type_name,
+                generics,
+                members,
+                ..
             } => {
+                let saved_defs = self.type_defs.clone();
+                push_generics(
+                    &mut self.type_defs,
+                    &self.resolved.defs,
+                    generics.as_deref(),
+                );
                 if let Some(&type_def) = self.type_defs.get(&type_name.symbol) {
-                    let self_ty = self.types.intern(&Ty::Named {
-                        def: type_def,
-                        args: vec![],
-                    });
+                    let self_ty = self.impl_self_type_id(type_def, generics.as_deref());
                     self.impl_self_type = Some(self_ty);
                     for m in members {
                         self.check_function(m);
@@ -712,6 +845,7 @@ impl<'a> TypeChecker<'a> {
                         self.check_function(m);
                     }
                 }
+                self.type_defs = saved_defs;
             }
             _ => {}
         }
@@ -732,11 +866,12 @@ impl<'a> TypeChecker<'a> {
     fn check_function_body(&mut self, f: &Function, def: DefId, emit_layout: bool) {
         let mut td = self.type_defs.clone();
         push_generics(&mut td, &self.resolved.defs, f.generics.as_deref());
-        let ret = f
-            .ret
-            .as_ref()
-            .map(|r| self.lower_ast_type_with_defs(r, &td))
-            .unwrap_or(self.unit);
+        let ret = self.fn_ret.unwrap_or_else(|| {
+            f.ret
+                .as_ref()
+                .map(|r| self.lower_ast_type_with_defs(r, &td))
+                .unwrap_or(self.unit)
+        });
         self.fn_ret = Some(ret);
         self.ownership = OwnershipTracker::new();
         if emit_layout {
@@ -1236,8 +1371,13 @@ impl<'a> TypeChecker<'a> {
         for op in ops {
             ty = match op {
                 PostfixOp::Field(name) => self.check_field(ty, name, span),
-                PostfixOp::Method { name, args, .. } => {
-                    self.check_method_call(ty, name, args, span)
+                PostfixOp::Method {
+                    name,
+                    generics,
+                    args,
+                    ..
+                } => {
+                    self.check_method_call_with_generics(ty, name, generics.as_deref(), args, span)
                 }
                 PostfixOp::Call { generics, args } => {
                     let callee_def = self.callee_def_from_expr(base);
@@ -1294,16 +1434,6 @@ impl<'a> TypeChecker<'a> {
             Ty::Ref { inner, .. } => *inner,
             _ => ty,
         }
-    }
-
-    fn method_receiver_matches(&self, param: TypeId, receiver: TypeId) -> bool {
-        if self.types_equal(receiver, param) {
-            return true;
-        }
-        if let Ty::Ref { inner, .. } = self.types.get(param) {
-            return self.types_equal(receiver, *inner);
-        }
-        false
     }
 
     fn callee_def_from_expr(&self, base: &ExprNode) -> Option<DefId> {
@@ -1461,10 +1591,17 @@ impl<'a> TypeChecker<'a> {
         })
     }
 
-    fn generic_param_defs_for_fn(&self, f: &Function) -> Vec<DefId> {
+    fn generic_param_defs_for_fn(&self, f: &phx_syntax::ast::decl::Function) -> Vec<DefId> {
         let Some(params) = f.generics.as_ref() else {
             return Vec::new();
         };
+        self.generic_param_defs_from_ast(params)
+    }
+
+    fn generic_param_defs_from_ast(
+        &self,
+        params: &[phx_syntax::ast::types::GenericParam],
+    ) -> Vec<DefId> {
         params
             .iter()
             .filter_map(|param| {
@@ -1477,18 +1614,170 @@ impl<'a> TypeChecker<'a> {
             .collect()
     }
 
-    fn find_function_decl(&self, def: DefId) -> Option<&Function> {
+    fn find_inherent_impl_generics(
+        &self,
+        type_def: DefId,
+    ) -> Option<Vec<phx_syntax::ast::types::GenericParam>> {
+        let def = self.resolved.defs.get(type_def.index() as usize)?;
         for module in &self.resolved.modules {
+            if module.id != def.module {
+                continue;
+            }
             for item in &module.program.items {
-                let TopLevelDecl::Function(f) = &item.inner.decl else {
-                    continue;
-                };
-                if self.fn_def_for(f) == Some(def) {
-                    return Some(f);
+                if let TopLevelDecl::Impl {
+                    type_name,
+                    generics,
+                    trait_,
+                    ..
+                } = &item.inner.decl
+                {
+                    if trait_.is_some() {
+                        continue;
+                    }
+                    if let Some(struct_def) =
+                        self.find_def(module.id, type_name.symbol, DefKind::Struct)
+                    {
+                        if struct_def == type_def {
+                            return generics.clone();
+                        }
+                    }
                 }
             }
         }
         None
+    }
+
+    fn impl_generic_param_defs(&self, type_def: DefId) -> Vec<DefId> {
+        self.find_inherent_impl_generics(type_def)
+            .map(|params| self.generic_param_defs_from_ast(&params))
+            .unwrap_or_default()
+    }
+
+    fn receiver_type_args(&self, type_def: DefId, receiver: TypeId) -> Option<Vec<TypeId>> {
+        let Ty::Named { def, args } = self.types.get(receiver).clone() else {
+            return None;
+        };
+        if def != type_def {
+            return None;
+        }
+        Some(args)
+    }
+
+    fn method_receiver_matches(&self, param: TypeId, receiver: TypeId) -> bool {
+        if self.types_equal(receiver, param) {
+            return true;
+        }
+        if let Ty::Ref { inner, .. } = self.types.get(param) {
+            return self.types_equal(receiver, *inner);
+        }
+        false
+    }
+
+    fn method_arg_param_types(
+        &self,
+        f: &Function,
+        params: &[TypeId],
+        receiver: TypeId,
+    ) -> Vec<TypeId> {
+        let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
+        if has_receiver && !params.is_empty() {
+            return params[1..].to_vec();
+        }
+        if !params.is_empty() && self.method_receiver_matches(params[0], receiver) {
+            return params[1..].to_vec();
+        }
+        params.to_vec()
+    }
+
+    fn find_function_decl(&self, def: DefId) -> Option<&Function> {
+        for module in &self.resolved.modules {
+            for item in &module.program.items {
+                match &item.inner.decl {
+                    TopLevelDecl::Function(f) if self.fn_def_for(f) == Some(def) => return Some(f),
+                    TopLevelDecl::Impl { members, .. } => {
+                        for m in members {
+                            if self.fn_def_for(m) == Some(def) {
+                                return Some(m);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
+    fn resolve_concrete_generic_args(
+        &mut self,
+        generic_nodes: Option<&[Node<Type>]>,
+        fn_generics: Option<&[phx_syntax::ast::types::GenericParam]>,
+        param_defs: &[DefId],
+        param_types: &[TypeId],
+        args: &[ExprNode],
+        span: Span,
+    ) -> Option<Vec<TypeId>> {
+        let mut td = self.type_defs.clone();
+        push_generics(&mut td, &self.resolved.defs, fn_generics);
+        if let Some(nodes) = generic_nodes {
+            if nodes.len() != param_defs.len() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::ArityMismatch {
+                        expected: param_defs.len(),
+                        found: nodes.len(),
+                        span,
+                    },
+                );
+                return None;
+            }
+            let mut concrete_args = Vec::new();
+            for (param_def, ty_node) in param_defs.iter().zip(nodes) {
+                let concrete = self.lower_ast_type_with_defs(ty_node, &td);
+                concrete_args.push(concrete);
+                let _ = param_def;
+            }
+            return Some(concrete_args);
+        }
+        let mut infer = InferenceCtx::new();
+        let mut subst = Substitution::new();
+        for param_def in param_defs {
+            let var = infer.fresh_var(&mut self.types);
+            subst.insert(*param_def, var);
+        }
+        let applied: Vec<_> = param_types
+            .iter()
+            .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+            .collect();
+        let mut arg_types = Vec::with_capacity(args.len());
+        for arg in args {
+            arg_types.push(self.check_expr_node_read(arg));
+        }
+        let defs = &self.resolved.defs;
+        let value_types = &self.value_types;
+        for (p, got) in applied.iter().zip(&arg_types) {
+            if !infer.unify(&mut self.types, defs, value_types, *p, *got) {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::InferenceAmbiguous { span },
+                );
+                return None;
+            }
+        }
+        let mut concrete_args = Vec::new();
+        for param_def in param_defs {
+            let var = subst.get(*param_def)?;
+            let resolved = infer.resolve(&mut self.types, var);
+            if !infer.is_resolved(&mut self.types, resolved) {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::InferenceFailed { span },
+                );
+                return None;
+            }
+            concrete_args.push(resolved);
+        }
+        Some(concrete_args)
     }
 
     fn check_call_with_generics(
@@ -1525,39 +1814,23 @@ impl<'a> TypeChecker<'a> {
             }
             return self.check_call(callee, args, span);
         }
-        let Some(generic_nodes) = generics else {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::UnsupportedFeature {
-                    feature: "missing explicit type arguments on generic call",
-                    span,
-                },
-            );
-            return self.check_call(callee, args, span);
-        };
-        if generic_nodes.len() != param_defs.len() {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::ArityMismatch {
-                    expected: param_defs.len(),
-                    found: generic_nodes.len(),
-                    span,
-                },
-            );
-            return self.unit;
-        }
-        let mut td = self.type_defs.clone();
-        push_generics(&mut td, &self.resolved.defs, fn_generics.as_deref());
-        let mut concrete_args = Vec::new();
-        let mut subst = Substitution::new();
-        for (param_def, ty_node) in param_defs.iter().zip(generic_nodes) {
-            let concrete = self.lower_ast_type_with_defs(ty_node, &td);
-            subst.insert(*param_def, concrete);
-            concrete_args.push(concrete);
-        }
         let Ty::Fn { params, ret } = self.types.get(callee).clone() else {
             return self.check_call(callee, args, span);
         };
+        let Some(concrete_args) = self.resolve_concrete_generic_args(
+            generics,
+            fn_generics.as_deref(),
+            &param_defs,
+            &params,
+            args,
+            span,
+        ) else {
+            return self.unit;
+        };
+        let mut subst = Substitution::new();
+        for (param_def, concrete) in param_defs.iter().zip(&concrete_args) {
+            subst.insert(*param_def, *concrete);
+        }
         let params: Vec<_> = params
             .iter()
             .map(|p| Substitution::apply(&mut self.types, *p, &subst))
@@ -1608,34 +1881,23 @@ impl<'a> TypeChecker<'a> {
             }
             return self.check_call(callee, args, span);
         }
-        let Some(generic_nodes) = generics else {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::UnsupportedFeature {
-                    feature: "missing explicit type arguments on generic enum constructor",
-                    span,
-                },
-            );
+        let Ty::Fn {
+            params: ctor_params,
+            ..
+        } = self.types.get(callee).clone()
+        else {
+            return self.check_call(callee, args, span);
+        };
+        let Some(concrete_args) = self.resolve_concrete_generic_args(
+            generics,
+            generic_params_for_def(self.resolved, enum_def).as_deref(),
+            &param_defs,
+            &ctor_params,
+            args,
+            span,
+        ) else {
             return self.unit;
         };
-        if generic_nodes.len() != param_defs.len() {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::ArityMismatch {
-                    expected: param_defs.len(),
-                    found: generic_nodes.len(),
-                    span,
-                },
-            );
-            return self.unit;
-        }
-        let mut concrete_args = Vec::new();
-        let mut subst = Substitution::new();
-        for (param_def, ty_node) in param_defs.iter().zip(generic_nodes) {
-            let concrete = self.lower_ast_type(ty_node);
-            subst.insert(*param_def, concrete);
-            concrete_args.push(concrete);
-        }
         self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, concrete_args.clone());
         let enum_ty = self.types.intern(&Ty::Named {
             def: enum_def,
@@ -1714,74 +1976,145 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_method_call(
+    #[allow(clippy::too_many_lines)]
+    fn check_method_call_with_generics(
         &mut self,
         receiver: TypeId,
         name: &Ident,
+        generics: Option<&[Node<Type>]>,
         args: &[ExprNode],
         span: Span,
     ) -> TypeId {
-        if let Ty::Named { def, .. } = self.types.get(receiver) {
-            let def = *def;
-            let fn_def = self
-                .program_layout
-                .inherent_methods
-                .get(&(def, name.symbol))
-                .copied()
-                .or_else(|| find_trait_method_def(&self.program_layout, def, name.symbol));
-            if let Some(fn_def) = fn_def {
-                if let Some(&fn_ty) = self.value_types.get(&fn_def) {
-                    let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() else {
-                        return self.unit;
-                    };
-                    if params.is_empty() {
-                        return self.check_call(fn_ty, args, span);
-                    }
-                    if !self.method_receiver_matches(params[0], receiver) {
-                        self.error_mismatch(params[0], receiver, span);
-                    }
-                    let rest = &params[1..];
-                    if rest.len() != args.len() {
-                        self.bag.push(
-                            self.current_module,
-                            TypeCheckError::ArityMismatch {
-                                expected: rest.len(),
-                                found: args.len(),
-                                span,
-                            },
-                        );
-                    }
-                    for (p, arg) in rest.iter().zip(args) {
-                        let got = self.check_expr_node(arg);
-                        if !self.types_equal(got, *p) {
-                            self.error_mismatch(*p, got, arg.span);
-                        }
-                    }
-                    return ret;
-                }
+        let Ty::Named { def, .. } = self.types.get(receiver) else {
+            return self.emit_unresolved_method(receiver, name, span);
+        };
+        let type_def = *def;
+        let fn_def = self
+            .program_layout
+            .inherent_methods
+            .get(&(type_def, name.symbol))
+            .copied()
+            .or_else(|| find_trait_method_def(&self.program_layout, type_def, name.symbol));
+        let Some(fn_def) = fn_def else {
+            return self.emit_ambiguous_or_unresolved_method(receiver, type_def, name, span);
+        };
+        let Some(&fn_ty) = self.value_types.get(&fn_def) else {
+            return self.emit_unresolved_method(receiver, name, span);
+        };
+        let Some(f) = self.find_function_decl(fn_def).cloned() else {
+            return self.check_call(fn_ty, args, span);
+        };
+        let impl_param_defs = self.impl_generic_param_defs(type_def);
+        let method_param_defs = self.generic_param_defs_for_fn(&f);
+        let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() else {
+            return self.unit;
+        };
+        let arg_param_types = self.method_arg_param_types(&f, &params, receiver);
+        let impl_args = self
+            .receiver_type_args(type_def, receiver)
+            .unwrap_or_default();
+        if impl_param_defs.len() != impl_args.len() && !impl_param_defs.is_empty() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::Mismatch {
+                    expected: "specialized receiver type".to_owned(),
+                    found: self.format_ty(receiver),
+                    span,
+                },
+            );
+            return self.unit;
+        }
+        let needs_mono = !impl_param_defs.is_empty() || !method_param_defs.is_empty();
+        if needs_mono {
+            let mut subst = Substitution::new();
+            for (param_def, concrete) in impl_param_defs.iter().zip(&impl_args) {
+                subst.insert(*param_def, *concrete);
             }
-            let mut trait_matches: Vec<DefId> = self
-                .program_layout
-                .trait_methods
+            let infer_arg_params: Vec<_> = arg_param_types
                 .iter()
-                .filter(|((type_def, _trait_def, method), _)| {
-                    *type_def == def && *method == name.symbol
-                })
-                .map(|(_, fn_def)| *fn_def)
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
                 .collect();
-            trait_matches.sort_by_key(|d| d.index());
-            trait_matches.dedup();
-            if trait_matches.len() > 1 {
+            let method_args = if method_param_defs.is_empty() {
+                Vec::new()
+            } else {
+                let Some(concrete) = self.resolve_concrete_generic_args(
+                    generics,
+                    f.generics.as_deref(),
+                    &method_param_defs,
+                    &infer_arg_params,
+                    args,
+                    span,
+                ) else {
+                    return self.unit;
+                };
+                concrete
+            };
+            if generics.is_some() && method_param_defs.is_empty() {
                 self.bag.push(
                     self.current_module,
-                    TypeCheckError::AmbiguousMethod {
-                        receiver: self.format_ty(receiver),
-                        method_index: name.symbol.index(),
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "type arguments on non-generic method",
                         span,
                     },
                 );
             }
+            for (param_def, concrete) in method_param_defs.iter().zip(&method_args) {
+                subst.insert(*param_def, *concrete);
+            }
+            let applied_arg_params: Vec<_> = arg_param_types
+                .iter()
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .collect();
+            if applied_arg_params.len() != args.len() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::ArityMismatch {
+                        expected: applied_arg_params.len(),
+                        found: args.len(),
+                        span,
+                    },
+                );
+            }
+            for (p, arg) in applied_arg_params.iter().zip(args) {
+                let got = self.check_expr_node(arg);
+                if !self.types_equal(got, *p) {
+                    self.error_mismatch(*p, got, arg.span);
+                }
+            }
+            let mut mono_args = impl_args;
+            mono_args.extend(method_args);
+            self.record_mono_inst(fn_def, mono_args, name.id);
+            return Substitution::apply(&mut self.types, ret, &subst);
         }
+        if generics.is_some() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: "type arguments on non-generic method",
+                    span,
+                },
+            );
+        }
+        if arg_param_types.len() != args.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: arg_param_types.len(),
+                    found: args.len(),
+                    span,
+                },
+            );
+        }
+        for (p, arg) in arg_param_types.iter().zip(args) {
+            let got = self.check_expr_node(arg);
+            if !self.types_equal(got, *p) {
+                self.error_mismatch(*p, got, arg.span);
+            }
+        }
+        ret
+    }
+
+    fn emit_unresolved_method(&mut self, receiver: TypeId, name: &Ident, span: Span) -> TypeId {
         self.bag.push(
             self.current_module,
             TypeCheckError::UnresolvedMethod {
@@ -1791,6 +2124,35 @@ impl<'a> TypeChecker<'a> {
             },
         );
         self.unit
+    }
+
+    fn emit_ambiguous_or_unresolved_method(
+        &mut self,
+        receiver: TypeId,
+        type_def: DefId,
+        name: &Ident,
+        span: Span,
+    ) -> TypeId {
+        let mut trait_matches: Vec<DefId> = self
+            .program_layout
+            .trait_methods
+            .iter()
+            .filter(|((t, _trait_def, method), _)| *t == type_def && *method == name.symbol)
+            .map(|(_, fn_def)| *fn_def)
+            .collect();
+        trait_matches.sort_by_key(|d| d.index());
+        trait_matches.dedup();
+        if trait_matches.len() > 1 {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::AmbiguousMethod {
+                    receiver: self.format_ty(receiver),
+                    method_index: name.symbol.index(),
+                    span,
+                },
+            );
+        }
+        self.emit_unresolved_method(receiver, name, span)
     }
 
     fn check_if(

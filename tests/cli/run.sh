@@ -41,6 +41,8 @@ FIXTURES=(
   generic_fn.phx
   generic_struct.phx
   generic_enum.phx
+  generic_infer.phx
+  generic_impl_method.phx
 )
 
 cd "${ROOT}"

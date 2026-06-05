@@ -631,23 +631,24 @@ fn lower_postfix_inner(
                 }
             }
             PostfixOp::Method { name, args, .. } => {
-                if let Some(type_def) = named_def_for_ty(ctx.typed, receiver_ty) {
-                    let callee = ctx
-                        .typed
-                        .layout
-                        .inherent_methods
-                        .get(&(type_def, name.symbol))
-                        .copied()
-                        .or_else(|| find_trait_method(ctx, type_def, name.symbol));
-                    if let Some(callee) = callee {
-                        for arg in args {
-                            lower_expr(ctx, arg);
-                        }
-                        ctx.emit(IrInst::Call {
-                            callee,
-                            ret: result_ty,
-                        });
+                let callee =
+                    lookup_resolution(&ctx.typed.resolved, ctx.module, name.id).or_else(|| {
+                        let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
+                        ctx.typed
+                            .layout
+                            .inherent_methods
+                            .get(&(type_def, name.symbol))
+                            .copied()
+                            .or_else(|| find_trait_method(ctx, type_def, name.symbol))
+                    });
+                if let Some(callee) = callee {
+                    for arg in args {
+                        lower_expr(ctx, arg);
                     }
+                    ctx.emit(IrInst::Call {
+                        callee,
+                        ret: result_ty,
+                    });
                 }
             }
             PostfixOp::Call { args, .. } => {

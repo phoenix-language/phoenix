@@ -724,9 +724,65 @@ fn generic_cli_fixtures_check_file_ok() {
 }
 
 #[test]
-fn generic_fn_missing_type_args_errors() {
-    let bag = typeck_err("id :: <t> (x: s32) => s32 { x }; main :: () => { const _ = id (1); };");
-    assert!(has_unsupported(&bag, "missing explicit type arguments"));
+fn generic_fn_infer_from_args_ok() {
+    ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id(1); };");
+}
+
+#[test]
+fn generic_fn_unconstrained_type_param_errors() {
+    let bag = typeck_err("id :: <t> (x: s32) => s32 { x }; main :: () => { const _ = id(1); };");
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::InferenceFailed { .. }))
+    );
+}
+
+#[test]
+fn generic_fn_copyable_bound_ok() {
+    ok(
+        "max :: <t: Copyable> (a: t, b: t) => t { if a > b { a } else { b } }; main :: () => { const _: s32 = max(1, 2); };",
+    );
+}
+
+#[test]
+fn generic_fn_copyable_bound_fails_for_non_copyable_struct() {
+    let bag = typeck_err(
+        "Pair :: struct { a: s32, b: s32 }; max :: <t: Copyable> (a: t, b: t) => t { a }; main :: () => { const _ = max(Pair { a: 1, b: 2 }, Pair { a: 3, b: 4 }); };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::TraitNotSatisfied { .. }))
+    );
+}
+
+#[test]
+fn generic_fn_user_trait_bound_ok() {
+    ok(
+        "PartialEq :: trait { eq :: (self: Point, other: Point) => bool; }; Point :: struct { x: s32 }; Point :: impl :: PartialEq { eq :: (self: Point, other: Point) => bool { self.x == other.x }; }; same :: <t: PartialEq> (a: t, b: t) => bool { true }; main :: () => { const p = Point { x: 1 }; const q = Point { x: 2 }; const _: bool = same(p, q); };",
+    );
+}
+
+#[test]
+fn generic_impl_method_body_check_ok() {
+    ok(
+        "Box :: <t> struct { v: t }; Box :: <t> impl { get :: () => t { self.v }; }; main :: () => { };",
+    );
+}
+
+#[test]
+fn generic_impl_method_infer_ok() {
+    ok(
+        "Box :: <t> struct { v: t }; Box :: <t> impl { get :: () => t { self.v }; }; main :: () => { const b = Box :: <s32> { v: 10 }; const _: s32 = b.get(); };",
+    );
+}
+
+#[test]
+fn generic_impl_method_with_type_params_ok() {
+    ok(
+        "Box :: <t> struct { v: t }; Box :: <t> impl { id :: <u> (x: u) => u { x }; }; main :: () => { const b = Box :: <s32> { v: 1 }; const _: s32 = b.id(2); };",
+    );
 }
 
 #[test]

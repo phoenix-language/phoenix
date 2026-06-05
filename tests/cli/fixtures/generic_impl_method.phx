@@ -1,0 +1,11 @@
+Box :: <t> struct { v: t };
+
+Box :: <t> impl {
+  get :: () => t { self.v };
+};
+
+main :: () => {
+  const b = Box :: <s32> { v: 7 };
+  const n: s32 = b.get();
+  const _ = n;
+};

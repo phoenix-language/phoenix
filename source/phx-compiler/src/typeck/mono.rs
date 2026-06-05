@@ -3,9 +3,10 @@
 use std::collections::HashMap;
 
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
-use phx_syntax::ast::decl::{Function, TopLevelDecl, TopLevelItem};
+use phx_syntax::ast::decl::{Function, TopLevelDecl};
 use phx_syntax::ast::types::GenericParam;
 
+use super::bounds::validate_instantiation_bounds;
 use super::check::TypeChecker;
 use super::layout::{EnumLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout};
 use super::subst::Substitution;
@@ -90,6 +91,23 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             );
             continue;
         }
+        let Some(f) = find_function(&typed.resolved, inst.base_fn).cloned() else {
+            continue;
+        };
+        let combined_generics = combined_generic_params(&typed.resolved, inst.base_fn, &f);
+        if !validate_instantiation_bounds(
+            &typed.resolved,
+            &typed.layout,
+            &typed.types,
+            Some(&combined_generics),
+            &param_defs,
+            &inst.args,
+            base_def.module,
+            base_def.span,
+            bag,
+        ) {
+            continue;
+        }
         let mut subst = Substitution::new();
         for (param, arg) in param_defs.iter().zip(&inst.args) {
             subst.insert(*param, *arg);
@@ -97,35 +115,39 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         let spec_def =
             alloc_specialized_def(&mut typed.resolved, inst.base_fn, &inst.args, &typed.types);
         typed.specialized_from.insert(spec_def, inst.base_fn);
-
-        let Some(f) = find_function(&typed.resolved, inst.base_fn) else {
-            continue;
-        };
-        let mut checker =
-            TypeChecker::new_with_substitution(&typed.resolved, subst, typed.types.clone());
-        checker.set_expr_id_base(expr_base);
-        checker.check_function_specialized(f, spec_def);
-        let (
-            checker_types,
-            expr_types,
-            checker_bag,
-            layouts,
-            _program_layout,
-            value_types,
-            spec_aliases,
-        ) = checker.finish_all();
-        if checker_bag.has_errors() {
-            for located in checker_bag.into_errors() {
-                bag.push_located(located);
+        let skip_impl_body = find_impl_generics_for_fn(&typed.resolved, inst.base_fn)
+            .is_some_and(|params| !params.is_empty())
+            && f.generics.as_ref().is_none_or(Vec::is_empty);
+        if skip_impl_body {
+            clone_specialized_function_layout(typed, inst.base_fn, spec_def, &subst);
+        } else {
+            let mut checker =
+                TypeChecker::new_with_substitution(&typed.resolved, subst, typed.types.clone());
+            checker.set_expr_id_base(expr_base);
+            checker.seed_layout_tables(&typed.layout);
+            checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
+            let (
+                checker_types,
+                expr_types,
+                checker_bag,
+                layouts,
+                _program_layout,
+                value_types,
+                spec_aliases,
+            ) = checker.finish_all();
+            if checker_bag.has_errors() {
+                for located in checker_bag.into_errors() {
+                    bag.push_located(located);
+                }
+                continue;
             }
-            continue;
-        }
-        typed.types = checker_types;
-        typed.expr_types.extend(expr_types);
-        typed.functions.extend(layouts);
-        typed.specialized_aliases.extend(spec_aliases);
-        if let Some(&fn_ty) = value_types.get(&spec_def) {
-            let _ = fn_ty;
+            typed.types = checker_types;
+            typed.expr_types.extend(expr_types);
+            typed.functions.extend(layouts);
+            typed.specialized_aliases.extend(spec_aliases);
+            if let Some(&fn_ty) = value_types.get(&spec_def) {
+                let _ = fn_ty;
+            }
         }
         for node_id in &inst.call_sites {
             for module in &typed.resolved.modules {
@@ -175,6 +197,20 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
                     span: base_def.span,
                 },
             );
+            continue;
+        }
+        let generic_params = generic_params_for_def(&typed.resolved, inst.base_def);
+        if !validate_instantiation_bounds(
+            &typed.resolved,
+            &typed.layout,
+            &typed.types,
+            generic_params.as_deref(),
+            &param_defs,
+            &inst.args,
+            base_def.module,
+            base_def.span,
+            bag,
+        ) {
             continue;
         }
 
@@ -282,15 +318,20 @@ fn specialize_enum(
 fn find_function(resolved: &ResolvedProgram, def: DefId) -> Option<&Function> {
     for module in &resolved.modules {
         for item in &module.program.items {
-            let TopLevelItem {
-                decl: TopLevelDecl::Function(f),
-                ..
-            } = &item.inner
-            else {
-                continue;
-            };
-            if fn_def_id(resolved, module.id, f.name.symbol) == Some(def) {
-                return Some(f);
+            match &item.inner.decl {
+                TopLevelDecl::Function(f)
+                    if fn_def_id(resolved, module.id, f.name.symbol) == Some(def) =>
+                {
+                    return Some(f);
+                }
+                TopLevelDecl::Impl { members, .. } => {
+                    for m in members {
+                        if fn_def_id(resolved, module.id, m.name.symbol) == Some(def) {
+                            return Some(m);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -308,7 +349,69 @@ fn fn_def_id(resolved: &ResolvedProgram, module: u32, name: phx_syntax::Symbol) 
 
 fn generic_param_defs_for_fn_base(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<DefId>> {
     let f = find_function(resolved, base)?;
-    generic_param_defs(resolved, f.generics.as_deref(), base)
+    let params = combined_generic_params(resolved, base, f);
+    if params.is_empty() {
+        return Some(Vec::new());
+    }
+    generic_param_defs(resolved, Some(&params), base)
+}
+
+fn combined_generic_params(
+    resolved: &ResolvedProgram,
+    base: DefId,
+    f: &Function,
+) -> Vec<GenericParam> {
+    let mut params = find_impl_generics_for_fn(resolved, base).unwrap_or_default();
+    if let Some(fn_generics) = f.generics.as_ref() {
+        params.extend(fn_generics.clone());
+    }
+    params
+}
+
+fn clone_specialized_function_layout(
+    typed: &mut TypedProgram,
+    base_fn: DefId,
+    spec_def: DefId,
+    subst: &Substitution,
+) {
+    let Some(base_layout) = typed.functions.iter().find(|l| l.def == base_fn) else {
+        return;
+    };
+    let mut layout = base_layout.clone();
+    layout.def = spec_def;
+    layout.return_type = Substitution::apply(&mut typed.types, layout.return_type, subst);
+    for binding in &mut layout.bindings {
+        binding.ty = Substitution::apply(&mut typed.types, binding.ty, subst);
+    }
+    typed.functions.push(layout);
+}
+
+fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<GenericParam>> {
+    let base_def = resolved.defs.get(base.index() as usize)?;
+    for module in &resolved.modules {
+        if module.id != base_def.module {
+            continue;
+        }
+        for item in &module.program.items {
+            if let TopLevelDecl::Impl {
+                generics,
+                members,
+                trait_,
+                ..
+            } = &item.inner.decl
+            {
+                if trait_.is_some() {
+                    continue;
+                }
+                for member in members {
+                    if fn_def_id(resolved, module.id, member.name.symbol) == Some(base) {
+                        return generics.clone();
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Returns generic parameter defs for a struct, enum, or type alias template.
@@ -321,7 +424,12 @@ pub fn generic_param_defs_for_type(resolved: &ResolvedProgram, base: DefId) -> O
     )
 }
 
-fn generic_params_for_def(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<GenericParam>> {
+/// Returns generic parameters declared on a struct, enum, type alias, or function template.
+#[must_use]
+pub fn generic_params_for_def(
+    resolved: &ResolvedProgram,
+    base: DefId,
+) -> Option<Vec<GenericParam>> {
     let def = resolved.defs.get(base.index() as usize)?;
     for module in &resolved.modules {
         if module.id != def.module {

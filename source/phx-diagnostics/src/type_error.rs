@@ -176,6 +176,25 @@ pub enum TypeCheckError {
         /// Site where the borrow of the local was formed.
         borrow_span: Span,
     },
+    /// Concrete type at a generic instantiation does not implement a required trait bound.
+    TraitNotSatisfied {
+        /// Type that failed the bound.
+        type_name: String,
+        /// Required trait name.
+        trait_name: String,
+        /// Instantiation site span.
+        span: Span,
+    },
+    /// Could not infer generic type arguments from call-site arguments.
+    InferenceFailed {
+        /// Call site span.
+        span: Span,
+    },
+    /// Generic type argument inference produced conflicting constraints.
+    InferenceAmbiguous {
+        /// Call site span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -205,6 +224,9 @@ impl TypeCheckError {
             Self::LoopControlOutsideLoop { .. } => DiagnosticCode::new("E2020"),
             Self::RecursiveTypeAlias { .. } => DiagnosticCode::new("E2021"),
             Self::ReturnEscapesLocal { .. } => DiagnosticCode::new("E2022"),
+            Self::TraitNotSatisfied { .. } => DiagnosticCode::new("E2023"),
+            Self::InferenceFailed { .. } => DiagnosticCode::new("E2024"),
+            Self::InferenceAmbiguous { .. } => DiagnosticCode::new("E2025"),
         }
     }
 
@@ -233,7 +255,10 @@ impl TypeCheckError {
             | Self::UnresolvedValue { span, .. }
             | Self::LoopControlOutsideLoop { span, .. }
             | Self::RecursiveTypeAlias { span, .. }
-            | Self::ReturnEscapesLocal { span, .. } => Some(*span),
+            | Self::ReturnEscapesLocal { span, .. }
+            | Self::TraitNotSatisfied { span, .. }
+            | Self::InferenceFailed { span, .. }
+            | Self::InferenceAmbiguous { span, .. } => Some(*span),
         }
     }
 }
@@ -316,6 +341,20 @@ impl fmt::Display for TypeCheckError {
             Self::RecursiveTypeAlias { .. } => f.write_str("recursive type alias"),
             Self::ReturnEscapesLocal { .. } => {
                 f.write_str("cannot return a borrow of a local variable")
+            }
+            Self::TraitNotSatisfied {
+                type_name,
+                trait_name,
+                ..
+            } => write!(
+                f,
+                "type `{type_name}` does not satisfy trait bound `{trait_name}`"
+            ),
+            Self::InferenceFailed { .. } => {
+                f.write_str("could not infer generic type arguments from call arguments")
+            }
+            Self::InferenceAmbiguous { .. } => {
+                f.write_str("ambiguous generic type argument inference")
             }
         }
     }
