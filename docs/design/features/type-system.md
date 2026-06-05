@@ -133,18 +133,113 @@ See also [grammer.md](../grammer.md#explicit-casts) for surface syntax and prece
 
 ---
 
-## Monomorphization (MVP)
+## Generics strategy (monomorphization)
 
-MVP generics use **explicit type arguments** at the call site and **compile-time monomorphization** before IR lowering — no runtime type erasure and no global inference search.
+Phoenix uses **compile-time monomorphization** as the **permanent** generics strategy — not an MVP-only stopgap. Each explicit instantiation site produces concrete layouts and specialized definitions before IR lowering. There is no runtime type erasure and no global inference search.
 
-| Rule | MVP behavior |
+| Rule | Behavior |
 |---|---|
-| Syntax | `name :: <t1, …> (args…)` on value identifiers (and `:: <…>` before `(` in postfix chains) |
-| Requirement | Generic functions must be called with a `:: <…>` type-argument list matching the declaration’s generic parameter count |
-| Specialization | Each distinct instantiation gets a specialized `DefId` (mangled name such as `id$s32`) and its own [`FunctionLayout`](../../../source/phx-compiler/src/typeck/bindings.rs) for lowering |
-| Out of scope (MVP) | Generic enums/structs at use sites beyond parsing, trait-object vtables, `.pxi` export mangling, implicit inference |
+| Syntax | Explicit `:: <t1, …>` (or `::<t1, …>`) at every instantiation site |
+| Function calls | `name :: <s32> (args…)` on value identifiers; `:: <…>` before `(` in postfix chains |
+| Struct literals | `Box :: <s32> { v: 1 }` or `Box::<s32> { v: 1 }` when the struct template has generic parameters |
+| Enum constructors | `Some :: <s32> (1)` or `Opt::<s32>::Some(1)` when the enum template has generic parameters |
+| Type annotations | `Pair<s32>`, `const x: Box<s32>`, generic type aliases with explicit args |
+| Specialization | Each distinct `(template, args…)` gets mangled symbols such as `id$s32` and concrete [`ProgramLayout`](../../../source/phx-compiler/src/typeck/layout.rs) entries for lowering |
+| Trait dispatch | Static (monomorphized) only; `dyn Trait` reserved for explicit runtime polymorphism |
 
-Type parameters in function bodies are checked once on the generic template; monomorphization re-type-checks the body under a substitution map for each collected instantiation.
+Type parameters in templates are checked once; the monomorphization pass re-checks specialized function bodies under a substitution map and emits substituted struct/enum layouts for each collected type instantiation.
+
+**In scope today:** monomorphized function bodies, struct/enum/alias use sites with explicit args, static trait dispatch assumptions.
+
+**Out of scope / follow-up:** local call-site inference, trait-bound enforcement, generic impl members (`.method::<T>()`), `.pxi` export mangling, `dyn Trait` vtables.
+
+### Follow-up: local inference
+
+Future work may add `Ty::Var` and **local** call-site unification (rule 10 above): constraints are solved at the call site only, with no global search. Explicit `:: <…>` remains valid when inference is added.
+
+When a generic function accepts a comparator or callback, monomorphization specializes the callee (`sort :: <s32> (…)`) at compile time; the callback argument is a **concrete function pointer type** (`:: (s32, s32) => bool`), not an erased generic fn value. See [Callable values: four layers](#callable-values-four-layers).
+
+---
+
+## Callable values: four layers
+
+Phoenix is **no-GC**. Callable **values** must not behave like struct-sized owned payloads that move on every pass. The design splits **static calls**, **function pointers**, **closures**, and **`dyn` trait** dynamism into separate layers. Only the first is MVP-complete today; the rest are documented now so FFI and generics work toward the same target.
+
+### Core principle
+
+Do **not** pass functions “by value” like structs. Callable values should be **pointer-sized** and **Copyable** (bitwise copy of an address), not big owned or move-only values.
+
+### Layer 1 — Static dispatch (default; MVP+ today)
+
+Top-level and monomorphized functions use direct call lowering:
+
+```phoenix
+add :: (a: s32, b: s32) => s32 { a + b };
+add(1, 2);
+```
+
+| Property | Behavior |
+|---|---|
+| Resolution | Callee name → compile-time `DefId` |
+| Bytecode | PHX0 **`Call`** opcode with `function_id` operand (**implemented**) |
+| Cost | No pointer, no move, no indirect dispatch |
+| Status | Default for ordinary calls; remains the preferred path |
+
+### Layer 2 — Function pointers (post-MVP / FFI phase; design now)
+
+Callable **values** (as opposed to callee names in call syntax) are pointer-sized and Copyable.
+
+| Property | Target behavior |
+|---|---|
+| Size | Fixed for C ABI — `usize` or platform code-pointer width |
+| Copyability | Copyable (bitwise copy of address) |
+| Syntax (conceptual) | `type Comparator = :: (s32, s32) => bool` as a **value type** — fn pointer — distinct from using `Ty::Fn` only in signatures today |
+| Bytecode | Planned PHX0 **`IndirectCall`** opcode (not implemented; see [vm-linear.md](vm-linear.md) optional `CALL_INDIRECT`) |
+| C interop | `extern "C"` maps cleanly to C function pointers |
+| Generics tie-in | `sort::<s32>` monomorphizes statically; comparator passed as concrete `:: (s32, s32) => bool` fn pointer |
+
+Function pointer types describe **code addresses**, not captured environments.
+
+### Layer 3 — Closures (separate; deferred)
+
+Lambda syntax `(params) => expr | block` is scaffolded in the parser and resolver ([resolver.md](resolver.md), [grammar-deferred.md](grammar-deferred.md)) but is **not** a function pointer.
+
+| Property | Target behavior |
+|---|---|
+| Representation | Fat pointer (code pointer + captures) |
+| Distinction | Not interchangeable with C-style fn pointers |
+| Status | Post-MVP; typeck reports `UnsupportedFeature` today |
+
+### Layer 4 — `dyn Trait` (alternative dynamism)
+
+In-language polymorphism via vtables is a separate path from fn pointers.
+
+| Use case | Preferred mechanism |
+|---|---|
+| C callbacks / `extern "C"` | Function pointers (Layer 2) |
+| In-language “any `Ord` comparator” | `dyn Trait` may suffice without fn pointers |
+| Status | Post-MVP; reserved alongside explicit fn pointers |
+
+### Current implementation status
+
+| Item | Today |
+|---|---|
+| `Ty::Fn` in type checker / parser | Exists for function **types** in signatures (`fn` types in `@extern`, parameters) |
+| First-class fn **values** | **Not implemented** — top-level fn names resolve to static **`Call`** only |
+| `Ty::Fn` Copyability | **Not Copyable** in [`is_copyable`](../../../source/phx-compiler/src/typeck/builtins.rs) — temporary/incorrect for value use; **target** is Copyable fn pointers |
+| `IndirectCall` / `CALL_INDIRECT` | **Not implemented** in compiler or VM |
+
+Do not treat a function name as a move-only non-copyable value blob; that shape is a bug relative to this design.
+
+### Layered recommendations
+
+| Layer | Now (MVP+) | Next (FFI) | Later |
+|---|---|---|---|
+| Static calls | `Call` opcode, static `DefId` | same | same |
+| Fn pointer values | Not implemented; document design | Copyable, pointer-sized, `IndirectCall` | — |
+| C ABI | `@extern` sketch ([ffi.md](ffi.md)) | concrete fn pointer types at boundary | native export |
+| Avoid | fn name as move-only non-copyable value | — | — |
+| Closures / `dyn Trait` | deferred | — | fat pointers / vtables |
 
 ---
 
