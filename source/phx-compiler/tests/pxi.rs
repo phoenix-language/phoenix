@@ -24,6 +24,7 @@ fn pxi_v2_type_json_round_trip() {
             kind: "fn".to_owned(),
             signature: "(s32, s32) => s32".to_owned(),
             ty: Some(ty.clone()),
+            function_id: None,
         }],
         dependencies: vec![],
     };
@@ -50,6 +51,10 @@ fn project_build_emits_pxi_v2_with_structured_fn_type() {
         .find(|e| e.name == "add")
         .expect("add export");
     assert_eq!(add.kind, "fn");
+    assert!(
+        add.function_id.is_some(),
+        "fn exports should record function_id"
+    );
     let ty = add.ty.as_ref().expect("structured fn type");
     assert!(matches!(ty, PxiType::Fn { .. }));
 }

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::pxi::digest_bytes;
 
@@ -144,11 +144,12 @@ fn extract_module_keys(text: &str) -> Vec<(String, ())> {
     for line in slice.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('"')
-            && trimmed.contains("::")
             && trimmed.ends_with(": {")
             && let Some(name) = trimmed
                 .strip_prefix('"')
                 .and_then(|s| s.strip_suffix("\": {"))
+            && !name.is_empty()
+            && name != "modules"
         {
             out.push((name.to_owned(), ()));
         }
@@ -156,9 +157,34 @@ fn extract_module_keys(text: &str) -> Vec<(String, ())> {
     out
 }
 
+/// Stores `path` relative to `build_root` when possible.
+#[must_use]
+pub fn store_path_relative_to(build_root: &Path, path: &Path) -> String {
+    path.strip_prefix(build_root)
+        .map_or_else(|_| path.display().to_string(), |p| p.display().to_string())
+}
+
+/// Resolves a manifest artifact path against `build_root`.
+#[must_use]
+pub fn resolve_manifest_path(build_root: &Path, stored: &str) -> PathBuf {
+    let p = Path::new(stored);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    let from_build = build_root.join(p);
+    if from_build.is_file() {
+        return from_build;
+    }
+    if p.is_file() {
+        return p.to_path_buf();
+    }
+    from_build
+}
+
 /// Returns true when module `logical` does not need recompilation.
 pub fn module_is_up_to_date(
     manifest: &BuildManifest,
+    build_root: &Path,
     logical: &str,
     source_hash: &str,
     dep_pxi_hashes: &[(String, String)],
@@ -177,7 +203,8 @@ pub fn module_is_up_to_date(
             return false;
         }
     }
-    std::path::Path::new(&rec.phx0_path).is_file() && std::path::Path::new(&rec.pxi_path).is_file()
+    resolve_manifest_path(build_root, &rec.phx0_path).is_file()
+        && resolve_manifest_path(build_root, &rec.pxi_path).is_file()
 }
 
 /// Hash of manifest module record for dependency edges.
@@ -186,4 +213,31 @@ pub fn record_pxi_hash(pxi_path: &Path) -> String {
     std::fs::read(pxi_path)
         .map(|b| digest_bytes(&b))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_manifest_single_segment_module_key() {
+        let text = r#"{
+  "entry": "math",
+  "bin_path": "lib/math.phx0",
+  "modules": {
+    "math": {
+      "source": "src/lib.phx",
+      "source_hash": "abc",
+      "pxi_hash": "def",
+      "phx0_path": "phx0/math.phx0",
+      "pxi_path": "pxi/math.pxi"
+    }
+  }
+}
+"#;
+        let manifest = parse_manifest(text);
+        assert_eq!(manifest.modules.len(), 1);
+        assert!(manifest.modules.contains_key("math"));
+    }
 }

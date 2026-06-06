@@ -20,6 +20,12 @@ pub struct BuildLayout {
 }
 
 impl BuildLayout {
+    /// Artifact root (`build/` or `build/deps/{name}/`).
+    #[must_use]
+    pub fn build_root(&self) -> &std::path::Path {
+        &self.build_root
+    }
+
     /// Creates layout for `config.build_root()`.
     #[must_use]
     pub fn new(config: &ProjectConfig) -> Self {

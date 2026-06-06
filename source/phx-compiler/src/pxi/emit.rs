@@ -26,6 +26,7 @@ pub fn build_pxi_for_module(
     typed: &TypedProgram,
     exports: &HashMap<phx_syntax::Symbol, DefId>,
     dependencies: &[PxiDependency],
+    global_fn: Option<&HashMap<DefId, u32>>,
 ) -> PxiFile {
     let source_hash = digest_file(source_path).unwrap_or_else(|_| digest_bytes(b""));
     let interner = &typed.resolved.interner;
@@ -43,12 +44,18 @@ pub fn build_pxi_for_module(
         let kind = def_kind_to_pxi(def.kind).to_owned();
         let ty = export_structured_type(def, def_id, typed, logical_path);
         let signature = export_signature_fallback(def, def_id, typed, interner);
+        let function_id = if kind == "fn" {
+            global_fn.and_then(|map| map.get(&def_id).copied())
+        } else {
+            None
+        };
         pxi_exports.push(PxiExport {
             export_id: stable_export_id(logical_path, &name, &kind),
             name,
             kind,
             signature,
             ty,
+            function_id,
         });
     }
     pxi_exports.sort_by(|a, b| a.name.cmp(&b.name));

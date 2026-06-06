@@ -1,6 +1,7 @@
 //! `phx build` driver — artifacts under `build/`.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use phx_bytecode::{BytecodeModule, ENTRY_NONE};
@@ -13,12 +14,17 @@ use crate::modules::{
     CrateLoadContext, LoadedCrate, ModulePath, load_crate_with_context, resolve_crate,
 };
 use crate::project::{BuildLayout, PackageType, ProjectConfig};
-use crate::pxi::{PxiFile, build_pxi_for_module, digest_file, module_dependencies};
+use crate::pxi::{
+    PxiFile, build_pxi_for_module, digest_file, module_dependencies, stable_export_id,
+};
 use crate::resolver::DefId;
 use crate::typeck::type_check;
 
 use super::error::BuildError;
-use super::manifest::{BuildManifest, ManifestModule, module_is_up_to_date, record_pxi_hash};
+use super::manifest::{
+    BuildManifest, ManifestModule, module_is_up_to_date, record_pxi_hash, resolve_manifest_path,
+    store_path_relative_to,
+};
 use super::options::BuildOptions;
 
 /// Inputs shared by interface emission and incremental object collection.
@@ -160,7 +166,8 @@ fn build_package(
     }
 
     let full_ir = lower(&typed).map_err(BuildError::Lower)?;
-    let global_fn = build_global_fn_map(&typed, &full_ir);
+    let load_ctx = CrateLoadContext::from_config(config);
+    let global_fn = build_global_fn_map(config, &layout, &load_ctx, &loaded, &typed, &full_ir)?;
     let ctx = ArtifactEmitCtx {
         config,
         loaded: &loaded,
@@ -240,6 +247,9 @@ fn dependency_build_is_fresh(
     let Some(manifest) = BuildManifest::read(&manifest_path) else {
         return false;
     };
+    if !dependency_pxi_has_function_ids(&manifest, dep_layout.build_root()) {
+        return false;
+    }
     let entry = dep_cfg.default_entry_file();
     let ctx = CrateLoadContext::from_config(dep_cfg);
     let mut bag = phx_diagnostics::DiagnosticBag::new();
@@ -250,6 +260,22 @@ fn dependency_build_is_fresh(
         return false;
     }
     all_modules_fresh(&manifest, &loaded, dep_layout, &ctx)
+}
+
+/// Returns false when any fn export in dependency `.pxi` files lacks `function_id`.
+fn dependency_pxi_has_function_ids(manifest: &BuildManifest, build_root: &Path) -> bool {
+    for rec in manifest.modules.values() {
+        let pxi_path = resolve_manifest_path(build_root, &rec.pxi_path);
+        let Ok(pxi) = PxiFile::read_from_path(&pxi_path) else {
+            return false;
+        };
+        for exp in &pxi.exports {
+            if exp.kind == "fn" && exp.function_id.is_none() {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn write_interfaces_and_manifest(
@@ -305,8 +331,14 @@ fn write_interfaces_and_collect_objects(
         modules: HashMap::new(),
     };
 
+    let stale_modules =
+        workspace_stale_modules(loaded, layout, &dep_names, *old_manifest, *options);
+
     for module in &loaded.modules {
         let logical = module.logical_path.display();
+        if !module_in_workspace_package(&logical, &loaded.package_name) {
+            continue;
+        }
         let artifacts = layout.module_artifacts(&logical);
         let source_hash = digest_file(&module.filesystem).unwrap_or_default();
         let exports = &export_maps[module.id.index() as usize];
@@ -324,7 +356,16 @@ fn write_interfaces_and_collect_objects(
             .collect();
 
         let skip = old_manifest.is_some_and(|old| {
-            !options.force && module_is_up_to_date(old, &logical, &source_hash, &dep_hashes)
+            !options.force
+                && !stale_modules.contains(&logical)
+                && !module_imports_stale(&deps, &stale_modules)
+                && module_is_up_to_date(
+                    old,
+                    layout.build_root(),
+                    &logical,
+                    &source_hash,
+                    &dep_hashes,
+                )
         });
 
         if !skip {
@@ -335,9 +376,10 @@ fn write_interfaces_and_collect_objects(
                 typed,
                 exports,
                 &deps,
+                Some(global_fn),
             );
             if let Some(old) = old_manifest {
-                verify_pxi_exports(old, &logical, &pxi)?;
+                verify_pxi_exports(old, layout.build_root(), &logical, &pxi)?;
             }
             pxi.write_to_path(&artifacts.pxi)
                 .map_err(|e| io_err_path(&artifacts.pxi, &e))?;
@@ -347,7 +389,7 @@ fn write_interfaces_and_collect_objects(
             let obj = if skip {
                 let phx0_path = old_manifest
                     .and_then(|old| old.modules.get(&logical))
-                    .map(|rec| std::path::PathBuf::from(&rec.phx0_path))
+                    .map(|rec| resolve_manifest_path(layout.build_root(), &rec.phx0_path))
                     .filter(|p| p.is_file())
                     .unwrap_or_else(|| artifacts.phx0.clone());
                 let bytes = std::fs::read(&phx0_path).map_err(|e| io_err_path(&phx0_path, &e))?;
@@ -388,8 +430,8 @@ fn write_interfaces_and_collect_objects(
                 source: rel_source,
                 source_hash,
                 pxi_hash: record_pxi_hash(&artifacts.pxi),
-                phx0_path: artifacts.phx0.display().to_string(),
-                pxi_path: artifacts.pxi.display().to_string(),
+                phx0_path: store_path_relative_to(layout.build_root(), &artifacts.phx0),
+                pxi_path: store_path_relative_to(layout.build_root(), &artifacts.pxi),
             },
         );
     }
@@ -407,23 +449,24 @@ fn append_dependency_link_inputs(
         let dep_layout = BuildLayout::for_dependency(config, &dep_cfg.name);
         let dep_manifest_path = dep_layout.manifest_path();
         let Some(manifest) = BuildManifest::read(&dep_manifest_path) else {
-            continue;
+            return Err(BuildError::StaleInterface {
+                module: dep_cfg.name.clone(),
+                message: format!(
+                    "missing dependency manifest at {}",
+                    dep_manifest_path.display()
+                ),
+            });
         };
         for rec in manifest.modules.values() {
-            let bytes = std::fs::read(&rec.phx0_path).map_err(|e| BuildError::Io {
-                path: PathBuf::from(&rec.phx0_path),
+            let phx0_path = resolve_manifest_path(dep_layout.build_root(), &rec.phx0_path);
+            let bytes = std::fs::read(&phx0_path).map_err(|e| BuildError::Io {
+                path: phx0_path.clone(),
                 message: e.to_string(),
             })?;
             let module = BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
-                path: PathBuf::from(&rec.phx0_path),
+                path: phx0_path,
                 message: format!("{e:?}"),
             })?;
-            if link_inputs
-                .iter()
-                .any(|i| i.logical_path == rec.logical_path)
-            {
-                continue;
-            }
             link_inputs.push(LinkInput {
                 logical_path: rec.logical_path.clone(),
                 module,
@@ -463,44 +506,164 @@ fn entry_logical_path(config: &ProjectConfig, entry_file: &Path) -> Result<Strin
         })
 }
 
+fn module_in_workspace_package(logical: &str, workspace: &str) -> bool {
+    logical.split("::").next() == Some(workspace)
+}
+
+fn module_imports_stale(deps: &[crate::pxi::PxiDependency], stale: &HashSet<String>) -> bool {
+    deps.iter().any(|d| stale.contains(&d.logical_module))
+}
+
+fn workspace_stale_modules(
+    loaded: &LoadedCrate,
+    layout: &BuildLayout,
+    dep_names: &[&str],
+    old_manifest: Option<&BuildManifest>,
+    options: BuildOptions,
+) -> HashSet<String> {
+    let Some(old) = old_manifest else {
+        return HashSet::new();
+    };
+    if options.force {
+        return HashSet::new();
+    }
+    loaded
+        .modules
+        .iter()
+        .filter(|m| module_in_workspace_package(&m.logical_path.display(), &loaded.package_name))
+        .filter(|m| {
+            let logical = m.logical_path.display();
+            let source_hash = digest_file(&m.filesystem).unwrap_or_default();
+            let deps = module_dependencies(
+                m,
+                layout,
+                &loaded.path_index,
+                &loaded.interner,
+                &loaded.package_name,
+                dep_names,
+            );
+            let dep_hashes: Vec<_> = deps
+                .iter()
+                .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
+                .collect();
+            !module_is_up_to_date(
+                old,
+                layout.build_root(),
+                &logical,
+                &source_hash,
+                &dep_hashes,
+            )
+        })
+        .map(|m| m.logical_path.display())
+        .collect()
+}
+
 fn build_global_fn_map(
+    config: &ProjectConfig,
+    _layout: &BuildLayout,
+    _load_ctx: &CrateLoadContext,
+    loaded: &LoadedCrate,
     typed: &crate::typeck::TypedProgram,
     ir: &crate::ir::IrModule,
-) -> HashMap<crate::resolver::DefId, u32> {
+) -> Result<HashMap<DefId, u32>, BuildError> {
     use crate::resolver::DefKind;
-    use std::collections::HashSet;
 
-    let has_body: HashSet<_> = ir.functions.iter().map(|f| f.def).collect();
-    let mut external: Vec<crate::resolver::DefId> = typed
-        .resolved
-        .defs
-        .iter()
-        .enumerate()
-        .filter_map(|(i, d)| {
-            if d.kind != DefKind::Fn {
-                return None;
+    let workspace = &config.name;
+    let interner = &typed.resolved.interner;
+
+    let mut dep_export_fn_ids: HashMap<String, u32> = HashMap::new();
+    let mut max_dep_id = 0u32;
+
+    for dep in config.dependencies.values() {
+        let dep_root = config.root.join(&dep.path);
+        let dep_cfg = ProjectConfig::load(&dep_root).map_err(BuildError::Project)?;
+        let dep_layout = BuildLayout::for_dependency(config, &dep_cfg.name);
+        let manifest_path = dep_layout.manifest_path();
+        let manifest =
+            BuildManifest::read(&manifest_path).ok_or_else(|| BuildError::StaleInterface {
+                module: dep_cfg.name.clone(),
+                message: format!("missing dependency manifest at {}", manifest_path.display()),
+            })?;
+        for rec in manifest.modules.values() {
+            let pxi_path = resolve_manifest_path(dep_layout.build_root(), &rec.pxi_path);
+            let pxi = PxiFile::read_from_path(&pxi_path).map_err(BuildError::Pxi)?;
+            for exp in &pxi.exports {
+                if exp.kind == "fn"
+                    && let Some(id) = exp.function_id
+                {
+                    dep_export_fn_ids.insert(exp.export_id.clone(), id);
+                    max_dep_id = max_dep_id.max(id);
+                }
             }
-            let id = crate::resolver::DefId::from_raw(u32::try_from(i).unwrap_or(0));
-            if has_body.contains(&id) {
-                None
-            } else {
-                Some(id)
-            }
-        })
-        .collect();
-    external.sort_by_key(|d| d.index());
+        }
+    }
+
+    let module_logical = |module_id: u32| -> Option<String> {
+        loaded
+            .modules
+            .get(module_id as usize)
+            .map(|m| m.logical_path.display())
+    };
 
     let mut map = HashMap::new();
-    let mut next = 0u32;
-    for d in external {
-        map.insert(d, next);
-        next = next.saturating_add(1);
+
+    if !config.dependencies.is_empty() {
+        for (i, def) in typed.resolved.defs.iter().enumerate() {
+            if def.kind != DefKind::Fn {
+                continue;
+            }
+            let Some(logical) = module_logical(def.module) else {
+                continue;
+            };
+            if module_in_workspace_package(&logical, workspace) {
+                continue;
+            }
+            let name = interner.resolve(def.name);
+            let export_id = stable_export_id(&logical, name, "fn");
+            let id =
+                dep_export_fn_ids
+                    .get(&export_id)
+                    .ok_or_else(|| BuildError::StaleInterface {
+                        module: logical.clone(),
+                        message: format!(
+                            "missing function_id for export `{export_id}` in dependency `.pxi`"
+                        ),
+                    })?;
+            map.insert(DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)), *id);
+        }
     }
+
+    let mut next = if config.dependencies.is_empty() {
+        0
+    } else {
+        max_dep_id.saturating_add(1)
+    };
+
     for f in &ir.functions {
+        let Some(def) = typed.resolved.defs.get(f.def.index() as usize) else {
+            continue;
+        };
+        let Some(logical) = module_logical(def.module) else {
+            continue;
+        };
+        if !module_in_workspace_package(&logical, workspace) {
+            if !map.contains_key(&f.def) {
+                let name = interner.resolve(def.name);
+                return Err(BuildError::StaleInterface {
+                    module: logical,
+                    message: format!("missing function_id for dependency fn `{name}` in `.pxi`"),
+                });
+            }
+            continue;
+        }
+        if map.contains_key(&f.def) {
+            continue;
+        }
         map.insert(f.def, next);
         next = next.saturating_add(1);
     }
-    map
+
+    Ok(map)
 }
 
 fn collect_export_maps(
@@ -526,34 +689,46 @@ fn all_modules_fresh(
     ctx: &CrateLoadContext,
 ) -> bool {
     let dep_names: Vec<&str> = ctx.dep_names();
-    loaded.modules.iter().all(|m| {
-        let logical = m.logical_path.display();
-        let source_hash = digest_file(&m.filesystem).unwrap_or_default();
-        let deps = module_dependencies(
-            m,
-            layout,
-            &loaded.path_index,
-            &loaded.interner,
-            &loaded.package_name,
-            &dep_names,
-        );
-        let dep_hashes: Vec<_> = deps
-            .iter()
-            .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
-            .collect();
-        module_is_up_to_date(manifest, &logical, &source_hash, &dep_hashes)
-    })
+    loaded
+        .modules
+        .iter()
+        .filter(|m| module_in_workspace_package(&m.logical_path.display(), &loaded.package_name))
+        .all(|m| {
+            let logical = m.logical_path.display();
+            let source_hash = digest_file(&m.filesystem).unwrap_or_default();
+            let deps = module_dependencies(
+                m,
+                layout,
+                &loaded.path_index,
+                &loaded.interner,
+                &loaded.package_name,
+                &dep_names,
+            );
+            let dep_hashes: Vec<_> = deps
+                .iter()
+                .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
+                .collect();
+            module_is_up_to_date(
+                manifest,
+                layout.build_root(),
+                &logical,
+                &source_hash,
+                &dep_hashes,
+            )
+        })
 }
 
 fn verify_pxi_exports(
     old: &BuildManifest,
+    build_root: &Path,
     logical: &str,
     new_pxi: &PxiFile,
 ) -> Result<(), BuildError> {
     let Some(old_rec) = old.modules.get(logical) else {
         return Ok(());
     };
-    let old_pxi = PxiFile::read_from_path(Path::new(&old_rec.pxi_path)).map_err(BuildError::Pxi)?;
+    let old_pxi_path = resolve_manifest_path(build_root, &old_rec.pxi_path);
+    let old_pxi = PxiFile::read_from_path(&old_pxi_path).map_err(BuildError::Pxi)?;
     for exp in &new_pxi.exports {
         let Some(old_exp) = old_pxi.exports.iter().find(|e| e.name == exp.name) else {
             continue;

@@ -239,6 +239,7 @@ fn build_app_dep() {
         cli.build_ok(&project);
         assert!(project.join("build/bin/app_dep.phx0").is_file());
         assert!(project.join("build/deps/math/lib/math.phx0").is_file());
+        cli.run_no_build_ok(&project);
     });
 }
 

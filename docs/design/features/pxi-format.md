@@ -27,6 +27,7 @@ Readers must accept v1 and v2. Writers emit v2 from the current compiler.
 - **`logical_module`**: stable module path (`modules.md`).
 - **`source_hash`**: digest of the `.phx` file at emit time; stale interfaces trigger rebuild.
 - **`export_id`**: `logical_module::name::kind` (stable across link maps).
+- **`function_id`** (v2, `fn` exports only): global PHX0 `function_id` assigned at per-module codegen; consumers use this for cross-package `Call` operands when linking prebuilt dependency objects.
 - **`signature`**: human-readable type string (unchanged from v1; used for manifest diff).
 - **`type`** (v2 only): structured type tree (below).
 

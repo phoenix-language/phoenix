@@ -20,6 +20,8 @@ pub struct PxiExport {
     pub signature: String,
     /// Structured type (format v2).
     pub ty: Option<PxiType>,
+    /// Global PHX0 `function_id` for `fn` exports (format v2, optional for backward compat).
+    pub function_id: Option<u32>,
 }
 
 /// Builds a stable export id for `.pxi` and link maps.
@@ -80,10 +82,14 @@ impl PxiFile {
         out.push_str("  \"exports\": [\n");
         for (i, e) in self.exports.iter().enumerate() {
             let comma = if i + 1 < self.exports.len() { "," } else { "" };
+            let fn_id = e
+                .function_id
+                .map(|id| format!(", \"function_id\": {id}"))
+                .unwrap_or_default();
             if let Some(ty) = &e.ty {
                 let _ = writeln!(
                     out,
-                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}, \"type\": {}}}{comma}",
+                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}{fn_id}, \"type\": {}}}{comma}",
                     json_string(&e.export_id),
                     json_string(&e.name),
                     json_string(&e.kind),
@@ -93,7 +99,7 @@ impl PxiFile {
             } else {
                 let _ = writeln!(
                     out,
-                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}}}{comma}",
+                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}{fn_id}}}{comma}",
                     json_string(&e.export_id),
                     json_string(&e.name),
                     json_string(&e.kind),
@@ -346,12 +352,14 @@ fn parse_exports(logical_module: &str, text: &str) -> Vec<PxiExport> {
             let export_id = extract_field_string(chunk, "export_id")
                 .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
             let ty = parse_export_type(chunk);
+            let function_id = extract_field_u32(chunk, "function_id");
             exports.push(PxiExport {
                 export_id,
                 name,
                 kind,
                 signature: sig,
                 ty,
+                function_id,
             });
         }
         search = &search[name_pos + 6..];
@@ -391,6 +399,14 @@ fn parse_export_type(chunk: &str) -> Option<PxiType> {
     parse_type_value(&chunk[pos..])
 }
 
+fn extract_field_u32(chunk: &str, key: &str) -> Option<u32> {
+    let pat = format!("\"{key}\":");
+    let pos = chunk.find(&pat)? + pat.len();
+    let rest = chunk[pos..].trim_start();
+    let num: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    num.parse().ok()
+}
+
 fn extract_field_string(chunk: &str, key: &str) -> Option<String> {
     let pat = format!("\"{key}\":");
     let pos = chunk.find(&pat)? + pat.len();
@@ -419,6 +435,7 @@ mod tests {
                 kind: "fn".to_owned(),
                 signature: "(s32, s32) => s32".to_owned(),
                 ty: None,
+                function_id: Some(0),
             }],
             dependencies: vec![PxiDependency {
                 logical_module: "core".to_owned(),
@@ -429,5 +446,22 @@ mod tests {
         let back = PxiFile::parse(&json).unwrap();
         assert_eq!(back.logical_module, "util::math");
         assert_eq!(back.exports.len(), 1);
+        assert_eq!(back.exports[0].function_id, Some(0));
+    }
+
+    #[test]
+    fn parse_function_id_with_structured_type() {
+        let json = r#"{
+  "format_version": 2,
+  "logical_module": "math",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [
+    {"export_id": "math::add::fn", "name": "add", "kind": "fn", "signature": "(S32, S32) => S32", "function_id": 0, "type": { "kind": "fn", "params": [], "ret": { "kind": "primitive", "name": "s32" } }}
+  ],
+  "dependencies": []
+}"#;
+        let pxi = PxiFile::parse(json).unwrap();
+        assert_eq!(pxi.exports[0].function_id, Some(0));
     }
 }

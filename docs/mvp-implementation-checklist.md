@@ -394,7 +394,7 @@ A credible MVP demo `.phx` should be able to:
 | Incremental manifest | done | `build/manifest.rs` | Skip unchanged modules | Re-`phx build` fast path |
 | Import cycle + `.pxi` escape | done | `modules/graph.rs` | Fresh `.pxi` on all SCC nodes | Design in modules.md |
 | `phx build` / project `phx run` | done | `build/driver.rs`, `phx` CLI | `--no-build`, `--build` | `tests/integration/run_build.rs` |
-| Separate compile via `.pxi` | partial | `modules/interface_loader.rs` | API present; build uses whole-program typeck | — |
+| Separate compile via `.pxi` | done | `build/driver.rs`, `pxi/format.rs` | Path-dep link uses prebuilt `build/deps/*/phx0`; `function_id` in `.pxi` | `run_dep_build.rs` |
 
 
 ---

@@ -162,9 +162,9 @@ Multi-file programs and a real project layout so contributors can build packages
 
 ### V0-013 — PHX0 linker and path dependencies
 
-- [ ] Link workspace `build/phx0/*.phx0` and dependency artifacts into `build/bin/` or `build/lib/`.
-- [ ] Globally unique `function_id` across modules; cross-module `Call` uses pre-assigned ids.
-- [ ] Path dependencies: `[dependencies]` with `path = "…"`; key must equal depended `project.name`.
+- [x] Link workspace `build/phx0/*.phx0` and dependency artifacts into `build/bin/` or `build/lib/`.
+- [x] Globally unique `function_id` across modules; cross-module `Call` uses pre-assigned ids.
+- [x] Path dependencies: `[dependencies]` with `path = "…"`; key must equal depended `project.name`.
 
 **Acceptance:** App package depends on a `lib` package via path; linked binary calls across package boundary.
 
