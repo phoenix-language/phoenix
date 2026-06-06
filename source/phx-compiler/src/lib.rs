@@ -33,6 +33,7 @@ mod modules;
 mod project;
 mod pxi;
 mod resolver;
+mod standalone;
 mod typeck;
 mod unit;
 
@@ -57,6 +58,10 @@ pub use pxi::{PxiExport, PxiFile, PxiType, digest_bytes, digest_file};
 pub use resolver::ResolvedProgram;
 pub use resolver::{
     ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, SourceModule, resolve,
+};
+pub use standalone::{
+    StandaloneOptions, check_standalone_unit_with_context, check_standalone_with_context,
+    compile_standalone_with_context,
 };
 #[doc(hidden)]
 pub use typeck::TypedProgram;

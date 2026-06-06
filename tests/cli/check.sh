@@ -49,8 +49,8 @@ if output="$("${PHX_BIN}" check "${FIXTURE_ERR}" 2>&1)"; then
   echo "phx check should fail for ${FIXTURE_ERR}" >&2
   exit 1
 fi
-if [[ "${output}" != *"^"* ]] || [[ "${output}" != *"line"* ]]; then
-  echo "phx check should show source line and caret for type errors" >&2
+if [[ "${output}" != *"^"* ]] || [[ "${output}" != *"-->"* ]]; then
+  echo "phx check should show file location and caret for type errors" >&2
   echo "got: ${output}" >&2
   exit 1
 fi
@@ -82,7 +82,7 @@ for entry in "${NEG_FIXTURES[@]}"; do
     exit 1
   fi
   if [[ "${name}" == "use_after_move.phx" ]]; then
-    if [[ "${output}" != *"note:"* ]]; then
+    if [[ "${output}" != *"= note:"* ]]; then
       echo "use-after-move diagnostic should include move-site note" >&2
       echo "got: ${output}" >&2
       exit 1
@@ -154,5 +154,19 @@ if ! "${PHX_BIN}" check "${PROJECT_MAIN}"; then
   exit 1
 fi
 echo "phx check passed (project module_src discovery)"
+
+PROJECT_ROOT="${ROOT}/tests/cli/fixtures/project"
+STRAY_FILE="${PROJECT_ROOT}/src/util/math.phx"
+echo "running: phx run ${STRAY_FILE} from project (expect standalone file rejection)"
+if output="$("${PHX_BIN}" run "${STRAY_FILE}" 2>&1)"; then
+  echo "phx run should reject non-entry file inside a project directory" >&2
+  exit 1
+fi
+if [[ "${output}" != *"phoenix.toml"* ]]; then
+  echo "stray file run should mention phoenix.toml" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+echo "phx run rejected stray file in project as expected"
 
 echo "all phx check CLI tests passed"

@@ -31,8 +31,8 @@ fn resolve_bag_formats_multiple_carets() {
         "expected at least two carets:\n{formatted}"
     );
     assert!(
-        formatted.contains("---"),
-        "expected separator between errors:\n{formatted}"
+        formatted.contains("aborting due to 2 previous errors"),
+        "expected multi-error footer:\n{formatted}"
     );
 }
 

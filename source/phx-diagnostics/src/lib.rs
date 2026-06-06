@@ -16,25 +16,34 @@
 //! - `lower_error` — IR lowering ([`LowerError`], [`LowerBag`]).
 
 mod code;
+mod explain;
 mod format;
 mod lex_error;
 mod located;
 mod lower_error;
 mod parse_error;
+mod render;
 mod resolve_error;
 mod span;
 mod symbol_names;
 mod type_error;
 
 pub use code::DiagnosticCode;
+pub use explain::{lookup as explain_code, normalize_code};
 pub use format::{
-    format_lex_error, format_lower_error, format_resolve_error, format_span_message,
-    format_span_message_with_note, format_typecheck_error, resolve_message, typecheck_message,
+    format_lex_error, format_lex_error_styled, format_lower_error, format_lower_error_styled,
+    format_resolve_error, format_resolve_error_styled, format_span_message,
+    format_span_message_with_note, format_typecheck_error, format_typecheck_error_styled,
+    resolve_message, typecheck_message,
 };
 pub use lex_error::LexError;
 pub use located::LocatedError;
 pub use lower_error::{LowerBag, LowerError, LowerResult};
 pub use parse_error::{ExpectedToken, ParseBag, ParseError, ParseResult};
+pub use render::{
+    DiagnosticStyle, PlainStyle, SpanContext, join_diagnostics, line_col, render_diagnostic,
+    render_diagnostic_with_note,
+};
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};
 pub use span::Span;
 pub use symbol_names::SymbolNames;

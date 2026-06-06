@@ -1,23 +1,22 @@
-<entry>:
-error: duplicate definition of `<invalid-symbol>`
- --> line 3, column 1
-  |
-  | foo :: () => { };
-  | ^^^^^^^^^^^^^^^^^
-note: previous definition here
- --> line 2, column 1
-  |
-  | foo :: () => { };
-  | ^^^^^^^^^^^^^^^^^ [E1003]
----
-<entry>:
-error: duplicate definition of `<invalid-symbol>`
- --> line 5, column 1
-  |
-  | bar :: () => { };
-  | ^^^^^^^^^^^^^^^^^
-note: previous definition here
- --> line 4, column 1
-  |
-  | bar :: () => { };
-  | ^^^^^^^^^^^^^^^^^ [E1003]
+error[E1003]: duplicate definition of `<invalid-symbol>`
+  --> <entry>:3:1
+   |
+3 | foo :: () => { };
+   | ^^^^^^^^^^^^^^^^^
+   = note: previous definition here
+  --> <entry>:2:1
+   |
+2 | foo :: () => { };
+   | ^^^^^^^^^^^^^^^^^
+
+error[E1003]: duplicate definition of `<invalid-symbol>`
+  --> <entry>:5:1
+   |
+5 | bar :: () => { };
+   | ^^^^^^^^^^^^^^^^^
+   = note: previous definition here
+  --> <entry>:4:1
+   |
+4 | bar :: () => { };
+   | ^^^^^^^^^^^^^^^^^
+error: aborting due to 2 previous errors

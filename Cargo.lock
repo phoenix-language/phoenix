@@ -6,15 +6,23 @@ version = 4
 name = "phx"
 version = "0.1.0"
 dependencies = [
- "phx-bytecode",
- "phx-compiler",
- "phx-vm",
+ "phx-cli",
 ]
 
 [[package]]
 name = "phx-bytecode"
 version = "0.1.0"
 dependencies = [
+ "phx-vm",
+]
+
+[[package]]
+name = "phx-cli"
+version = "0.1.0"
+dependencies = [
+ "phx-bytecode",
+ "phx-compiler",
+ "phx-diagnostics",
  "phx-vm",
 ]
 

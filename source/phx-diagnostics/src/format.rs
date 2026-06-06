@@ -7,40 +7,42 @@ use crate::Span;
 use crate::SymbolNames;
 use crate::TypeCheckError;
 use crate::code::DiagnosticCode;
-
-fn append_code(message: &str, code: DiagnosticCode) -> String {
-    format!("{message} [{code}]")
-}
+use crate::render::{PlainStyle, SpanContext, render_diagnostic, render_diagnostic_with_note};
 
 /// Formats `message` with a source line and caret for `span` in `source`.
 #[must_use]
 pub fn format_span_message(source: &str, span: Span, message: &str) -> String {
-    let (line, col) = line_col(source, span.start);
-    let line_text = source
-        .lines()
-        .nth(usize::try_from(line.saturating_sub(1)).unwrap_or(0))
-        .unwrap_or("");
-    let caret_len = if span.end > span.start {
-        span.end.saturating_sub(span.start)
-    } else {
-        1
-    };
-    let caret = "^".repeat(usize::try_from(caret_len.min(40)).unwrap_or(1));
-    format!(
-        "error: {message}\n --> line {line}, column {col}\n  |\n  | {line_text}\n  | {}{caret}",
-        " ".repeat(usize::try_from(col.saturating_sub(1)).unwrap_or(0)),
+    let style = PlainStyle;
+    render_diagnostic(
+        &style,
+        source,
+        span,
+        DiagnosticCode::new("E0000"),
+        message,
+        SpanContext::default(),
     )
 }
 
 /// Formats a lexical error with a source caret when possible.
 #[must_use]
 pub fn format_lex_error(source: &str, err: &LexError) -> String {
+    format_lex_error_styled(source, err, &PlainStyle, SpanContext::default())
+}
+
+/// Formats a lexical error with styling and file context.
+#[must_use]
+pub fn format_lex_error_styled(
+    source: &str,
+    err: &LexError,
+    style: &dyn crate::render::DiagnosticStyle,
+    ctx: SpanContext<'_>,
+) -> String {
     let message = lex_message(err);
     let code = err.code();
     if let Some(span) = err.span() {
-        append_code(&format_span_message(source, span, &message), code)
+        render_diagnostic(style, source, span, code, &message, ctx)
     } else {
-        append_code(&message, code)
+        style.error_header(code, &message)
     }
 }
 
@@ -83,9 +85,21 @@ pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
 /// Formats a resolve error with source carets and interned names.
 #[must_use]
 pub fn format_resolve_error(source: &str, names: &impl SymbolNames, err: &ResolveError) -> String {
+    format_resolve_error_styled(source, names, err, &PlainStyle, SpanContext::default())
+}
+
+/// Formats a resolve error with styling and file context.
+#[must_use]
+pub fn format_resolve_error_styled(
+    source: &str,
+    names: &impl SymbolNames,
+    err: &ResolveError,
+    style: &dyn crate::render::DiagnosticStyle,
+    ctx: SpanContext<'_>,
+) -> String {
     let code = err.code();
     let message = resolve_message(names, err);
-    let body = match err {
+    match err {
         ResolveError::DuplicateDefinition {
             first_span,
             span,
@@ -93,23 +107,25 @@ pub fn format_resolve_error(source: &str, names: &impl SymbolNames, err: &Resolv
             ..
         } => {
             let name = names.symbol_name(*symbol_index);
-            format_span_message_with_note(
+            render_diagnostic_with_note(
+                style,
                 source,
                 *span,
+                code,
                 &format!("duplicate definition of `{name}`"),
+                ctx,
                 *first_span,
                 "previous definition here",
             )
         }
         other => {
             if let Some(span) = other.span() {
-                format_span_message(source, span, &message)
+                render_diagnostic(style, source, span, code, &message, ctx)
             } else {
-                message
+                style.error_header(code, &message)
             }
         }
-    };
-    append_code(&body, code)
+    }
 }
 
 /// Human-readable message for a type-check error (no caret).
@@ -151,17 +167,32 @@ pub fn format_typecheck_error(
     names: &impl SymbolNames,
     err: &TypeCheckError,
 ) -> String {
+    format_typecheck_error_styled(source, names, err, &PlainStyle, SpanContext::default())
+}
+
+/// Formats a type-check error with styling and file context.
+#[must_use]
+pub fn format_typecheck_error_styled(
+    source: &str,
+    names: &impl SymbolNames,
+    err: &TypeCheckError,
+    style: &dyn crate::render::DiagnosticStyle,
+    ctx: SpanContext<'_>,
+) -> String {
     let code = err.code();
-    let body = match err {
+    match err {
         TypeCheckError::UseAfterMove {
             name,
             move_span,
             span,
             ..
-        } => format_span_message_with_note(
+        } => render_diagnostic_with_note(
+            style,
             source,
             *span,
+            code,
             &format!("use of moved value `{name}`"),
+            ctx,
             *move_span,
             "value moved here",
         ),
@@ -170,45 +201,60 @@ pub fn format_typecheck_error(
             move_span,
             span,
             ..
-        } => format_span_message_with_note(
+        } => render_diagnostic_with_note(
+            style,
             source,
             *span,
+            code,
             &format!("cannot assign to moved value `{name}`"),
+            ctx,
             *move_span,
             "value moved here",
         ),
         TypeCheckError::ReturnEscapesLocal {
             span, borrow_span, ..
-        } => format_span_message_with_note(
+        } => render_diagnostic_with_note(
+            style,
             source,
             *span,
+            code,
             "cannot return a borrow of a local variable",
+            ctx,
             *borrow_span,
             "borrow of local created here",
         ),
         other => {
             let message = typecheck_message(names, other);
             if let Some(span) = other.span() {
-                format_span_message(source, span, &message)
+                render_diagnostic(style, source, span, code, &message, ctx)
             } else {
-                message
+                style.error_header(code, &message)
             }
         }
-    };
-    append_code(&body, code)
+    }
 }
 
 /// Formats a lowering error with a source caret when possible.
 #[must_use]
 pub fn format_lower_error(source: &str, err: &LowerError) -> String {
+    format_lower_error_styled(source, err, &PlainStyle, SpanContext::default())
+}
+
+/// Formats a lowering error with styling and file context.
+#[must_use]
+pub fn format_lower_error_styled(
+    source: &str,
+    err: &LowerError,
+    style: &dyn crate::render::DiagnosticStyle,
+    ctx: SpanContext<'_>,
+) -> String {
     let code = err.code();
     let message = err.to_string();
-    let body = if let Some(span) = err.span() {
-        format_span_message(source, span, &message)
+    if let Some(span) = err.span() {
+        render_diagnostic(style, source, span, code, &message, ctx)
     } else {
-        message
-    };
-    append_code(&body, code)
+        style.error_header(code, &message)
+    }
 }
 
 /// Formats `message` at `span` plus an optional `note_label` at `note_span`.
@@ -220,28 +266,17 @@ pub fn format_span_message_with_note(
     note_span: Span,
     note_label: &str,
 ) -> String {
-    let primary = format_span_message(source, span, message);
-    let note = format_span_message(source, note_span, "");
-    let note_body = note.lines().skip(1).collect::<Vec<_>>().join("\n");
-    format!("{primary}\nnote: {note_label}\n{note_body}")
-}
-
-fn line_col(source: &str, byte: u32) -> (u32, u32) {
-    let byte = usize::try_from(byte).unwrap_or(0);
-    let mut line = 1u32;
-    let mut col = 1u32;
-    for (i, ch) in source.char_indices() {
-        if i >= byte {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
+    let style = PlainStyle;
+    render_diagnostic_with_note(
+        &style,
+        source,
+        span,
+        DiagnosticCode::new("E0000"),
+        message,
+        SpanContext::default(),
+        note_span,
+        note_label,
+    )
 }
 
 #[cfg(test)]
@@ -262,7 +297,7 @@ mod tests {
         let src = "main :: () => {\n    x;\n};";
         let span = Span::new(17, 18);
         let out = format_span_message(src, span, "type mismatch");
-        assert!(out.contains("line 2"));
+        assert!(out.contains(":2:"));
         assert!(out.contains('^'));
     }
 
@@ -278,7 +313,7 @@ mod tests {
         let out = format_typecheck_error(src, &names, &err);
         assert!(out.contains("use of moved value `p`"));
         assert!(out.contains("value moved here"));
-        assert!(out.contains("note:"));
+        assert!(out.contains("= note:"));
     }
 
     #[test]
@@ -293,6 +328,6 @@ mod tests {
         let out = format_resolve_error(src, &names, &err);
         assert!(out.contains("duplicate definition"));
         assert!(out.contains("previous definition here"));
-        assert!(out.contains("note:"));
+        assert!(out.contains("= note:"));
     }
 }

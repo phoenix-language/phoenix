@@ -794,8 +794,8 @@ fn parse_recovery_formats_multiple_carets() {
     };
     let formatted = CompileError::Parse(err).format_with_source(Some(source));
     assert!(
-        formatted.matches("---").count() >= 1,
-        "expected multiple formatted errors separated by ---:\n{formatted}"
+        formatted.contains("aborting due to 2 previous errors"),
+        "expected multi-error footer:\n{formatted}"
     );
 }
 

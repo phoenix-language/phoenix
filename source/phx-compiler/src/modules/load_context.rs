@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::project::{PackageType, ProjectConfig};
+use crate::project::{PackageType, ProjectConfig, ProjectError};
 
 /// One package root participating in a load.
 #[derive(Debug, Clone)]
@@ -68,4 +68,76 @@ impl CrateLoadContext {
         }
         self.dependencies.iter().find(|d| d.name == first)
     }
+
+    /// Builds load context for a standalone CLI invocation (no `phoenix.toml`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError`] when a path dependency cannot be loaded as a library package.
+    pub fn from_standalone(
+        module_root: &std::path::Path,
+        package_name: Option<String>,
+        path_deps: &[(String, PathBuf)],
+    ) -> Result<Self, ProjectError> {
+        let module_src = module_root
+            .canonicalize()
+            .unwrap_or_else(|_| module_root.to_path_buf());
+        let name = package_name.unwrap_or_else(|| infer_package_name(&module_src));
+        let workspace = PackageRoot {
+            name,
+            module_src,
+            package_type: PackageType::Bin,
+        };
+        let mut dependencies = Vec::new();
+        for (dep_name, dep_path) in path_deps {
+            let root = dep_path.canonicalize().unwrap_or_else(|_| dep_path.clone());
+            if let Ok(cfg) = ProjectConfig::load(&root) {
+                if cfg.package_type != PackageType::Lib {
+                    return Err(ProjectError::Invalid {
+                        message: format!(
+                            "dependency `{dep_name}` at {} must be `type = \"lib\"`",
+                            root.display()
+                        ),
+                    });
+                }
+                if cfg.name != *dep_name {
+                    return Err(ProjectError::Invalid {
+                        message: format!(
+                            "dependency key `{dep_name}` does not match project name `{}` in {}",
+                            cfg.name,
+                            root.display()
+                        ),
+                    });
+                }
+                dependencies.push(PackageRoot::from_config(&cfg));
+            } else {
+                let lib_entry = root.join("lib.phx");
+                if !lib_entry.is_file() {
+                    return Err(ProjectError::Invalid {
+                        message: format!(
+                            "dependency `{dep_name}` at {} requires lib.phx or phoenix.toml",
+                            root.display()
+                        ),
+                    });
+                }
+                dependencies.push(PackageRoot {
+                    name: dep_name.clone(),
+                    module_src: root,
+                    package_type: PackageType::Lib,
+                });
+            }
+        }
+        Ok(Self {
+            workspace,
+            dependencies,
+        })
+    }
+}
+
+fn infer_package_name(module_root: &std::path::Path) -> String {
+    module_root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("app")
+        .to_owned()
 }
