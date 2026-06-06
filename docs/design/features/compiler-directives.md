@@ -22,12 +22,19 @@ This split is the canonical direction. Older drafts that used `@` for both are l
 
 ### `#import`
 
-Imports names into module scope.
+Imports names into scope. **File scope** (module top) and **block scope** (inside `{ … }`) — see [modules.md](modules.md#scoped-imports-mvp).
 
 ```phoenix
 #import core::mem
 #import app::math::{add, sub}
+
+main :: () => {
+  #import app::math::mul;
+  const _ = mul(1, 2);
+};
 ```
+
+Block imports are compile-time only: they introduce names locally; they do not create runtime module values.
 
 ### `#inline`, `#cold`, `#hot`
 

@@ -20,6 +20,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `Option` / `Result` types | Type expressions | Parse; typeck rejects | Std generic enums + prelude |
 | `Some` / `None` / `Ok` / `Err` | Expr / patterns | Parse; typeck rejects | Std enum constructors |
 | `expr?` | Postfix `?` | Parse; typeck rejects | Sugar over std `Option`/`Result` |
+| Block-scoped `#import` | `import_directive` in `block_item` | Grammar updated; **not yet implemented** | Scoped name intro per [modules.md](modules.md#scoped-imports-mvp); [V0-014](../language-v0.md#v0-014--block-scoped-import-mvp-modules) |
 
 ---
 
@@ -27,6 +28,8 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 
 | Feature | Why deferred | Notes |
 |---------|--------------|-------|
+| Module namespace import value | Needs module ref type + fn pointers | `const math = #import utils::math;` then `math.add` — Tier 2 in [modules.md](modules.md#import-evolution-phased); after [V0-053](../language-v0.md#v0-053--function-pointers-and-indirect-calls) |
+| Qualified paths without `#import` | Path resolution in expr/type position | e.g. `utils::math::add(1, 2)` — Tier 3 in [modules.md](modules.md#import-evolution-phased) |
 | Heap `ALLOC` surface syntax | MVP lists a runtime intrinsic; no canonical spelling | Candidate when std exists: `core::alloc::alloc_bytes(size: u32) => *mut u8` lowering to `ALLOC` opcode |
 | Owned growable `String` | Core ships **`str`** view only; no primitive owned string | Post-`str` milestone: std `String` struct over `Alloc` + `Clone`; see [type-system.md](type-system.md) |
 | Associated types with bounds/defaults | Needs richer grammar than `type Item;` | Example target: `type IntoIter: Iterator<Item = Self::Item>;` |
@@ -46,7 +49,7 @@ These are in [grammar.ebnf](../grammar.ebnf) and intended for full MVP pipeline 
 - `Name :: trait` / `Type :: impl` / `Type :: impl :: Trait`
 - Functions `name :: (params) => T { }`, top-level and block `const` / `var`
 - Borrow types `&T`, `&mut T`; explicit casts `expr as Type`
-- Module paths with PascalCase segments; `#import`
+- Module paths with PascalCase segments; file-level `#import`; block-scoped `#import` ([V0-014](language-v0.md#v0-014--block-scoped-import-mvp-modules))
 - `match`, `given`, control flow (MVP); `Option` / `Result` / `?` parse-only until std
 - Unit enum patterns (`Eof => …`); struct/tuple enum patterns
 

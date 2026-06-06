@@ -115,7 +115,7 @@ receiver_param     = "self"
    ----------------------------------------------------------------------------- *)
 
 block              = "{" , { block_item } , "}" ;
-block_item         = statement | expr_without_semi | expr , ";" ;
+block_item         = statement | import_directive | expr_without_semi | expr , ";" ;
 
 statement          = const_stmt
                    | var_stmt

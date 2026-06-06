@@ -135,6 +135,20 @@ Multi-file programs and a real project layout so contributors can build packages
 
 ---
 
+### V0-014 — Block-scoped `#import` (MVP modules)
+
+- [ ] `#import` allowed inside `{ … }` blocks (function bodies, `if`/`while`/`loop`/`given` arms, nested blocks).
+- [ ] Same import forms as file scope: single item, `{ A, B, … }`, glob `{ * }`.
+- [ ] Block import names visible only in that block and nested scopes; normal shadowing rules apply.
+- [ ] Block `#import` participates in whole-program module loading (graph discovery), not only name binding.
+- [ ] Compile-time only: `pub` exports only; no runtime module loader.
+
+**Acceptance:** A program imports a `pub` fn only inside `main` (no file-top import of that symbol), type-checks, compiles, and runs correctly; the name is unresolved outside the block.
+
+**Refs:** [modules.md](features/modules.md) (Scoped imports)
+
+---
+
 ### V0-011 — `phoenix.toml` and M2 build driver
 
 - [ ] `phoenix.toml` project root discovery; `project.type` = `bin` | `lib`.
@@ -438,6 +452,8 @@ These are real Phoenix goals but **out of scope** for this list. Do not implemen
 | Actors (`@spawn`, mailboxes) | Post-MVP isolation model | After scheduler |
 | Full borrow checker | MVP is use-after-move only | Parallel to std maturation |
 | Closures | Layer 3 callable values | After fn pointers |
+| Module namespace import values (`const m = #import …; m.f`) | Needs module ref type + fn pointer member access | With [V0-053](#v0-053--function-pointers-and-indirect-calls); see [modules.md](features/modules.md#import-evolution-phased) |
+| Qualified paths without `#import` | Expr-path resolution spec | After or with block imports; [modules.md](features/modules.md#import-evolution-phased) |
 | `dyn Trait` | Runtime vtables; static mono first | When plugin-style APIs needed |
 | Std I/O and networking | Requires schedulable runtime | After scheduler lands |
 | JIT, hot reload | Operational | Post-v0 |

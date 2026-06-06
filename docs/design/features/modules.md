@@ -9,9 +9,10 @@ Phoenix has no `mod { ... }` or `use` blocks. **Files are modules.** Folders are
 | Phase | Behavior |
 |-------|----------|
 | **M1** | Whole-program compile: load all reachable `.phx` files, `#import`, `pub`, cycle rejection, one PHX0 output |
+| **M1 (MVP modules)** | **Block-scoped `#import`** — same forms as file scope; names visible only inside the enclosing block (see [Scoped imports](#scoped-imports-mvp)) |
 | **M2** | `phoenix.toml` project root, `build/` artifacts, `.pxi` interfaces, incremental rebuild, PHX0 linker, path dependencies, `phx build` / `phx run` |
 
-**Deferred (post-M2):** relative `./` / `../` imports, `import { x as y }` aliases, qualified paths without `#import`, registry / URL dependencies.
+**Deferred (post-M2):** relative `./` / `../` imports, `import { x as y }` aliases, [module namespace import values](#module-namespace-import-values-post-mvp), [qualified paths without `#import`](#qualified-paths-without-import), registry / URL dependencies.
 
 ---
 
@@ -88,9 +89,95 @@ Path resolution for package root `math`:
 |------|--------|
 | `#import path::Item;` | `Item` in scope (last segment is the symbol) |
 | `#import path::{A, B, C};` | Multiple `pub` items from `path` |
-| `#import path::*;` | All `pub` items from module `path` |
+| `#import path::{*};` | All `pub` items from module `path` (glob in braces; see [grammar.ebnf](../grammar.ebnf)) |
 
 Importing a non-`pub` item is a compile error. Duplicate names from globs or multiple imports are reported.
+
+---
+
+## Scoped imports (MVP)
+
+**Goal:** Local name binding without polluting the whole file — e.g. import a helper only inside one function.
+
+`#import` is a **compile-time** directive (`#`). It may appear at **file scope** (today) or inside any **`{ … }` block** (MVP modules milestone). Block placement does **not** make imports dynamic: there is no runtime `import()` and no module loader at execution time.
+
+### Syntax
+
+Same forms as [Import forms](#import-forms):
+
+```phoenix
+main :: () => {
+  #import utils::math::add;
+  const sum = add(1, 2);
+
+  {
+    #import utils::math::{add, mul};
+    const _ = add(1, mul(2, 3));
+  };
+};
+```
+
+Glob in a block uses brace form per grammar: `#import utils::math::{*};`.
+
+### Semantics
+
+| Rule | Behavior |
+|------|----------|
+| **Visibility** | Names introduced by a block `#import` are in scope only in that block and nested blocks (shadowing follows normal block rules). |
+| **Module graph** | Every `#import` (file or block) adds edges for **whole-program module loading** — a block import can pull in a module even when there is no file-top import of that path. |
+| **Exports** | Same as file scope: only `pub` items bind; private imports are errors. |
+| **Duplicates** | Same rules as file scope (`DuplicateImport` when the same symbol is imported twice into one scope). |
+| **Resolution time** | Fully resolved at compile time; lowers to static `Call` / existing cross-module `DefId` binding — no runtime module handle. |
+
+### Not in scoped-import MVP
+
+- **`const math = #import utils::math;`** — module as a first-class namespace **value** ([Module namespace import values](#module-namespace-import-values-post-mvp)).
+- **`math.add` as a function pointer value** — requires [function pointers (Layer 2)](type-system.md#layer-2--function-pointers-post-mvp--ffi-phase-design-now) and `IndirectCall` ([V0-053](../language-v0.md) in the roadmap).
+- **Qualified paths without `#import`** — e.g. `utils::math::add(1, 2)` with no import line ([Qualified paths without `#import`](#qualified-paths-without-import)).
+
+---
+
+## Import evolution (phased)
+
+Three tiers; implement in order. Do not skip design-doc updates before coding.
+
+### Tier 1 — Block-scoped `#import` (MVP modules)
+
+Scoped **name introduction** only — see [Scoped imports (MVP)](#scoped-imports-mvp). Delivers most “I don’t want top-of-file imports” ergonomics with no new types and no fn-pointer values.
+
+**Roadmap:** [V0-014](../language-v0.md) in [language-v0.md](../language-v0.md).
+
+### Tier 2 — Module namespace import values (post-MVP)
+
+Bind a module path as a compile-time namespace handle, then select members:
+
+```phoenix
+const math = #import utils::math;   // compile-time namespace; not a runtime heap object
+const add = math.add;               // fn pointer value (Layer 2) once V0-053 ships
+const sum = add(1, 2);
+```
+
+| Concern | Design direction |
+|---------|------------------|
+| Type of `math` | Compile-time **module ref** / export table — rodata or static indices, not GC |
+| `math.add` | Function pointer when target is `pub fn`; static `Call` when callee is fully known (devirtualize) |
+| `math.Point` | **Type** namespace — distinct from value members; syntax TBD |
+| Generics | `math.sort :: <s32>(…)` needs type args on the member access path |
+| Cross-crate | Importers use `.pxi` export lists, not source parse order |
+
+Depends on **V0-053** (function pointers + `IndirectCall`). Syntax may stay `#import` on the RHS of `const` or use a dedicated form (e.g. `module utils::math`) — lock in this doc before implementation.
+
+### Tier 3 — Qualified paths without `#import`
+
+Call or refer with a full path and no import line:
+
+```phoenix
+main :: () => {
+  const sum = utils::math::add(1, 2);   // static Call; no fn pointer required
+};
+```
+
+Lower friction for one-off use; still compile-time and static-by-default. Can ship independently of Tier 2.
 
 ---
 
