@@ -1,11 +1,9 @@
 //! Integration tests for [`phx_compiler::compile_source`] (parse + resolve).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
-use phx_test::{cli_fixture, cli_fixtures_dir, compile_ok, expect_resolve_err};
-use phx_compiler::{CompileError, compile_source, compile_source_with_module_root};
+use phx_compiler::{CompileError, compile_source_with_module_root};
 use phx_diagnostics::ResolveError;
+use phx_test::{cli_fixtures_dir, compile_ok, expect_resolve_err};
 
 fn resolve_err(source: &str) -> phx_diagnostics::DiagnosticBag {
     expect_resolve_err(source)

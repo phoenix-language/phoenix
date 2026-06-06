@@ -150,7 +150,7 @@ impl PhxCli {
             .stderr(Stdio::piped())
             .output()
             .unwrap_or_else(|e| panic!("spawn {} {:?}: {e}", self.bin.display(), args));
-        PhxOutput::from_output(output)
+        PhxOutput::from_output(&output)
     }
 
     /// `phx check <path>` — expect success.
@@ -325,10 +325,7 @@ impl PhxCli {
         self.run(&["compile", &path_to_arg(path), "-o", &path_to_arg(out)])
             .assert_success();
         assert!(out.is_file(), "expected output: {}", out.display());
-        assert!(
-            out.metadata().map(|m| m.len() > 0).unwrap_or(false),
-            "empty output"
-        );
+        assert!(out.metadata().is_ok_and(|m| m.len() > 0), "empty output");
         self
     }
 
@@ -352,7 +349,7 @@ impl PhxCli {
 }
 
 impl PhxOutput {
-    fn from_output(output: Output) -> Self {
+    fn from_output(output: &Output) -> Self {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined = format!("{stdout}{stderr}");

@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use phx_compiler::{BuildOptions, build_project};
-use phx_test::{FixturePatch, cli_project, discover_cli_project, file_digest, build_cli_project};
+use phx_test::{FixturePatch, build_cli_project, cli_project, discover_cli_project, file_digest};
 
 #[test]
 fn path_dep_source_change_rebuilds_dependency_artifacts() {
@@ -18,9 +18,8 @@ fn path_dep_source_change_rebuilds_dependency_artifacts() {
     let pxi_hash_before = file_digest(&dep_pxi);
 
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let _patch = FixturePatch::replace(&math_src, |original| {
-        original.replace("a + b", "a + b + 1")
-    });
+    let _patch =
+        FixturePatch::replace(&math_src, |original| original.replace("a + b", "a + b + 1"));
 
     build_project(&app_config, None, BuildOptions::default()).expect("incremental app build");
     let lib_hash_after = file_digest(&dep_lib);

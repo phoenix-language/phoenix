@@ -43,8 +43,7 @@ pub fn assert_golden(golden_dir: &Path, name: &str, formatted: &str) {
     let actual = normalize_diagnostics(formatted);
     let path = golden_dir.join(format!("{name}.stderr"));
     if std::env::var("UPDATE_GOLDEN").ok().as_deref() == Some("1") {
-        fs::write(&path, &actual)
-            .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        fs::write(&path, &actual).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
     }
     let expected = normalize_diagnostics(
         &fs::read_to_string(&path)
@@ -66,8 +65,7 @@ pub fn format_check_file(path: &Path) -> String {
 pub fn format_check_with_module_root(entry: &Path, module_root: &Path) -> String {
     let source =
         fs::read_to_string(entry).unwrap_or_else(|e| panic!("read {}: {e}", entry.display()));
-    let err =
-        check_file_with_module_path(entry, module_root).expect_err("expected check failure");
+    let err = check_file_with_module_path(entry, module_root).expect_err("expected check failure");
     let entry_path = entry.display().to_string();
     err.format_with_modules(Some(&source), Some(&entry_path), None, None)
 }

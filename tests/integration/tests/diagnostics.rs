@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use phx_test::{
-    assert_golden, cli_fixture, cli_fixtures_dir, format_check_file, format_check_with_module_root,
+    assert_golden, cli_fixture, cli_modules_dir, format_check_file, format_check_with_module_root,
     format_compile_source, integration_diagnostics_dir,
 };
 
@@ -31,12 +31,16 @@ fn golden_use_after_move_note() {
 #[test]
 fn golden_missing_main() {
     let path = cli_fixture("missing_main.phx");
-    assert_golden(&diagnostics_dir(), "missing_main", &format_check_file(&path));
+    assert_golden(
+        &diagnostics_dir(),
+        "missing_main",
+        &format_check_file(&path),
+    );
 }
 
 #[test]
 fn golden_import_cycle() {
-    let module_root = cli_fixtures_dir().join("modules");
+    let module_root = cli_modules_dir();
     let entry = module_root.join("cycle_a.phx");
     assert_golden(
         &diagnostics_dir(),

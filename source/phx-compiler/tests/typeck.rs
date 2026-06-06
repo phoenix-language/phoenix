@@ -1,11 +1,9 @@
 //! Integration tests for the type-checking pass.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
-use phx_test::{compile_ok, expect_typeck_err};
-use phx_compiler::{check_file, compile_source};
+use phx_compiler::{CompileError, check_file, compile_source};
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
+use phx_test::{compile_ok, expect_typeck_err};
 
 fn typeck_err(source: &str) -> TypeCheckBag {
     expect_typeck_err(source)
@@ -259,7 +257,9 @@ fn typed(source: &str) -> phx_compiler::TypedProgram {
 
 #[test]
 fn call_top_level_fn_compile_ok() {
-    compile_ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { const x: s32 = add(1, 2); };");
+    compile_ok(
+        "add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { const x: s32 = add(1, 2); };",
+    );
 }
 
 #[test]
@@ -491,7 +491,9 @@ fn type_alias_cast_compile_ok() {
 
 #[test]
 fn type_alias_meters_cast_compile_ok() {
-    compile_ok("type Meters = s32; main :: () => { const x: Meters = 42 as Meters; const _ = x; };");
+    compile_ok(
+        "type Meters = s32; main :: () => { const x: Meters = 42 as Meters; const _ = x; };",
+    );
 }
 
 #[test]
@@ -631,7 +633,9 @@ fn recursive_type_alias_errors() {
 
 #[test]
 fn generic_fn_explicit_args_compile_ok() {
-    compile_ok("id :: <t> (x: s32) => s32 { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
+    compile_ok(
+        "id :: <t> (x: s32) => s32 { x }; main :: () => { const _: s32 = id :: <s32> (1); };",
+    );
 }
 
 #[test]
@@ -685,7 +689,9 @@ fn generic_struct_lit_arity_mismatch_errors() {
 
 #[test]
 fn generic_enum_ctor_compile_ok() {
-    compile_ok("Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some :: <s32> (1); };");
+    compile_ok(
+        "Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some :: <s32> (1); };",
+    );
 }
 
 #[test]
@@ -695,7 +701,9 @@ fn generic_type_alias_compile_ok() {
 
 #[test]
 fn generic_fn_end_to_end_compile() {
-    compile_ok("wrap :: <t> (x: t) => t { x }; main :: () => { const n: s32 = wrap :: <s32> (42); };");
+    compile_ok(
+        "wrap :: <t> (x: t) => t { x }; main :: () => { const n: s32 = wrap :: <s32> (42); };",
+    );
 }
 
 #[test]

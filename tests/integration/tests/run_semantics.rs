@@ -11,26 +11,32 @@ fn sample_arithmetic_computes_sum() {
     let module = compile_fixture("sample.phx");
     assert_main_locals(
         &module,
-        &[
-            (2, ExpectedLocal::I32(12)),
-            (3, ExpectedLocal::Bool(true)),
-        ],
+        &[(2, ExpectedLocal::S32(12)), (3, ExpectedLocal::Bool(true))],
     );
 }
 
 #[test]
 fn enum_match_extracts_payload() {
-    assert_main_locals(&compile_fixture("enum_match.phx"), &[(2, ExpectedLocal::I32(42))]);
+    assert_main_locals(
+        &compile_fixture("enum_match.phx"),
+        &[(2, ExpectedLocal::S32(42))],
+    );
 }
 
 #[test]
 fn struct_method_sums_fields() {
-    assert_main_locals(&compile_fixture("struct_method.phx"), &[(1, ExpectedLocal::I32(7))]);
+    assert_main_locals(
+        &compile_fixture("struct_method.phx"),
+        &[(1, ExpectedLocal::S32(7))],
+    );
 }
 
 #[test]
 fn struct_point_sums_via_function() {
-    assert_main_locals(&compile_fixture("struct_point.phx"), &[(1, ExpectedLocal::I32(7))]);
+    assert_main_locals(
+        &compile_fixture("struct_point.phx"),
+        &[(1, ExpectedLocal::S32(7))],
+    );
 }
 
 #[test]
@@ -45,7 +51,7 @@ fn trait_eq_method_returns_true() {
 fn control_flow_loop_counter_reaches_ten() {
     assert_main_locals(
         &compile_fixture("control_flow.phx"),
-        &[(0, ExpectedLocal::I32(10))],
+        &[(0, ExpectedLocal::S32(10))],
     );
 }
 
@@ -53,13 +59,16 @@ fn control_flow_loop_counter_reaches_ten() {
 fn cast_width_sum_is_one_forty_two() {
     assert_main_locals(
         &compile_fixture("cast_width.phx"),
-        &[(3, ExpectedLocal::I64(142))],
+        &[(3, ExpectedLocal::S64(142))],
     );
 }
 
 #[test]
 fn match_int_selects_arm_value() {
-    assert_main_locals(&compile_fixture("match_int.phx"), &[(2, ExpectedLocal::I32(20))]);
+    assert_main_locals(
+        &compile_fixture("match_int.phx"),
+        &[(2, ExpectedLocal::S32(20))],
+    );
 }
 
 #[test]
@@ -81,31 +90,37 @@ fn slice_from_array_index_byte() {
 #[test]
 fn modules_import_adds_imported_values() {
     let module = compile_fixture_module("main.phx", &cli_modules_dir());
-    assert_main_locals(&module, &[(0, ExpectedLocal::I32(3))]);
+    assert_main_locals(&module, &[(0, ExpectedLocal::S32(3))]);
 }
 
 #[test]
 fn mvp_acceptance_along_plus_pick_is_four() {
     let built = force_build_project("mvp_acceptance");
-    assert_main_locals(&built.module, &[(6, ExpectedLocal::I32(4))]);
+    assert_main_locals(&built.module, &[(6, ExpectedLocal::S32(4))]);
 }
 
 #[test]
 fn factorial_computes_one_twenty() {
-    assert_main_locals(&compile_fixture("factorial.phx"), &[(0, ExpectedLocal::I32(120))]);
+    assert_main_locals(
+        &compile_fixture("factorial.phx"),
+        &[(0, ExpectedLocal::S32(120))],
+    );
 }
 
 #[test]
 fn given_enum_single_variant_binds_payload() {
     assert_main_locals(
         &compile_fixture("given_enum_single_variant.phx"),
-        &[(1, ExpectedLocal::I32(12))],
+        &[(1, ExpectedLocal::S32(12))],
     );
 }
 
 #[test]
 fn ref_local_derefs_to_ten() {
-    assert_main_locals(&compile_fixture("ref_local.phx"), &[(2, ExpectedLocal::I32(10))]);
+    assert_main_locals(
+        &compile_fixture("ref_local.phx"),
+        &[(2, ExpectedLocal::S32(10))],
+    );
 }
 
 #[test]
@@ -144,7 +159,7 @@ fn byte_string_as_str_const_fold_index_is_lowercase_o() {
 fn primitives_width_sums_to_two_fifty_five() {
     assert_main_locals(
         &compile_fixture("primitives_width.phx"),
-        &[(3, ExpectedLocal::I64(255))],
+        &[(3, ExpectedLocal::S64(255))],
     );
 }
 
@@ -160,7 +175,7 @@ fn primitives_float_mixed_width_sum() {
 fn primitives_i128_truncates_to_s8() {
     assert_main_locals(
         &compile_fixture("primitives_i128.phx"),
-        &[(1, ExpectedLocal::I8(-24))],
+        &[(1, ExpectedLocal::S8(-24))],
     );
 }
 
@@ -168,7 +183,7 @@ fn primitives_i128_truncates_to_s8() {
 fn compare_unary_and_relations_score() {
     assert_main_locals(
         &compile_fixture("compare_unary.phx"),
-        &[(11, ExpectedLocal::I32(-4))],
+        &[(11, ExpectedLocal::S32(-4))],
     );
 }
 
@@ -176,39 +191,54 @@ fn compare_unary_and_relations_score() {
 fn mod_bitwise_ops_sum() {
     assert_main_locals(
         &compile_fixture("mod_bitwise.phx"),
-        &[(5, ExpectedLocal::I32(-7))],
+        &[(5, ExpectedLocal::S32(-7))],
     );
 }
 
 #[test]
 fn array_index_reads_middle_element() {
-    assert_main_locals(&compile_fixture("array_index.phx"), &[(1, ExpectedLocal::I32(20))]);
+    assert_main_locals(
+        &compile_fixture("array_index.phx"),
+        &[(1, ExpectedLocal::S32(20))],
+    );
 }
 
 #[test]
 fn tuple_lit_first_element() {
-    assert_main_locals(&compile_fixture("tuple_lit.phx"), &[(1, ExpectedLocal::I32(1))]);
+    assert_main_locals(
+        &compile_fixture("tuple_lit.phx"),
+        &[(1, ExpectedLocal::S32(1))],
+    );
 }
 
 #[test]
 fn match_bool_true_arm() {
-    assert_main_locals(&compile_fixture("match_bool.phx"), &[(2, ExpectedLocal::I32(1))]);
+    assert_main_locals(
+        &compile_fixture("match_bool.phx"),
+        &[(2, ExpectedLocal::S32(1))],
+    );
 }
 
 #[test]
 fn match_ident_wildcard_arm() {
-    assert_main_locals(&compile_fixture("match_ident.phx"), &[(2, ExpectedLocal::I32(20))]);
+    assert_main_locals(
+        &compile_fixture("match_ident.phx"),
+        &[(2, ExpectedLocal::S32(20))],
+    );
 }
 
 #[test]
 fn struct_assign_updates_field() {
-    assert_main_locals(&compile_fixture("struct_assign.phx"), &[(1, ExpectedLocal::I32(5))]);
+    assert_main_locals(
+        &compile_fixture("struct_assign.phx"),
+        &[(1, ExpectedLocal::S32(5))],
+    );
 }
 
 #[test]
 fn enum_match_struct_extracts_payload() {
     assert_main_locals(
         &compile_fixture("enum_match_struct.phx"),
-        &[(2, ExpectedLocal::I32(42))],
+        &[(2, ExpectedLocal::S32(42))],
     );
 }

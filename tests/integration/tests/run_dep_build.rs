@@ -1,12 +1,12 @@
 //! Path dependency build populates `build/deps/`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use phx_compiler::BuildOptions;
 use phx_compiler::{
     BuildLayout, CrateLoadContext, load_crate_with_context, resolve_crate, type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 use phx_test::{build_cli_project, cli_project, discover_cli_project};
-use phx_compiler::BuildOptions;
 
 #[test]
 fn path_dependency_artifacts() {

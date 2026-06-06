@@ -2,9 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use phx_compiler::{BuildOptions, build_project};
-use phx_test::{
-    FixturePatch, build_cli_project, cli_project, discover_cli_project, file_digest,
-};
+use phx_test::{FixturePatch, build_cli_project, cli_project, discover_cli_project, file_digest};
 
 #[test]
 fn touch_dependency_rebuilds_importers() {
@@ -26,9 +24,8 @@ fn touch_dependency_rebuilds_importers() {
         .expect("mtime");
 
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let _patch = FixturePatch::replace(&math_src, |original| {
-        original.replace("a + b", "a + b + 1")
-    });
+    let _patch =
+        FixturePatch::replace(&math_src, |original| original.replace("a + b", "a + b + 1"));
 
     build_project(&config, None, BuildOptions::default()).expect("incremental build");
     let math_hash_after = file_digest(&math_phx0);

@@ -1,12 +1,8 @@
 //! `.pxi` v2 structured type round-trip and import type seeding.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
+use phx_compiler::{BuildOptions, PxiExport, PxiFile, PxiType, compile_source, type_check};
 use phx_test::{build_cli_project, cli_project, discover_cli_project};
-use phx_compiler::{
-    BuildOptions, PxiExport, PxiFile, PxiType, compile_source, type_check,
-};
 
 #[test]
 fn pxi_v2_type_json_round_trip() {

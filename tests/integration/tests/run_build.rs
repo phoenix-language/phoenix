@@ -2,7 +2,10 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use phx_compiler::BuildError;
-use phx_test::{cli_project, force_build_project, load_built_binary};
+use phx_compiler::BuildOptions;
+use phx_test::{
+    build_cli_project, cli_project, discover_cli_project, force_build_project, load_built_binary,
+};
 
 #[test]
 fn project_build_and_load() {
@@ -24,11 +27,13 @@ fn mvp_acceptance_build_and_load() {
 
 #[test]
 fn math_lib_build_produces_lib_artifact() {
-    let built = force_build_project("math_lib");
-    let expected = cli_project("math_lib").join("build/lib/math.phx0");
-    assert_eq!(built.result.output_path, expected);
+    let root = cli_project("math_lib");
+    let config = discover_cli_project(&root);
+    let result = build_cli_project(&config, BuildOptions::force(true));
+    let expected = root.join("build/lib/math.phx0");
+    assert_eq!(result.output_path, expected);
     assert!(expected.is_file(), "expected {}", expected.display());
-    let err = load_built_binary(&built.config).expect_err("lib packages are not runnable");
+    let err = load_built_binary(&config).expect_err("lib packages are not runnable");
     assert!(
         matches!(err, BuildError::Project(_)),
         "expected project error, got {err:?}"
