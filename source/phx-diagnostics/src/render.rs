@@ -132,6 +132,8 @@ fn render_snippet(source: &str, span: Span, _line_hint: u32) -> String {
     let (line, col) = line_col(source, span.start);
     let line_idx = usize::try_from(line.saturating_sub(1)).unwrap_or(0);
     let line_text = source.lines().nth(line_idx).unwrap_or("");
+    let num_width = line.to_string().len().max(1);
+    let border = format!("{}|", " ".repeat(num_width + 1));
     let caret_len = if span.end > span.start {
         span.end.saturating_sub(span.start)
     } else {
@@ -139,9 +141,7 @@ fn render_snippet(source: &str, span: Span, _line_hint: u32) -> String {
     };
     let caret = "^".repeat(usize::try_from(caret_len.min(40)).unwrap_or(1));
     let pad = " ".repeat(usize::try_from(col.saturating_sub(1)).unwrap_or(0));
-    let gutter = line.to_string();
-    let gutter_width = gutter.len().max(1);
-    format!("   |\n{gutter:>gutter_width$} | {line_text}\n   | {pad}{caret}")
+    format!("{border}\n{line:>num_width$} | {line_text}\n{border} {pad}{caret}")
 }
 
 /// Returns 1-based `(line, column)` for a byte offset (columns count Unicode scalars).
@@ -201,5 +201,17 @@ mod tests {
         assert!(out.contains("--> bad_type.phx:"));
         assert!(out.contains("in module `app`"));
         assert!(out.contains(" | "));
+    }
+
+    #[test]
+    fn gutter_pipes_align() {
+        let src = "line one\n    const x: s32 = true;\nline three";
+        let span = Span::new(28, 32);
+        let snippet = render_snippet(src, span, 2);
+        let lines: Vec<&str> = snippet.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].contains('|'));
+        assert_eq!(lines[0].find('|'), lines[1].find('|'));
+        assert_eq!(lines[0].find('|'), lines[2].find('|'));
     }
 }

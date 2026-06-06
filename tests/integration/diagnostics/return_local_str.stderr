@@ -1,31 +1,31 @@
 error[E2014]: invalid cast from `[U8; 3]` to `str`
   --> /tests/integration/diagnostics/return_local_str.phx:3:12
-   |
+  |
 3 |     return arr as str;
-   |            ^^^^^^^^^^
+  |            ^^^^^^^^^^
    = note: in module `diagnostics::return_local_str`
 
 error[E2022]: cannot return a borrow of a local variable
   --> /tests/integration/diagnostics/return_local_str.phx:3:12
-   |
+  |
 3 |     return arr as str;
-   |            ^^^^^^^^^^
+  |            ^^^^^^^^^^
    = note: in module `diagnostics::return_local_str`
    = note: borrow of local created here
   --> /tests/integration/diagnostics/return_local_str.phx:3:12
-   |
+  |
 3 |     return arr as str;
-   |            ^^^
+  |            ^^^
 
 error[E2022]: cannot return a borrow of a local variable
   --> /tests/integration/diagnostics/return_local_str.phx:3:12
-   |
+  |
 3 |     return arr as str;
-   |            ^^^^^^^^^^
+  |            ^^^^^^^^^^
    = note: in module `diagnostics::return_local_str`
    = note: borrow of local created here
   --> /tests/integration/diagnostics/return_local_str.phx:3:12
-   |
+  |
 3 |     return arr as str;
-   |            ^^^
+  |            ^^^
 error: aborting due to 3 previous errors

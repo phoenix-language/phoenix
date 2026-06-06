@@ -78,6 +78,8 @@ pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
             let name = names.symbol_name(*symbol_index);
             format!("duplicate definition of `{name}`")
         }
+        ResolveError::ModuleParse { message, .. } => message.clone(),
+        ResolveError::ModuleIo { message, .. } => format!("failed to read module: {message}"),
         other => other.to_string(),
     }
 }

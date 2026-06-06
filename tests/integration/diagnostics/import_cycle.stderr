@@ -1,5 +1,5 @@
 error[E1008]: circular module import: module graph cycle (entry module id 0)
-  --> <entry>:1:1
-   |
+  --> /tests/integration/../cli/fixtures/modules/cycle_a.phx:1:1
+  |
 1 | #import cycle_b::helper;
-   | ^^^^^^^^^^^^^^^^^^^^^^^^
+  | ^^^^^^^^^^^^^^^^^^^^^^^^

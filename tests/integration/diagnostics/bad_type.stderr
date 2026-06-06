@@ -1,6 +1,6 @@
 error[E2001]: type mismatch: expected S32, found Bool
   --> /tests/cli/fixtures/bad_type.phx:3:18
-   |
+  |
 3 |   const x: s32 = true;
-   |                  ^^^^
+  |                  ^^^^
    = note: in module `fixtures::bad_type`
