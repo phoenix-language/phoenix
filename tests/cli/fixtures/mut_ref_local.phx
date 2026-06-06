@@ -1,0 +1,9 @@
+accepts_mut_ref :: (_v: &mut u8) => () {
+    const _ = ();
+};
+
+main :: () => {
+    var cell: u8 = u66;
+    accepts_mut_ref(&mut cell);
+    const _ = cell;
+};

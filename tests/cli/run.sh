@@ -27,6 +27,7 @@ FIXTURES=(
   tuple_lit.phx
   given_struct.phx
   trait_eq.phx
+  trait_inherent.phx
   primitives_float.phx
   primitives_width.phx
   primitives_i128.phx
@@ -34,6 +35,8 @@ FIXTURES=(
   string_literal.phx
   byte_string_as_str.phx
   ref_local.phx
+  ref_fn_param.phx
+  mut_ref_local.phx
   deref_ptr.phx
   slice_from_array.phx
   factorial.phx

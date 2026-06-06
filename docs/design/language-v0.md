@@ -1,0 +1,477 @@
+# Language v0 roadmap
+
+Status: Active checklist
+
+This document is **the list** — the ordered checklist that marks the end of MVP, what is required to **show Phoenix to contributors**, and what must land before **writing the standard library in Phoenix source**.
+
+When every item in **Phases 1–6** is checked, the project reaches **Language v0**: a demonstrable, contributor-ready compiler that can host an in-language std bootstrap.
+
+**Authority:** Language semantics come from the design docs. This file only sequences work and defines acceptance criteria. If behavior is ambiguous, update the relevant design doc first — do not invent semantics in implementation.
+
+---
+
+## What Language v0 means
+
+| Milestone | Meaning |
+|-----------|---------|
+| **MVP** (Phase 1) | Minimal compiler pipeline: parse → type-check → bytecode → single-process VM. See [mvp.md](mvp.md). |
+| **Language v0** (Phases 1–6) | MVP is complete **plus** the language substrate, packaging, and std-bootstrap wiring needed to compile real library code and onboard contributors. |
+| **Std v0** (after Language v0) | `Option`, `Result`, core traits, alloc-backed collections/text — authored as Phoenix `type = lib` packages, not compiler builtins. |
+| **Std I/O** (explicitly later) | Requires scheduler + schedulable-I/O runtime first. Not a Language v0 gate. |
+
+---
+
+## How agents should use this list
+
+1. Work **top to bottom** within a phase. Do not skip ahead unless a later item has no dependency on open items (called out in each step).
+2. Complete **one checklist item per task** when possible. Each item has an ID (`V0-NNN`), acceptance criteria, and doc links.
+3. Mark an item done only when its acceptance criteria pass and `just pre-commit` is green from the repo root.
+4. Add or extend **tests** (unit, integration, or `tests/cli/`) for every item that changes observable behavior.
+5. If an item requires a design decision not covered in docs, **stop and update the design doc** before coding.
+
+### Global completion gate
+
+From the repo root, before marking any phase complete:
+
+```bash
+just pre-commit
+```
+
+For changes that touch compiler passes or VM semantics, also run:
+
+```bash
+just test
+```
+
+---
+
+## Phase 1 — MVP compiler contract
+
+Finish the minimal pipeline defined in [mvp.md](mvp.md). Nothing in later phases replaces this work.
+
+### V0-001 — End-to-end pipeline
+
+- [x] Lex → parse → resolve → type-check → lower → bytecode serialize → verifier → VM execute works for single-file programs.
+- [x] Every executable program requires `main :: () => { … }`; missing `main` is a compile error with a clear diagnostic.
+
+**Acceptance:** At least one integration test runs a `.phx` program end-to-end on the stack VM and exits successfully.
+
+**Refs:** [mvp.md](mvp.md), [vm-linear.md](features/vm-linear.md)
+
+---
+
+### V0-002 — Core types and literals
+
+- [x] Numeric primitives (`s32`, `u32`, `f32`, etc.), `bool`, unit `()`, tuples.
+- [x] Raw pointers and borrow types `&T`, `&mut T` in signatures (full borrow checking is **not** required).
+- [x] Fixed arrays `[T; N]` and slices `[T]`.
+- [x] **`str`** UTF-8 text view: `"…"` literals, `(ptr, len)` representation, Copyable fat pointer over rodata.
+- [x] Literal rules: `s32` default integers, `u` suffix → `u32`, `f32` default floats; **no implicit numeric widening**.
+
+**Acceptance:** Type-check and run programs using `str`, slices, arrays, and explicit `expr as Type` casts.
+
+**Refs:** [mvp.md](mvp.md) (Core Primitive Policy), [type-system.md](features/type-system.md)
+
+---
+
+### V0-003 — User types and control flow
+
+- [x] `Name :: struct`, `Name :: enum`, type aliases.
+- [x] `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given`.
+- [x] Arithmetic, comparison, and logical operators on primitive numerics and `bool` only.
+
+**Acceptance:** Integration tests cover struct/enum construction, `match` exhaustiveness errors, and control-flow lowering.
+
+**Refs:** [grammar.ebnf](grammar.ebnf), [mvp.md](mvp.md)
+
+---
+
+### V0-004 — Traits and static dispatch
+
+- [x] `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` parse, resolve, and type-check.
+- [x] Static method resolution and monomorphized `Call` lowering for known callees.
+
+**Acceptance:** A program with an inherent `impl` and a trait `impl` compiles and runs; missing trait methods are compile errors.
+
+**Refs:** [traits.md](features/traits.md)
+
+---
+
+### V0-005 — MVP ownership
+
+- [ ] Use-after-move is a compile error; diagnostic cites the original move site.
+- [ ] `Copyable` bootstrap for primitives and `str` (language marker, not full std trait yet).
+
+**Acceptance:** `tests/integration/diagnostics/use_after_move` (or equivalent) passes; moved non-Copyable values reject further use.
+
+**Refs:** [ownership.md](features/ownership.md)
+
+---
+
+### V0-006 — Deferred syntax boundaries
+
+- [ ] Parsed-but-unsupported constructs (`@spawn`, `#derive` semantics, closures, etc.) produce `UnsupportedFeature` (or equivalent) at type-check — not silent miscompilation.
+- [ ] `Option` / `Result` / `Some` / `None` / `Ok` / `Err` / `?` may parse but **must** be rejected until Phase 5 (std bootstrap).
+
+**Acceptance:** [grammar-deferred.md](features/grammar-deferred.md) table is reflected in compiler behavior and tests.
+
+**Refs:** [grammar-deferred.md](features/grammar-deferred.md)
+
+---
+
+## Phase 2 — Modules and project tooling
+
+Multi-file programs and a real project layout so contributors can build packages, not just single scripts.
+
+### V0-010 — M1 whole-program modules
+
+- [ ] Files are modules; `#import`, `pub`, and `::` paths per [modules.md](features/modules.md).
+- [ ] Whole-program compile: load all reachable `.phx` files, reject import cycles with a cycle trace.
+- [ ] Single linked PHX0 output for workspace builds.
+
+**Acceptance:** Multi-file program with cross-module `#import` of `pub` items compiles and runs.
+
+**Refs:** [modules.md](features/modules.md) (M1)
+
+---
+
+### V0-011 — `phoenix.toml` and M2 build driver
+
+- [ ] `phoenix.toml` project root discovery; `project.type` = `bin` | `lib`.
+- [ ] `bin` requires `main.phx` at `module_src` root; `lib` requires `lib.phx`; `main` forbidden in lib packages.
+- [ ] `phx build`, `phx run`, `phx check` wired to `module_src` and dependency graph.
+- [ ] `build/` artifact layout: `manifest.json`, `build/pxi/`, `build/phx0/`, `build/bin/`, `build/lib/`, `build/deps/`.
+
+**Acceptance:** Sample `bin` and `lib` projects build from `phoenix.toml`; `phx run` executes `build/bin/{name}.phx0`.
+
+**Refs:** [modules.md](features/modules.md) (M2, CLI)
+
+---
+
+### V0-012 — `.pxi` interfaces and incremental rebuild
+
+- [ ] Emit `.pxi` v2 (`format_version: 2`) with `logical_module`, `source_hash`, structured `ty`, and `dependencies`.
+- [ ] Rebuild when source hash or dependency `pxi_hash` changes.
+- [ ] `phx check` uses project layout when `phoenix.toml` is found (no `build/` required).
+
+**Acceptance:** Touching one module rebuilds only stale modules and transitive importers; `.pxi` drives cross-module type-checking.
+
+**Refs:** [modules.md](features/modules.md), [pxi-format.md](features/pxi-format.md)
+
+---
+
+### V0-013 — PHX0 linker and path dependencies
+
+- [ ] Link workspace `build/phx0/*.phx0` and dependency artifacts into `build/bin/` or `build/lib/`.
+- [ ] Globally unique `function_id` across modules; cross-module `Call` uses pre-assigned ids.
+- [ ] Path dependencies: `[dependencies]` with `path = "…"`; key must equal depended `project.name`.
+
+**Acceptance:** App package depends on a `lib` package via path; linked binary calls across package boundary.
+
+**Refs:** [modules.md](features/modules.md) (Linker contract)
+
+---
+
+## Phase 3 — Generics and trait substrate
+
+Everything std types are built from: generic enums, bounds, associated types, monomorphization.
+
+### V0-020 — Generic declarations
+
+- [ ] Generic `struct`, `enum`, `type` alias, `trait`, `impl`, and functions with `:: <T, …>` parameters.
+- [ ] Explicit instantiation `id :: <s32> (1)` and local call-site inference when arguments constrain type parameters.
+
+**Acceptance:** Generic `enum` and function monomorphize to distinct symbols (e.g. `id$s32`); inference and explicit args both work.
+
+**Refs:** [type-system.md](features/type-system.md) (Generics strategy)
+
+---
+
+### V0-021 — Monomorphization pass
+
+- [ ] Collect instantiation sites; emit specialized layouts and bodies per `(template, args…)`.
+- [ ] Trait bounds checked when concrete type arguments are known at instantiation.
+
+**Acceptance:** Two call sites with different type args produce two specialized definitions in bytecode/layout tables.
+
+**Refs:** [type-system.md](features/type-system.md), [traits.md](features/traits.md)
+
+---
+
+### V0-022 — Generic enum constructors and patterns
+
+- [ ] Enum ctor calls: `Variant(1)` and `Variant :: <s32> (1)` with inference.
+- [ ] `match` on generic enums with monomorphized patterns.
+
+**Acceptance:** Generic enum ctors and pattern match compile across at least two monomorphized instantiations.
+
+**Refs:** [type-system.md](features/type-system.md)
+
+---
+
+### V0-023 — Trait bounds and associated types (basic)
+
+- [ ] Generic bounds `T: Copyable`, `T: SomeTrait` enforced at monomorphization.
+- [ ] Associated types: `type Item;` on traits and concretely specified on `impl`.
+
+**Acceptance:** Program with `Iterator :: trait { type Item; … }` and a concrete `impl` type-checks and resolves `Self::Item`.
+
+**Refs:** [traits.md](features/traits.md)
+
+---
+
+### V0-024 — Cross-crate generic exports (`.pxi` mangling)
+
+- [ ] Stable mangled `export_id` for monomorphized symbols (e.g. `sort$s32`) in `.pxi` export lists.
+- [ ] Importers can call specialized generics from a dependency without re-parsing its source.
+
+**Acceptance:** Lib package exports a generic function; bin package calls a concrete instantiation via path dependency and `.pxi` only.
+
+**Refs:** [type-system.md](features/type-system.md) (Deferred: `.pxi` export mangling), [pxi-format.md](features/pxi-format.md)
+
+---
+
+## Phase 4 — Runtime primitives for std
+
+Std collections and owned text need heap allocation — not a GC, not a primitive owned `string`.
+
+### V0-030 — Heap allocation intrinsic
+
+- [ ] VM `ALLOC` (or documented equivalent) opcode implemented and verified.
+- [ ] Compiler-lowering surface for allocation (canonical spelling locked in design — candidate: `core::alloc` module wrapping intrinsic).
+- [ ] Documented deallocation / ownership contract for std authors (MVP may be manual `free` intrinsic or defer `Drop` to Phase 6).
+
+**Acceptance:** Phoenix program allocates a byte buffer on the heap, writes via pointer, runs on VM without verifier failure.
+
+**Refs:** [grammar-deferred.md](features/grammar-deferred.md) (Heap `ALLOC`), [mvp.md](mvp.md), [vm-linear.md](features/vm-linear.md)
+
+---
+
+### V0-031 — No primitive owned `string`
+
+- [ ] Confirm no language builtin growable `string` type exists.
+- [ ] `str` remains the only core text type; owned growable text is reserved for std `String`.
+
+**Acceptance:** Type checker has no owned-string primitive; design docs and implementation agree.
+
+**Refs:** [mvp.md](mvp.md), [type-system.md](features/type-system.md)
+
+---
+
+## Phase 5 — Std bootstrap wiring
+
+Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Result` builtins.
+
+### V0-040 — Std package layout
+
+- [ ] Create `std` (or `phoenix-std`) as `type = lib` with `lib.phx` root module per [modules.md](features/modules.md).
+- [ ] Path-dependency workflow documented for local development (`phoenix.toml` example in repo).
+
+**Acceptance:** `phx build` produces `build/lib/std.phx0` (or chosen package name) from Phoenix source only.
+
+**Refs:** [modules.md](features/modules.md)
+
+---
+
+### V0-041 — Core std types as ordinary generic enums
+
+- [ ] Implement in Phoenix source:
+
+```phoenix
+pub Option :: enum<Type> { None, Some(Type) }
+pub Result :: enum<Ok, Err> { Ok(Ok), Err(Err) }
+```
+
+- [ ] Type-check `Option<T>` and `Result<T, E>` like any user generic enum once imported.
+
+**Acceptance:** Program `#import`s `Option` / `Result` and uses them in signatures and `match` without compiler builtins.
+
+**Refs:** [type-system.md](features/type-system.md) (Phased: Option and Result), [error-handling.md](features/error-handling.md)
+
+---
+
+### V0-042 — Std constructors and `?` sugar
+
+- [ ] Enable `Some`, `None`, `Ok`, `Err` as enum constructors tied to std definitions.
+- [ ] Enable `expr?` postfix sugar lowered against `Result` / `Option` in compatible function contexts.
+
+**Acceptance:** `read_config`-style example from [error-handling.md](features/error-handling.md) type-checks and lowers correctly.
+
+**Refs:** [error-handling.md](features/error-handling.md), [grammar-deferred.md](features/grammar-deferred.md)
+
+---
+
+### V0-043 — Core traits in std
+
+- [ ] `Clone :: trait` in std with explicit duplication semantics.
+- [ ] `Copyable` marker trait in std (or documented split: language bound vs std trait) per [ownership.md](features/ownership.md).
+- [ ] Baseline traits stubbed or implemented: `Debug`, `PartialEq`, `Eq` (minimal fmt/compare sufficient for demos).
+
+**Acceptance:** Generic function with `T: Copyable` and `T: Clone` bounds type-checks against std trait definitions.
+
+**Refs:** [ownership.md](features/ownership.md), [traits.md](features/traits.md)
+
+---
+
+### V0-044 — Prelude (minimal)
+
+- [ ] Optional small prelude re-exports common std items (`Option`, `Result`, core traits) — not the entire library.
+- [ ] Prelude behavior documented; most std remains explicit `#import`.
+
+**Acceptance:** Prelude-enabled module uses `Option` without explicit import; non-prelude modules still require `#import`.
+
+**Refs:** [type-system.md](features/type-system.md) (Core vs std policy)
+
+---
+
+## Phase 6 — Contributor showcase and std authoring enablers
+
+Polish and capabilities that make the project legible to new contributors and unblock real std development.
+
+### V0-050 — CLI and diagnostics UX
+
+- [ ] `phx check`, `phx build`, `phx run`, `phx explain <code>` (or equivalent) with stable, tested diagnostic output.
+- [ ] Errors show file, line, column, span snippet, and error code; internal panics never leak to users.
+
+**Acceptance:** `tests/cli/` scripts pass; diagnostic fixtures match committed `.stderr` golden files.
+
+**Refs:** Existing `tests/cli/`, `tests/integration/diagnostics/`
+
+---
+
+### V0-051 — Contributor documentation
+
+- [ ] `README` (or `docs/contributing.md`) explains: build, test, project layout, and **this checklist**.
+- [ ] “First program” and “first library” tutorials using `phoenix.toml`.
+- [ ] Link to design authority table in [mvp.md](mvp.md) / [README.md](README.md).
+
+**Acceptance:** New contributor can clone, run `just pre-commit`, build a `bin` + `lib` example without reading the compiler source.
+
+---
+
+### V0-052 — Demonstration programs
+
+- [ ] `examples/` (or `tests/examples/`) with at least:
+  - `hello` — `main`, `str` literal output path (stdout intrinsic or VM debug channel documented for MVP).
+  - `modules` — multi-file `bin` + `lib` dependency.
+  - `generics` — generic enum + trait bound monomorphization.
+  - `errors` — `Result` + `match` + `?` after Phase 5.
+- [ ] Each example has a one-line README comment at the top of `main.phx`.
+
+**Acceptance:** All examples build and run via documented commands in CI or `just test-lang`.
+
+---
+
+### V0-053 — Function pointers and indirect calls
+
+- [ ] Function pointer **value** types: pointer-sized, Copyable.
+- [ ] `IndirectCall` / `CALL_INDIRECT` in bytecode and VM.
+- [ ] Comparator/callback parameters in generic functions (e.g. sort hook).
+
+**Acceptance:** Program passes a function pointer to another function and invokes it indirectly; verifier enforces stack and type contract.
+
+**Refs:** [type-system.md](features/type-system.md) (Callable values: Layer 2), [vm-linear.md](features/vm-linear.md)
+
+---
+
+### V0-054 — `Drop` trait and resource cleanup
+
+- [ ] `Drop :: trait` in std; compiler emits drop glue at scope end for owned values that implement `Drop`.
+- [ ] Documented interaction with heap alloc from V0-030.
+
+**Acceptance:** Owned wrapper with `Drop` runs cleanup on scope exit; double-drop or use-after-drop rejected.
+
+**Refs:** [traits.md](features/traits.md), [ownership.md](features/ownership.md)
+
+---
+
+### V0-055 — Iterator protocol and `for` lowering
+
+- [ ] `Iterator :: trait` in std with associated `Item`.
+- [ ] `for x in y` lowers against iterator protocol (or documented desugaring to `while` + `next`).
+
+**Acceptance:** `for` loop over a std-provided iterator compiles and runs.
+
+**Refs:** [grammar-deferred.md](features/grammar-deferred.md), [traits.md](features/traits.md)
+
+---
+
+### V0-056 — `#derive(...)` (minimal)
+
+- [ ] `#derive(Copyable, Debug, PartialEq)` (or agreed subset) expands to trait `impl`s at compile time.
+- [ ] Derive list and supported traits documented.
+
+**Acceptance:** Struct with `#derive(PartialEq)` compares equal for identical fields; unsupported derives error clearly.
+
+**Refs:** [grammar-deferred.md](features/grammar-deferred.md), [traits.md](features/traits.md)
+
+---
+
+## Language v0 complete — definition of done
+
+When **all** items in Phases 1–6 are checked:
+
+| Outcome | Status |
+|---------|--------|
+| MVP compiler contract | Shipped |
+| Multi-file projects with `phoenix.toml` | Shipped |
+| Generics + traits + monomorphization | Shipped |
+| Heap alloc for std data structures | Shipped |
+| `Option` / `Result` / core traits as Phoenix std source | Shipped |
+| Contributor docs + examples | Shipped |
+| Fn pointers, `Drop`, iterators, basic derive | Shipped |
+
+**You may start Std v0 authoring in earnest** — growable `String`, `Vec`, formatting, collections — using the lib package model.
+
+Announce **Language v0** when the demonstration programs in V0-052 run and `just pre-commit` is green on `main`.
+
+---
+
+## Explicitly not Language v0 (do not block the checklist)
+
+These are real Phoenix goals but **out of scope** for this list. Do not implement them while Phases 1–6 are open unless a design doc is updated to promote an item.
+
+| Feature | Why deferred | When |
+|---------|--------------|------|
+| Scheduler + M:N runtime | Std I/O parks contexts cooperatively | Before std `File.read` / networking |
+| Schedulable I/O types | Call-site syntax not locked | With scheduler |
+| Actors (`@spawn`, mailboxes) | Post-MVP isolation model | After scheduler |
+| Full borrow checker | MVP is use-after-move only | Parallel to std maturation |
+| Closures | Layer 3 callable values | After fn pointers |
+| `dyn Trait` | Runtime vtables; static mono first | When plugin-style APIs needed |
+| Std I/O and networking | Requires schedulable runtime | After scheduler lands |
+| JIT, hot reload | Operational | Post-v0 |
+| Unicode identifiers | ASCII-only for v0 | [ast-roadmap.md](features/ast-roadmap.md) |
+| Primitive owned `string` | Std `String` only | Never as language primitive |
+
+**Refs:** [mvp.md](mvp.md), [runtime-transparency.md](features/runtime-transparency.md), [concurrency.md](features/concurrency.md)
+
+---
+
+## After Language v0 — Std v0 starting point
+
+First std modules to author **in Phoenix** once the checklist is complete (order is flexible; all depend on Phases 4–6):
+
+1. **`core::alloc`** — allocation/deallocation wrappers over VM intrinsics.
+2. **`core::option` / `core::result`** — if not already merged into std root from V0-041.
+3. **`core::clone` / `core::copyable` / `core::cmp` / `core::fmt`** — traits and minimal derive support.
+4. **`collections::vec`** — growable buffer over `alloc`.
+5. **`text::string`** — owned UTF-8 `String` over `alloc` + `Clone`.
+6. **`text::fmt`** — basic formatting builders (no OS I/O required).
+
+Std I/O (`fs`, `net`, …) waits for scheduler + schedulable-I/O runtime per [modules.md](features/modules.md) and [mvp.md](mvp.md).
+
+---
+
+## Related documents
+
+| Document | Role |
+|----------|------|
+| [mvp.md](mvp.md) | Canonical MVP in/out scope |
+| [modules.md](features/modules.md) | Packages, `.pxi`, linker, CLI |
+| [type-system.md](features/type-system.md) | Generics, core vs std, callable layers |
+| [ownership.md](features/ownership.md) | Copyable, Clone, Drop |
+| [traits.md](features/traits.md) | Trait baseline roadmap |
+| [grammar-deferred.md](features/grammar-deferred.md) | Parse vs implement boundaries |
+| [error-handling.md](features/error-handling.md) | Result, `?` |
+| [vm-linear.md](features/vm-linear.md) | Bytecode and verifier contract |

@@ -9,6 +9,8 @@ Current work is split into:
 
 See [mvp.md](mvp.md) for the canonical MVP boundary.
 
+**Implementation checklist:** [language-v0.md](language-v0.md) — ordered work through MVP, contributor showcase, and std bootstrap (**Language v0**).
+
 ---
 
 ## MVP focus
@@ -100,6 +102,7 @@ MVP includes the bytecode interpreter/runtime contract only; scheduler, std I/O,
 | Document                                                           | Purpose                                                      |
 | ------------------------------------------------------------------ | ------------------------------------------------------------ |
 | [mvp.md](mvp.md)                                                   | MVP in/out scope and entrypoint contract                     |
+| [language-v0.md](language-v0.md)                                 | **Language v0** checklist — MVP → showcase → std bootstrap |
 | [grammer.md](grammer.md)                                           | Human-readable syntax overview                               |
 | [grammar.ebnf](grammar.ebnf)                                       | Formal EBNF and lexical grammar                              |
 | [features/grammar-deferred.md](features/grammar-deferred.md)       | Parse-only and not-yet-designed grammar items                |

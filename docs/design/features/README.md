@@ -2,6 +2,8 @@
 
 Deep dives for language features that go beyond surface syntax. Start with [grammer.md](../grammer.md) (overview) and [grammar.ebnf](../grammar.ebnf) (formal EBNF).
 
+**Work sequencing:** [language-v0.md](../language-v0.md) — the ordered checklist from MVP through Language v0.
+
 | Document | Topic |
 |---|---|
 | [type-system.md](type-system.md) | Primitives vs std vs sugar; `Option`, `Result`, tuples, unit |

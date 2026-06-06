@@ -116,3 +116,5 @@ Full runtime model (principle and taxonomy): [features/runtime-transparency.md](
 - Type rules are explicit and non-contradictory.
 - Bytecode format is detailed enough to implement loader + VM without guessing.
 - Deferred features are labeled post-MVP in all related docs.
+
+**Implementation order:** The executable checklist for finishing MVP and reaching contributor-ready **Language v0** (std bootstrap) lives in [language-v0.md](language-v0.md).

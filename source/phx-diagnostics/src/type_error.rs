@@ -195,6 +195,17 @@ pub enum TypeCheckError {
         /// Call site span.
         span: Span,
     },
+    /// Trait impl block does not implement a required trait method.
+    MissingTraitMethod {
+        /// Implementing type name.
+        type_name: String,
+        /// Trait name.
+        trait_name: String,
+        /// Required method name.
+        method_name: String,
+        /// Impl block span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -227,6 +238,7 @@ impl TypeCheckError {
             Self::TraitNotSatisfied { .. } => DiagnosticCode::new("E2023"),
             Self::InferenceFailed { .. } => DiagnosticCode::new("E2024"),
             Self::InferenceAmbiguous { .. } => DiagnosticCode::new("E2025"),
+            Self::MissingTraitMethod { .. } => DiagnosticCode::new("E2026"),
         }
     }
 
@@ -258,12 +270,14 @@ impl TypeCheckError {
             | Self::ReturnEscapesLocal { span, .. }
             | Self::TraitNotSatisfied { span, .. }
             | Self::InferenceFailed { span, .. }
-            | Self::InferenceAmbiguous { span, .. } => Some(*span),
+            | Self::InferenceAmbiguous { span, .. }
+            | Self::MissingTraitMethod { span, .. } => Some(*span),
         }
     }
 }
 
 impl fmt::Display for TypeCheckError {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Mismatch {
@@ -356,6 +370,15 @@ impl fmt::Display for TypeCheckError {
             Self::InferenceAmbiguous { .. } => {
                 f.write_str("ambiguous generic type argument inference")
             }
+            Self::MissingTraitMethod {
+                type_name,
+                trait_name,
+                method_name,
+                ..
+            } => write!(
+                f,
+                "type `{type_name}` does not implement trait method `{method_name}` from `{trait_name}`"
+            ),
         }
     }
 }

@@ -534,7 +534,7 @@ impl<'a> TypeChecker<'a> {
             self.current_module = module.id;
             for item in &module.program.items {
                 self.check_decl_derives(&item.inner, item.span);
-                self.check_top_level(&item.inner);
+                self.check_top_level(&item.inner, item.span);
             }
         }
     }
@@ -799,7 +799,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_top_level(&mut self, item: &TopLevelItem) {
+    fn check_top_level(&mut self, item: &TopLevelItem, span: Span) {
         match &item.decl {
             TopLevelDecl::Function(f) => self.check_function(f),
             TopLevelDecl::Const { name, ty, init } => {
@@ -823,10 +823,14 @@ impl<'a> TypeChecker<'a> {
             }
             TopLevelDecl::Impl {
                 type_name,
+                trait_,
                 generics,
                 members,
                 ..
             } => {
+                if let Some(trait_name) = trait_ {
+                    self.check_trait_impl_exhaustiveness(type_name, trait_name, members, span);
+                }
                 let saved_defs = self.type_defs.clone();
                 push_generics(
                     &mut self.type_defs,
@@ -1612,6 +1616,68 @@ impl<'a> TypeChecker<'a> {
                 )
             })
             .collect()
+    }
+
+    fn find_trait_items(&self, trait_def: DefId) -> Option<&[TraitItem]> {
+        let def = self.resolved.defs.get(trait_def.index() as usize)?;
+        for module in &self.resolved.modules {
+            if module.id != def.module {
+                continue;
+            }
+            for item in &module.program.items {
+                if let TopLevelDecl::Trait { name, items, .. } = &item.inner.decl {
+                    if let Some(found) = self.find_def(module.id, name.symbol, DefKind::Trait) {
+                        if found == trait_def {
+                            return Some(items.as_slice());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn check_trait_impl_exhaustiveness(
+        &mut self,
+        type_name: &TypeName,
+        trait_name: &TypeName,
+        members: &[Function],
+        span: Span,
+    ) {
+        let Some(trait_def) = self.type_defs.get(&trait_name.symbol).copied() else {
+            return;
+        };
+        let Some(trait_items) = self.find_trait_items(trait_def) else {
+            return;
+        };
+        let impl_methods: std::collections::HashSet<Symbol> =
+            members.iter().map(|m| m.name.symbol).collect();
+        let type_display = self.resolved.interner.resolve(type_name.symbol).to_owned();
+        let trait_display = self.resolved.interner.resolve(trait_name.symbol).to_owned();
+        let missing_methods: Vec<Symbol> = trait_items
+            .iter()
+            .filter_map(|item| {
+                let TraitItem::Method(sig) = item else {
+                    return None;
+                };
+                if sig.body.is_some() || impl_methods.contains(&sig.name.symbol) {
+                    return None;
+                }
+                Some(sig.name.symbol)
+            })
+            .collect();
+        for method_symbol in missing_methods {
+            let method_display = self.resolved.interner.resolve(method_symbol).to_owned();
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::MissingTraitMethod {
+                    type_name: type_display.clone(),
+                    trait_name: trait_display.clone(),
+                    method_name: method_display,
+                    span,
+                },
+            );
+        }
     }
 
     fn find_inherent_impl_generics(

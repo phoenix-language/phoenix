@@ -786,6 +786,25 @@ fn generic_impl_method_with_type_params_ok() {
 }
 
 #[test]
+fn trait_impl_missing_method_rejected() {
+    let source = "PartialEq :: trait { eq :: (self: Point, other: Point) => bool; }; Point :: struct { x: s32 }; Point :: impl :: PartialEq { }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::MissingTraitMethod {
+                    method_name,
+                    ..
+                } if method_name == "eq"
+            )
+        }),
+        "expected MissingTraitMethod for eq: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
 fn parse_recovery_formats_multiple_carets() {
     let source = "main :: () => { const x = ; const y: s32 = ; };";
     let err = match compile_source(source, None) {

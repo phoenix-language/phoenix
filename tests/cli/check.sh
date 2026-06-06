@@ -18,6 +18,7 @@ NEG_FIXTURES=(
   "invalid_utf8_byte_as_str.phx:invalid cast"
   "given_enum_non_exhaustive.phx:non-exhaustive"
   "match_unreachable_arm.phx:unreachable"
+  "trait_impl_incomplete.phx:trait method"
 )
 
 cd "${ROOT}"
