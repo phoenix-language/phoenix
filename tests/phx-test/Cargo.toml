@@ -1,15 +1,15 @@
 [package]
-name = "phx-integration-tests"
+name = "phx-test"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 publish = false
+description = "Shared helpers for Phoenix language integration and compiler tests"
 
 [lints]
 workspace = true
 
-[dev-dependencies]
-phx-test = { path = "../phx-test" }
+[dependencies]
 phx-bytecode = { path = "../../source/phx-bytecode" }
 phx-compiler = { path = "../../source/phx-compiler" }
 phx-diagnostics = { path = "../../source/phx-diagnostics" }

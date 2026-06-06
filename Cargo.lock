@@ -33,6 +33,7 @@ dependencies = [
  "phx-bytecode",
  "phx-diagnostics",
  "phx-syntax",
+ "phx-test",
 ]
 
 [[package]]
@@ -46,6 +47,7 @@ dependencies = [
  "phx-bytecode",
  "phx-compiler",
  "phx-diagnostics",
+ "phx-test",
  "phx-vm",
 ]
 
@@ -54,6 +56,16 @@ name = "phx-syntax"
 version = "0.1.0"
 dependencies = [
  "phx-diagnostics",
+]
+
+[[package]]
+name = "phx-test"
+version = "0.1.0"
+dependencies = [
+ "phx-bytecode",
+ "phx-compiler",
+ "phx-diagnostics",
+ "phx-vm",
 ]
 
 [[package]]

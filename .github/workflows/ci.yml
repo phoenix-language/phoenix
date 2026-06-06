@@ -41,17 +41,5 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: CLI check fixtures
-        run: bash tests/cli/check.sh
-
-      - name: CLI run fixtures
-        run: bash tests/cli/run.sh
-
-      - name: CLI build fixtures
-        run: bash tests/cli/build.sh
-
-      - name: CLI compile fixtures
-        run: bash tests/cli/compile.sh
-
-      - name: CLI help
-        run: bash tests/cli/help.sh
+      - name: CLI e2e tests
+        run: cargo test -p phx-integration-tests --test cli_e2e -- --test-threads=1

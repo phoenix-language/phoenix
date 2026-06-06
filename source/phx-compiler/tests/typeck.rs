@@ -3,20 +3,12 @@
 
 use std::path::Path;
 
-use phx_compiler::CompileError;
+use phx_test::{compile_ok, expect_typeck_err};
 use phx_compiler::{check_file, compile_source};
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 
-fn ok(source: &str) {
-    compile_source(source, None).unwrap_or_else(|e| panic!("expected ok: {e}"));
-}
-
 fn typeck_err(source: &str) -> TypeCheckBag {
-    match compile_source(source, None) {
-        Err(CompileError::TypeCheck { bag, .. }) => bag,
-        Err(other) => panic!("expected type-check error, got {other}"),
-        Ok(_) => panic!("expected type-check error"),
-    }
+    expect_typeck_err(source)
 }
 
 fn has_unsupported(bag: &TypeCheckBag, needle: &str) -> bool {
@@ -26,18 +18,18 @@ fn has_unsupported(bag: &TypeCheckBag, needle: &str) -> bool {
 }
 
 #[test]
-fn empty_main_ok() {
-    ok("main :: () => { };");
+fn empty_main_compile_ok() {
+    compile_ok("main :: () => { };");
 }
 
 #[test]
-fn while_loop_ok() {
-    ok("main :: () => { var i: s32 = 0; while 3 > (i) { i = i + 1; }; };");
+fn while_loop_compile_ok() {
+    compile_ok("main :: () => { var i: s32 = 0; while 3 > (i) { i = i + 1; }; };");
 }
 
 #[test]
-fn loop_break_continue_ok() {
-    ok("main :: () => { loop { break; }; loop { continue; }; };");
+fn loop_break_continue_compile_ok() {
+    compile_ok("main :: () => { loop { break; }; loop { continue; }; };");
 }
 
 #[test]
@@ -83,8 +75,8 @@ fn continue_outside_loop() {
 }
 
 #[test]
-fn const_inference_ok() {
-    ok("main :: () => { const x = 1; };");
+fn const_inference_compile_ok() {
+    compile_ok("main :: () => { const x = 1; };");
 }
 
 #[test]
@@ -124,7 +116,7 @@ fn use_after_move_error() {
 
 #[test]
 fn str_assign_without_move() {
-    ok("main :: () => { const a: str = \"hi\"; const b = a; const _ = b; };");
+    compile_ok("main :: () => { const a: str = \"hi\"; const b = a; const _ = b; };");
 }
 
 #[test]
@@ -145,13 +137,13 @@ fn use_after_move_fn_arg() {
 }
 
 #[test]
-fn function_trailing_expr_return_ok() {
-    ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
+fn function_trailing_expr_return_compile_ok() {
+    compile_ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
 }
 
 #[test]
-fn function_return_stmt_ok() {
-    ok("f :: () => s32 { return 1; }; main :: () => { };");
+fn function_return_stmt_compile_ok() {
+    compile_ok("f :: () => s32 { return 1; }; main :: () => { };");
 }
 
 #[test]
@@ -175,37 +167,37 @@ fn invalid_cast() {
 }
 
 #[test]
-fn cross_width_cast_ok() {
-    ok(
+fn cross_width_cast_compile_ok() {
+    compile_ok(
         "main :: () => { const wide: s64 = 100 as s64; const narrow: u8 = 42 as u8; const bump: s64 = narrow as s64; const _ = wide + bump; };",
     );
 }
 
 #[test]
-fn signed_unsigned_cast_ok() {
-    ok("main :: () => { const u: u32 = 7 as u32; const s: s64 = u as s64; const _ = s; };");
+fn signed_unsigned_cast_compile_ok() {
+    compile_ok("main :: () => { const u: u32 = 7 as u32; const s: s64 = u as s64; const _ = s; };");
 }
 
 #[test]
-fn s32_as_f32_cast_ok() {
-    ok("main :: () => { const n: s32 = 42; const f: f32 = n as f32; const _ = f; };");
+fn s32_as_f32_cast_compile_ok() {
+    compile_ok("main :: () => { const n: s32 = 42; const f: f32 = n as f32; const _ = f; };");
 }
 
 #[test]
-fn string_literal_and_str_as_u8_slice_ok() {
-    ok(include_str!(
+fn string_literal_and_str_as_u8_slice_compile_ok() {
+    compile_ok(include_str!(
         "../../../tests/cli/fixtures/string_literal.phx"
     ));
 }
 
 #[test]
-fn byte_string_as_str_literal_ok() {
-    ok("main :: () => { const s: str = b\"hi\" as str; const _ = s; };");
+fn byte_string_as_str_literal_compile_ok() {
+    compile_ok("main :: () => { const s: str = b\"hi\" as str; const _ = s; };");
 }
 
 #[test]
-fn byte_string_as_str_const_fold_ok() {
-    ok("main :: () => { const arr = b\"hi\"; const s: str = arr as str; const _ = s; };");
+fn byte_string_as_str_const_fold_compile_ok() {
+    compile_ok("main :: () => { const arr = b\"hi\"; const s: str = arr as str; const _ = s; };");
 }
 
 #[test]
@@ -241,20 +233,20 @@ fn given_enum_non_exhaustive() {
 }
 
 #[test]
-fn given_enum_single_variant_ok() {
-    ok(include_str!(
+fn given_enum_single_variant_compile_ok() {
+    compile_ok(include_str!(
         "../../../tests/cli/fixtures/given_enum_single_variant.phx"
     ));
 }
 
 #[test]
-fn factorial_recursion_ok() {
-    ok(include_str!("../../../tests/cli/fixtures/factorial.phx"));
+fn factorial_recursion_compile_ok() {
+    compile_ok(include_str!("../../../tests/cli/fixtures/factorial.phx"));
 }
 
 #[test]
-fn unary_neg_not_and_comparisons_ok() {
-    ok(include_str!(
+fn unary_neg_not_and_comparisons_compile_ok() {
+    compile_ok(include_str!(
         "../../../tests/cli/fixtures/compare_unary.phx"
     ));
 }
@@ -266,8 +258,8 @@ fn typed(source: &str) -> phx_compiler::TypedProgram {
 }
 
 #[test]
-fn call_top_level_fn_ok() {
-    ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { const x: s32 = add(1, 2); };");
+fn call_top_level_fn_compile_ok() {
+    compile_ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { const x: s32 = add(1, 2); };");
 }
 
 #[test]
@@ -312,8 +304,8 @@ fn main_layout_slot_count() {
 }
 
 #[test]
-fn assign_ok() {
-    ok("main :: () => { var x: s32 = 1; x = 2; };");
+fn assign_compile_ok() {
+    compile_ok("main :: () => { var x: s32 = 1; x = 2; };");
 }
 
 #[test]
@@ -351,8 +343,8 @@ fn assign_moves_non_copyable() {
 }
 
 #[test]
-fn enum_struct_variant_match_ok() {
-    ok(include_str!(
+fn enum_struct_variant_match_compile_ok() {
+    compile_ok(include_str!(
         "../../../tests/cli/fixtures/enum_match_struct.phx"
     ));
 }
@@ -432,15 +424,15 @@ fn enum_match_non_exhaustive() {
 }
 
 #[test]
-fn enum_match_wildcard_exhaustive_ok() {
-    ok(
+fn enum_match_wildcard_exhaustive_compile_ok() {
+    compile_ok(
         "Maybe :: enum { None, Some(s32), }; main :: () => { const m: Maybe = Some(1); const _ = match m { _ => 0; }; };",
     );
 }
 
 #[test]
-fn index_array_ok() {
-    ok("main :: () => { const a: [s32; 2] = [1, 2]; const x: s32 = a[0]; };");
+fn index_array_compile_ok() {
+    compile_ok("main :: () => { const a: [s32; 2] = [1, 2]; const x: s32 = a[0]; };");
 }
 
 #[test]
@@ -478,28 +470,28 @@ fn enum_tuple_pattern_on_non_enum_scrutinee() {
 }
 
 #[test]
-fn enum_match_user_enum_ok() {
-    ok(include_str!("../../../tests/cli/fixtures/enum_match.phx"));
+fn enum_match_user_enum_compile_ok() {
+    compile_ok(include_str!("../../../tests/cli/fixtures/enum_match.phx"));
 }
 
 #[test]
-fn type_alias_const_inference_ok() {
-    ok("type Id = s32; main :: () => { const x: Id = 1; const _ = x; };");
+fn type_alias_const_inference_compile_ok() {
+    compile_ok("type Id = s32; main :: () => { const x: Id = 1; const _ = x; };");
 }
 
 #[test]
-fn type_alias_assignability_ok() {
-    ok("type Id = s32; main :: () => { const x: Id = 1; const y: s32 = x; const _ = y; };");
+fn type_alias_assignability_compile_ok() {
+    compile_ok("type Id = s32; main :: () => { const x: Id = 1; const y: s32 = x; const _ = y; };");
 }
 
 #[test]
-fn type_alias_cast_ok() {
-    ok("type Id = s32; main :: () => { const x: Id = 42 as Id; const _ = x; };");
+fn type_alias_cast_compile_ok() {
+    compile_ok("type Id = s32; main :: () => { const x: Id = 42 as Id; const _ = x; };");
 }
 
 #[test]
-fn type_alias_meters_cast_ok() {
-    ok("type Meters = s32; main :: () => { const x: Meters = 42 as Meters; const _ = x; };");
+fn type_alias_meters_cast_compile_ok() {
+    compile_ok("type Meters = s32; main :: () => { const x: Meters = 42 as Meters; const _ = x; };");
 }
 
 #[test]
@@ -602,7 +594,7 @@ fn deferred_typeck_hash_derive() {
 
 #[test]
 fn shadowed_var_move_does_not_move_outer() {
-    ok(
+    compile_ok(
         "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; { var p: Point = Point { x: 3, y: 4 }; var q: Point = p; }; const _ = p.x; };",
     );
 }
@@ -638,13 +630,13 @@ fn recursive_type_alias_errors() {
 }
 
 #[test]
-fn generic_fn_explicit_args_ok() {
-    ok("id :: <t> (x: s32) => s32 { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
+fn generic_fn_explicit_args_compile_ok() {
+    compile_ok("id :: <t> (x: s32) => s32 { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
 }
 
 #[test]
-fn generic_fn_type_param_in_signature_ok() {
-    ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
+fn generic_fn_type_param_in_signature_compile_ok() {
+    compile_ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id :: <s32> (1); };");
 }
 
 #[test]
@@ -673,8 +665,8 @@ fn generic_fn_on_non_generic_errors() {
 }
 
 #[test]
-fn generic_struct_lit_ok() {
-    ok(
+fn generic_struct_lit_compile_ok() {
+    compile_ok(
         "Box :: <t> struct { v: t, }; main :: () => { const x = Box::<s32> { v: 1 }; const _: s32 = x.v; };",
     );
 }
@@ -692,18 +684,18 @@ fn generic_struct_lit_arity_mismatch_errors() {
 }
 
 #[test]
-fn generic_enum_ctor_ok() {
-    ok("Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some :: <s32> (1); };");
+fn generic_enum_ctor_compile_ok() {
+    compile_ok("Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some :: <s32> (1); };");
 }
 
 #[test]
-fn generic_type_alias_ok() {
-    ok("type Pair<t> = (t, t); main :: () => { const p: Pair<s32> = (1, 2); };");
+fn generic_type_alias_compile_ok() {
+    compile_ok("type Pair<t> = (t, t); main :: () => { const p: Pair<s32> = (1, 2); };");
 }
 
 #[test]
 fn generic_fn_end_to_end_compile() {
-    ok("wrap :: <t> (x: t) => t { x }; main :: () => { const n: s32 = wrap :: <s32> (42); };");
+    compile_ok("wrap :: <t> (x: t) => t { x }; main :: () => { const n: s32 = wrap :: <s32> (42); };");
 }
 
 #[test]
@@ -759,9 +751,9 @@ fn generic_call_ast_has_args() {
 
 #[test]
 fn generic_cli_fixtures_check_file_ok() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures");
+    use phx_test::cli_fixture;
     for name in ["generic_fn.phx", "generic_struct.phx", "generic_enum.phx"] {
-        let path = root.join(name);
+        let path = cli_fixture(name);
         let source = std::fs::read_to_string(&path).expect("read fixture");
         compile_source(&source, Some(&path))
             .unwrap_or_else(|e| panic!("compile_source {name}: {e}"));
@@ -770,8 +762,8 @@ fn generic_cli_fixtures_check_file_ok() {
 }
 
 #[test]
-fn generic_fn_infer_from_args_ok() {
-    ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id(1); };");
+fn generic_fn_infer_from_args_compile_ok() {
+    compile_ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id(1); };");
 }
 
 #[test]
@@ -785,8 +777,8 @@ fn generic_fn_unconstrained_type_param_errors() {
 }
 
 #[test]
-fn generic_fn_copyable_bound_ok() {
-    ok(
+fn generic_fn_copyable_bound_compile_ok() {
+    compile_ok(
         "max :: <t: Copyable> (a: t, b: t) => t { if a > b { a } else { b } }; main :: () => { const _: s32 = max(1, 2); };",
     );
 }
@@ -804,29 +796,29 @@ fn generic_fn_copyable_bound_fails_for_non_copyable_struct() {
 }
 
 #[test]
-fn generic_fn_user_trait_bound_ok() {
-    ok(
+fn generic_fn_user_trait_bound_compile_ok() {
+    compile_ok(
         "PartialEq :: trait { eq :: (self: Point, other: Point) => bool; }; Point :: struct { x: s32 }; Point :: impl :: PartialEq { eq :: (self: Point, other: Point) => bool { self.x == other.x }; }; same :: <t: PartialEq> (a: t, b: t) => bool { true }; main :: () => { const p = Point { x: 1 }; const q = Point { x: 2 }; const _: bool = same(p, q); };",
     );
 }
 
 #[test]
-fn generic_impl_method_body_check_ok() {
-    ok(
+fn generic_impl_method_body_check_compile_ok() {
+    compile_ok(
         "Box :: <t> struct { v: t }; Box :: <t> impl { get :: () => t { self.v }; }; main :: () => { };",
     );
 }
 
 #[test]
-fn generic_impl_method_infer_ok() {
-    ok(
+fn generic_impl_method_infer_compile_ok() {
+    compile_ok(
         "Box :: <t> struct { v: t }; Box :: <t> impl { get :: () => t { self.v }; }; main :: () => { const b = Box :: <s32> { v: 10 }; const _: s32 = b.get(); };",
     );
 }
 
 #[test]
-fn generic_impl_method_with_type_params_ok() {
-    ok(
+fn generic_impl_method_with_type_params_compile_ok() {
+    compile_ok(
         "Box :: <t> struct { v: t }; Box :: <t> impl { id :: <u> (x: u) => u { x }; }; main :: () => { const b = Box :: <s32> { v: 1 }; const _: s32 = b.id(2); };",
     );
 }

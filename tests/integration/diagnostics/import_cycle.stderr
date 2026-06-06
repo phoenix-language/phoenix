@@ -1,5 +1,5 @@
 error[E1008]: circular module import: modules::cycle_a → modules::cycle_b → modules::cycle_a
-  --> /tests/integration/../cli/fixtures/modules/cycle_a.phx:1:1
+  --> /tests/cli/fixtures/modules/cycle_a.phx:1:1
   |
 1 | #import cycle_b::helper;
   | ^^^^^^^^^^^^^^^^^^^^^^^^

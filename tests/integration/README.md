@@ -1,7 +1,29 @@
 # phx-integration-tests
 
-End-to-end integration tests across workspace crates (compile, run, and diagnostics fixtures).
+End-to-end integration tests across workspace crates (compile, run, diagnostics, and CLI).
 
-**Semantics vs smoke:** [`tests/run_semantics.rs`](tests/run_semantics.rs) asserts computed `main` local slots via `VmRunCapture::main_local` (arithmetic, match, traits, modules, recursion, `given`, primitives, pointers, etc.). [`tests/run_control_flow.rs`](tests/run_control_flow.rs) only checks compile → verify → run succeeds for `control_flow.phx` — overlap with `run_semantics::control_flow_loop_counter_reaches_ten`; keep the former as a minimal pipeline smoke test unless you want one less binary target.
+Shared helpers live in [`../phx-test/`](../phx-test/).
 
-**Diagnostic goldens:** [`tests/diagnostics.rs`](tests/diagnostics.rs) compares formatted compiler output to [`diagnostics/*.stderr`](diagnostics/). Regenerate with `UPDATE_GOLDEN=1 cargo test -p phx-integration-tests --test diagnostics`.
+## Test binaries
+
+| Binary | Purpose |
+|--------|---------|
+| [`run_smoke.rs`](tests/run_smoke.rs) | In-process compile → verify → run on positive CLI fixtures |
+| [`run_semantics.rs`](tests/run_semantics.rs) | Assert computed `main` local slots via `VmRunCapture` |
+| [`cli_e2e.rs`](tests/cli_e2e.rs) | Subprocess `phx` CLI tests (replaces `tests/cli/*.sh`) |
+| [`diagnostics.rs`](tests/diagnostics.rs) | Golden formatted diagnostics |
+| Other `run_*` / `incremental_*` | Project build, path deps, modules |
+
+**Diagnostic goldens:** compare formatted output to [`diagnostics/*.stderr`](diagnostics/). Regenerate with:
+
+```bash
+UPDATE_GOLDEN=1 cargo test -p phx-integration-tests --test diagnostics
+```
+
+## Running
+
+```bash
+cargo test -p phx-integration-tests
+just test-lang    # cli_e2e + run_smoke (pre-commit)
+just test-cli     # same as test-lang
+```

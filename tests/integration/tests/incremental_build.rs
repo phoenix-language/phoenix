@@ -1,47 +1,42 @@
 //! Incremental rebuild: stale modules recompile; unchanged modules reuse `.phx0`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use phx_compiler::{BuildOptions, build_project, digest_bytes, discover_project};
-use std::fs;
-use std::path::Path;
-
-fn file_digest(path: &Path) -> String {
-    let bytes = fs::read(path).expect("read");
-    digest_bytes(&bytes)
-}
+use phx_compiler::{BuildOptions, build_project};
+use phx_test::{
+    FixturePatch, build_cli_project, cli_project, discover_cli_project, file_digest,
+};
 
 #[test]
 fn touch_dependency_rebuilds_importers() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/project");
-    let config = discover_project(&root).expect("phoenix.toml");
+    let root = cli_project("project");
+    let config = discover_cli_project(&root);
     let math_src = root.join("src/util/math.phx");
     let math_phx0 = root.join("build/phx0/cli_project_test/util/math.phx0");
     let main_phx0 = root.join("build/phx0/cli_project_test.phx0");
 
-    let original = fs::read_to_string(&math_src).expect("math source");
-
-    build_project(&config, None, BuildOptions::force(true)).expect("initial build");
+    build_cli_project(&config, BuildOptions::force(true));
     let math_hash_before = file_digest(&math_phx0);
-    let math_mtime_before = fs::metadata(&math_phx0)
+    let math_mtime_before = std::fs::metadata(&math_phx0)
         .expect("math phx0")
         .modified()
         .expect("mtime");
-    let main_mtime_before = fs::metadata(&main_phx0)
+    let main_mtime_before = std::fs::metadata(&main_phx0)
         .expect("main phx0")
         .modified()
         .expect("mtime");
 
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let touched = original.replace("a + b", "a + b + 1");
-    fs::write(&math_src, &touched).expect("change math body");
+    let _patch = FixturePatch::replace(&math_src, |original| {
+        original.replace("a + b", "a + b + 1")
+    });
 
     build_project(&config, None, BuildOptions::default()).expect("incremental build");
     let math_hash_after = file_digest(&math_phx0);
-    let math_mtime_after = fs::metadata(&math_phx0)
+    let math_mtime_after = std::fs::metadata(&math_phx0)
         .expect("math phx0")
         .modified()
         .expect("mtime");
-    let main_mtime_after = fs::metadata(&main_phx0)
+    let main_mtime_after = std::fs::metadata(&main_phx0)
         .expect("main phx0")
         .modified()
         .expect("mtime");
@@ -62,6 +57,4 @@ fn touch_dependency_rebuilds_importers() {
         math_hash_after,
         "second build should not rewrite unchanged math phx0"
     );
-
-    fs::write(&math_src, original).expect("restore math fixture");
 }

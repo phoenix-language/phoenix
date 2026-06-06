@@ -3,9 +3,9 @@
 
 use std::path::Path;
 
+use phx_test::{build_cli_project, cli_project, discover_cli_project};
 use phx_compiler::{
-    BuildOptions, PxiExport, PxiFile, PxiType, build_project, compile_source, discover_project,
-    type_check,
+    BuildOptions, PxiExport, PxiFile, PxiType, compile_source, type_check,
 };
 
 #[test]
@@ -39,9 +39,9 @@ fn pxi_v2_type_json_round_trip() {
 
 #[test]
 fn project_build_emits_pxi_v2_with_structured_fn_type() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/project");
-    let config = discover_project(&root).expect("phoenix.toml");
-    build_project(&config, None, BuildOptions::force(true)).expect("build");
+    let root = cli_project("project");
+    let config = discover_cli_project(&root);
+    build_cli_project(&config, BuildOptions::force(true));
     let pxi_path = root.join("build/pxi/cli_project_test/util/math.pxi");
     let text = std::fs::read_to_string(&pxi_path).expect("read pxi");
     let pxi = PxiFile::parse(&text).expect("parse emitted pxi");

@@ -25,13 +25,9 @@ test-integration:
     cargo test -p phx-integration-tests
 
 test-lang:
-    tests/cli/check.sh
-    tests/cli/run.sh
-    tests/cli/build.sh
-    tests/cli/help.sh
+    cargo test -p phx-integration-tests --test cli_e2e --test run_smoke -- --test-threads=1
 
 test-cli: test-lang
-    tests/cli/compile.sh
 
 dep-check:
     bash tests/ci/check-deps.sh

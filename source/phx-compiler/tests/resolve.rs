@@ -3,30 +3,22 @@
 
 use std::path::Path;
 
-use phx_compiler::CompileError;
-use phx_compiler::{compile_source, compile_source_with_module_root};
-use phx_diagnostics::{DiagnosticBag, ResolveError};
+use phx_test::{cli_fixture, cli_fixtures_dir, compile_ok, expect_resolve_err};
+use phx_compiler::{CompileError, compile_source, compile_source_with_module_root};
+use phx_diagnostics::ResolveError;
 
-fn ok(source: &str) {
-    compile_source(source, None).unwrap_or_else(|e| panic!("expected ok: {e}"));
-}
-
-fn resolve_err(source: &str) -> DiagnosticBag {
-    match compile_source(source, None) {
-        Err(CompileError::Resolve { bag, .. }) => bag,
-        Err(other) => panic!("expected resolve error, got {other}"),
-        Ok(_) => panic!("expected resolve error"),
-    }
+fn resolve_err(source: &str) -> phx_diagnostics::DiagnosticBag {
+    expect_resolve_err(source)
 }
 
 #[test]
-fn empty_main_ok() {
-    ok("main :: () => { };");
+fn empty_main_compile_ok() {
+    compile_ok("main :: () => { };");
 }
 
 #[test]
-fn main_with_body_ok() {
-    ok("main :: () => { const x = 1; };");
+fn main_with_body_compile_ok() {
+    compile_ok("main :: () => { const x = 1; };");
 }
 
 #[test]
@@ -87,7 +79,7 @@ fn duplicate_definition_has_span() {
 
 #[test]
 fn phase2_continues_after_phase1_error_in_other_module() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+    let root = cli_fixtures_dir().join("modules");
     let entry = root.join("main_bad_import.phx");
     let source = std::fs::read_to_string(&entry).expect("read main_bad_import.phx");
     let err = match compile_source_with_module_root(&source, &entry, &root) {
@@ -109,7 +101,7 @@ fn phase2_continues_after_phase1_error_in_other_module() {
 
 #[test]
 fn cyclic_import_reports_cycle() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+    let root = cli_fixtures_dir().join("modules");
     let entry = root.join("cycle_a.phx");
     let source = std::fs::read_to_string(&entry).expect("read cycle_a.phx");
     let err = match compile_source_with_module_root(&source, &entry, &root) {
@@ -134,8 +126,8 @@ fn cyclic_import_reports_cycle() {
 }
 
 #[test]
-fn compile_with_module_root_imports_ok() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+fn compile_with_module_root_imports_compile_ok() {
+    let root = cli_fixtures_dir().join("modules");
     let entry = root.join("main.phx");
     let source = std::fs::read_to_string(&entry).expect("read main.phx");
     compile_source_with_module_root(&source, &entry, &root)
@@ -143,8 +135,8 @@ fn compile_with_module_root_imports_ok() {
 }
 
 #[test]
-fn compile_with_module_root_list_import_ok() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+fn compile_with_module_root_list_import_compile_ok() {
+    let root = cli_fixtures_dir().join("modules");
     let entry = root.join("main_list.phx");
     let source = std::fs::read_to_string(&entry).expect("read main_list.phx");
     compile_source_with_module_root(&source, &entry, &root)
@@ -152,8 +144,8 @@ fn compile_with_module_root_list_import_ok() {
 }
 
 #[test]
-fn compile_with_module_root_glob_import_ok() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+fn compile_with_module_root_glob_import_compile_ok() {
+    let root = cli_fixtures_dir().join("modules");
     let entry = root.join("main_glob.phx");
     let source = std::fs::read_to_string(&entry).expect("read main_glob.phx");
     compile_source_with_module_root(&source, &entry, &root)
@@ -162,7 +154,7 @@ fn compile_with_module_root_glob_import_ok() {
 
 #[test]
 fn duplicate_import_in_list_rejected() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+    let root = cli_fixtures_dir().join("modules");
     let entry = root.join("import_dup.phx");
     let source = std::fs::read_to_string(&entry).expect("read import_dup.phx");
     let err = match compile_source_with_module_root(&source, &entry, &root) {
