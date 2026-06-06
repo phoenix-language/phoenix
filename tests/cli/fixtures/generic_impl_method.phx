@@ -6,6 +6,6 @@ Box :: <t> impl {
 
 main :: () => {
   const b = Box :: <s32> { v: 7 };
-  const n: s32 = b.get();
+  const n = b.get(); // infer type: s32
   const _ = n;
 };

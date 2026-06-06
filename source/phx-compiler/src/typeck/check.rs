@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use phx_diagnostics::{Span, TypeCheckBag, TypeCheckError};
+use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
     Function, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
@@ -349,13 +349,14 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
-    fn error_mismatch(&mut self, expected: TypeId, found: TypeId, span: Span) {
+    fn error_mismatch(&mut self, expected: TypeId, found: TypeId, span: Span, kind: MismatchKind) {
         self.bag.push(
             self.current_module,
             TypeCheckError::Mismatch {
                 expected: self.format_ty(expected),
                 found: self.format_ty(found),
                 span,
+                kind,
             },
         );
     }
@@ -807,7 +808,15 @@ impl<'a> TypeChecker<'a> {
                 if let Some(t) = ty {
                     let expected = self.lower_ast_type(t);
                     if !self.types_equal(got, expected) {
-                        self.error_mismatch(expected, got, init.span);
+                        self.error_mismatch(
+                            expected,
+                            got,
+                            init.span,
+                            MismatchKind::ConstBinding {
+                                name: self.symbol_name(name.symbol),
+                                annotation_span: t.span,
+                            },
+                        );
                     }
                 }
                 self.ownership.define(name.symbol, got);
@@ -816,7 +825,15 @@ impl<'a> TypeChecker<'a> {
                 let expected = self.lower_ast_type(ty);
                 let got = self.check_expr_node(init);
                 if !self.types_equal(got, expected) {
-                    self.error_mismatch(expected, got, init.span);
+                    self.error_mismatch(
+                        expected,
+                        got,
+                        init.span,
+                        MismatchKind::VarBinding {
+                            name: self.symbol_name(name.symbol),
+                            annotation_span: ty.span,
+                        },
+                    );
                 }
                 self.move_if_non_copyable(init, got);
                 self.ownership.define(name.symbol, expected);
@@ -907,7 +924,7 @@ impl<'a> TypeChecker<'a> {
         }
         let body_ty = self.check_block_value(&f.body.inner);
         if !self.types_equal(body_ty, ret) {
-            self.error_mismatch(ret, body_ty, f.body.span);
+            self.error_mismatch(ret, body_ty, f.body.span, MismatchKind::FunctionBody);
         }
         if self.is_borrow_type(body_ty) {
             if let Some(expr) = trailing_value_expr(&f.body.inner) {
@@ -968,14 +985,14 @@ impl<'a> TypeChecker<'a> {
             }
             if let Some(ret) = self.fn_ret {
                 if !self.types_equal(got, ret) {
-                    self.error_mismatch(ret, got, e.span);
+                    self.error_mismatch(ret, got, e.span, MismatchKind::Return);
                 }
             }
             got
         } else {
             if let Some(ret) = self.fn_ret {
                 if !self.types_equal(ret, self.unit) {
-                    self.error_mismatch(self.unit, ret, Span::new(0, 0));
+                    self.error_mismatch(self.unit, ret, Span::new(0, 0), MismatchKind::Return);
                 }
             }
             self.unit
@@ -991,7 +1008,17 @@ impl<'a> TypeChecker<'a> {
                 self.ctor_expected = None;
                 if let Some(expected) = expected {
                     if !self.types_equal(got, expected) {
-                        self.error_mismatch(expected, got, init.span);
+                        if let Some(t) = ty.as_ref() {
+                            self.error_mismatch(
+                                expected,
+                                got,
+                                init.span,
+                                MismatchKind::ConstBinding {
+                                    name: self.symbol_name(name.symbol),
+                                    annotation_span: t.span,
+                                },
+                            );
+                        }
                     }
                 }
                 self.define_local(name.symbol, got, BindingKind::Const, Some(&init.inner));
@@ -1000,7 +1027,15 @@ impl<'a> TypeChecker<'a> {
                 let expected = self.lower_ast_type(ty);
                 let got = self.check_expr_node(init);
                 if !self.types_equal(got, expected) {
-                    self.error_mismatch(expected, got, init.span);
+                    self.error_mismatch(
+                        expected,
+                        got,
+                        init.span,
+                        MismatchKind::VarBinding {
+                            name: self.symbol_name(name.symbol),
+                            annotation_span: ty.span,
+                        },
+                    );
                 }
                 self.move_if_non_copyable(init, got);
                 self.define_local(name.symbol, expected, BindingKind::Var, Some(&init.inner));
@@ -1034,7 +1069,7 @@ impl<'a> TypeChecker<'a> {
             Stmt::While { cond, body } => {
                 let c = self.check_expr_node(cond);
                 if !self.types_equal(c, self.bool_ty) {
-                    self.error_mismatch(self.bool_ty, c, cond.span);
+                    self.error_mismatch(self.bool_ty, c, cond.span, MismatchKind::Condition);
                 }
                 self.with_loop_body(|this| this.check_block(&body.inner));
             }
@@ -1062,7 +1097,12 @@ impl<'a> TypeChecker<'a> {
         let lhs = self.check_assign_target(target);
         let rhs = self.check_expr_node(value);
         if !self.types_equal(lhs, rhs) {
-            self.error_mismatch(lhs, rhs, span);
+            let name = if let Expr::Ident(ident) = &target.inner {
+                Some(self.symbol_name(ident.symbol))
+            } else {
+                None
+            };
+            self.error_mismatch(lhs, rhs, span, MismatchKind::Assign { name });
         }
         if let Expr::Ident(ident) = &value.inner {
             if !is_copyable(&self.types, rhs) {
@@ -1912,10 +1952,10 @@ impl<'a> TypeChecker<'a> {
                 },
             );
         }
-        for (p, arg) in params.iter().zip(args.iter()) {
+        for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
             let got = self.check_expr_node(arg);
             if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span);
+                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
             }
         }
         let site = callee_name_use_id(base);
@@ -1987,10 +2027,10 @@ impl<'a> TypeChecker<'a> {
                 },
             );
         }
-        for (p, arg) in params.iter().zip(args.iter()) {
+        for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
             let got = self.check_expr_node(arg);
             if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span);
+                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
             }
         }
         enum_ty
@@ -2018,10 +2058,10 @@ impl<'a> TypeChecker<'a> {
                     },
                 );
             }
-            for (p, arg) in params.iter().zip(args.iter()) {
+            for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
                 let got = self.check_expr_node(arg);
                 if !self.types_equal(got, *p) {
-                    self.error_mismatch(*p, got, arg.span);
+                    self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
                 }
             }
             ret
@@ -2086,6 +2126,7 @@ impl<'a> TypeChecker<'a> {
                     expected: "specialized receiver type".to_owned(),
                     found: self.format_ty(receiver),
                     span,
+                    kind: MismatchKind::default(),
                 },
             );
             return self.unit;
@@ -2141,10 +2182,10 @@ impl<'a> TypeChecker<'a> {
                     },
                 );
             }
-            for (p, arg) in applied_arg_params.iter().zip(args) {
+            for (index, (p, arg)) in applied_arg_params.iter().zip(args).enumerate() {
                 let got = self.check_expr_node(arg);
                 if !self.types_equal(got, *p) {
-                    self.error_mismatch(*p, got, arg.span);
+                    self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
                 }
             }
             let mut mono_args = impl_args;
@@ -2171,10 +2212,10 @@ impl<'a> TypeChecker<'a> {
                 },
             );
         }
-        for (p, arg) in arg_param_types.iter().zip(args) {
+        for (index, (p, arg)) in arg_param_types.iter().zip(args).enumerate() {
             let got = self.check_expr_node(arg);
             if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span);
+                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
             }
         }
         ret
@@ -2231,13 +2272,13 @@ impl<'a> TypeChecker<'a> {
     ) -> TypeId {
         let c = self.check_expr_node(cond);
         if !self.types_equal(c, self.bool_ty) {
-            self.error_mismatch(self.bool_ty, c, cond.span);
+            self.error_mismatch(self.bool_ty, c, cond.span, MismatchKind::Condition);
         }
         let mut then_ty = self.check_block_expr(then_block);
         for (ec, eb) in else_ifs {
             let e = self.check_expr_node(ec);
             if !self.types_equal(e, self.bool_ty) {
-                self.error_mismatch(self.bool_ty, e, ec.span);
+                self.error_mismatch(self.bool_ty, e, ec.span, MismatchKind::Condition);
             }
             let arm_ty = self.check_block_expr(eb);
             then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
@@ -2277,7 +2318,7 @@ impl<'a> TypeChecker<'a> {
             if let Some(g) = &arm.guard {
                 let gt = self.check_expr_node(g);
                 if !self.types_equal(gt, self.bool_ty) {
-                    self.error_mismatch(self.bool_ty, gt, g.span);
+                    self.error_mismatch(self.bool_ty, gt, g.span, MismatchKind::Condition);
                 }
             }
             let body_ty = self.check_expr_node(&arm.body);
@@ -2485,6 +2526,7 @@ impl<'a> TypeChecker<'a> {
                 expected: "enum".to_string(),
                 found: self.format_ty(scrutinee),
                 span,
+                kind: MismatchKind::default(),
             },
         );
     }
@@ -2496,6 +2538,7 @@ impl<'a> TypeChecker<'a> {
                 expected: self.format_named(expected_def),
                 found: self.format_ty(scrutinee),
                 span,
+                kind: MismatchKind::default(),
             },
         );
     }
@@ -2528,6 +2571,7 @@ impl<'a> TypeChecker<'a> {
                                     expected: self.format_named(def),
                                     found: self.format_ty(scrutinee),
                                     span,
+                                    kind: MismatchKind::default(),
                                 },
                             );
                         }
@@ -2720,7 +2764,14 @@ impl<'a> TypeChecker<'a> {
                 if let Some(expected) = field_map.get(&fname.symbol) {
                     let got = self.check_expr_node(value);
                     if !self.types_equal(got, *expected) {
-                        self.error_mismatch(*expected, got, value.span);
+                        self.error_mismatch(
+                            *expected,
+                            got,
+                            value.span,
+                            MismatchKind::StructField {
+                                name: self.symbol_name(fname.symbol),
+                            },
+                        );
                     }
                 } else {
                     self.bag.push(
@@ -2801,7 +2852,14 @@ impl<'a> TypeChecker<'a> {
                 if let Some(expected) = field_map.get(&fname.symbol) {
                     let got = self.check_expr_node(value);
                     if !self.types_equal(got, *expected) {
-                        self.error_mismatch(*expected, got, value.span);
+                        self.error_mismatch(
+                            *expected,
+                            got,
+                            value.span,
+                            MismatchKind::EnumVariantField {
+                                name: self.symbol_name(fname.symbol),
+                            },
+                        );
                     }
                 } else {
                     self.bag.push(

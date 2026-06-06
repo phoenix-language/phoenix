@@ -1,7 +1,59 @@
 //! Cargo-style diagnostic rendering with optional styling.
 
+use std::path::Path;
+
 use crate::DiagnosticCode;
 use crate::Span;
+
+/// Formats a filesystem path for user-facing diagnostics (relative to cwd when possible).
+#[must_use]
+pub fn diagnostic_display_path(path: impl AsRef<Path>) -> String {
+    let path = path.as_ref();
+    if path.as_os_str().is_empty() || path == Path::new("<entry>") {
+        return "<entry>".to_owned();
+    }
+    if let Some(rel) = path_relative_to_cwd(path) {
+        return rel;
+    }
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn path_relative_to_cwd(path: &Path) -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let cwd = cwd.canonicalize().ok()?;
+    if let Ok(rel) = abs.strip_prefix(&cwd) {
+        return Some(rel.to_string_lossy().replace('\\', "/"));
+    }
+    let mut base = cwd.as_path();
+    let mut ups = 0u32;
+    while let Some(parent) = base.parent() {
+        ups += 1;
+        if let Ok(rel) = abs.strip_prefix(parent) {
+            let mut out = String::new();
+            for _ in 0..ups {
+                if !out.is_empty() {
+                    out.push('/');
+                }
+                out.push_str("..");
+            }
+            let rel = rel.to_string_lossy();
+            if !rel.is_empty() {
+                if !out.is_empty() {
+                    out.push('/');
+                }
+                out.push_str(&rel.replace('\\', "/"));
+            }
+            return Some(out);
+        }
+        base = parent;
+    }
+    None
+}
+
+fn location_path(path: &str) -> String {
+    diagnostic_display_path(Path::new(path))
+}
 
 /// Colors and emphasis for diagnostic output.
 pub trait DiagnosticStyle: Send + Sync + std::fmt::Debug {
@@ -13,6 +65,9 @@ pub trait DiagnosticStyle: Send + Sync + std::fmt::Debug {
 
     /// Secondary note label, e.g. `= note: ...`.
     fn note_label(&self, text: &str) -> String;
+
+    /// Actionable suggestion label, e.g. `= help: ...`.
+    fn help_label(&self, text: &str) -> String;
 
     /// Summary footer when multiple errors were emitted.
     fn abort_footer(&self, count: usize) -> String;
@@ -41,6 +96,10 @@ impl DiagnosticStyle for PlainStyle {
         format!("   = note: {text}")
     }
 
+    fn help_label(&self, text: &str) -> String {
+        format!("   = help: {text}")
+    }
+
     fn abort_footer(&self, count: usize) -> String {
         let noun = if count == 1 { "error" } else { "errors" };
         format!("error: aborting due to {count} previous {noun}")
@@ -64,7 +123,7 @@ pub struct SpanContext<'a> {
     pub logical_module: Option<&'a str>,
 }
 
-/// Renders a primary diagnostic with source snippet and optional module note.
+/// Renders a primary diagnostic with source snippet.
 #[must_use]
 pub fn render_diagnostic(
     style: &dyn DiagnosticStyle,
@@ -75,20 +134,69 @@ pub fn render_diagnostic(
     ctx: SpanContext<'_>,
 ) -> String {
     let (line, col) = line_col(source, span.start);
-    let path = ctx.file_path.unwrap_or("<entry>");
+    let path = location_path(ctx.file_path.unwrap_or("<entry>"));
     let mut out = style.error_header(code, message);
     out.push('\n');
-    out.push_str(&style.location_line(path, line, col));
+    out.push_str(&style.location_line(&path, line, col));
     out.push('\n');
     out.push_str(&render_snippet(source, span, line));
-    if let Some(module) = ctx.logical_module {
+    out
+}
+
+/// Extra notes and suggestions rendered after the primary diagnostic.
+#[derive(Debug, Clone, Default)]
+pub struct DiagnosticAncillary<'a> {
+    /// Context notes; optional spans render with carets.
+    pub notes: &'a [AncillaryNote<'a>],
+    /// Suggestion lines (no spans).
+    pub helps: &'a [String],
+}
+
+/// One secondary note for [`render_diagnostic_enriched`].
+#[derive(Debug, Clone)]
+pub struct AncillaryNote<'a> {
+    /// Note body.
+    pub text: &'a str,
+    /// Optional related span.
+    pub span: Option<Span>,
+}
+
+/// Renders primary diagnostic plus optional notes and help suggestions.
+#[must_use]
+pub fn render_diagnostic_enriched(
+    style: &dyn DiagnosticStyle,
+    source: &str,
+    span: Span,
+    code: DiagnosticCode,
+    message: &str,
+    ctx: SpanContext<'_>,
+    ancillary: &DiagnosticAncillary<'_>,
+) -> String {
+    let mut out = render_diagnostic(style, source, span, code, message, ctx);
+    let path = location_path(ctx.file_path.unwrap_or("<entry>"));
+    let (primary_line, _) = line_col(source, span.start);
+    for note in ancillary.notes {
         out.push('\n');
-        out.push_str(&style.note_label(&format!("in module `{module}`")));
+        out.push_str(&style.note_label(note.text));
+        if let Some(note_span) = note.span {
+            let (note_line, _) = line_col(source, note_span.start);
+            if note_line != primary_line {
+                let (_, note_col) = line_col(source, note_span.start);
+                out.push('\n');
+                out.push_str(&style.location_line(&path, note_line, note_col));
+                out.push('\n');
+                out.push_str(&render_snippet(source, note_span, note_line));
+            }
+        }
+    }
+    for help in ancillary.helps {
+        out.push('\n');
+        out.push_str(&style.help_label(help));
     }
     out
 }
 
-/// Renders primary + secondary note spans (move site, duplicate def, etc.).
+/// Renders primary + one secondary note span (move site, duplicate def, etc.).
 #[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn render_diagnostic_with_note(
@@ -101,17 +209,22 @@ pub fn render_diagnostic_with_note(
     note_span: Span,
     note_text: &str,
 ) -> String {
-    let primary = render_diagnostic(style, source, span, code, message, ctx);
-    let (note_line, note_col) = line_col(source, note_span.start);
-    let path = ctx.file_path.unwrap_or("<entry>");
-    let mut out = primary;
-    out.push('\n');
-    out.push_str(&style.note_label(note_text));
-    out.push('\n');
-    out.push_str(&style.location_line(path, note_line, note_col));
-    out.push('\n');
-    out.push_str(&render_snippet(source, note_span, note_line));
-    out
+    let note = AncillaryNote {
+        text: note_text,
+        span: Some(note_span),
+    };
+    render_diagnostic_enriched(
+        style,
+        source,
+        span,
+        code,
+        message,
+        ctx,
+        &DiagnosticAncillary {
+            notes: &[note],
+            helps: &[],
+        },
+    )
 }
 
 /// Joins multiple rendered diagnostics with blank lines and an optional footer.
@@ -171,7 +284,14 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E1001" => Some("An identifier could not be resolved in the current scope."),
         "E1008" => Some("A binary package must define `main :: () => { ... }` in the root module."),
         "E2001" => Some("An expression's type does not match the expected type."),
+        "E2003" => Some("A function or constructor was called with the wrong number of arguments."),
+        "E2005" => Some("No method with that name exists on the receiver type."),
+        "E2014" => Some("An explicit `as` cast is not allowed between these types in MVP."),
         "E2017" => Some("A value was used after it was moved."),
+        "E2022" => {
+            Some("A returned borrow, slice view, or `str` view would outlive a local binding.")
+        }
+        "E2024" => Some("Generic type arguments could not be inferred from call-site arguments."),
         "E3001" => Some("The parser encountered unexpected tokens."),
         _ => None,
     }
@@ -199,8 +319,33 @@ mod tests {
         );
         assert!(out.contains("error[E2001]:"));
         assert!(out.contains("--> bad_type.phx:"));
-        assert!(out.contains("in module `app`"));
         assert!(out.contains(" | "));
+    }
+
+    #[test]
+    fn diagnostic_display_path_strips_cwd_prefix() {
+        let Ok(cwd) = std::env::current_dir() else {
+            return;
+        };
+        let child = cwd.join("tests/cli/fixtures/bad_type.phx");
+        assert_eq!(
+            diagnostic_display_path(&child),
+            "tests/cli/fixtures/bad_type.phx"
+        );
+    }
+
+    #[test]
+    fn diagnostic_display_path_walks_up_to_common_ancestor() {
+        let Ok(cwd) = std::env::current_dir() else {
+            return;
+        };
+        let sibling = cwd.join("../cli/fixtures/bad_type.phx");
+        if sibling.exists() {
+            assert_eq!(
+                diagnostic_display_path(&sibling),
+                "../cli/fixtures/bad_type.phx"
+            );
+        }
     }
 
     #[test]

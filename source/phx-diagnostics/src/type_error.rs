@@ -8,6 +8,55 @@ use crate::LocatedError;
 use crate::Span;
 use crate::code::DiagnosticCode;
 
+/// Why a [`TypeCheckError::Mismatch`] was reported (drives secondary notes and help text).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum MismatchKind {
+    /// Generic expression context (call argument, operator, pattern, etc.).
+    #[default]
+    Expression,
+    /// `const name: T = expr` where `T` does not match `expr`.
+    ConstBinding {
+        /// Binding identifier.
+        name: String,
+        /// Span of the type annotation (`T`).
+        annotation_span: Span,
+    },
+    /// `var name: T = expr` where `T` does not match `expr`.
+    VarBinding {
+        /// Binding identifier.
+        name: String,
+        /// Span of the type annotation (`T`).
+        annotation_span: Span,
+    },
+    /// `return expr` where `expr` does not match the function return type.
+    Return,
+    /// Function body value does not match the declared return type.
+    FunctionBody,
+    /// Call argument at `index` (0-based) does not match the parameter type.
+    Argument {
+        /// Argument index.
+        index: usize,
+    },
+    /// Assignment target type does not match the assigned value.
+    Assign {
+        /// Target identifier when the assignee is a simple local.
+        name: Option<String>,
+    },
+    /// Struct literal field initializer type does not match the field type.
+    StructField {
+        /// Field name.
+        name: String,
+    },
+    /// Enum struct-variant literal field initializer type does not match.
+    EnumVariantField {
+        /// Field name.
+        name: String,
+    },
+    /// `if` / `given` condition is not `bool`.
+    Condition,
+}
+
 /// A type-check error produced while analyzing the AST.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -18,8 +67,10 @@ pub enum TypeCheckError {
         expected: String,
         /// Short description of found type.
         found: String,
-        /// Primary span.
+        /// Primary span (usually the expression with the wrong type).
         span: Span,
+        /// Where the expectation came from (binding annotation, return type, etc.).
+        kind: MismatchKind,
     },
     /// Could not resolve a type name to a definition.
     UnknownType {

@@ -27,6 +27,7 @@ mod resolve_error;
 mod span;
 mod symbol_names;
 mod type_error;
+mod type_notes;
 
 pub use code::DiagnosticCode;
 pub use explain::{lookup as explain_code, normalize_code};
@@ -41,10 +42,11 @@ pub use located::LocatedError;
 pub use lower_error::{LowerBag, LowerError, LowerResult};
 pub use parse_error::{ExpectedToken, ParseBag, ParseError, ParseResult};
 pub use render::{
-    DiagnosticStyle, PlainStyle, SpanContext, join_diagnostics, line_col, render_diagnostic,
-    render_diagnostic_with_note,
+    AncillaryNote, DiagnosticAncillary, DiagnosticStyle, PlainStyle, SpanContext,
+    diagnostic_display_path, join_diagnostics, line_col, render_diagnostic,
+    render_diagnostic_enriched, render_diagnostic_with_note,
 };
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};
 pub use span::Span;
 pub use symbol_names::SymbolNames;
-pub use type_error::{TypeCheckBag, TypeCheckError, TypeCheckResult};
+pub use type_error::{MismatchKind, TypeCheckBag, TypeCheckError, TypeCheckResult};

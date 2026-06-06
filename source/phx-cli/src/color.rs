@@ -93,6 +93,10 @@ impl DiagnosticStyle for AnsiStyle {
         self.wrap(&format!("   = note: {text}"), "38;5;14")
     }
 
+    fn help_label(&self, text: &str) -> String {
+        self.wrap(&format!("   = help: {text}"), "38;5;14")
+    }
+
     fn abort_footer(&self, count: usize) -> String {
         let noun = if count == 1 { "error" } else { "errors" };
         self.wrap(
@@ -114,10 +118,8 @@ impl AnsiStyle {
     /// Cargo-style progress line for a module entering type-check.
     #[must_use]
     pub fn checking_module(&self, logical_module: &str, path: &Path) -> String {
-        self.progress_line(
-            "Checking",
-            &format!("{logical_module} ({})", path.display()),
-        )
+        let display = phx_diagnostics::diagnostic_display_path(path);
+        self.progress_line("Checking", &format!("{logical_module} ({display})"))
     }
 
     /// Cargo-style summary after a successful `phx check`.

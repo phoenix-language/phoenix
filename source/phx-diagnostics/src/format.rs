@@ -7,7 +7,11 @@ use crate::Span;
 use crate::SymbolNames;
 use crate::TypeCheckError;
 use crate::code::DiagnosticCode;
-use crate::render::{PlainStyle, SpanContext, render_diagnostic, render_diagnostic_with_note};
+use crate::render::{
+    AncillaryNote, DiagnosticAncillary, PlainStyle, SpanContext, render_diagnostic,
+    render_diagnostic_enriched, render_diagnostic_with_note,
+};
+use crate::type_notes::{TypeCheckNote, typecheck_ancillary};
 
 /// Formats `message` with a source line and caret for `span` in `source`.
 #[must_use]
@@ -191,57 +195,67 @@ pub fn format_typecheck_error_styled(
     ctx: SpanContext<'_>,
 ) -> String {
     let code = err.code();
-    match err {
-        TypeCheckError::UseAfterMove {
-            name,
-            move_span,
-            span,
-            ..
-        } => render_diagnostic_with_note(
-            style,
-            source,
-            *span,
-            code,
-            &format!("use of moved value `{name}`"),
-            ctx,
-            *move_span,
-            "value moved here",
-        ),
-        TypeCheckError::MovedAssignTarget {
-            name,
-            move_span,
-            span,
-            ..
-        } => render_diagnostic_with_note(
-            style,
-            source,
-            *span,
-            code,
-            &format!("cannot assign to moved value `{name}`"),
-            ctx,
-            *move_span,
-            "value moved here",
-        ),
-        TypeCheckError::ReturnEscapesLocal {
-            span, borrow_span, ..
-        } => render_diagnostic_with_note(
-            style,
-            source,
-            *span,
-            code,
-            "cannot return a borrow of a local variable",
-            ctx,
-            *borrow_span,
-            "borrow of local created here",
-        ),
-        other => {
-            let message = typecheck_message(names, other);
-            if let Some(span) = other.span() {
-                render_diagnostic(style, source, span, code, &message, ctx)
-            } else {
-                style.error_header(code, &message)
-            }
-        }
+    let message = typecheck_message(names, err);
+    let ancillary = typecheck_ancillary(names, err);
+    if let Some(span) = err.span() {
+        render_typecheck_diagnostic(style, source, span, code, &message, ctx, &ancillary)
+    } else {
+        let mut out = style.error_header(code, &message);
+        append_ancillary_text(style, &mut out, &ancillary);
+        out
+    }
+}
+
+fn render_typecheck_diagnostic(
+    style: &dyn crate::render::DiagnosticStyle,
+    source: &str,
+    span: Span,
+    code: DiagnosticCode,
+    message: &str,
+    ctx: SpanContext<'_>,
+    ancillary: &crate::type_notes::TypeCheckAncillary,
+) -> String {
+    let (notes, helps) = ancillary_slices(ancillary);
+    render_diagnostic_enriched(
+        style,
+        source,
+        span,
+        code,
+        message,
+        ctx,
+        &DiagnosticAncillary {
+            notes: &notes,
+            helps: &helps,
+        },
+    )
+}
+
+fn ancillary_slices(
+    ancillary: &crate::type_notes::TypeCheckAncillary,
+) -> (Vec<AncillaryNote<'_>>, Vec<String>) {
+    let notes: Vec<AncillaryNote<'_>> = ancillary
+        .notes
+        .iter()
+        .map(|TypeCheckNote { text, span }| AncillaryNote {
+            text: text.as_str(),
+            span: *span,
+        })
+        .collect();
+    (notes, ancillary.helps.clone())
+}
+
+fn append_ancillary_text(
+    style: &dyn crate::render::DiagnosticStyle,
+    out: &mut String,
+    ancillary: &crate::type_notes::TypeCheckAncillary,
+) {
+    for note in &ancillary.notes {
+        out.push('\n');
+        out.push_str(&style.note_label(&note.text));
+    }
+    for help in &ancillary.helps {
+        out.push('\n');
+        out.push_str(&style.help_label(help));
     }
 }
 
@@ -313,6 +327,24 @@ mod tests {
     }
 
     #[test]
+    fn const_binding_mismatch_note_and_help() {
+        let src = "main :: () => { const x: s32 = true; };";
+        let names = TestNames;
+        let err = TypeCheckError::Mismatch {
+            expected: "S32".to_owned(),
+            found: "Bool".to_owned(),
+            span: Span::new(28, 32),
+            kind: crate::MismatchKind::ConstBinding {
+                name: "x".to_owned(),
+                annotation_span: Span::new(22, 25),
+            },
+        };
+        let out = format_typecheck_error(src, &names, &err);
+        assert!(out.contains("expected type `S32` due to type annotation on `const x`"));
+        assert!(out.contains("= help:"));
+    }
+
+    #[test]
     fn use_after_move_note() {
         let src = "main :: () => {\n    var p = q;\n    const _ = p;\n};";
         let names = TestNames;
@@ -323,8 +355,9 @@ mod tests {
         };
         let out = format_typecheck_error(src, &names, &err);
         assert!(out.contains("use of moved value `p`"));
-        assert!(out.contains("value moved here"));
+        assert!(out.contains("value `p` was moved here"));
         assert!(out.contains("= note:"));
+        assert!(out.contains("= help:"));
     }
 
     #[test]

@@ -10,30 +10,43 @@ use crate::fixtures::repo_root;
 /// Normalizes formatted diagnostics for stable golden comparison.
 pub fn normalize_diagnostics(output: &str) -> String {
     let repo = repo_root().canonicalize().ok();
+    let cwd = std::env::current_dir().ok();
     output
         .lines()
         .map(|line| {
             let mut line = line.trim_end().to_string();
-            if let Some(ref root) = repo {
-                if let Ok(stripped) = Path::new(&line).strip_prefix(root) {
-                    line = stripped.display().to_string();
+            if let (Some(root), Some(cwd)) = (&repo, &cwd) {
+                if let Some(path) = line.strip_prefix("  --> ")
+                    && let Some((file, rest)) = path.split_once(':')
+                {
+                    let file = normalize_diagnostic_path(file, root, cwd);
+                    line = format!("  --> {file}:{rest}");
                 }
                 let root_str = root.display().to_string();
-                if line.starts_with(&root_str) {
-                    line = line[root_str.len()..]
-                        .trim_start_matches('/')
-                        .trim_start_matches('\\')
-                        .to_string();
-                    if !line.is_empty() && !line.ends_with(':') && !line.contains(' ') {
-                        line.push(':');
-                    }
-                }
                 line = line.replace(&root_str, "");
             }
             line.replace('\\', "/")
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn normalize_diagnostic_path(file: &str, repo: &Path, cwd: &Path) -> String {
+    let path = Path::new(file);
+    let abs = if path.is_absolute() {
+        path.canonicalize().ok()
+    } else {
+        cwd.join(path).canonicalize().ok()
+    };
+    if let Some(abs) = abs
+        && let Ok(rel) = abs.strip_prefix(repo)
+    {
+        return rel
+            .to_string_lossy()
+            .trim_start_matches('/')
+            .replace('\\', "/");
+    }
+    file.replace('\\', "/")
 }
 
 /// Compare formatted output against a golden file in `golden_dir`.
