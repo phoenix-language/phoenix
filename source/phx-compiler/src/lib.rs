@@ -48,7 +48,9 @@ pub use facade::{CheckOutput, CompileOutput};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use link::{LinkError, LinkInput, link_modules};
 pub use lower::lower;
-pub use modules::{CrateLoadContext, LoadedCrate, load_crate_with_context, resolve_crate};
+pub use modules::{
+    CrateLoadContext, LoadedCrate, LoadedModule, load_crate_with_context, resolve_crate,
+};
 pub use phx_bytecode::BytecodeModule;
 pub use project::{
     BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,

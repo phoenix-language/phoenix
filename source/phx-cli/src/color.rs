@@ -1,6 +1,8 @@
 //! ANSI styling for CLI output.
 
 use std::io::{IsTerminal, stderr};
+use std::path::Path;
+use std::time::Duration;
 
 use phx_diagnostics::DiagnosticStyle;
 
@@ -68,6 +70,14 @@ impl AnsiStyle {
             text.to_owned()
         }
     }
+
+    fn progress_line(&self, verb: &str, detail: &str) -> String {
+        if self.enabled {
+            format!("    \x1b[1;32m{verb}\x1b[0m {detail}")
+        } else {
+            format!("    {verb} {detail}")
+        }
+    }
 }
 
 impl DiagnosticStyle for AnsiStyle {
@@ -97,6 +107,32 @@ impl DiagnosticStyle for AnsiStyle {
 
     fn success(&self, message: &str) -> String {
         self.wrap(message, "38;5;2")
+    }
+}
+
+impl AnsiStyle {
+    /// Cargo-style progress line for a module entering type-check.
+    #[must_use]
+    pub fn checking_module(&self, logical_module: &str, path: &Path) -> String {
+        self.progress_line(
+            "Checking",
+            &format!("{logical_module} ({})", path.display()),
+        )
+    }
+
+    /// Cargo-style summary after a successful `phx check`.
+    #[must_use]
+    pub fn finished_checking(&self, module_count: usize, elapsed: Duration) -> String {
+        let secs = elapsed.as_secs_f64();
+        let noun = if module_count == 1 {
+            "module"
+        } else {
+            "modules"
+        };
+        self.progress_line(
+            "Finished",
+            &format!("checking {module_count} {noun} in {secs:.2}s"),
+        )
     }
 }
 

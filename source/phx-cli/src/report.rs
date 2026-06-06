@@ -1,5 +1,8 @@
 //! Routes compiler and runtime errors to stderr.
 
+use std::path::Path;
+use std::time::Duration;
+
 use phx_compiler::{BuildError, CompileError};
 use phx_diagnostics::DiagnosticStyle;
 
@@ -7,7 +10,7 @@ use crate::color::AnsiStyle;
 
 /// Emits formatted compiler diagnostics to stderr.
 pub struct Reporter<'a> {
-    style: &'a dyn DiagnosticStyle,
+    style: &'a AnsiStyle,
 }
 
 impl std::fmt::Debug for Reporter<'_> {
@@ -19,7 +22,7 @@ impl std::fmt::Debug for Reporter<'_> {
 impl<'a> Reporter<'a> {
     /// Creates a reporter with the given style.
     #[must_use]
-    pub const fn new(style: &'a dyn DiagnosticStyle) -> Self {
+    pub const fn new(style: &'a AnsiStyle) -> Self {
         Self { style }
     }
 
@@ -45,8 +48,13 @@ impl<'a> Reporter<'a> {
             }
             _ => (None, None),
         };
-        let msg =
-            err.format_with_modules_styled(entry_source, path_ref, modules, interner, self.style);
+        let msg = err.format_with_modules_styled(
+            entry_source,
+            path_ref,
+            modules,
+            interner,
+            self.style as &dyn DiagnosticStyle,
+        );
         eprint_line(&msg);
     }
 
@@ -83,6 +91,16 @@ impl<'a> Reporter<'a> {
     /// Reports a success status (build output path, etc.).
     pub fn success(&self, message: &str) {
         eprint_line(&self.style.success(message));
+    }
+
+    /// Reports cargo-style progress when a module is loaded for checking.
+    pub fn checking_module(&self, logical_module: &str, path: &Path) {
+        eprint_line(&self.style.checking_module(logical_module, path));
+    }
+
+    /// Reports cargo-style summary after a successful check.
+    pub fn check_finished(&self, module_count: usize, elapsed: Duration) {
+        eprint_line(&self.style.finished_checking(module_count, elapsed));
     }
 
     /// Reports verbose pipeline status when enabled.
