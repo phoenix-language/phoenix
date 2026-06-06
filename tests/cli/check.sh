@@ -112,6 +112,35 @@ if ! "${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_MAIN}"; then
 fi
 echo "phx check passed (modules import)"
 
+MODULE_LIST="${MODULES_DIR}/main_list.phx"
+MODULE_GLOB="${MODULES_DIR}/main_glob.phx"
+MODULE_DUP="${MODULES_DIR}/import_dup.phx"
+
+for fixture in "${MODULE_LIST}" "${MODULE_GLOB}"; do
+  if [[ ! -f "${fixture}" ]]; then
+    echo "missing fixture: ${fixture}" >&2
+    exit 1
+  fi
+  echo "running: phx check --module-src ${MODULES_DIR} ${fixture} (expect success)"
+  if ! "${PHX_BIN}" check --module-src "${MODULES_DIR}" "${fixture}"; then
+    echo "phx check should succeed for ${fixture}" >&2
+    exit 1
+  fi
+done
+echo "phx check passed (list and glob imports)"
+
+echo "running: phx check ${MODULE_DUP} (expect duplicate import failure)"
+if output="$("${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_DUP}" 2>&1)"; then
+  echo "phx check should fail for duplicate import" >&2
+  exit 1
+fi
+if [[ "${output}" != *"duplicate"* ]] && [[ "${output}" != *"Duplicate"* ]] && [[ "${output}" != *"E1011"* ]]; then
+  echo "duplicate import should mention duplicate or E1011" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+echo "phx check failed as expected (duplicate import)"
+
 echo "running: phx check ${MODULE_PRIVATE} (expect private import failure)"
 if output="$("${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_PRIVATE}" 2>&1)"; then
   echo "phx check should fail for private import" >&2
@@ -131,6 +160,11 @@ if output="$("${PHX_BIN}" check --module-src "${MODULES_DIR}" "${MODULE_CYCLE}" 
 fi
 if [[ "${output}" != *"cycle"* ]]; then
   echo "cycle diagnostic should mention cycle" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+if [[ "${output}" != *"cycle_a"* ]] || [[ "${output}" != *"cycle_b"* ]]; then
+  echo "cycle diagnostic should name modules in the cycle trace" >&2
   echo "got: ${output}" >&2
   exit 1
 fi

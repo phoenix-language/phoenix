@@ -125,9 +125,9 @@ Multi-file programs and a real project layout so contributors can build packages
 
 ### V0-010 — M1 whole-program modules
 
-- [ ] Files are modules; `#import`, `pub`, and `::` paths per [modules.md](features/modules.md).
-- [ ] Whole-program compile: load all reachable `.phx` files, reject import cycles with a cycle trace.
-- [ ] Single linked PHX0 output for workspace builds.
+- [x] Files are modules; `#import`, `pub`, and `::` paths per [modules.md](features/modules.md).
+- [x] Whole-program compile: load all reachable `.phx` files, reject import cycles with a cycle trace.
+- [x] Single linked PHX0 output for workspace builds.
 
 **Acceptance:** Multi-file program with cross-module `#import` of `pub` items compiles and runs.
 

@@ -1,0 +1,3 @@
+#import util::math::{add, add};
+
+main :: () => { const _ = add(1, 2); };

@@ -119,10 +119,17 @@ fn cyclic_import_reports_cycle() {
     };
     assert!(
         err.errors().iter().any(|e| {
-            matches!(&e.error, ResolveError::CircularImport { .. })
-                && e.error.span().is_some_and(|s| s.end > s.start)
+            matches!(
+                &e.error,
+                ResolveError::CircularImport {
+                    cycle,
+                    ..
+                } if cycle.contains("cycle_a")
+                    && cycle.contains("cycle_b")
+                    && cycle.contains("→")
+            ) && e.error.span().is_some_and(|s| s.end > s.start)
         }),
-        "expected CircularImport with import-site span: {err:?}"
+        "expected CircularImport with module path trace: {err:?}"
     );
 }
 
@@ -133,6 +140,42 @@ fn compile_with_module_root_imports_ok() {
     let source = std::fs::read_to_string(&entry).expect("read main.phx");
     compile_source_with_module_root(&source, &entry, &root)
         .unwrap_or_else(|e| panic!("expected ok: {e}"));
+}
+
+#[test]
+fn compile_with_module_root_list_import_ok() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+    let entry = root.join("main_list.phx");
+    let source = std::fs::read_to_string(&entry).expect("read main_list.phx");
+    compile_source_with_module_root(&source, &entry, &root)
+        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+}
+
+#[test]
+fn compile_with_module_root_glob_import_ok() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+    let entry = root.join("main_glob.phx");
+    let source = std::fs::read_to_string(&entry).expect("read main_glob.phx");
+    compile_source_with_module_root(&source, &entry, &root)
+        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+}
+
+#[test]
+fn duplicate_import_in_list_rejected() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
+    let entry = root.join("import_dup.phx");
+    let source = std::fs::read_to_string(&entry).expect("read import_dup.phx");
+    let err = match compile_source_with_module_root(&source, &entry, &root) {
+        Err(CompileError::Resolve { bag, .. }) => bag,
+        Err(other) => panic!("expected resolve error, got {other}"),
+        Ok(_) => panic!("expected duplicate import failure"),
+    };
+    assert!(
+        err.errors()
+            .iter()
+            .any(|e| matches!(&e.error, ResolveError::DuplicateImport { .. })),
+        "expected DuplicateImport: {err:?}"
+    );
 }
 
 #[test]

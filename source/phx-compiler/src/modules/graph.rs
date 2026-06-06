@@ -55,25 +55,121 @@ fn topo_sort_inner(module_count: usize, edges: &[ImportEdge]) -> Option<Vec<Modu
     Some(order)
 }
 
-fn cycle_edge(edges: &[ImportEdge], module_count: usize) -> Option<(Span, u32)> {
+fn cyclic_module_indices(module_count: usize, edges: &[ImportEdge]) -> HashSet<u32> {
     let mut indegree = vec![0usize; module_count];
     for &(_, to, _) in edges {
         if (to.index() as usize) < module_count {
             indegree[to.index() as usize] += 1;
         }
     }
-    let cyclic: HashSet<u32> = indegree
+    indegree
         .iter()
         .enumerate()
         .filter(|(_, d)| **d > 0)
         .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
-        .collect();
+        .collect()
+}
+
+fn import_adjacency(module_count: usize, edges: &[ImportEdge]) -> Vec<Vec<ModuleId>> {
+    let mut adj = vec![Vec::new(); module_count];
+    for &(from, to, _) in edges {
+        if (from.index() as usize) < module_count && (to.index() as usize) < module_count {
+            adj[from.index() as usize].push(to);
+        }
+    }
+    adj
+}
+
+fn cycle_edge(edges: &[ImportEdge], module_count: usize) -> Option<(Span, u32)> {
+    let cyclic = cyclic_module_indices(module_count, edges);
     for &(from, to, span) in edges {
         if cyclic.contains(&from.index()) && cyclic.contains(&to.index()) {
             return Some((span, from.index()));
         }
     }
     edges.first().map(|&(from, _, span)| (span, from.index()))
+}
+
+fn module_display(modules: &[LoadedModule], id: ModuleId) -> String {
+    modules.get(id.index() as usize).map_or_else(
+        || format!("module#{}", id.index()),
+        |m| m.logical_path.display(),
+    )
+}
+
+fn find_cycle_path(
+    adj: &[Vec<ModuleId>],
+    start: ModuleId,
+    cyclic: &HashSet<u32>,
+) -> Option<Vec<ModuleId>> {
+    let mut path = Vec::new();
+    let mut on_path = HashSet::new();
+    let mut found = None;
+    find_cycle_path_dfs(
+        adj,
+        start,
+        start,
+        cyclic,
+        &mut path,
+        &mut on_path,
+        &mut found,
+    );
+    found
+}
+
+fn find_cycle_path_dfs(
+    adj: &[Vec<ModuleId>],
+    start: ModuleId,
+    node: ModuleId,
+    cyclic: &HashSet<u32>,
+    path: &mut Vec<ModuleId>,
+    on_path: &mut HashSet<u32>,
+    found: &mut Option<Vec<ModuleId>>,
+) {
+    if found.is_some() {
+        return;
+    }
+    path.push(node);
+    on_path.insert(node.index());
+
+    for &next in &adj[node.index() as usize] {
+        if !cyclic.contains(&next.index()) {
+            continue;
+        }
+        if next == start && path.len() > 1 {
+            let mut cycle = path.clone();
+            cycle.push(start);
+            *found = Some(cycle);
+            return;
+        }
+        if !on_path.contains(&next.index()) {
+            find_cycle_path_dfs(adj, start, next, cyclic, path, on_path, found);
+        }
+    }
+
+    path.pop();
+    on_path.remove(&node.index());
+}
+
+fn format_cycle_trace(edges: &[ImportEdge], modules: &[LoadedModule], start_module: u32) -> String {
+    let module_count = modules.len();
+    let cyclic = cyclic_module_indices(module_count, edges);
+    let adj = import_adjacency(module_count, edges);
+    let start = ModuleId::from_raw(start_module);
+
+    if let Some(cycle) = find_cycle_path(&adj, start, &cyclic) {
+        return cycle
+            .iter()
+            .map(|&id| module_display(modules, id))
+            .collect::<Vec<_>>()
+            .join(" → ");
+    }
+
+    cyclic
+        .iter()
+        .map(|&idx| module_display(modules, ModuleId::from_raw(idx)))
+        .collect::<Vec<_>>()
+        .join(" → ")
 }
 
 /// Topological order, or identity `0..n` when every cyclic module has a fresh `.pxi`.
@@ -111,13 +207,8 @@ pub(crate) fn topo_sort_with_pxi_escape(
         );
     }
     let (span, module) = cycle_edge(edges, module_count).unwrap_or((Span::new(0, 0), 0));
-    bag.push(
-        module,
-        ResolveError::CircularImport {
-            span,
-            cycle: format!("module graph cycle (entry module id {})", roots.index()),
-        },
-    );
+    let cycle = format_cycle_trace(edges, modules, module);
+    bag.push(module, ResolveError::CircularImport { span, cycle });
     None
 }
 
@@ -129,17 +220,9 @@ fn cycle_modules_have_fresh_pxi(
     workspace_package: &str,
     dep_names: &[&str],
 ) -> bool {
-    let mut indegree = vec![0usize; module_count];
-    for &(_, to, _) in edges {
-        if (to.index() as usize) < module_count {
-            indegree[to.index() as usize] += 1;
-        }
-    }
-    let cyclic: Vec<usize> = indegree
-        .iter()
-        .enumerate()
-        .filter(|(_, d)| **d > 0)
-        .map(|(i, _)| i)
+    let cyclic: Vec<usize> = cyclic_module_indices(module_count, edges)
+        .into_iter()
+        .map(|idx| idx as usize)
         .collect();
     if cyclic.is_empty() {
         return false;
