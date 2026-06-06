@@ -150,9 +150,9 @@ Multi-file programs and a real project layout so contributors can build packages
 
 ### V0-012 — `.pxi` interfaces and incremental rebuild
 
-- [ ] Emit `.pxi` v2 (`format_version: 2`) with `logical_module`, `source_hash`, structured `ty`, and `dependencies`.
-- [ ] Rebuild when source hash or dependency `pxi_hash` changes.
-- [ ] `phx check` uses project layout when `phoenix.toml` is found (no `build/` required).
+- [x] Emit `.pxi` v2 (`format_version: 2`) with `logical_module`, `source_hash`, structured `ty`, and `dependencies`.
+- [x] Rebuild when source hash or dependency `pxi_hash` changes.
+- [x] `phx check` uses project layout when `phoenix.toml` is found (no `build/` required).
 
 **Acceptance:** Touching one module rebuilds only stale modules and transitive importers; `.pxi` drives cross-module type-checking.
 

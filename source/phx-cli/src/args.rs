@@ -82,6 +82,8 @@ pub struct FileCommandArgs {
     pub deps: Vec<(String, PathBuf)>,
     /// Workspace package name override.
     pub package_name: Option<String>,
+    /// Emit `.pxi` interfaces and manifest only (project check mode).
+    pub emit_interface_only: bool,
 }
 
 /// `phx build` arguments.
@@ -93,6 +95,8 @@ pub struct ProjectCommandArgs {
     pub project_root: Option<PathBuf>,
     /// Force rebuild.
     pub force_build: bool,
+    /// Emit `.pxi` interfaces and manifest only.
+    pub emit_interface_only: bool,
 }
 
 /// `phx compile` arguments.
@@ -270,6 +274,7 @@ fn parse_file_flags(
                 let (name, path) = parse_dep_spec(&spec)?;
                 args.deps.push((name, path));
             }
+            "--emit-interface-only" => args.emit_interface_only = true,
             "-o" if allow_output => {
                 let path = iter
                     .next()
@@ -299,6 +304,7 @@ fn parse_project_flags(
                 args.project_root = Some(PathBuf::from(path));
             }
             "--build" => args.force_build = true,
+            "--emit-interface-only" => args.emit_interface_only = true,
             s if s.starts_with("--") => {
                 return Err(ParseError::new(format!("unexpected argument '{s}'")));
             }
@@ -340,6 +346,11 @@ fn parse_run_flags(iter: &mut impl Iterator<Item = String>) -> Result<RunCommand
             }
             "--build" => args.force_build = true,
             "--no-build" => args.skip_build = true,
+            "--emit-interface-only" => {
+                return Err(ParseError::new(
+                    "`phx run` does not support --emit-interface-only (no runnable artifact)",
+                ));
+            }
             s if s.starts_with("--") => {
                 return Err(ParseError::new(format!("unexpected argument '{s}'")));
             }

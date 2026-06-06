@@ -19,6 +19,20 @@ use crate::typeck::type_check;
 
 use super::error::BuildError;
 use super::manifest::{BuildManifest, ManifestModule, module_is_up_to_date, record_pxi_hash};
+use super::options::BuildOptions;
+
+/// Inputs shared by interface emission and incremental object collection.
+struct ArtifactEmitCtx<'a> {
+    config: &'a ProjectConfig,
+    loaded: &'a LoadedCrate,
+    typed: &'a crate::typeck::TypedProgram,
+    layout: &'a BuildLayout,
+    bin_path: &'a str,
+    entry_logical: &'a str,
+    options: BuildOptions,
+    old_manifest: Option<&'a BuildManifest>,
+    global_fn: &'a HashMap<DefId, u32>,
+}
 
 /// Result of a successful project build.
 #[derive(Debug, Clone)]
@@ -37,19 +51,68 @@ pub struct BuildResult {
 pub fn build_project(
     config: &ProjectConfig,
     entry_file: Option<&Path>,
-    force: bool,
+    options: BuildOptions,
 ) -> Result<BuildResult, BuildError> {
     for dep in config.dependencies.values() {
-        build_dependency(config, &config.root.join(&dep.path), force)?;
+        build_dependency(config, &config.root.join(&dep.path), options)?;
     }
-    build_package(config, entry_file, force, None)
+    build_package(config, entry_file, options, None)
+}
+
+/// Writes `.pxi` files and `manifest.json` after a successful type-check.
+///
+/// # Errors
+///
+/// Returns [`BuildError`] on I/O or interface verification failure.
+pub fn emit_interfaces_from_compiled(
+    config: &ProjectConfig,
+    loaded: &LoadedCrate,
+    typed: &crate::typeck::TypedProgram,
+    options: BuildOptions,
+    layout_override: Option<BuildLayout>,
+) -> Result<BuildResult, BuildError> {
+    let layout = layout_override.unwrap_or_else(|| BuildLayout::new(config));
+    layout
+        .ensure_workspace_dirs(config.package_type)
+        .map_err(|e| io_err(&e))?;
+    let root_module = loaded
+        .modules
+        .iter()
+        .find(|m| m.id == loaded.root)
+        .ok_or_else(|| {
+            BuildError::Project(crate::project::ProjectError::Invalid {
+                message: "missing root module in loaded crate".to_owned(),
+            })
+        })?;
+    let entry_logical = entry_logical_path(config, &root_module.filesystem)?;
+    let output_path = if options.emit_interface_only {
+        layout.manifest_path()
+    } else {
+        match config.package_type {
+            PackageType::Bin => layout.bin_path(config.output_name()),
+            PackageType::Lib => layout.lib_path(config.output_name()),
+        }
+    };
+    write_interfaces_and_manifest(
+        config,
+        loaded,
+        typed,
+        &layout,
+        &output_path.display().to_string(),
+        &entry_logical,
+        options,
+    )?;
+    Ok(BuildResult {
+        output_path,
+        entry_logical,
+    })
 }
 
 #[allow(clippy::too_many_lines)] // incremental build driver: single orchestration pass
 fn build_package(
     config: &ProjectConfig,
     entry_file: Option<&Path>,
-    force: bool,
+    options: BuildOptions,
     layout_override: Option<BuildLayout>,
 ) -> Result<BuildResult, BuildError> {
     let entry_file = entry_file.map_or_else(|| config.default_entry_file(), Path::to_path_buf);
@@ -73,12 +136,16 @@ fn build_package(
     let manifest_path = layout.manifest_path();
     let old_manifest = BuildManifest::read(&manifest_path);
 
-    let needs_full = force || !output_path.is_file() || old_manifest.is_none();
+    let artifact_fresh = old_manifest
+        .as_ref()
+        .is_some_and(|old| all_modules_fresh(old, &loaded, &layout, &ctx));
+    let linked_output_fresh = output_path.is_file();
+    let needs_full = options.force
+        || old_manifest.is_none()
+        || !artifact_fresh
+        || (!options.emit_interface_only && !linked_output_fresh);
 
-    if !needs_full
-        && let Some(ref old) = old_manifest
-        && all_modules_fresh(old, &loaded, &layout, &ctx)
-    {
+    if !needs_full {
         return Ok(BuildResult {
             output_path,
             entry_logical,
@@ -87,107 +154,27 @@ fn build_package(
 
     let resolved = resolve_crate(loaded.clone()).map_err(BuildError::Resolve)?;
     let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
-    let full_ir = lower(&typed).map_err(BuildError::Lower)?;
-    let global_fn = build_global_fn_map(&typed, &full_ir);
 
-    let export_maps = collect_export_maps(&resolved);
-    let dep_names: Vec<&str> = ctx.dep_names();
-
-    let mut link_inputs = Vec::new();
-    let mut manifest = BuildManifest {
-        entry: entry_logical.clone(),
-        bin_path: output_path.display().to_string(),
-        modules: HashMap::new(),
-    };
-
-    for module in &loaded.modules {
-        let logical = module.logical_path.display();
-        let artifacts = layout.module_artifacts(&logical);
-        let source_hash = digest_file(&module.filesystem).unwrap_or_default();
-        let exports = &export_maps[module.id.index() as usize];
-        let deps = module_dependencies(
-            module,
-            &layout,
-            &loaded.path_index,
-            &loaded.interner,
-            &loaded.package_name,
-            &dep_names,
-        );
-        let dep_hashes: Vec<_> = deps
-            .iter()
-            .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
-            .collect();
-
-        let skip = old_manifest.as_ref().is_some_and(|old| {
-            !force && module_is_up_to_date(old, &logical, &source_hash, &dep_hashes)
-        });
-
-        if !skip {
-            let pxi = build_pxi_for_module(
-                &logical,
-                &module.filesystem,
-                module.id.index(),
-                &typed,
-                exports,
-                &deps,
-            );
-            if let Some(old) = &old_manifest {
-                verify_pxi_exports(old, &logical, &pxi)?;
-            }
-            pxi.write_to_path(&artifacts.pxi)
-                .map_err(|e| io_err_path(&artifacts.pxi, &e))?;
-        }
-
-        let obj = if skip {
-            let phx0_path = old_manifest
-                .as_ref()
-                .and_then(|old| old.modules.get(&logical))
-                .map(|rec| std::path::PathBuf::from(&rec.phx0_path))
-                .filter(|p| p.is_file())
-                .unwrap_or_else(|| artifacts.phx0.clone());
-            let bytes = std::fs::read(&phx0_path).map_err(|e| io_err_path(&phx0_path, &e))?;
-            BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
-                path: phx0_path,
-                message: format!("{e:?}"),
-            })?
-        } else {
-            let module_ir = lower_module(&typed, module.id.index()).map_err(BuildError::Lower)?;
-            let obj = codegen_module(&module_ir, &typed, &global_fn, module.id == loaded.root)
-                .map_err(BuildError::Codegen)?;
-            let bytes = obj.encode().map_err(BuildError::Encode)?;
-            if let Some(parent) = artifacts.phx0.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;
-            }
-            std::fs::write(&artifacts.phx0, &bytes)
-                .map_err(|e| io_err_path(&artifacts.phx0, &e))?;
-            obj
-        };
-
-        link_inputs.push(LinkInput {
-            logical_path: logical.clone(),
-            module: obj,
-        });
-
-        let rel_source = module
-            .filesystem
-            .strip_prefix(&config.root)
-            .unwrap_or(&module.filesystem)
-            .display()
-            .to_string();
-
-        manifest.modules.insert(
-            logical.clone(),
-            ManifestModule {
-                logical_path: logical,
-                source: rel_source,
-                source_hash,
-                pxi_hash: record_pxi_hash(&artifacts.pxi),
-                phx0_path: artifacts.phx0.display().to_string(),
-                pxi_path: artifacts.pxi.display().to_string(),
-            },
-        );
+    if options.emit_interface_only {
+        return emit_interfaces_from_compiled(config, &loaded, &typed, options, Some(layout));
     }
 
+    let full_ir = lower(&typed).map_err(BuildError::Lower)?;
+    let global_fn = build_global_fn_map(&typed, &full_ir);
+    let ctx = ArtifactEmitCtx {
+        config,
+        loaded: &loaded,
+        typed: &typed,
+        layout: &layout,
+        bin_path: &output_path.display().to_string(),
+        entry_logical: &entry_logical,
+        options,
+        old_manifest: old_manifest.as_ref(),
+        global_fn: &global_fn,
+    };
+    let (link_inputs, manifest) = write_interfaces_and_collect_objects(&ctx)?;
+
+    let mut link_inputs = link_inputs;
     append_dependency_link_inputs(config, &mut link_inputs)?;
 
     let entry_fn = match config.package_type {
@@ -222,20 +209,192 @@ fn build_package(
 fn build_dependency(
     consumer: &ProjectConfig,
     dep_root: &Path,
-    force: bool,
+    options: BuildOptions,
 ) -> Result<(), BuildError> {
     let dep_cfg = ProjectConfig::load(dep_root).map_err(BuildError::Project)?;
     let dep_layout = BuildLayout::for_dependency(consumer, &dep_cfg.name);
     dep_layout.ensure_dep_dirs().map_err(|e| io_err(&e))?;
-    let out = dep_layout.lib_path(&dep_cfg.name);
-    if out.is_file() && !force {
+    if dependency_build_is_fresh(&dep_cfg, &dep_layout, options) {
         return Ok(());
     }
     for nested in dep_cfg.dependencies.values() {
-        build_dependency(consumer, &dep_cfg.root.join(&nested.path), force)?;
+        build_dependency(consumer, &dep_cfg.root.join(&nested.path), options)?;
     }
-    build_package(&dep_cfg, None, force, Some(dep_layout))?;
+    build_package(&dep_cfg, None, options, Some(dep_layout))?;
     Ok(())
+}
+
+fn dependency_build_is_fresh(
+    dep_cfg: &ProjectConfig,
+    dep_layout: &BuildLayout,
+    options: BuildOptions,
+) -> bool {
+    if options.force {
+        return false;
+    }
+    let out = dep_layout.lib_path(&dep_cfg.name);
+    if !out.is_file() {
+        return false;
+    }
+    let manifest_path = dep_layout.manifest_path();
+    let Some(manifest) = BuildManifest::read(&manifest_path) else {
+        return false;
+    };
+    let entry = dep_cfg.default_entry_file();
+    let ctx = CrateLoadContext::from_config(dep_cfg);
+    let mut bag = phx_diagnostics::DiagnosticBag::new();
+    let Some(loaded) = load_crate_with_context(&entry, &ctx, Some(dep_layout), &mut bag) else {
+        return false;
+    };
+    if bag.has_errors() {
+        return false;
+    }
+    all_modules_fresh(&manifest, &loaded, dep_layout, &ctx)
+}
+
+fn write_interfaces_and_manifest(
+    config: &ProjectConfig,
+    loaded: &LoadedCrate,
+    typed: &crate::typeck::TypedProgram,
+    layout: &BuildLayout,
+    bin_path: &str,
+    entry_logical: &str,
+    options: BuildOptions,
+) -> Result<BuildManifest, BuildError> {
+    let old_manifest = BuildManifest::read(&layout.manifest_path());
+    let ctx = ArtifactEmitCtx {
+        config,
+        loaded,
+        typed,
+        layout,
+        bin_path,
+        entry_logical,
+        options,
+        old_manifest: old_manifest.as_ref(),
+        global_fn: &HashMap::new(),
+    };
+    let (_, manifest) = write_interfaces_and_collect_objects(&ctx)?;
+    manifest
+        .write(&layout.manifest_path())
+        .map_err(|e| io_err(&e))?;
+    Ok(manifest)
+}
+
+#[allow(clippy::too_many_lines)] // per-module pxi + optional phx0 loop
+fn write_interfaces_and_collect_objects(
+    ctx: &ArtifactEmitCtx<'_>,
+) -> Result<(Vec<LinkInput>, BuildManifest), BuildError> {
+    let ArtifactEmitCtx {
+        config,
+        loaded,
+        typed,
+        layout,
+        bin_path,
+        entry_logical,
+        options,
+        old_manifest,
+        global_fn,
+    } = ctx;
+    let export_maps = collect_export_maps(&typed.resolved);
+    let load_ctx = CrateLoadContext::from_config(config);
+    let dep_names: Vec<&str> = load_ctx.dep_names();
+    let mut link_inputs = Vec::new();
+    let mut manifest = BuildManifest {
+        entry: entry_logical.to_string(),
+        bin_path: bin_path.to_string(),
+        modules: HashMap::new(),
+    };
+
+    for module in &loaded.modules {
+        let logical = module.logical_path.display();
+        let artifacts = layout.module_artifacts(&logical);
+        let source_hash = digest_file(&module.filesystem).unwrap_or_default();
+        let exports = &export_maps[module.id.index() as usize];
+        let deps = module_dependencies(
+            module,
+            layout,
+            &loaded.path_index,
+            &loaded.interner,
+            &loaded.package_name,
+            &dep_names,
+        );
+        let dep_hashes: Vec<_> = deps
+            .iter()
+            .map(|d| (d.logical_module.clone(), d.pxi_hash.clone()))
+            .collect();
+
+        let skip = old_manifest.is_some_and(|old| {
+            !options.force && module_is_up_to_date(old, &logical, &source_hash, &dep_hashes)
+        });
+
+        if !skip {
+            let pxi = build_pxi_for_module(
+                &logical,
+                &module.filesystem,
+                module.id.index(),
+                typed,
+                exports,
+                &deps,
+            );
+            if let Some(old) = old_manifest {
+                verify_pxi_exports(old, &logical, &pxi)?;
+            }
+            pxi.write_to_path(&artifacts.pxi)
+                .map_err(|e| io_err_path(&artifacts.pxi, &e))?;
+        }
+
+        if !options.emit_interface_only {
+            let obj = if skip {
+                let phx0_path = old_manifest
+                    .and_then(|old| old.modules.get(&logical))
+                    .map(|rec| std::path::PathBuf::from(&rec.phx0_path))
+                    .filter(|p| p.is_file())
+                    .unwrap_or_else(|| artifacts.phx0.clone());
+                let bytes = std::fs::read(&phx0_path).map_err(|e| io_err_path(&phx0_path, &e))?;
+                BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
+                    path: phx0_path,
+                    message: format!("{e:?}"),
+                })?
+            } else {
+                let module_ir =
+                    lower_module(typed, module.id.index()).map_err(BuildError::Lower)?;
+                let obj = codegen_module(&module_ir, typed, global_fn, module.id == loaded.root)
+                    .map_err(BuildError::Codegen)?;
+                let bytes = obj.encode().map_err(BuildError::Encode)?;
+                if let Some(parent) = artifacts.phx0.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;
+                }
+                std::fs::write(&artifacts.phx0, &bytes)
+                    .map_err(|e| io_err_path(&artifacts.phx0, &e))?;
+                obj
+            };
+            link_inputs.push(LinkInput {
+                logical_path: logical.clone(),
+                module: obj,
+            });
+        }
+
+        let rel_source = module
+            .filesystem
+            .strip_prefix(&config.root)
+            .unwrap_or(&module.filesystem)
+            .display()
+            .to_string();
+
+        manifest.modules.insert(
+            logical.clone(),
+            ManifestModule {
+                logical_path: logical,
+                source: rel_source,
+                source_hash,
+                pxi_hash: record_pxi_hash(&artifacts.pxi),
+                phx0_path: artifacts.phx0.display().to_string(),
+                pxi_path: artifacts.pxi.display().to_string(),
+            },
+        );
+    }
+
+    Ok((link_inputs, manifest))
 }
 
 fn append_dependency_link_inputs(

@@ -110,3 +110,4 @@ Phoenix resolves `#import` paths relative to a **module root** directory (the fo
 | [`lib_with_main/`](fixtures/lib_with_main/) | negative lib | `check.sh` | `main` in lib package → E1014 |
 | [`bad_dep_key/`](fixtures/bad_dep_key/) | negative project | `build.sh` | Dependency key ≠ `project.name` |
 | [`bin_missing_main/`](fixtures/bin_missing_main/) | negative project | `build.sh` | `type = bin` without `main.phx` |
+**CLI flags (V0-012):** `phx build --emit-interface-only`, `phx check --emit-interface-only` write `build/pxi/` + manifest without link; `phx check` on `app_dep` works without prior `phx build`.

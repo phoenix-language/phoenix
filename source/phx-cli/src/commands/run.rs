@@ -4,7 +4,9 @@ use std::fs;
 use std::path::Path;
 
 use phx_bytecode::verify;
-use phx_compiler::{build_project, compile_standalone_with_context, load_project_binary};
+use phx_compiler::{
+    BuildOptions, build_project, compile_standalone_with_context, load_project_binary,
+};
 
 use crate::args::RunCommandArgs;
 use crate::color::ColorChoice;
@@ -52,7 +54,11 @@ fn run_project(
 ) -> CliExit {
     if !skip_build {
         reporter.verbose(verbose, "building project...");
-        if let Err(e) = build_project(config, entry, force) {
+        let options = BuildOptions {
+            force,
+            emit_interface_only: false,
+        };
+        if let Err(e) = build_project(config, entry, options) {
             reporter.build_error(&e);
             return CliExit::Compile;
         }

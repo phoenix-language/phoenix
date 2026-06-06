@@ -37,7 +37,10 @@ mod standalone;
 mod typeck;
 mod unit;
 
-pub use build::{BuildError, BuildResult, build_project, load_project_binary};
+pub use build::{
+    BuildError, BuildOptions, BuildResult, build_project, emit_interfaces_from_compiled,
+    load_project_binary,
+};
 pub use codegen::{build_type_table, codegen, codegen_module};
 pub use compile::{
     CompileError, DiagnosticContext, check_file, check_file_with_module_path, check_project_file,

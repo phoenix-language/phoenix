@@ -38,19 +38,21 @@ pub fn print_command_help(sub: SubcommandName) {
                phx check [--module-src <dir>] [--package-name <name>] [--dep name=path] <file.phx>\n\
              \n\
              options:\n\
-               --module-src <dir>    Module root for #import resolution\n\
-               --package-name <name> Package name override (default: parent directory name)\n\
-               --dep name=path       Path dependency for cross-package imports (repeatable)"
+               --module-src <dir>         Module root for #import resolution\n\
+               --package-name <name>      Package name override (default: parent directory name)\n\
+               --dep name=path            Path dependency for cross-package imports (repeatable)\n\
+               --emit-interface-only      Write build/pxi and manifest only (project mode)"
         ),
         SubcommandName::Build => eprintln!(
             "phx build — build a phoenix.toml project\n\
              \n\
              usage:\n\
-               phx build [--project-root <dir>] [--build] [entry.phx]\n\
+               phx build [--project-root <dir>] [--build] [--emit-interface-only] [entry.phx]\n\
              \n\
              options:\n\
-               --project-root <dir>  Project root containing phoenix.toml\n\
-               --build               Force a full rebuild"
+               --project-root <dir>       Project root containing phoenix.toml\n\
+               --build                    Force a full rebuild\n\
+               --emit-interface-only      Write build/pxi and manifest only; skip link"
         ),
         SubcommandName::Compile => eprintln!(
             "phx compile — compile a file to PHX0 bytecode\n\

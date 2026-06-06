@@ -143,4 +143,36 @@ if [[ "${output}" != *"main.phx"* ]] && [[ "${output}" != *"invalid phoenix.toml
   exit 1
 fi
 
+INTERFACE_PROJECT="${ROOT}/tests/cli/fixtures/project"
+rm -rf "${INTERFACE_PROJECT}/build"
+
+echo "running: phx build --emit-interface-only (project)"
+"${PHX_BIN}" build --emit-interface-only --project-root "${INTERFACE_PROJECT}"
+
+if [[ ! -f "${INTERFACE_PROJECT}/build/manifest.json" ]]; then
+  echo "expected manifest.json from interface-only build" >&2
+  exit 1
+fi
+
+if [[ ! -f "${INTERFACE_PROJECT}/build/pxi/cli_project_test/util/math.pxi" ]]; then
+  echo "expected pxi from interface-only build" >&2
+  exit 1
+fi
+
+if [[ -f "${INTERFACE_PROJECT}/build/bin/cli_project_test.phx0" ]]; then
+  echo "interface-only build should not produce linked binary" >&2
+  exit 1
+fi
+
+echo "running: phx run --emit-interface-only (expect rejection)"
+if output="$("${PHX_BIN}" run --emit-interface-only --project-root "${INTERFACE_PROJECT}" 2>&1)"; then
+  echo "phx run should reject --emit-interface-only" >&2
+  exit 1
+fi
+if [[ "${output}" != *"does not support --emit-interface-only"* ]]; then
+  echo "run rejection should mention unsupported flag" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+
 echo "phx build/run project tests passed"

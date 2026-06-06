@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use phx_compiler::{
-    BuildLayout, CrateLoadContext, build_project, discover_project, load_crate_with_context,
-    resolve_crate, type_check,
+    BuildLayout, BuildOptions, CrateLoadContext, build_project, discover_project,
+    load_crate_with_context, resolve_crate, type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 
@@ -13,7 +13,7 @@ use phx_diagnostics::DiagnosticBag;
 fn path_dependency_artifacts() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/app_dep");
     let config = discover_project(&root).expect("phoenix.toml");
-    build_project(&config, None, true).expect("build app with dep");
+    build_project(&config, None, BuildOptions::force(true)).expect("build app with dep");
     let dep_lib = root.join("build/deps/math/lib/math.phx0");
     assert!(
         dep_lib.is_file(),
@@ -34,7 +34,7 @@ fn path_dependency_artifacts() {
 fn path_dep_pxi_seeds_import_types() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/app_dep");
     let config = discover_project(&root).expect("phoenix.toml");
-    build_project(&config, None, true).expect("build app with dep");
+    build_project(&config, None, BuildOptions::force(true)).expect("build app with dep");
 
     let entry = config.default_entry_file();
     let ctx = CrateLoadContext::from_config(&config);

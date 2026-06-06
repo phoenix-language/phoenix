@@ -323,6 +323,8 @@ Rebuild module **M** when:
 
 Transitive importers are rebuilt in reverse dependency order.
 
+**MVP contract:** incrementalism applies to **artifact emission** (`.pxi`, per-module `.phx0`, linked output). When any module is stale, the driver still runs whole-program resolve and type-check before emitting artifacts. Path dependencies under `build/deps/{name}/` are rebuilt when their manifest or source hashes are stale (not merely when `lib/{name}.phx0` exists).
+
 ---
 
 ## CLI (M2)
@@ -333,7 +335,15 @@ Transitive importers are rebuilt in reverse dependency order.
 | `phx run [entry.phx]` | Requires `phoenix.toml` and `type = bin`; loads `build/bin/{project.name}.phx0`. Library packages (`type = lib`) produce `build/lib/{name}.phx0` for linking only — not executed by `phx run`. |
 | `phx check [file.phx]` | Type-check only. When `phoenix.toml` is found (walk parents from the file), uses `module_src` and path deps like `phx build`. Otherwise uses the file’s parent or `--module-src`. No `build/` required. |
 
-Flags: `--project-root`, `--module-src`, `--no-build`, `--build`, `--emit-interface-only`.
+| Flag | Commands | Behavior |
+|------|----------|----------|
+| `--project-root <dir>` | `build`, `run` | Project root containing `phoenix.toml` |
+| `--module-src <dir>` | `check`, `run` (standalone) | Module root for `#import` |
+| `--build` | `build`, `run` | Force full rebuild |
+| `--no-build` | `run` | Skip build; load existing `build/bin` artifact |
+| `--emit-interface-only` | `build`, `check` | After successful type-check, write `build/pxi/*.pxi` and `manifest.json` only; skip per-module `.phx0` codegen and link. `phx run` rejects this flag. |
+
+When fresh `.pxi` files exist under `build/` or `build/deps/`, importers seed cross-module types from v2 structured `type` objects instead of re-parsing dependency bodies.
 
 ---
 

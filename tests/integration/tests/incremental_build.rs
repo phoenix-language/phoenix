@@ -1,7 +1,7 @@
 //! Incremental rebuild: stale modules recompile; unchanged modules reuse `.phx0`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use phx_compiler::{build_project, digest_bytes, discover_project};
+use phx_compiler::{BuildOptions, build_project, digest_bytes, discover_project};
 use std::fs;
 use std::path::Path;
 
@@ -20,7 +20,7 @@ fn touch_dependency_rebuilds_importers() {
 
     let original = fs::read_to_string(&math_src).expect("math source");
 
-    build_project(&config, None, true).expect("initial build");
+    build_project(&config, None, BuildOptions::force(true)).expect("initial build");
     let math_hash_before = file_digest(&math_phx0);
     let math_mtime_before = fs::metadata(&math_phx0)
         .expect("math phx0")
@@ -35,7 +35,7 @@ fn touch_dependency_rebuilds_importers() {
     let touched = original.replace("a + b", "a + b + 1");
     fs::write(&math_src, &touched).expect("change math body");
 
-    build_project(&config, None, false).expect("incremental build");
+    build_project(&config, None, BuildOptions::default()).expect("incremental build");
     let math_hash_after = file_digest(&math_phx0);
     let math_mtime_after = fs::metadata(&math_phx0)
         .expect("math phx0")
@@ -56,7 +56,7 @@ fn touch_dependency_rebuilds_importers() {
         "main should relink when dependency pxi hash changes"
     );
 
-    build_project(&config, None, false).expect("noop incremental");
+    build_project(&config, None, BuildOptions::default()).expect("noop incremental");
     assert_eq!(
         file_digest(&math_phx0),
         math_hash_after,

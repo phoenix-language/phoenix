@@ -6,8 +6,8 @@ use std::path::Path;
 use phx_bytecode::ScalarValue;
 use phx_bytecode::verify;
 use phx_compiler::{
-    build_project, compile_to_module, compile_to_module_with_module_path, discover_project,
-    load_project_binary,
+    BuildOptions, build_project, compile_to_module, compile_to_module_with_module_path,
+    discover_project, load_project_binary,
 };
 use phx_vm::{Value, run_captured};
 
@@ -35,7 +35,8 @@ fn compile_fixture_with_module_root(
 fn compile_mvp_acceptance() -> phx_bytecode::BytecodeModule {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../cli/fixtures/mvp_acceptance");
     let config = discover_project(&root).unwrap_or_else(|e| panic!("discover mvp_acceptance: {e}"));
-    build_project(&config, None, true).unwrap_or_else(|e| panic!("build mvp_acceptance: {e}"));
+    build_project(&config, None, BuildOptions::force(true))
+        .unwrap_or_else(|e| panic!("build mvp_acceptance: {e}"));
     let module =
         load_project_binary(&config).unwrap_or_else(|e| panic!("load mvp_acceptance: {e}"));
     verify(&module).unwrap_or_else(|e| panic!("verify mvp_acceptance: {e}"));

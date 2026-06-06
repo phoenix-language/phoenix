@@ -4,8 +4,8 @@ use std::fs;
 use std::time::Instant;
 
 use phx_compiler::{
-    BuildLayout, CompileError, CrateLoadContext, DiagnosticContext, load_crate_with_context,
-    resolve_crate, type_check,
+    BuildLayout, BuildOptions, CompileError, CrateLoadContext, DiagnosticContext,
+    emit_interfaces_from_compiled, load_crate_with_context, resolve_crate, type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 
@@ -16,6 +16,7 @@ use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_check_mode};
 
 /// Runs `phx check`.
+#[allow(clippy::too_many_lines)] // project vs single-file branches + optional interface emit
 pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) -> CliExit {
     let style = crate::color::diagnostic_style(color);
     let reporter = Reporter::new(&style);
@@ -87,13 +88,53 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
     };
 
     let module_count = resolved.modules.len();
-    if let Err(type_bag) = type_check(&resolved) {
-        let err = CompileError::TypeCheck {
-            bag: type_bag,
-            context: DiagnosticContext::from_resolved(&resolved),
+    let typed = match type_check(&resolved) {
+        Ok(typed) => typed,
+        Err(type_bag) => {
+            let err = CompileError::TypeCheck {
+                bag: type_bag,
+                context: DiagnosticContext::from_resolved(&resolved),
+            };
+            reporter.compile_error(&err, Some(&source), Some(&file));
+            return CliExit::Compile;
+        }
+    };
+
+    if file_args.emit_interface_only {
+        let CompileMode::Project { config } = mode else {
+            reporter.usage_error(
+                "`--emit-interface-only` requires a phoenix.toml project (file under module_src)",
+            );
+            return CliExit::Usage;
         };
-        reporter.compile_error(&err, Some(&source), Some(&file));
-        return CliExit::Compile;
+        let ctx = CrateLoadContext::from_config(&config);
+        let layout = BuildLayout::new(&config);
+        let mut reload_bag = DiagnosticBag::new();
+        let Some(loaded) = load_crate_with_context(&file, &ctx, Some(&layout), &mut reload_bag)
+        else {
+            let err = CompileError::Resolve {
+                bag: reload_bag,
+                context: None,
+            };
+            reporter.compile_error(&err, Some(&source), Some(&file));
+            return CliExit::Compile;
+        };
+        let options = BuildOptions {
+            force: false,
+            emit_interface_only: true,
+        };
+        match emit_interfaces_from_compiled(&config, &loaded, &typed, options, None) {
+            Ok(result) => {
+                reporter.success(&format!(
+                    "wrote interfaces to {}",
+                    result.output_path.display()
+                ));
+            }
+            Err(e) => {
+                reporter.build_error(&e);
+                return CliExit::Compile;
+            }
+        }
     }
 
     reporter.check_finished(module_count, started.elapsed());

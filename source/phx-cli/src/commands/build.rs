@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use phx_compiler::build_project;
+use phx_compiler::{BuildOptions, build_project};
 
 use crate::args::ProjectCommandArgs;
 use crate::color::ColorChoice;
@@ -25,9 +25,20 @@ pub fn run_build(args: ProjectCommandArgs, color: ColorChoice, verbose: bool) ->
     };
 
     reporter.verbose(verbose, "building project...");
-    match build_project(&config, args.entry.as_deref(), args.force_build) {
+    let options = BuildOptions {
+        force: args.force_build,
+        emit_interface_only: args.emit_interface_only,
+    };
+    match build_project(&config, args.entry.as_deref(), options) {
         Ok(result) => {
-            reporter.success(&format!("built {}", result.output_path.display()));
+            if args.emit_interface_only {
+                reporter.success(&format!(
+                    "wrote interfaces to {}",
+                    result.output_path.display()
+                ));
+            } else {
+                reporter.success(&format!("built {}", result.output_path.display()));
+            }
             CliExit::Ok
         }
         Err(e) => {

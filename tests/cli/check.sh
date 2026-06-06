@@ -219,4 +219,26 @@ if [[ "${output}" != *"not allowed in library"* ]] && [[ "${output}" != *"E1014"
 fi
 echo "phx check failed as expected (main forbidden in lib)"
 
+APP_DEP_MAIN="${ROOT}/tests/cli/fixtures/app_dep/src/main.phx"
+echo "running: phx check ${APP_DEP_MAIN} without prior build (expect success)"
+if ! "${PHX_BIN}" check "${APP_DEP_MAIN}"; then
+  echo "phx check should succeed for path-dependency project without build/" >&2
+  exit 1
+fi
+echo "phx check passed (app_dep without build)"
+
+INTERFACE_CHECK_PROJECT="${ROOT}/tests/cli/fixtures/project/src/main.phx"
+rm -rf "${ROOT}/tests/cli/fixtures/project/build"
+echo "running: phx check --emit-interface-only ${INTERFACE_CHECK_PROJECT}"
+"${PHX_BIN}" check --emit-interface-only "${INTERFACE_CHECK_PROJECT}"
+if [[ ! -f "${ROOT}/tests/cli/fixtures/project/build/manifest.json" ]]; then
+  echo "check --emit-interface-only should write manifest.json" >&2
+  exit 1
+fi
+if [[ -f "${ROOT}/tests/cli/fixtures/project/build/bin/cli_project_test.phx0" ]]; then
+  echo "check --emit-interface-only should not produce linked binary" >&2
+  exit 1
+fi
+echo "phx check passed (emit-interface-only)"
+
 echo "all phx check CLI tests passed"
