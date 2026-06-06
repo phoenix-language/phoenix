@@ -1,0 +1,12 @@
+[project]
+name = "bad_dep_key"
+version = "0.1.0"
+description = "Negative fixture: dependency key mismatch"
+type = "bin"
+module_src = "src"
+
+[dependencies]
+wrong_name = { path = "../math_lib" }
+
+[build]
+dir = "build"

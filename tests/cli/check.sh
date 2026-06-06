@@ -206,4 +206,17 @@ if [[ "${output}" != *"phoenix.toml"* ]]; then
 fi
 echo "phx run rejected stray file in project as expected"
 
+LIB_WITH_MAIN="${ROOT}/tests/cli/fixtures/lib_with_main/src/lib.phx"
+echo "running: phx check ${LIB_WITH_MAIN} (expect main forbidden in lib)"
+if output="$("${PHX_BIN}" check "${LIB_WITH_MAIN}" 2>&1)"; then
+  echo "phx check should fail when lib package defines main" >&2
+  exit 1
+fi
+if [[ "${output}" != *"not allowed in library"* ]] && [[ "${output}" != *"E1014"* ]]; then
+  echo "lib main rejection should mention library restriction or E1014" >&2
+  echo "got: ${output}" >&2
+  exit 1
+fi
+echo "phx check failed as expected (main forbidden in lib)"
+
 echo "all phx check CLI tests passed"

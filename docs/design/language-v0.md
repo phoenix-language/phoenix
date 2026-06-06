@@ -135,26 +135,12 @@ Multi-file programs and a real project layout so contributors can build packages
 
 ---
 
-### V0-014 — Block-scoped `#import` (MVP modules)
-
-- [ ] `#import` allowed inside `{ … }` blocks (function bodies, `if`/`while`/`loop`/`given` arms, nested blocks).
-- [ ] Same import forms as file scope: single item, `{ A, B, … }`, glob `{ * }`.
-- [ ] Block import names visible only in that block and nested scopes; normal shadowing rules apply.
-- [ ] Block `#import` participates in whole-program module loading (graph discovery), not only name binding.
-- [ ] Compile-time only: `pub` exports only; no runtime module loader.
-
-**Acceptance:** A program imports a `pub` fn only inside `main` (no file-top import of that symbol), type-checks, compiles, and runs correctly; the name is unresolved outside the block.
-
-**Refs:** [modules.md](features/modules.md) (Scoped imports)
-
----
-
 ### V0-011 — `phoenix.toml` and M2 build driver
 
-- [ ] `phoenix.toml` project root discovery; `project.type` = `bin` | `lib`.
-- [ ] `bin` requires `main.phx` at `module_src` root; `lib` requires `lib.phx`; `main` forbidden in lib packages.
-- [ ] `phx build`, `phx run`, `phx check` wired to `module_src` and dependency graph.
-- [ ] `build/` artifact layout: `manifest.json`, `build/pxi/`, `build/phx0/`, `build/bin/`, `build/lib/`, `build/deps/`.
+- [x] `phoenix.toml` project root discovery; `project.type` = `bin` | `lib`.
+- [x] `bin` requires `main.phx` at `module_src` root; `lib` requires `lib.phx`; `main` forbidden in lib packages.
+- [x] `phx build`, `phx run`, `phx check` wired to `module_src` and dependency graph.
+- [x] `build/` artifact layout: `manifest.json`, `build/pxi/`, `build/phx0/`, `build/bin/`, `build/lib/`, `build/deps/`.
 
 **Acceptance:** Sample `bin` and `lib` projects build from `phoenix.toml`; `phx run` executes `build/bin/{name}.phx0`.
 
@@ -183,6 +169,20 @@ Multi-file programs and a real project layout so contributors can build packages
 **Acceptance:** App package depends on a `lib` package via path; linked binary calls across package boundary.
 
 **Refs:** [modules.md](features/modules.md) (Linker contract)
+
+---
+
+### V0-014 — Block-scoped `#import` (MVP modules)
+
+- [ ] `#import` allowed inside `{ … }` blocks (function bodies, `if`/`while`/`loop`/`given` arms, nested blocks).
+- [ ] Same import forms as file scope: single item, `{ A, B, … }`, glob `{ * }`.
+- [ ] Block import names visible only in that block and nested scopes; normal shadowing rules apply.
+- [ ] Block `#import` participates in whole-program module loading (graph discovery), not only name binding.
+- [ ] Compile-time only: `pub` exports only; no runtime module loader.
+
+**Acceptance:** A program imports a `pub` fn only inside `main` (no file-top import of that symbol), type-checks, compiles, and runs correctly; the name is unresolved outside the block.
+
+**Refs:** [modules.md](features/modules.md) (Scoped imports)
 
 ---
 

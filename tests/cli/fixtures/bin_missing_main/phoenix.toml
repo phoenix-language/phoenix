@@ -1,0 +1,9 @@
+[project]
+name = "bin_missing_main"
+version = "0.1.0"
+description = "Negative fixture: bin without main.phx"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

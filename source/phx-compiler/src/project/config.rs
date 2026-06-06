@@ -316,10 +316,15 @@ fn trim_quotes(s: &str) -> &str {
 mod tests {
     use super::*;
 
+    fn temp_project(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("phx_cfg_test_{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
     #[test]
     fn parse_minimal_bin() {
-        let dir = std::env::temp_dir().join("phx_cfg_test_bin");
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = temp_project("bin");
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(
             dir.join("phoenix.toml"),
@@ -337,5 +342,105 @@ module_src = "src"
         assert_eq!(cfg.module_src, PathBuf::from("src"));
         assert_eq!(cfg.package_type, PackageType::Bin);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_minimal_lib() {
+        let dir = temp_project("lib");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "mylib"
+type = "lib"
+module_src = "src"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/lib.phx"),
+            "pub add :: (a: s32, b: s32) => s32 { a + b };",
+        )
+        .unwrap();
+        let cfg = ProjectConfig::load(&dir).unwrap();
+        assert_eq!(cfg.name, "mylib");
+        assert_eq!(cfg.package_type, PackageType::Lib);
+        assert_eq!(cfg.default_entry_file(), dir.join("src/lib.phx"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reject_missing_entry_file() {
+        let dir = temp_project("missing_main");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "demo"
+type = "bin"
+module_src = "src"
+"#,
+        )
+        .unwrap();
+        let err = ProjectConfig::load(&dir).unwrap_err();
+        assert!(
+            matches!(err, ProjectError::Invalid { .. }),
+            "expected invalid config, got {err:?}"
+        );
+        assert!(err.to_string().contains("main.phx"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reject_dep_key_mismatch() {
+        let lib_dir = temp_project("dep_lib");
+        std::fs::create_dir_all(lib_dir.join("src")).unwrap();
+        std::fs::write(
+            lib_dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "math"
+type = "lib"
+module_src = "src"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            lib_dir.join("src/lib.phx"),
+            "pub add :: (a: s32, b: s32) => s32 { a + b };",
+        )
+        .unwrap();
+
+        let app_dir = temp_project("dep_app");
+        std::fs::create_dir_all(app_dir.join("src")).unwrap();
+        std::fs::write(
+            app_dir.join("phoenix.toml"),
+            format!(
+                r#"
+[project]
+name = "app"
+type = "bin"
+module_src = "src"
+
+[dependencies]
+wrong = {{ path = "{}" }}
+"#,
+                lib_dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::write(app_dir.join("src/main.phx"), "main :: () => { };").unwrap();
+
+        let err = ProjectConfig::load(&app_dir).unwrap_err();
+        assert!(
+            matches!(err, ProjectError::Invalid { .. }),
+            "expected invalid config, got {err:?}"
+        );
+        assert!(err.to_string().contains("dependency key"));
+
+        let _ = std::fs::remove_dir_all(&lib_dir);
+        let _ = std::fs::remove_dir_all(&app_dir);
     }
 }

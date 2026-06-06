@@ -106,4 +106,7 @@ Phoenix resolves `#import` paths relative to a **module root** directory (the fo
 | [`mvp_acceptance/src/main.phx`](fixtures/mvp_acceptance/src/main.phx) | MVP entry | `build.sh` | Imports `shapes::math::pick`; struct + `Result` match |
 | [`app_dep/`](fixtures/app_dep/) | path dependency | `run_dep_build.rs` | Builds app + `build/deps/math/` artifacts |
 | [`app_dep/src/main.phx`](fixtures/app_dep/src/main.phx) | app entry | `run_dep_build.rs` | `#import math::add` from path dep |
-| [`math_lib/`](fixtures/math_lib/) | library package | `app_dep` dependency | `[package] type = "lib"`; no `main` |
+| [`math_lib/`](fixtures/math_lib/) | library package | `build.sh`, `run_build.rs`, `app_dep` | Standalone `phx build` → `build/lib/math.phx0`; path dep for `app_dep` |
+| [`lib_with_main/`](fixtures/lib_with_main/) | negative lib | `check.sh` | `main` in lib package → E1014 |
+| [`bad_dep_key/`](fixtures/bad_dep_key/) | negative project | `build.sh` | Dependency key ≠ `project.name` |
+| [`bin_missing_main/`](fixtures/bin_missing_main/) | negative project | `build.sh` | `type = bin` without `main.phx` |
