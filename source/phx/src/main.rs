@@ -20,7 +20,7 @@ use phx_compiler::{
 
 fn print_usage() {
     eprintln!(
-        "phx — Phoenix compiler (v0.1.0)\n\
+        "phx — Phoenix compiler (Alpha-Experimental-Build-0.1.0)\n\
          \n\
          usage:\n\
            phx help\n\

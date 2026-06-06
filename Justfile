@@ -7,6 +7,10 @@ build:
 build-release:
     cargo build --workspace --release
 
+# Pass-through to the local `phx` CLI (e.g. `just phx check file.phx`, `just phx run --module-src dir entry.phx`).
+phx *args:
+    cargo run -p phx -- {{args}}
+
 # Compile, verify, and execute a Phoenix source file via the CLI.
 run file:
     cargo run -p phx -- run {{file}}
