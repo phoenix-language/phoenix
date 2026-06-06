@@ -99,8 +99,8 @@ Finish the minimal pipeline defined in [mvp.md](mvp.md). Nothing in later phases
 
 ### V0-005 — MVP ownership
 
-- [ ] Use-after-move is a compile error; diagnostic cites the original move site.
-- [ ] `Copyable` bootstrap for primitives and `str` (language marker, not full std trait yet).
+- [x] Use-after-move is a compile error; diagnostic cites the original move site.
+- [x] `Copyable` bootstrap for primitives and `str` (language marker, not full std trait yet).
 
 **Acceptance:** `tests/integration/diagnostics/use_after_move` (or equivalent) passes; moved non-Copyable values reject further use.
 
@@ -110,8 +110,8 @@ Finish the minimal pipeline defined in [mvp.md](mvp.md). Nothing in later phases
 
 ### V0-006 — Deferred syntax boundaries
 
-- [ ] Parsed-but-unsupported constructs (`@spawn`, `#derive` semantics, closures, etc.) produce `UnsupportedFeature` (or equivalent) at type-check — not silent miscompilation.
-- [ ] `Option` / `Result` / `Some` / `None` / `Ok` / `Err` / `?` may parse but **must** be rejected until Phase 5 (std bootstrap).
+- [x] Parsed-but-unsupported constructs (`@spawn`, `#derive` semantics, closures, etc.) produce `UnsupportedFeature` (or equivalent) at type-check — not silent miscompilation.
+- [x] `Option` / `Result` / `Some` / `None` / `Ok` / `Err` / `?` may parse but **must** be rejected until Phase 5 (std bootstrap).
 
 **Acceptance:** [grammar-deferred.md](features/grammar-deferred.md) table is reflected in compiler behavior and tests.
 

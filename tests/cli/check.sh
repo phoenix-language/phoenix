@@ -19,6 +19,8 @@ NEG_FIXTURES=(
   "given_enum_non_exhaustive.phx:non-exhaustive"
   "match_unreachable_arm.phx:unreachable"
   "trait_impl_incomplete.phx:trait method"
+  "deferred_break_value.phx:break"
+  "deferred_at_send.phx:@send"
 )
 
 cd "${ROOT}"

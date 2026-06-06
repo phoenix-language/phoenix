@@ -1023,8 +1023,8 @@ impl<'a> TypeChecker<'a> {
             Stmt::Break { value, span } => {
                 if self.loop_depth == 0 {
                     self.error_loop_control_outside_loop("break", *span);
-                } else if let Some(e) = value {
-                    let _ = self.check_expr_node(e);
+                } else if value.is_some() {
+                    self.push_unsupported("break with value", *span);
                 }
             }
             Stmt::Continue { span } if self.loop_depth == 0 => {

@@ -123,6 +123,28 @@ fn use_after_move_error() {
 }
 
 #[test]
+fn str_assign_without_move() {
+    ok("main :: () => { const a: str = \"hi\"; const b = a; const _ = b; };");
+}
+
+#[test]
+fn use_after_move_fn_arg() {
+    let source = "Point :: struct { x: s32, y: s32, }; take :: (p: Point) => () { const _ = (); }; main :: () => { var p: Point = Point { x: 1, y: 2 }; take(p); const _ = p.x; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
+    assert!(msg.contains("note:"));
+}
+
+#[test]
 fn function_trailing_expr_return_ok() {
     ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
 }
@@ -546,6 +568,30 @@ fn deferred_typeck_lambda() {
 fn deferred_typeck_at_spawn() {
     let bag = typeck_err("f :: () => { }; main :: () => { @spawn(f); };");
     assert!(has_unsupported(&bag, "@spawn"));
+}
+
+#[test]
+fn deferred_typeck_at_send() {
+    let bag = typeck_err("main :: () => { @send(1, 2); };");
+    assert!(has_unsupported(&bag, "@send"));
+}
+
+#[test]
+fn deferred_typeck_at_receive() {
+    let bag = typeck_err("main :: () => { @receive(1); };");
+    assert!(has_unsupported(&bag, "@receive"));
+}
+
+#[test]
+fn deferred_typeck_at_reply() {
+    let bag = typeck_err("main :: () => { @reply(1); };");
+    assert!(has_unsupported(&bag, "@reply"));
+}
+
+#[test]
+fn deferred_typeck_break_with_value() {
+    let bag = typeck_err("main :: () => { loop { break 1; }; };");
+    assert!(has_unsupported(&bag, "break"));
 }
 
 #[test]
