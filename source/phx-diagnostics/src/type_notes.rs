@@ -220,6 +220,7 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
     out
 }
 
+#[allow(clippy::too_many_lines)]
 fn mismatch_ancillary(
     expected: &str,
     found: &str,
@@ -233,7 +234,8 @@ fn mismatch_ancillary(
         } => {
             out.notes.push(TypeCheckNote {
                 text: format!(
-                    "expected type `{expected}` due to type annotation on `const {name}`"
+                    "expected {} due to type annotation on `const {name}`",
+                    type_expectation_phrase(expected)
                 ),
                 span: Some(*annotation_span),
             });
@@ -244,7 +246,10 @@ fn mismatch_ancillary(
             annotation_span,
         } => {
             out.notes.push(TypeCheckNote {
-                text: format!("expected type `{expected}` due to type annotation on `var {name}`"),
+                text: format!(
+                    "expected {} due to type annotation on `var {name}`",
+                    type_expectation_phrase(expected)
+                ),
                 span: Some(*annotation_span),
             });
             push_mismatch_binding_helps(out, expected, found, "var");
@@ -363,6 +368,18 @@ fn push_mismatch_expr_helps(out: &mut TypeCheckAncillary, expected: &str, found:
 
 fn numeric_cast_might_help(found: &str, expected: &str) -> bool {
     is_numeric_primitive_name(found) && is_numeric_primitive_name(expected) && found != expected
+}
+
+fn type_expectation_phrase(expected: &str) -> String {
+    if expected.starts_with("struct ")
+        || expected.starts_with("enum ")
+        || expected.starts_with("type ")
+        || expected.starts_with("trait ")
+    {
+        format!("`{expected}`")
+    } else {
+        format!("type `{expected}`")
+    }
 }
 
 fn is_numeric_primitive_name(name: &str) -> bool {

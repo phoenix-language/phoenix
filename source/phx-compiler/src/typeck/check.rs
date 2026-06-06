@@ -22,7 +22,7 @@ use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, str_type, u8_type, unit,
 };
-use super::display::format_type;
+use super::display::{format_type, format_type_diagnostic};
 use super::infer::InferenceCtx;
 use super::layout::{
     EnumLayout, ProgramLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout, VariantMeta,
@@ -349,12 +349,21 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    fn format_ty_diagnostic(&self, id: TypeId) -> String {
+        format_type_diagnostic(
+            &self.types,
+            &self.resolved.interner,
+            &self.resolved.defs,
+            id,
+        )
+    }
+
     fn error_mismatch(&mut self, expected: TypeId, found: TypeId, span: Span, kind: MismatchKind) {
         self.bag.push(
             self.current_module,
             TypeCheckError::Mismatch {
-                expected: self.format_ty(expected),
-                found: self.format_ty(found),
+                expected: self.format_ty_diagnostic(expected),
+                found: self.format_ty_diagnostic(found),
                 span,
                 kind,
             },

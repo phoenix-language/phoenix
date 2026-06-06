@@ -1,4 +1,9 @@
 // Should fail type-check: bool assigned to s32.
+
+Random :: enum {};
+
+// Random :: struct {};
+
 main :: () => {
-  const x: s32 = true;
+  const x: Random = true;
 };

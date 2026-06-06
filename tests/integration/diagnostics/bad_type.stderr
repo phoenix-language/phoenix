@@ -1,8 +1,8 @@
-error[E2001]: type mismatch: expected S32, found Bool
-  --> tests/cli/fixtures/bad_type.phx:3:18
+error[E2001]: type mismatch: expected enum Random, found Bool
+  --> tests/cli/fixtures/bad_type.phx:8:21
   |
-3 |   const x: s32 = true;
-  |                  ^^^^
-   = note: expected type `S32` due to type annotation on `const x`
-   = help: change the `const` type annotation to `Bool`, or change the initializer to produce `S32`
+8 |   const x: Random = true;
+  |                     ^^^^
+   = note: expected `enum Random` due to type annotation on `const x`
+   = help: change the `const` type annotation to `Bool`, or change the initializer to produce `enum Random`
    = help: or remove the type annotation and let the initializer determine the type
