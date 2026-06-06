@@ -102,7 +102,7 @@ impl CompileError {
     /// Returns a user-facing message, optionally with source carets when `source` is provided.
     #[must_use]
     pub fn format_with_source(&self, source: Option<&str>) -> String {
-        self.format_with_modules(source, None, None)
+        self.format_with_modules(source, None, None, None)
     }
 
     /// Formats this error using optional entry `source`, multi-module sources, and interner.
@@ -110,10 +110,11 @@ impl CompileError {
     pub fn format_with_modules(
         &self,
         entry_source: Option<&str>,
+        entry_path: Option<&str>,
         modules: Option<&[SourceModule]>,
         interner: Option<&Interner>,
     ) -> String {
-        self.format_with_modules_styled(entry_source, modules, interner, &PlainStyle)
+        self.format_with_modules_styled(entry_source, entry_path, modules, interner, &PlainStyle)
     }
 
     /// Formats this error with an optional [`DiagnosticStyle`] (colors when using ANSI style).
@@ -121,26 +122,28 @@ impl CompileError {
     pub fn format_with_modules_styled(
         &self,
         entry_source: Option<&str>,
+        entry_path: Option<&str>,
         modules: Option<&[SourceModule]>,
         interner: Option<&Interner>,
         style: &dyn DiagnosticStyle,
     ) -> String {
         match self {
-            Self::Parse(bag) => format_parse_bag(bag, entry_source, style),
+            Self::Parse(bag) => format_parse_bag(bag, entry_source, entry_path, style),
             Self::Resolve { bag, context } => {
                 let mods = context.as_ref().map(|c| c.modules.as_slice()).or(modules);
                 let intern = context.as_ref().map(|c| &c.interner).or(interner);
-                format_resolve_bag(bag, entry_source, mods, intern, style)
+                format_resolve_bag(bag, entry_source, entry_path, mods, intern, style)
             }
             Self::TypeCheck { bag, context } => format_typecheck_bag(
                 bag,
                 entry_source,
+                entry_path,
                 Some(&context.modules),
                 Some(&context.interner),
                 style,
             ),
             Self::Lower { bag, context } => {
-                format_lower_bag(bag, entry_source, Some(&context.modules), style)
+                format_lower_bag(bag, entry_source, entry_path, Some(&context.modules), style)
             }
             Self::Codegen(e) => style.plain_error(&e.to_string()),
             Self::Io(e) => style.plain_error(&format!("I/O error: {e}")),
@@ -163,21 +166,23 @@ struct ModuleSource<'a> {
     source: &'a str,
 }
 
-fn format_parse_bag(bag: &ParseBag, source: Option<&str>, style: &dyn DiagnosticStyle) -> String {
+fn format_parse_bag(
+    bag: &ParseBag,
+    source: Option<&str>,
+    entry_path: Option<&str>,
+    style: &dyn DiagnosticStyle,
+) -> String {
+    let ctx = SpanContext {
+        file_path: entry_path,
+        logical_module: None,
+    };
     let mut parts = Vec::new();
     for err in bag.errors() {
         let msg = match (source, err) {
-            (Some(src), ParseError::Lex(e)) => {
-                format_lex_error_styled(src, e, style, SpanContext::default())
+            (Some(src), ParseError::Lex(e)) => format_lex_error_styled(src, e, style, ctx),
+            (Some(src), other) if let Some(span) = other.span() => {
+                render_diagnostic(style, src, span, other.code(), &other.to_string(), ctx)
             }
-            (Some(src), other) if let Some(span) = other.span() => render_diagnostic(
-                style,
-                src,
-                span,
-                other.code(),
-                &other.to_string(),
-                SpanContext::default(),
-            ),
             (_, other) => style.error_header(other.code(), &other.to_string()),
         };
         parts.push(msg);
@@ -188,6 +193,7 @@ fn format_parse_bag(bag: &ParseBag, source: Option<&str>, style: &dyn Diagnostic
 fn format_resolve_bag(
     bag: &DiagnosticBag,
     entry_source: Option<&str>,
+    entry_path: Option<&str>,
     modules: Option<&[SourceModule]>,
     interner: Option<&Interner>,
     style: &dyn DiagnosticStyle,
@@ -201,7 +207,9 @@ fn format_resolve_bag(
     };
     let mut parts = Vec::new();
     for located in bag.errors() {
-        let body = if let Some(ms) = source_for_module(entry_source, modules, located.module) {
+        let body = if let Some(ms) =
+            source_for_module(entry_source, entry_path, modules, located.module)
+        {
             let ctx = SpanContext {
                 file_path: Some(&ms.file_path),
                 logical_module: ms.logical_module.as_deref(),
@@ -214,14 +222,15 @@ fn format_resolve_bag(
                     &phx_diagnostics::resolve_message(interner, &located.error),
                 )
             }
-        } else if let Some(src) = entry_source {
-            format_resolve_error_styled(
-                src,
-                interner,
-                &located.error,
-                style,
-                SpanContext::default(),
-            )
+        } else if let Some(src) = resolve_error_source(
+            entry_source,
+            entry_path,
+            modules,
+            located.module,
+            &located.error,
+        ) {
+            let ctx = resolve_error_context(entry_path);
+            format_resolve_error_styled(src, interner, &located.error, style, ctx)
         } else {
             style.error_header(
                 located.error.code(),
@@ -236,6 +245,7 @@ fn format_resolve_bag(
 fn format_typecheck_bag(
     bag: &TypeCheckBag,
     entry_source: Option<&str>,
+    entry_path: Option<&str>,
     modules: Option<&[SourceModule]>,
     interner: Option<&Interner>,
     style: &dyn DiagnosticStyle,
@@ -249,20 +259,20 @@ fn format_typecheck_bag(
     };
     let mut parts = Vec::new();
     for located in bag.errors() {
-        let body = if let Some(ms) = source_for_module(entry_source, modules, located.module) {
+        let body = if let Some(ms) =
+            source_for_module(entry_source, entry_path, modules, located.module)
+        {
             let ctx = SpanContext {
                 file_path: Some(&ms.file_path),
                 logical_module: ms.logical_module.as_deref(),
             };
             format_typecheck_error_styled(ms.source, interner, &located.error, style, ctx)
-        } else if let Some(src) = entry_source {
-            format_typecheck_error_styled(
-                src,
-                interner,
-                &located.error,
-                style,
-                SpanContext::default(),
-            )
+        } else if let Some(src) = entry_source.filter(|_| located.module == 0) {
+            let ctx = SpanContext {
+                file_path: entry_path,
+                logical_module: None,
+            };
+            format_typecheck_error_styled(src, interner, &located.error, style, ctx)
         } else {
             style.error_header(
                 located.error.code(),
@@ -277,19 +287,26 @@ fn format_typecheck_bag(
 fn format_lower_bag(
     bag: &LowerBag,
     entry_source: Option<&str>,
+    entry_path: Option<&str>,
     modules: Option<&[SourceModule]>,
     style: &dyn DiagnosticStyle,
 ) -> String {
     let mut parts = Vec::new();
     for located in bag.errors() {
-        let body = if let Some(ms) = source_for_module(entry_source, modules, located.module) {
+        let body = if let Some(ms) =
+            source_for_module(entry_source, entry_path, modules, located.module)
+        {
             let ctx = SpanContext {
                 file_path: Some(&ms.file_path),
                 logical_module: ms.logical_module.as_deref(),
             };
             format_lower_error_styled(ms.source, &located.error, style, ctx)
-        } else if let Some(src) = entry_source {
-            format_lower_error_styled(src, &located.error, style, SpanContext::default())
+        } else if let Some(src) = entry_source.filter(|_| located.module == 0) {
+            let ctx = SpanContext {
+                file_path: entry_path,
+                logical_module: None,
+            };
+            format_lower_error_styled(src, &located.error, style, ctx)
         } else {
             style.error_header(located.error.code(), &located.error.to_string())
         };
@@ -298,8 +315,36 @@ fn format_lower_bag(
     join_diagnostics(style, &parts)
 }
 
+fn resolve_error_source<'a>(
+    entry_source: Option<&'a str>,
+    entry_path: Option<&str>,
+    _modules: Option<&[SourceModule]>,
+    module_id: u32,
+    err: &phx_diagnostics::ResolveError,
+) -> Option<&'a str> {
+    match err {
+        phx_diagnostics::ResolveError::ModuleParse { path, .. }
+        | phx_diagnostics::ResolveError::ModuleIo { path, .. } => {
+            if entry_path == Some(path.as_str()) {
+                entry_source
+            } else {
+                None
+            }
+        }
+        _ => entry_source.filter(|_| module_id == 0),
+    }
+}
+
+fn resolve_error_context(entry_path: Option<&str>) -> SpanContext<'_> {
+    SpanContext {
+        file_path: entry_path,
+        logical_module: None,
+    }
+}
+
 fn source_for_module<'a>(
     entry_source: Option<&'a str>,
+    entry_path: Option<&str>,
     modules: Option<&'a [SourceModule]>,
     module_id: u32,
 ) -> Option<ModuleSource<'a>> {
@@ -307,7 +352,7 @@ fn source_for_module<'a>(
         && let Some(m) = mods.iter().find(|m| m.id == module_id)
     {
         let file_path = if m.filesystem.as_os_str().is_empty() {
-            "<entry>".to_owned()
+            entry_path.unwrap_or("<entry>").to_owned()
         } else {
             m.filesystem.display().to_string()
         };
@@ -319,7 +364,7 @@ fn source_for_module<'a>(
     }
     if module_id == 0 {
         return entry_source.map(|s| ModuleSource {
-            file_path: "<entry>".to_owned(),
+            file_path: entry_path.unwrap_or("<entry>").to_owned(),
             logical_module: None,
             source: s,
         });

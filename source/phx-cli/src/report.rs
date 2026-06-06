@@ -24,7 +24,14 @@ impl<'a> Reporter<'a> {
     }
 
     /// Reports a [`CompileError`] with source carets when available.
-    pub fn compile_error(&self, err: &CompileError, entry_source: Option<&str>) {
+    pub fn compile_error(
+        &self,
+        err: &CompileError,
+        entry_source: Option<&str>,
+        entry_path: Option<&std::path::Path>,
+    ) {
+        let path_buf = entry_path.map(|p| p.display().to_string());
+        let path_ref = path_buf.as_deref();
         let (modules, interner) = match err {
             CompileError::Resolve { context, .. } => (
                 context.as_ref().map(|c| c.modules.as_slice()),
@@ -38,7 +45,8 @@ impl<'a> Reporter<'a> {
             }
             _ => (None, None),
         };
-        let msg = err.format_with_modules_styled(entry_source, modules, interner, self.style);
+        let msg =
+            err.format_with_modules_styled(entry_source, path_ref, modules, interner, self.style);
         eprint_line(&msg);
     }
 

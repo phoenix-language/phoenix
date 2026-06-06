@@ -3,7 +3,7 @@ accepts_mut_ref :: (_v: &mut u8) => () {
 };
 
 main :: () => {
-    var cell: u8 = u66;
+    var cell: u8 = 66 as u8;
     accepts_mut_ref(&mut cell);
     const _ = cell;
 };

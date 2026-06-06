@@ -56,7 +56,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
     };
 
     if let Err(e) = result {
-        reporter.compile_error(&e, Some(&source));
+        reporter.compile_error(&e, Some(&source), Some(&file));
         return CliExit::Compile;
     }
     CliExit::Ok

@@ -73,19 +73,21 @@ fn format_check_file(path: &Path) -> String {
     let source =
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let err = check_file(path).expect_err("expected check failure");
-    err.format_with_modules(Some(&source), None, None)
+    let entry_path = path.display().to_string();
+    err.format_with_modules(Some(&source), Some(&entry_path), None, None)
 }
 
 fn format_check_with_module_root(entry: &Path, module_root: &Path) -> String {
     let source =
         std::fs::read_to_string(entry).unwrap_or_else(|e| panic!("read {}: {e}", entry.display()));
     let err = check_file_with_module_path(entry, module_root).expect_err("expected check failure");
-    err.format_with_modules(Some(&source), None, None)
+    let entry_path = entry.display().to_string();
+    err.format_with_modules(Some(&source), Some(&entry_path), None, None)
 }
 
 fn format_compile_source(source: &str) -> String {
     let err = compile_source(source, None).expect_err("expected compile failure");
-    err.format_with_modules(Some(source), None, None)
+    err.format_with_modules(Some(source), None, None, None)
 }
 
 #[test]

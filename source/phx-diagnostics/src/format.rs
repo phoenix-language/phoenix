@@ -99,6 +99,15 @@ pub fn format_resolve_error_styled(
 ) -> String {
     let code = err.code();
     let message = resolve_message(names, err);
+    let ctx = match err {
+        ResolveError::ModuleParse { path, .. } | ResolveError::ModuleIo { path, .. } => {
+            SpanContext {
+                file_path: Some(path.as_str()),
+                logical_module: ctx.logical_module,
+            }
+        }
+        _ => ctx,
+    };
     match err {
         ResolveError::DuplicateDefinition {
             first_span,

@@ -144,10 +144,16 @@ pub fn load_crate_with_context(
         let file = match parse_with_interner(&source, &mut interner) {
             Ok(f) => f,
             Err(parse_bag) => {
+                let span = parse_bag
+                    .errors()
+                    .iter()
+                    .find_map(phx_diagnostics::ParseError::span)
+                    .unwrap_or(import_span);
+                let failing_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
                 bag.push(
-                    importer_module,
+                    failing_module,
                     ResolveError::ModuleParse {
-                        span: import_span,
+                        span,
                         path: fs_path.display().to_string(),
                         message: parse_bag.to_string(),
                     },

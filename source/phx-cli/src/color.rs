@@ -72,7 +72,7 @@ impl AnsiStyle {
 
 impl DiagnosticStyle for AnsiStyle {
     fn error_header(&self, code: phx_diagnostics::DiagnosticCode, message: &str) -> String {
-        self.wrap(&format!("error[{code}]: {message}"), "1;38;5;196")
+        self.wrap(&format!("error[{code}]: {message}"), "1;38;5;203")
     }
 
     fn location_line(&self, path: &str, line: u32, col: u32) -> String {
@@ -87,12 +87,12 @@ impl DiagnosticStyle for AnsiStyle {
         let noun = if count == 1 { "error" } else { "errors" };
         self.wrap(
             &format!("error: aborting due to {count} previous {noun}"),
-            "1;38;5;196",
+            "1;38;5;203",
         )
     }
 
     fn plain_error(&self, message: &str) -> String {
-        self.wrap(&format!("error: {message}"), "1;38;5;196")
+        self.wrap(&format!("error: {message}"), "1;38;5;203")
     }
 
     fn success(&self, message: &str) -> String {

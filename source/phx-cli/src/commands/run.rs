@@ -94,7 +94,7 @@ fn run_standalone(
     let module = match compile_standalone_with_context(options, &ctx) {
         Ok(m) => m,
         Err(e) => {
-            reporter.compile_error(&e, Some(&source));
+            reporter.compile_error(&e, Some(&source), Some(&options.entry));
             return CliExit::Compile;
         }
     };

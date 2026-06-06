@@ -65,7 +65,7 @@ pub fn run_compile(args: CompileCommandArgs, color: ColorChoice, verbose: bool) 
     let module = match compile_standalone_with_context(&mode, &ctx) {
         Ok(m) => m,
         Err(e) => {
-            reporter.compile_error(&e, Some(&source));
+            reporter.compile_error(&e, Some(&source), Some(&file));
             return CliExit::Compile;
         }
     };
