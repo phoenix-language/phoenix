@@ -25,13 +25,15 @@ Every **public** item needs a doc comment (`missing_docs` is **deny** in the wor
 pub fn compile_source(...) -> Result<..., CompileError>
 ```
 
-| Section | When |
-|--------|------|
-| Summary line | Always |
-| `# Errors` | Any `Result` return (`missing_errors_doc` is **deny**) |
-| `# Panics` | Any panic path, or state that user/malformed input never panics |
-| `# Safety` | Public `unsafe` functions |
-| Examples | Non-obvious safe APIs |
+
+| Section      | When                                                            |
+| ------------ | --------------------------------------------------------------- |
+| Summary line | Always                                                          |
+| `# Errors`   | Any `Result` return (`missing_errors_doc` is **deny**)          |
+| `# Panics`   | Any panic path, or state that user/malformed input never panics |
+| `# Safety`   | Public `unsafe` functions                                       |
+| Examples     | Non-obvious safe APIs                                           |
+
 
 **Enum variants:** document behavior and stack/preconditions where relevant (see `source/phx-bytecode/src/opcode.rs`).
 
@@ -60,12 +62,14 @@ pub fn compile_source(...) -> Result<..., CompileError>
 
 **Goal:** Onboard contributors per compiler stage without documenting every helper.
 
-| Item | Required doc |
-|------|----------------|
-| Every `source/**/*.rs` file | `//!` module header: purpose, inputs/outputs, owning pass |
-| `pub(crate)` functions | `///` — contract, errors, invariants |
-| Private functions | `///` only when non-obvious (ownership, stack layout, multi-module edges) |
-| Wildcard `match` arms | Brief comment *why* the arm exists |
+
+| Item                        | Required doc                                                              |
+| --------------------------- | ------------------------------------------------------------------------- |
+| Every `source/**/*.rs` file | `//!` module header: purpose, inputs/outputs, owning pass                 |
+| `pub(crate)` functions      | `///` — contract, errors, invariants                                      |
+| Private functions           | `///` only when non-obvious (ownership, stack layout, multi-module edges) |
+| Wildcard `match` arms       | Brief comment *why* the arm exists                                        |
+
 
 **Batch order** (one PR per batch is fine):
 
@@ -98,4 +102,4 @@ cargo test --workspace   # unit + integration (not in pre-commit)
 
 ## Agent / pre-commit gate
 
-Before finishing work in this repo, agents run **`just pre-commit`** from the repo root. See `.cursor/rules/phoenix.mdc` (Agent completion gate).
+Before finishing work in this repo, agents run `**just pre-commit**` from the repo root. See `.cursor/rules/phoenix.mdc` (Agent completion gate).
