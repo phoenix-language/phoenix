@@ -205,6 +205,8 @@ Everything std types are built from: generic enums, bounds, associated types, mo
 
 **Refs:** [type-system.md](features/type-system.md) (Generics strategy)
 
+**Status:** Done
+
 ---
 
 ### V0-021 — Monomorphization pass
@@ -215,6 +217,8 @@ Everything std types are built from: generic enums, bounds, associated types, mo
 **Acceptance:** Two call sites with different type args produce two specialized definitions in bytecode/layout tables.
 
 **Refs:** [type-system.md](features/type-system.md), [traits.md](features/traits.md)
+
+**Status:** Done
 
 ---
 

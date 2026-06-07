@@ -755,10 +755,14 @@ impl<'a> TypeChecker<'a> {
                 }
                 self.type_defs = saved_defs;
             }
-            TopLevelDecl::Trait { items, .. } => {
+            TopLevelDecl::Trait {
+                generics, items, ..
+            } => {
+                let mut td = self.type_defs.clone();
+                push_generics(&mut td, &self.resolved.defs, generics.as_deref());
                 for item in items {
                     if let TraitItem::Method(sig) = item {
-                        self.collect_fn_sig_only(sig);
+                        self.collect_fn_sig_only_with_defs(sig, &td);
                     }
                 }
             }
@@ -788,18 +792,24 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn collect_fn_sig_only(&mut self, sig: &phx_syntax::ast::decl::FunctionSig) {
+    fn collect_fn_sig_only_with_defs(
+        &mut self,
+        sig: &phx_syntax::ast::decl::FunctionSig,
+        type_defs: &TypeDefMap,
+    ) {
         let ret = sig
             .ret
             .as_ref()
-            .map(|r| self.lower_ast_type(r))
+            .map(|r| self.lower_ast_type_with_defs(r, type_defs))
             .unwrap_or(self.unit);
         let params: Vec<_> = sig
             .params
             .iter()
             .filter_map(|p| match p {
-                Param::Named { ty, .. } => Some(self.lower_ast_type(ty)),
-                Param::Receiver { ty, .. } => ty.as_ref().map(|t| self.lower_ast_type(t)),
+                Param::Named { ty, .. } => Some(self.lower_ast_type_with_defs(ty, type_defs)),
+                Param::Receiver { ty, .. } => ty
+                    .as_ref()
+                    .map(|t| self.lower_ast_type_with_defs(t, type_defs)),
                 _ => None,
             })
             .collect();

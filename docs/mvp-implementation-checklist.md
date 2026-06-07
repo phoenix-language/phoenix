@@ -68,7 +68,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | `#import` via CLI on one file | `phx check` / `phx run <file>` use **parent directory** as module root (same as `check_file`). Multi-file trees need `--module-src` or `phoenix.toml` (M2). |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
-| Generics | Explicit-args monomorphization for fn, struct, enum, alias |
+| Generics | V0-020/V0-021: generic decls, local inference, monomorphization (`id$S32`-style mangling) |
 | Parser ergonomics | Bounded fixes (e.g. unclosed `(`); broader grammar ambiguities may remain |
 
 ---
@@ -203,7 +203,7 @@ A credible MVP demo `.phx` should be able to:
 | Trait / impl static resolution             | done     | `typeck/check.rs`                  | `Type :: impl :: Trait`; ambiguous impls diagnosed                      | `trait_eq.phx`                                         |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
 | Raw pointers `*T`                          | partial  | `typeck/ops.rs`, VM `PtrLoad`/`PtrStore` | Deref on primitives; full pointer surface TBD                          | `deref_ptr.phx`                                        |
-| Generics on types                          | pass     | `typeck/mono.rs`, `typeck/check.rs` | Explicit-args monomorphization for struct/enum/alias use sites                  | Local call-site inference                              |
+| Generics on types                          | pass     | `typeck/mono.rs`, `typeck/check.rs` | V0-020/V0-021: explicit + inferred instantiation; dual-site mono in IR/bytecode | `generic_fn.phx`, `generic_enum_infer.phx`, `typeck.rs` dual-inst tests |
 | Copyable inference                         | partial  | `typeck/builtins.rs`              | Primitives, tuples, arrays of Copyable                                        | User struct Copyable only when all fields Copyable     |
 | Use-after-move (MVP ownership)             | done     | `typeck/ownership.rs`, `check.rs` | Non-Copyable moves                                                            | `use_after_move_error`                                 |
 | Per-function layout / locals               | done     | `typeck/bindings.rs`              | For lowering                                                                  | `main_layout_slot_count`                               |

@@ -213,3 +213,26 @@ fn lower_generic_struct_emits_make_struct() {
         "expected MakeStruct for generic struct literal"
     );
 }
+
+#[test]
+fn lower_dual_generic_fn_instantiation_emits_three_functions() {
+    let source = "id :: <t> (x: t) => t { x }; main :: () => { const a: s32 = id :: <s32> (1); const b: bool = id :: <bool> (true); const _ = a; };";
+    let unit = compile_source(source, None).expect("compile dual generic fn");
+    let ir = lower(&unit.typed).expect("lower");
+    assert_eq!(
+        ir.functions.len(),
+        3,
+        "expected two monomorphized specials plus main"
+    );
+    let call_count = ir
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.insts)
+        .filter(|i| matches!(i, IrInst::Call { .. }))
+        .count();
+    assert!(
+        call_count >= 2,
+        "main should call both specialized id functions"
+    );
+}

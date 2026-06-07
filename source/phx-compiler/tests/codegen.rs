@@ -27,6 +27,19 @@ fn codegen_generic_fn_verifies() {
 }
 
 #[test]
+fn codegen_dual_generic_fn_instantiation_verifies() {
+    let source = "id :: <t> (x: t) => t { x }; main :: () => { const a: s32 = id :: <s32> (1); const b: bool = id :: <bool> (true); const _ = a; };";
+    let unit = compile_source(source, None).expect("compile dual generic fn");
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
+    assert_eq!(
+        module.functions.functions.len(),
+        3,
+        "expected two specialized functions plus main in bytecode"
+    );
+    verify(&module).expect("verify dual generic fn instantiation");
+}
+
+#[test]
 fn codegen_sample_round_trip_and_verify() {
     let source = include_str!("../../../tests/cli/fixtures/sample.phx");
     let unit = compile_source(source, Some(Path::new("sample.phx")))

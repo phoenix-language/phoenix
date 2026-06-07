@@ -1,12 +1,55 @@
 //! Integration tests for the type-checking pass.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use phx_compiler::{CompileError, check_file, compile_source};
+use phx_compiler::{CompileError, DefKind, TypedProgram, check_file, compile_source};
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 use phx_test::{compile_ok, expect_typeck_err};
 
 fn typeck_err(source: &str) -> TypeCheckBag {
     expect_typeck_err(source)
+}
+
+fn typed_program(source: &str) -> TypedProgram {
+    compile_source(source, None)
+        .unwrap_or_else(|e| panic!("expected compile ok: {e}"))
+        .typed
+}
+
+fn fn_def_names(typed: &TypedProgram) -> Vec<String> {
+    typed
+        .resolved
+        .defs
+        .iter()
+        .filter(|d| d.kind == DefKind::Fn)
+        .map(|d| typed.resolved.interner.resolve(d.name).to_owned())
+        .collect()
+}
+
+fn has_mangled_fn(typed: &TypedProgram, base: &str, type_suffix: &str) -> bool {
+    let needle = format!("{base}${type_suffix}");
+    fn_def_names(typed)
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(&needle))
+}
+
+fn fn_def_id(typed: &TypedProgram, name: &str) -> Option<phx_compiler::DefId> {
+    typed.resolved.defs.iter().enumerate().find_map(|(i, d)| {
+        if d.kind == DefKind::Fn && typed.resolved.interner.resolve(d.name) == name {
+            Some(phx_compiler::DefId::from_raw(u32::try_from(i).ok()?))
+        } else {
+            None
+        }
+    })
+}
+
+fn is_generic_template(typed: &TypedProgram, def_name: &str) -> bool {
+    let Some(template_id) = fn_def_id(typed, def_name) else {
+        return false;
+    };
+    typed
+        .specialized_from
+        .values()
+        .any(|&base| base == template_id)
 }
 
 fn has_unsupported(bag: &TypeCheckBag, needle: &str) -> bool {
@@ -886,6 +929,98 @@ fn return_slice_of_local_errors() {
             .iter()
             .any(|e| { matches!(&e.error, TypeCheckError::ReturnEscapesLocal { .. }) }),
         "expected ReturnEscapesLocal: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn generic_trait_signature_compile_ok() {
+    compile_ok(
+        "Container :: <t> trait { get :: () => t; }; Pair :: <a, b> struct { a: a, b: b, }; main :: () => { };",
+    );
+}
+
+#[test]
+fn generic_fn_mangles_def_name() {
+    let source = "id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id :: <s32> (1); };";
+    let typed = typed_program(source);
+    assert!(
+        has_mangled_fn(&typed, "id", "s32"),
+        "expected mangled fn def id$s32, got {:?}",
+        fn_def_names(&typed)
+    );
+    assert!(
+        is_generic_template(&typed, "id"),
+        "expected id template to be replaced by monomorphization"
+    );
+    let template_id = fn_def_id(&typed, "id").expect("id template def");
+    assert!(
+        !typed.functions.iter().any(|f| f.def == template_id),
+        "generic template should not appear in lowered function layouts"
+    );
+}
+
+#[test]
+fn generic_enum_specialized_layout() {
+    let source =
+        "Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some :: <s32> (1); };";
+    let typed = typed_program(source);
+    assert_eq!(
+        typed.layout.specialized_enums.len(),
+        1,
+        "expected one monomorphized enum layout"
+    );
+}
+
+#[test]
+fn generic_enum_ctor_infer_compile_ok() {
+    compile_ok("Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some(1); };");
+    let typed =
+        typed_program("Opt :: <t> enum { None, Some(t), }; main :: () => { const _ = Some(1); };");
+    assert_eq!(typed.layout.specialized_enums.len(), 1);
+}
+
+#[test]
+fn generic_dual_fn_instantiation_mangles_two_defs() {
+    let source = "id :: <t> (x: t) => t { x }; main :: () => { const a: s32 = id :: <s32> (1); const b: bool = id :: <bool> (true); const _ = a; };";
+    let typed = typed_program(source);
+    assert!(
+        has_mangled_fn(&typed, "id", "s32"),
+        "expected id$s32 among {:?}",
+        fn_def_names(&typed)
+    );
+    assert!(
+        has_mangled_fn(&typed, "id", "bool"),
+        "expected id$bool among {:?}",
+        fn_def_names(&typed)
+    );
+    assert_eq!(
+        typed.specialized_from.len(),
+        2,
+        "expected two specialized function defs"
+    );
+}
+
+#[test]
+fn generic_dual_enum_instantiation_two_layouts() {
+    let source = "Opt :: <t> enum { None, Some(t), }; main :: () => { const a = Some :: <s32> (1); const b = Some :: <bool> (true); const _ = a; };";
+    let typed = typed_program(source);
+    assert_eq!(
+        typed.layout.specialized_enums.len(),
+        2,
+        "expected two monomorphized enum layouts"
+    );
+}
+
+#[test]
+fn generic_copyable_bound_fails_on_second_instantiation_site() {
+    let source = "Pair :: struct { a: s32, b: s32, }; max :: <t: Copyable> (a: t, b: t) => t { a }; main :: () => { const ok: s32 = max(1, 2); const bad = max(Pair { a: 1, b: 2 }, Pair { a: 3, b: 4 }); const _ = bad; };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::TraitNotSatisfied { .. })),
+        "expected TraitNotSatisfied on non-Copyable Pair instantiation: {:?}",
         bag.errors()
     );
 }

@@ -52,6 +52,7 @@ pub const SMOKE_FIXTURES: &[&str] = &[
     "generic_struct.phx",
     "generic_enum.phx",
     "generic_infer.phx",
+    "generic_enum_infer.phx",
     "generic_impl_method.phx",
 ];
 
