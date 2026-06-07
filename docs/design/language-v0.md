@@ -451,6 +451,18 @@ Polish and capabilities that make the project legible to new contributors and un
 
 ---
 
+### V0-057 — Opaque / newtype wrappers
+
+- Distinct nominal types that wrap a single inner representation (e.g. `UserId` around `s32`), separate from **transparent** `type Alias = T` aliases.
+- Wrapping and unwrapping require explicit conversion; inner and wrapper types are not mutually assignable without it.
+- Syntax and surface forms are specified in [type-system.md](features/type-system.md#type-aliases-vs-opaque-newtypes-phased) and [grammar.ebnf](grammar.ebnf) before implementation.
+
+**Acceptance:** A program defines a newtype wrapper, constructs a value, passes it to a function expecting the wrapper type, and rejects implicit use where the inner type is required; explicit unwrap/conversion works; `just pre-commit` green with fixture coverage.
+
+**Refs:** [type-system.md](features/type-system.md#type-aliases-vs-opaque-newtypes-phased), [ownership.md](features/ownership.md)
+
+---
+
 ## Language v0 complete — definition of done
 
 When **all** items in Phases 1–6 are checked:

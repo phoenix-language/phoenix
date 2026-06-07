@@ -118,6 +118,27 @@ See also [grammer.md](../grammer.md#explicit-casts) for surface syntax and prece
 
 ---
 
+## Type aliases vs opaque newtypes (phased)
+
+| Form | Status | Semantics |
+|---|---|---|
+| `type Alias = T` | **MVP (shipped)** | **Transparent** alias — `Alias` and `T` unify for assignability, operators, and pattern matching after alias expansion. |
+| Opaque / newtype wrapper | **Planned ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers))** | **Distinct nominal** type around one inner representation — not interchangeable with the inner type without explicit conversion. |
+
+**Transparent aliases today:** recursive aliases are rejected; generic aliases (`type Pair<t> = (t, t);`) monomorphize like other generic declarations.
+
+**Opaque / newtype (V0-057 — design TBD):**
+
+- One inner type per wrapper (multi-field distinct types remain ordinary `struct`s).
+- Zero-cost representation may equal the inner type at runtime, but the type checker treats wrapper and inner as different types.
+- Explicit wrap/unwrap (or constructor/conversion fn) required at boundaries — e.g. `UserId` must not silently substitute for `s32`.
+- `Copyable` / move semantics follow the inner representation unless a future design doc says otherwise.
+- Surface syntax is **not** locked until grammar and this section are updated together; do not implement ad hoc forms in the compiler.
+
+**Use cases:** newtyped IDs (`UserId`, `SessionId`), units (`Meters`, `Seconds`), std helpers like `NonZero<t>`, and FFI-adjacent distinct handles without field names.
+
+---
+
 ## Deterministic MVP type rules
 
 1. Integer literals default to `s32`; with `u` suffix they default to `u32`.

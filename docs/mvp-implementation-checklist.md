@@ -309,7 +309,8 @@ A credible MVP demo `.phx` should be able to:
 | Tuples                            | done    | parse + typeck + VM          | `MakeTuple`                         | `tuple_lit.phx`           |
 | Fixed arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
 | Slices `[T]`                      | partial | typeck + VM                  | Explicit cast from array; stack-backed only (no heap slice) | `slice_from_array.phx` |
-| Type aliases                      | done    | resolver + typeck + unify  | Expand aliases in unify; assignability tests | `type_alias_*` in `typeck.rs` |
+| Type aliases                      | done    | resolver + typeck + unify  | Transparent `type Alias = T`; expand in unify | `type_alias_*` in `typeck.rs` |
+| Opaque / newtype wrappers         | missing | —                            | Distinct nominal wrap of one inner type; see [V0-057](design/language-v0.md#v0-057--opaque--newtype-wrappers) | Wrap/unwrap + assignability fixture |
 | `struct` decl + literal           | done    | parse, typeck, lower, VM     | Arena struct aggregates             | `struct_point.phx`        |
 | `enum` decl + ctors               | done    | parse, typeck, lower, VM     | Tag + payload in arena              | `enum_match.phx`          |
 
