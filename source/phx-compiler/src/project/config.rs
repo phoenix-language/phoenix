@@ -42,6 +42,8 @@ pub struct ProjectConfig {
     pub build_dir: PathBuf,
     /// `[dependencies]` keyed by package name (must match depended `project.name`).
     pub dependencies: HashMap<String, PathDependency>,
+    /// When true (default), link the compiler-bundled `std` package unless declared in dependencies.
+    pub bundle_std: bool,
 }
 
 impl ProjectConfig {
@@ -51,6 +53,25 @@ impl ProjectConfig {
     ///
     /// Returns [`ProjectError`] when the file is missing or invalid.
     pub fn load(root: &Path) -> Result<Self, ProjectError> {
+        let path = root.join("phoenix.toml");
+        let text = std::fs::read_to_string(&path).map_err(|e| ProjectError::Io {
+            path: path.display().to_string(),
+            message: e.to_string(),
+        })?;
+        let mut cfg = parse_toml(&text, root)?;
+        super::stdlib::apply_bundled_std(&mut cfg)?;
+        cfg.validate()?;
+        Ok(cfg)
+    }
+
+    /// Loads `phoenix.toml` without injecting the bundled `std` dependency.
+    ///
+    /// Used when validating the std package root to avoid recursive bundling.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError`] when the file is missing or invalid.
+    pub fn load_without_bundled_std(root: &Path) -> Result<Self, ProjectError> {
         let path = root.join("phoenix.toml");
         let text = std::fs::read_to_string(&path).map_err(|e| ProjectError::Io {
             path: path.display().to_string(),
@@ -198,6 +219,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut section = String::new();
     let mut dep_key: Option<String> = None;
     let mut dependencies: HashMap<String, PathDependency> = HashMap::new();
+    let mut bundle_std = true;
 
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -231,6 +253,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
                     package_type = Some(parse_package_type(value)?);
                 }
                 "module_src" => module_src = PathBuf::from(value),
+                "bundle_std" => bundle_std = parse_bool(value)?,
                 _ => {}
             },
             "build" if key == "dir" => build_dir = PathBuf::from(value),
@@ -280,7 +303,18 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         module_src,
         build_dir,
         dependencies,
+        bundle_std,
     })
+}
+
+fn parse_bool(value: &str) -> Result<bool, ProjectError> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        other => Err(ProjectError::Invalid {
+            message: format!("invalid boolean `{other}` (expected true or false)"),
+        }),
+    }
 }
 
 fn parse_package_type(value: &str) -> Result<PackageType, ProjectError> {
@@ -333,6 +367,7 @@ mod tests {
 name = "demo"
 type = "bin"
 module_src = "src"
+bundle_std = false
 "#,
         )
         .unwrap();
@@ -355,6 +390,7 @@ module_src = "src"
 name = "mylib"
 type = "lib"
 module_src = "src"
+bundle_std = false
 "#,
         )
         .unwrap();
@@ -381,6 +417,7 @@ module_src = "src"
 name = "demo"
 type = "bin"
 module_src = "src"
+bundle_std = false
 "#,
         )
         .unwrap();
@@ -404,6 +441,7 @@ module_src = "src"
 name = "math"
 type = "lib"
 module_src = "src"
+bundle_std = false
 "#,
         )
         .unwrap();
@@ -423,6 +461,7 @@ module_src = "src"
 name = "app"
 type = "bin"
 module_src = "src"
+bundle_std = false
 
 [dependencies]
 wrong = {{ path = "{}" }}

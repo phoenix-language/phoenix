@@ -119,6 +119,13 @@ pub fn load_program_with_context(
         0,
     ));
     loaded_paths.insert(entry_logical.display(), entry_file.clone());
+    enqueue_all_lib_modules(
+        &workspace.module_src,
+        &workspace.name,
+        workspace.package_type,
+        &mut pending,
+        &mut loaded_paths,
+    );
 
     let mut modules_raw: Vec<(ModulePath, PathBuf, SourceText, Program)> = Vec::new();
 
@@ -273,7 +280,7 @@ pub fn load_program_with_context(
         .copied()
         .or_else(|| id_for_path.values().next().copied())?;
 
-    let order = topo_sort_with_pxi_escape(
+    let _order = topo_sort_with_pxi_escape(
         module_count,
         &edges,
         root_id,
@@ -283,24 +290,37 @@ pub fn load_program_with_context(
         &dep_names,
         bag,
     )?;
-    let index_map: HashMap<ModuleId, usize> = modules
-        .iter()
-        .map(|m| (m.id, m.id.index() as usize))
-        .collect();
-    let mut sorted = Vec::with_capacity(modules.len());
-    for id in order {
-        let idx = index_map[&id];
-        sorted.push(modules[idx].clone());
+
+    // Keep `modules[id]` at index `id.index()` — resolve/import code indexes by `ModuleId`.
+    let mut indexed: Vec<Option<LoadedModule>> = (0..module_count).map(|_| None).collect();
+    for m in modules {
+        let idx = m.id.index() as usize;
+        indexed[idx] = Some(m);
+    }
+    let mut modules: Vec<LoadedModule> = Vec::with_capacity(module_count);
+    for (i, slot) in indexed.into_iter().enumerate() {
+        let Some(m) = slot else {
+            bag.push(
+                0,
+                ResolveError::ModuleNotFound {
+                    span: phx_diagnostics::Span::new(0, 1),
+                    path: format!("missing module slot {i} after load"),
+                },
+            );
+            return None;
+        };
+        debug_assert_eq!(m.id.index() as usize, i);
+        modules.push(m);
     }
 
-    let path_index: HashMap<String, ModuleId> = sorted
+    let path_index: HashMap<String, ModuleId> = modules
         .iter()
         .map(|m| (m.logical_path.display(), m.id))
         .collect();
 
     Some(LoadedProgram {
         interner,
-        modules: sorted,
+        modules,
         root: root_id,
         path_index,
         package_name: workspace.name.clone(),
@@ -308,6 +328,49 @@ pub fn load_program_with_context(
         dep_package_names: ctx.dependencies.iter().map(|d| d.name.clone()).collect(),
         build_layout: layout.cloned(),
     })
+}
+
+/// Queues every `.phx` file under `module_src` for `type = lib` packages.
+///
+/// Library roots are not required to `#import` every submodule from `lib.phx`; the
+/// build still compiles and exports all sources under `module_src`.
+fn enqueue_all_lib_modules(
+    module_src: &Path,
+    package_name: &str,
+    package_type: PackageType,
+    pending: &mut Vec<(ModulePath, PathBuf, phx_diagnostics::Span, u32)>,
+    loaded_paths: &mut HashMap<String, PathBuf>,
+) {
+    if package_type != PackageType::Lib {
+        return;
+    }
+    let mut files = Vec::new();
+    collect_phx_files(module_src, &mut files);
+    for path in files {
+        let Some(logical) = ModulePath::from_file_path(module_src, &path, package_name) else {
+            continue;
+        };
+        let key = logical.display();
+        if loaded_paths.contains_key(&key) {
+            continue;
+        }
+        loaded_paths.insert(key, path.clone());
+        pending.push((logical, path, phx_diagnostics::Span::new(0, 1), 0));
+    }
+}
+
+fn collect_phx_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_phx_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "phx") {
+            out.push(path);
+        }
+    }
 }
 
 fn infer_package_name(module_root: &Path) -> String {

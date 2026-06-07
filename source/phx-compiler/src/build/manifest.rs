@@ -95,22 +95,24 @@ fn parse_manifest(text: &str) -> BuildManifest {
     if let Some(bin) = extract_string(text, "bin_path") {
         manifest.bin_path = bin;
     }
+    let modules_text = modules_section(text).unwrap_or(text);
     for (logical, ()) in extract_module_keys(text) {
-        let prefix = format!("\"{logical}\"");
-        if let Some(pos) = text.find(&prefix) {
-            let chunk = &text[pos..];
-            manifest.modules.insert(
-                logical.clone(),
-                ManifestModule {
-                    logical_path: logical.clone(),
-                    source: extract_string(chunk, "source").unwrap_or_default(),
-                    source_hash: extract_string(chunk, "source_hash").unwrap_or_default(),
-                    pxi_hash: extract_string(chunk, "pxi_hash").unwrap_or_default(),
-                    phx0_path: extract_string(chunk, "phx0_path").unwrap_or_default(),
-                    pxi_path: extract_string(chunk, "pxi_path").unwrap_or_default(),
-                },
-            );
-        }
+        let needle = format!("\"{logical}\": {{");
+        let Some(pos) = modules_text.find(&needle) else {
+            continue;
+        };
+        let chunk = &modules_text[pos..];
+        manifest.modules.insert(
+            logical.clone(),
+            ManifestModule {
+                logical_path: logical.clone(),
+                source: extract_string(chunk, "source").unwrap_or_default(),
+                source_hash: extract_string(chunk, "source_hash").unwrap_or_default(),
+                pxi_hash: extract_string(chunk, "pxi_hash").unwrap_or_default(),
+                phx0_path: extract_string(chunk, "phx0_path").unwrap_or_default(),
+                pxi_path: extract_string(chunk, "pxi_path").unwrap_or_default(),
+            },
+        );
     }
     manifest
 }
@@ -131,6 +133,27 @@ fn extract_string(text: &str, key: &str) -> Option<String> {
             continue;
         }
         out.push(c);
+    }
+    None
+}
+
+fn modules_section(text: &str) -> Option<&str> {
+    let mods = text.find("\"modules\"")?;
+    let after = &text[mods..];
+    let open = after.find('{')? + 1;
+    let mut depth = 1i32;
+    let bytes = after.as_bytes();
+    for (i, &b) in bytes.iter().enumerate().skip(open) {
+        match b {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&after[open..i]);
+                }
+            }
+            _ => {}
+        }
     }
     None
 }
@@ -219,6 +242,35 @@ pub fn record_pxi_hash(pxi_path: &Path) -> String {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_manifest_std_module_not_confused_with_entry() {
+        let text = r#"{
+  "entry": "std",
+  "bin_path": "build/deps/std/lib/std.phx0",
+  "modules": {
+    "std::core::option": {
+      "source": "src/core/option.phx",
+      "source_hash": "a",
+      "pxi_hash": "b",
+      "phx0_path": "phx0/std/core/option.phx0",
+      "pxi_path": "pxi/std/core/option.pxi"
+    },
+    "std": {
+      "source": "src/lib.phx",
+      "source_hash": "c",
+      "pxi_hash": "d",
+      "phx0_path": "phx0/std.phx0",
+      "pxi_path": "pxi/std.pxi"
+    }
+  }
+}
+"#;
+        let manifest = parse_manifest(text);
+        let std_mod = manifest.modules.get("std").expect("std module");
+        assert_eq!(std_mod.pxi_path, "pxi/std.pxi");
+        assert_eq!(std_mod.source, "src/lib.phx");
+    }
 
     #[test]
     fn parse_manifest_single_segment_module_key() {

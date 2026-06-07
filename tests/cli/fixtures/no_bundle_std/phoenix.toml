@@ -1,7 +1,7 @@
 [project]
-name = "cli_project_test"
+name = "no_bundle_std"
 version = "0.1.0"
-description = "CLI build/run fixture"
+description = "Verifies bundle_std = false does not link std"
 type = "bin"
 module_src = "src"
 bundle_std = false

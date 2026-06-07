@@ -1,0 +1,4 @@
+pub Result :: <ok, err> enum {
+    Ok(ok),
+    Err(err),
+};

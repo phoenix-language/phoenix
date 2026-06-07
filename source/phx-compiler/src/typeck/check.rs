@@ -381,14 +381,6 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
-    fn is_post_mvp_std_type_name(&self, symbol: Symbol) -> bool {
-        let name = self.resolved.interner.resolve(symbol);
-        if name != "Option" && name != "Result" {
-            return false;
-        }
-        !self.type_defs.contains_key(&symbol)
-    }
-
     fn poison_type(&mut self) -> TypeId {
         error_type(&mut self.types)
     }
@@ -456,16 +448,6 @@ impl<'a> TypeChecker<'a> {
                     }
                     return self_ty;
                 }
-            }
-            if self.is_post_mvp_std_type_name(name.symbol) {
-                self.bag.push(
-                    self.current_module,
-                    TypeCheckError::UnsupportedFeature {
-                        feature: "std Option/Result types (post-MVP)",
-                        span: ty.span,
-                    },
-                );
-                return self.poison_type();
             }
         }
         let id = lower_type(&mut self.types, type_defs, &ty.inner);

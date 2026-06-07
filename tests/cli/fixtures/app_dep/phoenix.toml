@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "App depending on math lib"
 type = "bin"
 module_src = "src"
+bundle_std = false
 
 [dependencies]
 math = { path = "../math_lib" }

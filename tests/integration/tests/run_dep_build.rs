@@ -4,8 +4,8 @@
 use phx_bytecode::{Instruction, Opcode, verify};
 use phx_compiler::BuildOptions;
 use phx_compiler::{
-    BuildLayout, ProgramLoadContext, PxiFile, load_program_with_context, resolve_loaded_program,
-    type_check,
+    BuildLayout, ProgramLoadContext, PxiFile, build_project, load_program_with_context,
+    resolve_loaded_program, type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 use phx_test::{build_cli_project, cli_project, discover_cli_project, fixture_fs_lock};
@@ -162,4 +162,28 @@ fn path_dep_std_smoke_builds_and_runs() {
     let module = phx_bytecode::BytecodeModule::decode(&bytes).expect("decode");
     verify(&module).expect("verify linked bin");
     run(&module).expect("run std_smoke binary");
+}
+
+#[test]
+fn bundle_std_disabled_does_not_link_std() {
+    let _lock = fixture_fs_lock();
+    let root = cli_project("no_bundle_std");
+    let config = discover_cli_project(&root);
+    assert!(
+        !config.dependencies.contains_key("std"),
+        "bundle_std = false must not inject std dependency"
+    );
+    let err = build_project(&config, None, BuildOptions::force(true))
+        .expect_err("Option without std should fail to build");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Option")
+            || msg.to_ascii_lowercase().contains("unresolved")
+            || msg.to_ascii_lowercase().contains("unknown"),
+        "expected resolve/type error for Option, got: {msg}"
+    );
+    assert!(
+        !root.join("build/deps/std").is_dir(),
+        "std must not be built when bundle_std = false"
+    );
 }

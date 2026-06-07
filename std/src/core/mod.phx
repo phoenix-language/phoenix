@@ -1,3 +1,2 @@
-// Submodule layout placeholder (V0-041+ content).
-
-pub placeholder :: () => { };
+// std::core — language-foundation types and traits.
+// Submodules: option, result; V0-043+ adds clone, copyable, cmp, fmt, alloc, …

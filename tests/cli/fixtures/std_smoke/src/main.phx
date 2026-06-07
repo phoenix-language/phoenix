@@ -1,3 +1,27 @@
 #import std::version;
+#import std::core::option::Option;
+#import std::core::option::Some;
+#import std::core::option::None;
+#import std::core::result::Result;
+#import std::core::result::Ok;
+#import std::core::result::Err;
 
-main :: () => { const _ = version(); };
+wrap :: (n: s32) => Option<s32> { Some :: <s32> (n) };
+
+to_result :: () => Result<s32, s32> {
+    match wrap(42) {
+        None => Err :: <s32, s32> (0);
+        Some(v) => Ok :: <s32, s32> (v);
+    }
+};
+
+main :: () => {
+    const _ = version();
+    const r: Result<s32, s32> = to_result();
+    const n: s32 = match wrap(42) {
+        None => 0;
+        Some(v) => v;
+    };
+    const _ignore = n;
+    const _discard = r;
+};

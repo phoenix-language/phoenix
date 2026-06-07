@@ -657,6 +657,7 @@ fn workspace_stale_modules(
         .collect()
 }
 
+#[allow(clippy::too_many_lines)]
 fn build_global_fn_map(
     config: &ProjectConfig,
     _layout: &BuildLayout,
@@ -691,11 +692,14 @@ fn build_global_fn_map(
                 if exp.kind != "fn" {
                     continue;
                 }
-                if let Some(id) = exp.function_id {
-                    dep_export_fn_ids.insert(exp.export_id.clone(), id);
-                    max_dep_id = max_dep_id.max(id);
-                } else {
-                    dep_template_fn_exports.insert(exp.export_id.clone());
+                match exp.function_id {
+                    Some(id) => {
+                        dep_export_fn_ids.insert(exp.export_id.clone(), id);
+                        max_dep_id = max_dep_id.max(id);
+                    }
+                    None => {
+                        dep_template_fn_exports.insert(exp.export_id.clone());
+                    }
                 }
             }
         }

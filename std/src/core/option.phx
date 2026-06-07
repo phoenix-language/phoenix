@@ -1,0 +1,4 @@
+pub Option :: <t> enum {
+    None,
+    Some(t),
+};

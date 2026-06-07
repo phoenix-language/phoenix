@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "MVP acceptance smoke project"
 type = "bin"
 module_src = "src"
+bundle_std = false
 
 [build]
 dir = "build"

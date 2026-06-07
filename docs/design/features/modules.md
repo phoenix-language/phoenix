@@ -98,9 +98,15 @@ std = { path = "../std" }   # key MUST equal std's project.name
 
 ```phoenix
 #import std::version;
+#import std::core::option::Option;
+#import std::core::result::Result;
 ```
 
-Std is **not** auto-linked into every module; apps must declare the dependency in `phoenix.toml` until a prelude policy is designed (V0-044). Contributor workflow: [`std/README.md`](../../../std/README.md). Smoke consumer: `tests/cli/fixtures/std_smoke/`.
+**Bundled std (V0-041):** `bundle_std = true` by default in `phoenix.toml` injects the repo `std` path dependency when `[dependencies] std` is absent. Set `bundle_std = false` for minimal projects or tests that must not link std. Override discovery with `PHOENIX_STD`. Prelude auto-import (V0-044) is separate from bundling.
+
+**`std::core` convention:** language-foundation types and traits live under `std::core::*` (e.g. `std::core::option::Option`), not at the `std` package root. The root module (`std`) stays thin (`version` only for now).
+
+Contributor workflow: [`std/README.md`](../../../std/README.md). Smoke consumer: `tests/cli/fixtures/std_smoke/`.
 
 ---
 

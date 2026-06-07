@@ -54,7 +54,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | 8. `return;` only for `()` | **pass** | typeck tests |
 | 9. Operators on primitives / `bool` only | **pass** | User types rejected for ops |
 | 10. Generic inference local only | **partial** | Named types + args scaffold |
-| Option / Result / `?` rejected until std | **pass** | `*_unresolved_until_std` tests |
+| Option / Result via std `::core` (V0-041) | **pass** | `std_smoke`, generic enum fixtures; bare names still `*_unresolved_until_std` |
 | Enum `match` exhaustiveness | **pass** | `NonExhaustiveMatch`; struct variants covered |
 | Type aliases | **pass** | `type_alias_*` tests in `typeck.rs` |
 
@@ -100,7 +100,8 @@ A credible MVP demo `.phx` should be able to:
 - [x] Construct and use **user** `struct` / `enum` values with field/tag access at runtime
 - [x] Explicit `expr as Type` casts where types differ (per [type-system.md](design/features/type-system.md))
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
-- [ ] *(Post-MVP std)* `Option` / `Result` / `?` — generic enums in library, not compiler builtins
+- [x] *(V0-041)* `Option` / `Result` — generic enums in `std::core`, not compiler builtins
+- [ ] *(V0-042+)* `?` and ctor shorthand without explicit `#import`
 
 **Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **`run.sh`:** 31 programs + `modules/main.phx`. **Acceptance project:** `mvp_acceptance/` via `build.sh`.
 
@@ -192,8 +193,8 @@ A credible MVP demo `.phx` should be able to:
 | `const` / `var` inference & assign         | done     | `typeck/check.rs`                 |                                                                               | assign tests                                           |
 | Index `[T; N]` / slice                     | done     | `typeck/check.rs` + VM `Index`    | Array and slice index at runtime                                              | `array_index.phx`, `slice_from_array.phx`              |
 | Struct literals + fields                   | done     | `typeck/check.rs`, `layout.rs`    | Missing/unknown field errors; layout tables                                   | Struct lit + field read in `struct_point.phx`          |
-| Std ctors `Some`/`None`/`Ok`/`Err`         | deferred | —                                 | Lex as `TypeIdent`; resolve as unknown type until std prelude                 | `ok_ctor_unresolved_until_std`                         |
-| `Option`/`Result` types                    | deferred | —                                 | Lex as `TypeIdent` + generics; no compiler builtin                            | `result_type_unresolved_until_std`                     |
+| Std ctors `Some`/`None`/`Ok`/`Err`         | partial  | `std::core::*`                    | Via `#import std::core::…`; bare names still unresolved                       | `ok_ctor_unresolved_until_std`, `std_smoke`            |
+| `Option`/`Result` types                    | partial  | `std::core::*`                    | Via `#import`; no `Ty::Option` / `Ty::Result`                                 | `std_smoke`, `result_type_unresolved_until_std`        |
 | `?`                                        | deferred | `typeck/check.rs`                 | Postfix `?` rejected until std                                                | `question_mark_unsupported_in_mvp`                     |
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
 | `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns; enum exhaustiveness                      | `enum_match.phx`, `enum_match_non_exhaustive` test     |
@@ -334,11 +335,11 @@ A credible MVP demo `.phx` should be able to:
 
 | Item                                   | Status  | Where             | Notes                      | Acceptance                   |
 | -------------------------------------- | ------- | ----------------- | -------------------------- | ---------------------------- |
-| Std `Option`/`Result` as generic enums | missing | std crate         | Not compiler builtins      | `#import` + prelude          |
+| Std `Option`/`Result` as generic enums | done    | `std::core::*`    | Not compiler builtins      | `std_smoke`, `just build-std` |
 | Surface syntax (`Option<T>`, ctors)    | done    | `phx-syntax`      | Same as user `TypeIdent` / enum patterns — no reserved keywords | Parser tests                 |
 | Unknown until std prelude              | done    | `resolver/walk.rs`| `UnresolvedType` for undefined names | `*_unresolved_until_std` tests |
 | `?` lowering + runtime                 | missing | lower + VM        | After std types exist      | Early return propagates      |
-| `match` on std enums                   | missing | typeck + lower    | After std + aggregates     | Runtime unwrap arms          |
+| `match` on std enums                   | partial | typeck + lower    | `Option` match in `std_smoke`; multi-param `Result` scrutinee TBD | `std_smoke`                  |
 
 
 ---

@@ -322,16 +322,13 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ### V0-041 — Core std types as ordinary generic enums
 
-- Implement in Phoenix source:
+- `std::core::option::Option` and `std::core::result::Result` as `pub` generic enums in Phoenix source (`std/src/core/option.phx`, `std/src/core/result.phx`).
+- Type-check monomorphized `Option<T>` and `Result<T, E>` like any user generic enum once std is linked.
+- Bundled std: `bundle_std = true` by default; opt out in `phoenix.toml`.
 
-```phoenix
-pub Option :: enum<Type> { None, Some(Type) }
-pub Result :: enum<Ok, Err> { Ok(Ok), Err(Err) }
-```
+**Acceptance:** Program `#import`s `std::core::option::Option` / `std::core::result::Result` and uses them in signatures and `match` without compiler builtins.
 
-- Type-check `Option<T>` and `Result<T, E>` like any user generic enum once imported.
-
-**Acceptance:** Program `#import`s `Option` / `Result` and uses them in signatures and `match` without compiler builtins.
+**Status:** Done
 
 **Refs:** [type-system.md](features/type-system.md) (Phased: Option and Result), [error-handling.md](features/error-handling.md)
 
