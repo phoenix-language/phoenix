@@ -1,0 +1,8 @@
+#[cfg(target_os = "no_such_os")]
+pub phantom :: () => s32 {
+  99
+};
+
+main :: () => {
+  const x = 7;
+};

@@ -19,6 +19,7 @@ mod code;
 mod explain;
 mod format;
 mod lex_error;
+mod lint;
 mod located;
 mod lower_error;
 mod parse_error;
@@ -38,13 +39,14 @@ pub use format::{
     resolve_message, typecheck_message,
 };
 pub use lex_error::LexError;
+pub use lint::{Lint, LintBag, LintKind, LocatedLint};
 pub use located::LocatedError;
 pub use lower_error::{LowerBag, LowerError, LowerResult};
 pub use parse_error::{ExpectedToken, ParseBag, ParseError, ParseResult};
 pub use render::{
     AncillaryNote, DiagnosticAncillary, DiagnosticStyle, PlainStyle, SpanContext,
-    diagnostic_display_path, join_diagnostics, line_col, render_diagnostic,
-    render_diagnostic_enriched, render_diagnostic_with_note,
+    diagnostic_display_path, format_lints_styled, join_diagnostics, line_col, render_diagnostic,
+    render_diagnostic_enriched, render_diagnostic_with_note, render_lint,
 };
 pub use resolve_error::{DiagnosticBag, InvalidMainReason, ResolveError, ResolveResult};
 pub use span::Span;

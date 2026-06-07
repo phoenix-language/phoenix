@@ -21,6 +21,10 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `Some` / `None` / `Ok` / `Err` | Expr / patterns | Parse; typeck rejects | Std enum constructors |
 | `expr?` | Postfix `?` | Parse; typeck rejects | Sugar over std `Option`/`Result` |
 | Block-scoped `#import` | `import_directive` in `block_item` | **Implemented** — scoped name intro per [modules.md](modules.md#scoped-imports-mvp) | — |
+| `#[cfg(...)]` | `attribute` on items | **Implemented** — strip before resolve ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)) | `all`/`any`, `#![cfg]` |
+| `#[deprecated(...)]` | `attribute` on items | **Implemented** — warning at use sites | Cross-crate via `.pxi` |
+| `#[allow(...)]` / `#[must_use]` | `attribute` on items | **Implemented** — lint suppression / discard warning | `#[deny]` / `#[forbid]` |
+| `#[stable(...)]` / `#[since(...)]` | — | Not in grammar v1 | API versioning metadata |
 
 ---
 

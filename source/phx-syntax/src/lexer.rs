@@ -259,6 +259,9 @@ impl<'src> Lexer<'src> {
 
     fn lex_hash_directive(&mut self) -> Result<TokenKind<'src>, LexError> {
         self.advance();
+        if self.consume_byte(b'[') {
+            return Ok(TokenKind::HashBracket);
+        }
         if self.consume_bytes(b"import") {
             Ok(TokenKind::HashImport)
         } else if self.consume_bytes(b"unsafe") {

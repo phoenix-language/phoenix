@@ -1,0 +1,8 @@
+#[derive(Debug)]
+pub Point :: struct {
+  x: s32,
+  y: s32,
+};
+
+main :: () => {
+};

@@ -278,6 +278,8 @@ pub enum TokenKind<'src> {
     AmpMut,
     /// `*mut`
     StarMut,
+    /// `#[` — start of bracket item attribute
+    HashBracket,
     /// `#import`
     HashImport,
     /// `#unsafe`

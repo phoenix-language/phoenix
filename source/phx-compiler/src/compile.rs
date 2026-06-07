@@ -9,13 +9,16 @@ use std::path::Path;
 use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
-    DiagnosticBag, DiagnosticStyle, LowerBag, ParseBag, ParseError, PlainStyle, SpanContext,
-    TypeCheckBag, format_lex_error_styled, format_lower_error_styled, format_resolve_error_styled,
-    format_typecheck_error_styled, join_diagnostics, render_diagnostic,
+    DiagnosticBag, DiagnosticStyle, LintBag, LowerBag, ParseBag, ParseError, PlainStyle,
+    SpanContext, TypeCheckBag, format_lex_error_styled, format_lints_styled,
+    format_lower_error_styled, format_resolve_error_styled, format_typecheck_error_styled,
+    join_diagnostics, render_diagnostic,
 };
 use phx_syntax::{Interner, parse};
 
+use crate::cfg::{CompileCfg, strip_cfg};
 use crate::codegen::codegen;
+use crate::lint::lint_program;
 use crate::lower::lower;
 use crate::modules::{
     LoadedModule, ProgramLoadContext, load_program, load_program_with_context,
@@ -409,7 +412,22 @@ impl std::error::Error for CompileError {
 ///
 /// Returns [`CompileError::Parse`] or [`CompileError::Resolve`] on failure.
 pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUnit, CompileError> {
-    let source_file = parse(source).map_err(CompileError::Parse)?;
+    let mut source_file = parse(source).map_err(CompileError::Parse)?;
+    if let Err(err) = strip_cfg(
+        &mut source_file.program,
+        &CompileCfg::host(),
+        &source_file.interner,
+    ) {
+        let mut bag = DiagnosticBag::new();
+        bag.push(
+            0,
+            phx_diagnostics::ResolveError::InvalidCfg {
+                span: err.span,
+                message: err.message,
+            },
+        );
+        return Err(CompileError::Resolve { bag, context: None });
+    }
     let resolved =
         resolve(&source_file).map_err(|bag| CompileError::Resolve { bag, context: None })?;
     let ctx = DiagnosticContext::from_resolved(&resolved);
@@ -420,6 +438,45 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
         source: source.to_owned(),
         typed,
     })
+}
+
+/// Runs the lint pass on a type-checked program.
+///
+/// # Errors
+///
+/// Returns [`DiagnosticBag`] when `#[allow(...)]` names are invalid.
+pub fn lint_checked(typed: &crate::typeck::TypedProgram) -> Result<LintBag, DiagnosticBag> {
+    lint_program(&typed.resolved)
+}
+
+/// Formats lint warnings for stderr (does not fail the build).
+#[must_use]
+pub fn format_lints(
+    lints: &LintBag,
+    context: &DiagnosticContext,
+    style: &dyn DiagnosticStyle,
+) -> String {
+    let rows: Vec<(u32, String)> = context
+        .modules
+        .iter()
+        .map(|m| {
+            (
+                m.id,
+                if m.filesystem.as_os_str().is_empty() {
+                    m.logical_path.clone()
+                } else {
+                    phx_diagnostics::diagnostic_display_path(&m.filesystem)
+                },
+            )
+        })
+        .collect();
+    let module_rows: Vec<(u32, &str, &str)> = context
+        .modules
+        .iter()
+        .zip(rows.iter())
+        .map(|(m, (_, path))| (m.id, m.source.as_ref(), path.as_str()))
+        .collect();
+    format_lints_styled(lints, &module_rows, style)
 }
 
 /// Parses and type-checks `source` using the module graph rooted at `path` under `module_root`.

@@ -3,6 +3,7 @@
 //! Top-level [`Program`] items, functions, user types, traits, impls, and `#import` metadata.
 
 use crate::ast::Node;
+use crate::ast::attr::Attribute;
 use crate::ast::expr::ExprNode;
 use crate::ast::ident::{Ident, Path, TypeName};
 use crate::ast::stmt::BlockNode;
@@ -143,6 +144,8 @@ pub struct FunctionSig {
 /// Function definition with body.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
+    /// Bracket attributes (`#[...]`).
+    pub attrs: Vec<Node<Attribute>>,
     /// `#derive` attributes (no codegen in MVP).
     pub derives: Vec<DeriveDirective>,
     /// Directives (`#inline`, …).
@@ -258,6 +261,8 @@ pub enum TopLevelDecl {
 /// Top-level item with optional `pub`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TopLevelItem {
+    /// Bracket attributes (`#[...]`).
+    pub attrs: Vec<Node<Attribute>>,
     /// `pub` modifier present.
     pub pub_: bool,
     /// Declaration.

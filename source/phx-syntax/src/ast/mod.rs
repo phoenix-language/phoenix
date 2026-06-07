@@ -14,6 +14,7 @@
 //! - [`node`] — [`Node<T>`] span wrapper.
 //! - [`node_id`] — [`AstNodeId`] assigned at parse time.
 
+pub mod attr;
 pub mod decl;
 pub mod expr;
 pub mod ident;
@@ -24,6 +25,7 @@ pub mod pat;
 pub mod stmt;
 pub mod types;
 
+pub use attr::{AttrArg, AttrValue, Attribute};
 pub use decl::{
     EnumVariant, FnDirective, Function, FunctionSig, ImplMember, ImportDirective, ImportItem,
     ImportItems, Param, Program, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem,

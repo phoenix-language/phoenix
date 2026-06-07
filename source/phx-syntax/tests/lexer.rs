@@ -1263,6 +1263,23 @@ fn directive_hash_derive() {
 }
 
 #[test]
+fn hash_bracket_attribute_token() {
+    assert_tokens(
+        "#[cfg(target_os = \"linux\")]",
+        &[
+            Expect::Kind(TokenKind::HashBracket),
+            Expect::Ident("cfg"),
+            Expect::Kind(TokenKind::LParen),
+            Expect::Ident("target_os"),
+            Expect::Kind(TokenKind::Eq),
+            Expect::String("linux"),
+            Expect::Kind(TokenKind::RParen),
+            Expect::Kind(TokenKind::RBracket),
+        ],
+    );
+}
+
+#[test]
 fn directive_at_spawn() {
     assert_tokens("@spawn", &[Expect::Kind(TokenKind::AtSpawn)]);
 }

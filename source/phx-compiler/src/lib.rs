@@ -22,12 +22,15 @@
 //!
 //! See `docs/finished-review/10-rust-code-quality.md`.
 
+mod attrs;
 mod build;
+mod cfg;
 mod codegen;
 mod compile;
 pub mod facade;
 mod ir;
 mod link;
+mod lint;
 mod lower;
 mod modules;
 mod project;
@@ -41,11 +44,12 @@ pub use build::{
     BuildError, BuildOptions, BuildResult, build_project, emit_interfaces_from_compiled,
     load_project_binary,
 };
+pub use cfg::{CompileCfg, strip_cfg};
 pub use codegen::{build_type_table, codegen, codegen_module};
 pub use compile::{
     CompileError, DiagnosticContext, check_file, check_file_with_module_path, check_project_file,
     compile_source, compile_source_with_module_root, compile_to_module,
-    compile_to_module_with_module_path,
+    compile_to_module_with_module_path, format_lints, lint_checked,
 };
 pub use facade::{CheckOutput, CompileOutput};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};

@@ -154,6 +154,13 @@ pub enum ResolveError {
         /// Span of the first impl.
         first_span: Span,
     },
+    /// Invalid `#[cfg(...)]` attribute.
+    InvalidCfg {
+        /// Attribute span.
+        span: Span,
+        /// What failed.
+        message: String,
+    },
 }
 
 impl ResolveError {
@@ -178,6 +185,7 @@ impl ResolveError {
             Self::InvalidMainSignature { .. } => DiagnosticCode::new("E1015"),
             Self::GenericParamInValue { .. } => DiagnosticCode::new("E1016"),
             Self::DuplicateTraitImpl { .. } => DiagnosticCode::new("E1017"),
+            Self::InvalidCfg { .. } => DiagnosticCode::new("E1018"),
         }
     }
 
@@ -201,7 +209,8 @@ impl ResolveError {
             | Self::MainForbiddenInLib { span, .. }
             | Self::MissingMain { span, .. }
             | Self::GenericParamInValue { span, .. }
-            | Self::DuplicateTraitImpl { span, .. } => Some(*span),
+            | Self::DuplicateTraitImpl { span, .. }
+            | Self::InvalidCfg { span, .. } => Some(*span),
         }
     }
 }
@@ -265,6 +274,7 @@ impl fmt::Display for ResolveError {
             Self::DuplicateTraitImpl { .. } => {
                 f.write_str("duplicate trait implementation for the same type and trait")
             }
+            Self::InvalidCfg { message, .. } => write!(f, "invalid `#[cfg]`: {message}"),
         }
     }
 }

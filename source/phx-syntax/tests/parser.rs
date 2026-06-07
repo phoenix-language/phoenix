@@ -379,6 +379,17 @@ fn decl_function_receiver_mut_typed() {
 }
 
 #[test]
+fn decl_bracket_attribute_cfg() {
+    assert_ok("#[cfg(target_os = \"linux\")] pub f :: () => { }; main :: () => { };");
+}
+
+#[test]
+fn decl_bracket_attribute_must_use() {
+    let p = parse_ok("#[must_use] f :: () => s32 { 1 }; main :: () => { };");
+    assert_eq!(p.items[0].inner.attrs.len(), 1);
+}
+
+#[test]
 fn decl_function_directive_inline() {
     let p = parse_ok("#inline f :: () => { }; main :: () => { };");
     let TopLevelDecl::Function(f) = &p.items[0].inner.decl else {

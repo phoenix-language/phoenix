@@ -4,6 +4,7 @@ use std::path::Path;
 
 use crate::DiagnosticCode;
 use crate::Span;
+use crate::lint::{Lint, LintBag};
 
 /// Formats a filesystem path for user-facing diagnostics (relative to cwd when possible).
 #[must_use]
@@ -225,6 +226,55 @@ pub fn render_diagnostic_with_note(
             helps: &[],
         },
     )
+}
+
+/// Renders one warning with source snippet.
+#[must_use]
+pub fn render_lint(
+    style: &dyn DiagnosticStyle,
+    source: &str,
+    span: Span,
+    lint: &Lint,
+    file_path: &str,
+) -> String {
+    let (line_no, col) = line_col(source, span.start);
+    let path = location_path(file_path);
+    let mut out = format!("warning[{}]: {}", lint.code(), lint.message);
+    out.push('\n');
+    out.push_str(&style.location_line(&path, line_no, col));
+    out.push('\n');
+    out.push_str(&render_snippet(source, span, line_no));
+    for note in &lint.notes {
+        out.push('\n');
+        out.push_str(&style.note_label(note));
+    }
+    out
+}
+
+/// Formats all lints using per-module `(id, source, display_path)` rows.
+#[must_use]
+pub fn format_lints_styled(
+    lints: &LintBag,
+    modules: &[(u32, &str, &str)],
+    style: &dyn DiagnosticStyle,
+) -> String {
+    let mut parts = Vec::new();
+    for loc in lints.lints() {
+        let Some((source, path)) = modules
+            .iter()
+            .find(|(id, _, _)| *id == loc.module)
+            .map(|(_, s, p)| (*s, *p))
+        else {
+            parts.push(format!(
+                "warning[{}]: {}",
+                loc.lint.code(),
+                loc.lint.message
+            ));
+            continue;
+        };
+        parts.push(render_lint(style, source, loc.lint.span, &loc.lint, path));
+    }
+    parts.join("\n\n")
 }
 
 /// Joins multiple rendered diagnostics with blank lines and an optional footer.

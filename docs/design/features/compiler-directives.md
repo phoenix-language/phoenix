@@ -63,7 +63,79 @@ copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 
 ### `#derive(...)` (future)
 
-Reserved for compiler-generated trait impls (post-MVP).
+Reserved for compiler-generated trait impls (post-MVP). Also accepted as `#[derive(...)]` (see Item attributes below).
+
+---
+
+## Item attributes (`#[...]`)
+
+Item metadata uses **bracket attributes** alongside keyword directives. Keyword forms (`#import`, `#unsafe`, `#inline`, …) remain for statement/block/function-prefix placement; bracket attributes attach to declarations.
+
+```phoenix
+#[deprecated(since = "0.2.0", note = "use new_name instead", suggestion = "new_name")]
+pub old_fn :: () => () { };
+
+#[cfg(target_os = "linux")]
+pub linux_only :: () => () { };
+
+#[must_use]
+pub important :: () => s32 { 1 };
+
+#[allow(deprecated)]
+main :: () => {
+  old_fn();
+};
+```
+
+`#derive(Debug, PartialEq)` and `#[derive(Debug, PartialEq)]` are equivalent.
+
+### `#[cfg(...)]`
+
+Conditional compilation: items whose `#[cfg]` predicate is false at compile time are **removed** before name resolution.
+
+| Predicate | Form |
+|---|---|
+| `target_os` | `target_os = "linux"` (and other host OS strings) |
+| `target_arch` | `target_arch = "x86_64"` (and other host arch strings) |
+| `debug_assertions` | `debug_assertions` (flag, no value) |
+| `not(...)` | `not(target_os = "windows")` |
+
+Defaults follow the host compile (`std::env::consts::OS` / `ARCH`; `debug_assertions` true in debug builds). Unknown cfg keys are compile errors.
+
+`all(...)` / `any(...)` and file-level `#![cfg(...)]` are deferred.
+
+### `#[deprecated(...)]`
+
+Emits a **warning** at use sites when a deprecated item is referenced by name.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `since` | no | Version string shown in the warning |
+| `note` | no | Human-readable deprecation reason |
+| `suggestion` | no | Preferred replacement name |
+
+Cross-crate deprecation via `.pxi` export metadata is deferred.
+
+### `#[allow(name)]`
+
+Suppresses listed warning kinds in the attributed item's body (and nested blocks). v1 recognized names: `deprecated`, `must_use`. Unknown `allow` names are compile errors.
+
+`#[deny(...)]` / `#[forbid(...)]` (warnings-as-errors) are deferred.
+
+### `#[must_use]`
+
+Warns when a function's non-unit return value or a constructed `#[must_use]` type is used as a discarded statement expression.
+
+### Deferred item attributes
+
+| Attribute | Status |
+|---|---|
+| `#[stable(...)]` / `#[since(...)]` | API versioning metadata — docs/manifest only; no stability gates in v1 |
+| `#[deny(...)]` / `#[forbid(...)]` | Warnings-as-errors policy |
+| Field-level `#[...]` | Not in v1 |
+| PXI export of attribute metadata | Cross-crate linting deferred |
+
+Warnings do not fail `phx build` / `phx check` in v1; they are printed and compilation continues.
 
 ---
 

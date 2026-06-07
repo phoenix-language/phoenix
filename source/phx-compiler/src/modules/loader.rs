@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use phx_diagnostics::{DiagnosticBag, ResolveError};
 use phx_syntax::{Interner, Program, all_imports, parse_with_interner};
 
+use crate::cfg::{CompileCfg, strip_cfg};
+
 use super::SourceText;
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
 use super::load_context::ProgramLoadContext;
@@ -161,7 +163,19 @@ pub fn load_program_with_context(
                 continue;
             }
         };
-        let program = file.program;
+        let mut program = file.program;
+        let compile_cfg = CompileCfg::host();
+        if let Err(err) = strip_cfg(&mut program, &compile_cfg, &interner) {
+            let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
+            bag.push(
+                current_module,
+                ResolveError::InvalidCfg {
+                    span: err.span,
+                    message: err.message,
+                },
+            );
+            continue;
+        }
         let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
 
         for imp in all_imports(&program) {

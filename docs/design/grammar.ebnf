@@ -39,8 +39,13 @@ import_directive   = "#import" , module_path , [ import_brace ] , ";" ;
 import_brace       = "::" , "{" , import_item , { "," , import_item } , "}" ;
 import_item        = identifier | "*" ;
 
-top_level_item     = [ pub ] , top_level_decl , ";" ;
+top_level_item     = { attribute } , [ pub ] , top_level_decl , ";" ;
 pub                = "pub" ;
+
+attribute          = "#[" , identifier , [ "(" , attr_args , ")" ] , "]" ;
+attr_args          = attr_arg , { "," , attr_arg } ;
+attr_arg           = identifier , [ "=" , attr_value ] ;
+attr_value         = string_literal | identifier | boolean_literal ;
 
 top_level_decl     = struct_decl
                    | enum_decl
@@ -83,7 +88,7 @@ associated_type_impl = "type" , type_identifier , "=" , type_expr , ";" ;
 impl_decl          = type_identifier , "::" , [ generic_params ] , "impl" ,
                      [ "::" , type_identifier ] , impl_block ;
 impl_block         = "{" , { impl_member } , "}" ;
-impl_member        = function_decl_body , ";" | associated_type_impl ;
+impl_member        = { attribute } , function_decl_body , ";" | associated_type_impl ;
 
 (* -----------------------------------------------------------------------------
    Functions

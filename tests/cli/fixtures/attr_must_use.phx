@@ -1,0 +1,9 @@
+#[must_use]
+pub Box :: struct {
+  value: s32,
+};
+
+main :: () => {
+  Box { value: 1 };
+  const _ = 0;
+};

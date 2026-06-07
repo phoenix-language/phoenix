@@ -113,10 +113,12 @@ impl Parser<'_> {
     /// Parses one `pub`? top-level declaration followed by `;`.
     pub(crate) fn parse_top_level_item(&mut self) -> Result<Node<TopLevelItem>, ParseError> {
         let start = self.pos;
+        let attrs = self.parse_attribute_list()?;
         let pub_ = self.eat_keyword(Keyword::Pub);
-        let decl = self.parse_top_level_decl()?;
+        let mut decl = self.parse_top_level_decl()?;
+        self.merge_bracket_derives(&mut decl, &attrs);
         self.expect_semi()?;
-        Ok(self.node(TopLevelItem { pub_, decl }, self.span_from(start)))
+        Ok(self.node(TopLevelItem { attrs, pub_, decl }, self.span_from(start)))
     }
 
     /// Parses `type`, `const`, `var`, `fn`, or `Name :: struct/enum/trait/impl`.
@@ -403,7 +405,9 @@ impl Parser<'_> {
 
     /// Parses a full function (directives, name, sig, body).
     fn parse_function_decl_body(&mut self, name_only: bool) -> Result<Function, ParseError> {
-        let derives = self.parse_derive_directives()?;
+        let attrs = self.parse_attribute_list()?;
+        let mut derives = self.parse_derive_directives()?;
+        derives.extend(self.derive_attrs_from_bracket(&attrs));
         let directives = self.parse_fn_directives();
         let unsafe_ = self.eat_kind(&TokenKind::HashUnsafe);
         let name = if name_only {
@@ -422,6 +426,7 @@ impl Parser<'_> {
         let ret = self.parse_optional_return_type()?;
         let body = self.parse_block()?;
         Ok(Function {
+            attrs,
             derives,
             directives,
             unsafe_,
@@ -431,6 +436,35 @@ impl Parser<'_> {
             ret,
             body,
         })
+    }
+
+    /// Merges `#[derive(...)]` bracket attributes into `#derive` directive list.
+    fn derive_attrs_from_bracket(
+        &self,
+        attrs: &[crate::ast::Node<crate::ast::Attribute>],
+    ) -> Vec<DeriveDirective> {
+        crate::attr_collect::derive_from_bracket_attrs(&self.interner, attrs)
+    }
+
+    fn merge_bracket_derives(
+        &self,
+        decl: &mut TopLevelDecl,
+        attrs: &[crate::ast::Node<crate::ast::Attribute>],
+    ) {
+        let extra = self.derive_attrs_from_bracket(attrs);
+        if extra.is_empty() {
+            return;
+        }
+        match decl {
+            TopLevelDecl::Struct { derives, .. }
+            | TopLevelDecl::Enum { derives, .. }
+            | TopLevelDecl::Trait { derives, .. } => derives.extend(extra),
+            TopLevelDecl::Function(f) => f.derives.extend(extra),
+            TopLevelDecl::TypeAlias { .. }
+            | TopLevelDecl::Const { .. }
+            | TopLevelDecl::Var { .. }
+            | TopLevelDecl::Impl { .. } => {}
+        }
     }
 
     fn parse_optional_return_type(

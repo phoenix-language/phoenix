@@ -4,6 +4,7 @@
 //! grammar by syntactic category (`decl`, `expr`, `stmt`, `pat`, `types`). Entry point:
 //! [`parse`].
 
+mod attr;
 mod decl;
 mod expr;
 mod pat;
@@ -117,6 +118,7 @@ impl<'src> Parser<'src> {
                     return;
                 }
                 TokenKind::RBrace
+                | TokenKind::HashBracket
                 | TokenKind::HashImport
                 | TokenKind::HashDerive
                 | TokenKind::HashInline

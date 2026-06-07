@@ -1,0 +1,10 @@
+#[deprecated(note = "use new_fn instead")]
+old_fn :: () => () {
+};
+
+new_fn :: () => () {
+};
+
+main :: () => {
+  old_fn();
+};

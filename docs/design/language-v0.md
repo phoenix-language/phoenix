@@ -305,6 +305,19 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ---
 
+### V0-039 — Item attributes and conditional compilation
+
+- Bracket item attributes `#[...]` alongside existing `#keyword` directives (`#import`, `#unsafe`, `#derive`, …).
+- v1 attributes: `#[cfg(...)]`, `#[deprecated(...)]`, `#[allow(...)]`, `#[must_use]`.
+- `#[cfg]` strips inactive items before resolve; host `target_os` / `target_arch` / `debug_assertions` defaults.
+- Deprecated and must-use produce warnings (not errors); `#[allow(...)]` suppresses within scope.
+
+**Acceptance:** `#[cfg(target_os = "...")]` removes inactive code; deprecated use warns with note/suggestion and `#[allow(deprecated)]` suppresses; `#[must_use]` warns on discarded returns; existing keyword directives still compile; `just pre-commit` green.
+
+**Refs:** [compiler-directives.md](features/compiler-directives.md)
+
+---
+
 ### V0-041 — Core std types as ordinary generic enums
 
 - Implement in Phoenix source:

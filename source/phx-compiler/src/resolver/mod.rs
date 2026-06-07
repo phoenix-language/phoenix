@@ -106,6 +106,8 @@ pub struct ResolvedProgram {
     pub main_fn: Option<DefId>,
     /// Structured types from fresh dependency `.pxi` v2 (imported `DefId` → type).
     pub import_types: std::collections::HashMap<DefId, crate::pxi::PxiType>,
+    /// Item attribute metadata keyed by definition id.
+    pub def_attrs: crate::attrs::DefAttrs,
 }
 
 /// Resolves names in `source` (single file, no `#import` loading).
@@ -134,6 +136,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         import_env: None,
         shared_interner: None,
         import_types: None,
+        def_attrs: crate::attrs::DefAttrs::new(),
     };
     resolver.resolve_program();
     if resolver.bag.has_errors() {
@@ -158,6 +161,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         closures: resolver.closures,
         main_fn: resolver.main_fn,
         import_types: HashMap::new(),
+        def_attrs: resolver.def_attrs,
     })
 }
 
@@ -189,6 +193,8 @@ pub(crate) struct Resolver<'a> {
     pub(crate) shared_interner: Option<&'a mut Interner>,
     /// Imported type table from dependency `.pxi` files.
     pub(crate) import_types: Option<&'a mut HashMap<DefId, PxiType>>,
+    /// Item attribute metadata collected during definition collection.
+    pub(crate) def_attrs: crate::attrs::DefAttrs,
 }
 
 impl Resolver<'_> {
@@ -269,6 +275,13 @@ impl Resolver<'_> {
             );
         }
         id
+    }
+
+    /// Stores item attribute metadata for `def_id`.
+    pub(crate) fn record_def_attrs(&mut self, def_id: DefId, attrs: crate::attrs::ItemAttrs) {
+        if attrs.deprecated.is_some() || attrs.must_use {
+            self.def_attrs.insert(def_id, attrs);
+        }
     }
 
     /// Records a successful name resolution at `node_id` for later phases.

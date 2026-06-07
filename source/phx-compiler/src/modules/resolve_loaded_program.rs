@@ -38,6 +38,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
     let dep_name_refs: Vec<&str> = dep_package_names.iter().map(String::as_str).collect();
     let mut bag = DiagnosticBag::new();
     let mut defs = Vec::new();
+    let mut def_attrs = crate::attrs::DefAttrs::new();
     let mut exports: Vec<ExportMap> = vec![HashMap::new(); modules.len()];
     let mut main_fn = None;
     let mut phase1_skip: HashSet<u32> = HashSet::new();
@@ -76,6 +77,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             import_env: None,
             shared_interner: None,
             import_types: None,
+            def_attrs: crate::attrs::DefAttrs::new(),
         };
         resolver.resolve_program();
         if resolver.main_fn.is_some() {
@@ -102,12 +104,22 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         for e in resolver.bag.into_errors() {
             bag.push_located(e);
         }
+        let def_base = defs.len();
         for def in resolver.defs {
             let id = DefId::from_raw(u32::try_from(defs.len()).unwrap_or(u32::MAX));
             if def.exported {
                 exports[idx].insert(def.name, id);
             }
             defs.push(def);
+        }
+        for (local_id, attrs) in resolver.def_attrs {
+            let global = DefId::from_raw(
+                u32::try_from(def_base)
+                    .ok()
+                    .and_then(|b| b.checked_add(local_id.index()))
+                    .unwrap_or(u32::MAX),
+            );
+            def_attrs.insert(global, attrs);
         }
     }
 
@@ -156,6 +168,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             import_env: Some(import_env),
             shared_interner: Some(&mut interner),
             import_types: Some(&mut import_types),
+            def_attrs: crate::attrs::DefAttrs::new(),
         };
         let def_base = defs.len();
         resolver.resolve_program();
@@ -169,7 +182,17 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         }
         resolutions.extend(resolver.resolutions);
         closures.extend(resolver.closures);
+        let extra_attrs = resolver.def_attrs;
         defs.extend(extra_defs);
+        for (local_id, attrs) in extra_attrs {
+            let global = DefId::from_raw(
+                u32::try_from(def_base)
+                    .ok()
+                    .and_then(|b| b.checked_add(local_id.index()))
+                    .unwrap_or(u32::MAX),
+            );
+            def_attrs.insert(global, attrs);
+        }
     }
 
     if package_type == PackageType::Bin && main_fn.is_none() {
@@ -204,6 +227,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         closures,
         main_fn,
         import_types,
+        def_attrs,
     })
 }
 
