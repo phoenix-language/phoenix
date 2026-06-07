@@ -4,7 +4,8 @@
 use phx_bytecode::{Instruction, Opcode, verify};
 use phx_compiler::BuildOptions;
 use phx_compiler::{
-    BuildLayout, CrateLoadContext, PxiFile, load_crate_with_context, resolve_crate, type_check,
+    BuildLayout, ProgramLoadContext, PxiFile, load_program_with_context, resolve_loaded_program,
+    type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 use phx_test::{build_cli_project, cli_project, discover_cli_project, fixture_fs_lock};
@@ -45,13 +46,13 @@ fn path_dep_pxi_seeds_import_types() {
     let config = discover_cli_project(&root);
 
     let entry = config.default_entry_file();
-    let ctx = CrateLoadContext::from_config(&config);
+    let ctx = ProgramLoadContext::from_config(&config);
     let layout = BuildLayout::new(&config);
     let mut bag = DiagnosticBag::new();
     let loaded =
-        load_crate_with_context(&entry, &ctx, Some(&layout), &mut bag).expect("load crate");
+        load_program_with_context(&entry, &ctx, Some(&layout), &mut bag).expect("load program");
     assert!(!bag.has_errors(), "load errors: {bag}");
-    let resolved = resolve_crate(loaded).expect("resolve");
+    let resolved = resolve_loaded_program(loaded).expect("resolve");
     assert!(
         !resolved.import_types.is_empty(),
         "math::add should get types from build/deps/math/pxi"

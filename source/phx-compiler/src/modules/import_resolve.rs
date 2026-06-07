@@ -16,11 +16,11 @@ use super::path::ModulePath;
 
 type ExportMap = HashMap<Symbol, DefId>;
 
-/// Context for resolving one `#import` directive in a loaded crate.
+/// Context for resolving one `#import` directive in a loaded program.
 pub(crate) struct ImportResolveCtx<'a> {
     /// Module containing the import.
     pub module: &'a LoadedModule,
-    /// All modules in the crate.
+    /// All modules in the loaded program.
     pub modules: &'a [LoadedModule],
     /// Logical path → module id.
     pub path_index: &'a HashMap<String, ModuleId>,

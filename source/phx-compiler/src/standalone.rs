@@ -7,7 +7,7 @@ use phx_diagnostics::DiagnosticBag;
 
 use crate::compile::{CompileError, DiagnosticContext};
 use crate::lower::lower;
-use crate::modules::{CrateLoadContext, load_crate_with_context, resolve_crate};
+use crate::modules::{ProgramLoadContext, load_program_with_context, resolve_loaded_program};
 use crate::project::ProjectError;
 use crate::typeck::type_check;
 
@@ -25,13 +25,13 @@ pub struct StandaloneOptions {
 }
 
 impl StandaloneOptions {
-    /// Builds a [`CrateLoadContext`] for this standalone invocation.
+    /// Builds a [`ProgramLoadContext`] for this standalone invocation.
     ///
     /// # Errors
     ///
     /// Returns [`ProjectError`] when a path dependency is invalid.
-    pub fn load_context(&self) -> Result<CrateLoadContext, ProjectError> {
-        CrateLoadContext::from_standalone(
+    pub fn load_context(&self) -> Result<ProgramLoadContext, ProjectError> {
+        ProgramLoadContext::from_standalone(
             &self.module_root,
             self.package_name.clone(),
             &self.path_deps,
@@ -46,7 +46,7 @@ impl StandaloneOptions {
 /// Returns [`CompileError`] on parse, resolve, type-check, or I/O failure.
 pub fn check_standalone_with_context(
     opts: &StandaloneOptions,
-    ctx: &CrateLoadContext,
+    ctx: &ProgramLoadContext,
 ) -> Result<(), CompileError> {
     let _ = check_standalone_unit_with_context(opts, ctx)?;
     Ok(())
@@ -59,15 +59,15 @@ pub fn check_standalone_with_context(
 /// Returns [`CompileError`] on failure.
 pub fn check_standalone_unit_with_context(
     opts: &StandaloneOptions,
-    ctx: &CrateLoadContext,
+    ctx: &ProgramLoadContext,
 ) -> Result<crate::unit::CompilationUnit, CompileError> {
     let source = std::fs::read_to_string(&opts.entry).map_err(CompileError::Io)?;
     let mut bag = DiagnosticBag::new();
-    let Some(loaded) = load_crate_with_context(&opts.entry, ctx, None, &mut bag) else {
+    let Some(loaded) = load_program_with_context(&opts.entry, ctx, None, &mut bag) else {
         return Err(CompileError::Resolve { bag, context: None });
     };
     let diag_ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
-    let resolved = resolve_crate(loaded).map_err(|bag| CompileError::Resolve {
+    let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(diag_ctx.clone()),
     })?;
@@ -89,7 +89,7 @@ pub fn check_standalone_unit_with_context(
 /// Returns [`CompileError`] on failure.
 pub fn compile_standalone_with_context(
     opts: &StandaloneOptions,
-    ctx: &CrateLoadContext,
+    ctx: &ProgramLoadContext,
 ) -> Result<BytecodeModule, CompileError> {
     let unit = check_standalone_unit_with_context(opts, ctx)?;
     let ctx_diag = DiagnosticContext::from_resolved(&unit.typed.resolved);

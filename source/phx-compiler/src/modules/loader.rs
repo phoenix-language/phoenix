@@ -8,7 +8,7 @@ use phx_syntax::{Interner, Program, all_imports, parse_with_interner};
 
 use super::SourceText;
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
-use super::load_context::CrateLoadContext;
+use super::load_context::ProgramLoadContext;
 use super::path::ModulePath;
 use crate::project::{BuildLayout, PackageType};
 
@@ -45,9 +45,9 @@ pub struct LoadedModule {
     pub program: Program,
 }
 
-/// All modules in a crate before resolve.
+/// All modules in a loaded program before resolve.
 #[derive(Debug, Clone)]
-pub struct LoadedCrate {
+pub struct LoadedProgram {
     /// Shared interner across modules.
     pub interner: Interner,
     /// Modules in topological order.
@@ -71,12 +71,12 @@ pub struct LoadedCrate {
 /// # Errors
 ///
 /// Returns I/O or parse errors via `bag`; also records module-not-found and cycles.
-pub fn load_crate(
+pub fn load_program(
     entry_file: &Path,
     module_root: &Path,
     bag: &mut DiagnosticBag,
-) -> Option<LoadedCrate> {
-    let ctx = CrateLoadContext {
+) -> Option<LoadedProgram> {
+    let ctx = ProgramLoadContext {
         workspace: super::load_context::PackageRoot {
             name: infer_package_name(module_root),
             module_src: module_root
@@ -86,17 +86,17 @@ pub fn load_crate(
         },
         dependencies: Vec::new(),
     };
-    load_crate_with_context(entry_file, &ctx, None, bag)
+    load_program_with_context(entry_file, &ctx, None, bag)
 }
 
-/// Loads a crate from `entry_file` using workspace + dependency packages.
+/// Loads a program from `entry_file` using workspace + dependency packages.
 #[allow(clippy::too_many_lines)]
-pub fn load_crate_with_context(
+pub fn load_program_with_context(
     entry_file: &Path,
-    ctx: &CrateLoadContext,
+    ctx: &ProgramLoadContext,
     layout: Option<&BuildLayout>,
     bag: &mut DiagnosticBag,
-) -> Option<LoadedCrate> {
+) -> Option<LoadedProgram> {
     let entry_file = entry_file
         .canonicalize()
         .unwrap_or_else(|_| entry_file.to_path_buf());
@@ -284,7 +284,7 @@ pub fn load_crate_with_context(
         .map(|m| (m.logical_path.display(), m.id))
         .collect();
 
-    Some(LoadedCrate {
+    Some(LoadedProgram {
         interner,
         modules: sorted,
         root: root_id,

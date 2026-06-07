@@ -1,4 +1,4 @@
-//! Multi-package crate loading (workspace + path dependencies).
+//! Multi-package program loading (workspace + path dependencies).
 
 use std::path::PathBuf;
 
@@ -27,16 +27,16 @@ impl PackageRoot {
     }
 }
 
-/// Workspace crate plus path dependencies for import resolution.
+/// Workspace package plus path dependencies for one compile load.
 #[derive(Debug, Clone)]
-pub struct CrateLoadContext {
+pub struct ProgramLoadContext {
     /// Package being compiled.
     pub workspace: PackageRoot,
     /// Path dependencies (`project.name` order).
     pub dependencies: Vec<PackageRoot>,
 }
 
-impl CrateLoadContext {
+impl ProgramLoadContext {
     /// Builds load context from project config (does not validate deps).
     #[must_use]
     pub fn from_config(config: &ProjectConfig) -> Self {

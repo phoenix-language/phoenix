@@ -18,7 +18,8 @@ use phx_syntax::{Interner, parse};
 use crate::codegen::codegen;
 use crate::lower::lower;
 use crate::modules::{
-    CrateLoadContext, LoadedModule, load_crate, load_crate_with_context, resolve_crate,
+    LoadedModule, ProgramLoadContext, load_program, load_program_with_context,
+    resolve_loaded_program,
 };
 use crate::project::{BuildLayout, ProjectConfig};
 use crate::resolver::{ResolvedProgram, resolve};
@@ -27,11 +28,11 @@ use crate::unit::CompilationUnit;
 
 /// Sources and interner needed to format multi-module diagnostics.
 ///
-/// Populated after crate load or resolve so [`CompileError::format_with_modules`] can print
+/// Populated after program load or resolve so [`CompileError::format_with_modules`] can print
 /// carets in the correct file.
 #[derive(Debug, Clone)]
 pub struct DiagnosticContext {
-    /// All modules in the crate (for span → source buffer routing).
+    /// All modules in the loaded program (for span → source buffer routing).
     pub modules: Vec<SourceModule>,
     /// Shared interner for symbol names in messages.
     pub interner: Interner,
@@ -436,11 +437,11 @@ pub fn compile_source_with_module_root(
     module_root: &Path,
 ) -> Result<CompilationUnit, CompileError> {
     let mut bag = DiagnosticBag::new();
-    let Some(loaded) = load_crate(path, module_root, &mut bag) else {
+    let Some(loaded) = load_program(path, module_root, &mut bag) else {
         return Err(CompileError::Resolve { bag, context: None });
     };
     let ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
-    let resolved = resolve_crate(loaded).map_err(|bag| CompileError::Resolve {
+    let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(ctx.clone()),
     })?;
@@ -481,14 +482,14 @@ pub fn check_project_file(
     config: &ProjectConfig,
 ) -> Result<CompilationUnit, CompileError> {
     let source = std::fs::read_to_string(path).map_err(CompileError::Io)?;
-    let ctx = CrateLoadContext::from_config(config);
+    let ctx = ProgramLoadContext::from_config(config);
     let layout = BuildLayout::new(config);
     let mut bag = DiagnosticBag::new();
-    let Some(loaded) = load_crate_with_context(path, &ctx, Some(&layout), &mut bag) else {
+    let Some(loaded) = load_program_with_context(path, &ctx, Some(&layout), &mut bag) else {
         return Err(CompileError::Resolve { bag, context: None });
     };
     let ctx_diag = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
-    let resolved = resolve_crate(loaded).map_err(|bag| CompileError::Resolve {
+    let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(ctx_diag.clone()),
     })?;
@@ -514,12 +515,12 @@ pub fn check_file_with_module_path(
 ) -> Result<CompilationUnit, CompileError> {
     let source = std::fs::read_to_string(path).map_err(CompileError::Io)?;
     let mut bag = DiagnosticBag::new();
-    let Some(loaded) = load_crate(path, module_root, &mut bag) else {
+    let Some(loaded) = load_program(path, module_root, &mut bag) else {
         let context = None;
         return Err(CompileError::Resolve { bag, context });
     };
     let ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
-    let resolved = resolve_crate(loaded).map_err(|bag| CompileError::Resolve {
+    let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(ctx.clone()),
     })?;

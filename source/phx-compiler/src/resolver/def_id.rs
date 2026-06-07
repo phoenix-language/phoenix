@@ -70,7 +70,7 @@ pub struct Def {
     pub name: Symbol,
     /// Span of the defining name.
     pub span: Span,
-    /// Owning module (crate-global id).
+    /// Owning module (program-wide id).
     pub module: u32,
     /// `true` when the item is exported (`pub` on the top-level item).
     pub exported: bool,

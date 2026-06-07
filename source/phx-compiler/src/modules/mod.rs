@@ -8,12 +8,12 @@ mod interface_loader;
 mod load_context;
 mod loader;
 mod path;
-mod resolve_crate;
+mod resolve_loaded_program;
 mod source_text;
 
 pub use graph::import_target_module;
-pub use load_context::CrateLoadContext;
-pub use loader::{LoadedCrate, LoadedModule, ModuleId, load_crate, load_crate_with_context};
+pub use load_context::ProgramLoadContext;
+pub use loader::{LoadedModule, LoadedProgram, ModuleId, load_program, load_program_with_context};
 pub use path::ModulePath;
-pub use resolve_crate::resolve_crate;
+pub use resolve_loaded_program::resolve_loaded_program;
 pub use source_text::SourceText;

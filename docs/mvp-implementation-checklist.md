@@ -171,8 +171,8 @@ A credible MVP demo `.phx` should be able to:
 | Block scopes, resolve exprs/pats    | done    | `resolver/walk.rs`              |                             |                                                       |
 | Enforce `main` present              | done    | `resolver/walk.rs`              | `ResolveError::MissingMain` | `missing_main` fixture fails `phx check`              |
 | Enforce `main :: () => …` signature | done    | `resolver/walk.rs`              | `InvalidMainSignature`      | resolve tests                                         |
-| `#import`                           | done    | `modules/loader.rs`, `resolve_crate.rs` | Bare `compile_source` / no `--module-src` → `ImportNotSupported` with module-root hint | `tests/cli/fixtures/modules/` + `run_modules.rs` |
-| `pub` / cross-module visibility     | done    | `resolver/walk.rs`, `resolve_crate.rs` | Export map + import preface | Private import fails; `pub` export works across files |
+| `#import`                           | done    | `modules/loader.rs`, `resolve_loaded_program.rs` | Bare `compile_source` / no `--module-src` → `ImportNotSupported` with module-root hint | `tests/cli/fixtures/modules/` + `run_modules.rs` |
+| `pub` / cross-module visibility     | done    | `resolver/walk.rs`, `resolve_loaded_program.rs` | Export map + import preface | Private import fails; `pub` export works across files |
 
 
 ---
@@ -378,7 +378,7 @@ A credible MVP demo `.phx` should be able to:
 | ---------------------------------- | ------- | -------- | ----------------------- | ------------------------------- |
 | Parse `#import`                    | done    | parser   |                         |                                 |
 | Load multiple files / module paths | done    | `modules/` | `--module-path`, `c.phx` / `index.phx` | `tests/cli/fixtures/modules/` |
-| `pub` exports                      | done    | `resolve_crate.rs` | Per-module export map | `import_private.phx` fails check |
+| `pub` exports                      | done    | `resolve_loaded_program.rs` | Per-module export map | `import_private.phx` fails check |
 | Path `std::…` → file mapping       | done    | `modules/path.rs` | Under `module_root` | `util::math` → `util/math.phx` |
 
 

@@ -1,4 +1,4 @@
-//! Cross-module name resolution for a loaded crate.
+//! Cross-module name resolution for a loaded program.
 
 use std::collections::{HashMap, HashSet};
 
@@ -8,10 +8,10 @@ use phx_syntax::ast::decl::{Program, TopLevelDecl};
 use phx_syntax::{SourceFile, Symbol};
 
 use crate::resolver::scopes::ScopeStack;
-use crate::resolver::{CrateImportEnv, DefId, ResolvedProgram, Resolver, SourceModule};
+use crate::resolver::{DefId, ProgramImportEnv, ResolvedProgram, Resolver, SourceModule};
 
 use super::import_resolve::{ImportResolveCtx, resolve_import_directive};
-use super::loader::{LoadedCrate, LoadedModule};
+use super::loader::{LoadedModule, LoadedProgram};
 use crate::project::PackageType;
 use crate::pxi::PxiType;
 
@@ -23,8 +23,8 @@ type ExportMap = HashMap<Symbol, DefId>;
 ///
 /// Returns [`DiagnosticBag`] when imports, duplicates, or `main` validation fail.
 #[allow(clippy::too_many_lines)]
-pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticBag> {
-    let LoadedCrate {
+pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, DiagnosticBag> {
+    let LoadedProgram {
         mut interner,
         modules,
         root,
@@ -119,7 +119,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
         if phase1_skip.contains(&module.id.index()) {
             continue;
         }
-        let import_env = CrateImportEnv {
+        let import_env = ProgramImportEnv {
             modules: &modules,
             path_index: &path_index,
             exports: &exports,
@@ -209,7 +209,7 @@ pub fn resolve_crate(loaded: LoadedCrate) -> Result<ResolvedProgram, DiagnosticB
 
 fn build_import_bindings(
     module: &LoadedModule,
-    env: &CrateImportEnv<'_>,
+    env: &ProgramImportEnv<'_>,
     interner: &mut Interner,
     bag: &mut DiagnosticBag,
     import_types: &mut HashMap<DefId, PxiType>,

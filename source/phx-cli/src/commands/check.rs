@@ -4,8 +4,8 @@ use std::fs;
 use std::time::Instant;
 
 use phx_compiler::{
-    BuildLayout, BuildOptions, CompileError, CrateLoadContext, DiagnosticContext,
-    emit_interfaces_from_compiled, load_crate_with_context, resolve_crate, type_check,
+    BuildLayout, BuildOptions, CompileError, DiagnosticContext, ProgramLoadContext,
+    emit_interfaces_from_compiled, load_program_with_context, resolve_loaded_program, type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 
@@ -51,9 +51,9 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
     let mut bag = DiagnosticBag::new();
     let loaded = match &mode {
         CompileMode::Project { config } => {
-            let ctx = CrateLoadContext::from_config(config);
+            let ctx = ProgramLoadContext::from_config(config);
             let layout = BuildLayout::new(config);
-            load_crate_with_context(&file, &ctx, Some(&layout), &mut bag)
+            load_program_with_context(&file, &ctx, Some(&layout), &mut bag)
         }
         CompileMode::Standalone { options } => {
             let ctx = match options.load_context() {
@@ -63,7 +63,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
                     return CliExit::Usage;
                 }
             };
-            load_crate_with_context(&options.entry, &ctx, None, &mut bag)
+            load_program_with_context(&options.entry, &ctx, None, &mut bag)
         }
     };
 
@@ -75,7 +75,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
 
     report_loaded_modules(&reporter, &loaded.modules);
     let ctx_diag = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
-    let resolved = match resolve_crate(loaded) {
+    let resolved = match resolve_loaded_program(loaded) {
         Ok(resolved) => resolved,
         Err(resolve_bag) => {
             let err = CompileError::Resolve {
@@ -107,10 +107,10 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
             );
             return CliExit::Usage;
         };
-        let ctx = CrateLoadContext::from_config(&config);
+        let ctx = ProgramLoadContext::from_config(&config);
         let layout = BuildLayout::new(&config);
         let mut reload_bag = DiagnosticBag::new();
-        let Some(loaded) = load_crate_with_context(&file, &ctx, Some(&layout), &mut reload_bag)
+        let Some(loaded) = load_program_with_context(&file, &ctx, Some(&layout), &mut reload_bag)
         else {
             let err = CompileError::Resolve {
                 bag: reload_bag,

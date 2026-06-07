@@ -151,7 +151,7 @@ impl Resolver<'_> {
         }
     }
 
-    /// Registers existing crate defs for this module into scope (phase-2 resolve).
+    /// Registers existing program defs for this module into scope (phase-2 resolve).
     fn seed_module_scopes(&mut self) {
         for (i, def) in self.defs.iter().enumerate() {
             if def.module != self.current_module {

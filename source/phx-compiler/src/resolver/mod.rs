@@ -21,10 +21,10 @@ use crate::pxi::PxiType;
 
 pub use def_id::{Def, DefId, DefKind};
 
-/// Crate-wide context for resolving block-scoped `#import` directives.
+/// Program-wide context for resolving block-scoped `#import` directives.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CrateImportEnv<'a> {
-    /// All modules in the crate.
+pub(crate) struct ProgramImportEnv<'a> {
+    /// All modules in the loaded program.
     pub modules: &'a [LoadedModule],
     /// Logical path → module id.
     pub path_index: &'a HashMap<String, ModuleId>,
@@ -43,7 +43,7 @@ pub(crate) struct CrateImportEnv<'a> {
 /// Key for a name-use resolution entry (module + parse-time [`AstNodeId`], not span alone).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResolutionKey {
-    /// Owning module (crate-global id).
+    /// Owning module (program-wide id).
     pub module: u32,
     /// AST node or identifier id at the use site (unique per module parse).
     pub node_id: AstNodeId,
@@ -67,7 +67,7 @@ pub struct ClosureInfo {
     pub upvars: Vec<ClosureUpvar>,
 }
 
-/// One source module in a crate.
+/// One source module in a loaded program.
 #[derive(Debug, Clone)]
 pub struct SourceModule {
     /// Module id (dense index).
@@ -82,7 +82,7 @@ pub struct SourceModule {
     pub program: Program,
 }
 
-/// Result of resolving a crate (one or more modules).
+/// Result of resolving a loaded program (one or more modules).
 ///
 /// Exposes full AST and side tables for in-tree passes and tests. Not a stable public API surface
 /// for external IDEs or tooling until a narrower facade is introduced.
@@ -90,7 +90,7 @@ pub struct SourceModule {
 pub struct ResolvedProgram {
     /// Entry module program (root file).
     pub program: Program,
-    /// All modules in the crate (topological order).
+    /// All modules in the loaded program (topological order).
     pub modules: Vec<SourceModule>,
     /// Entry module id.
     pub root: u32,
@@ -183,8 +183,8 @@ pub(crate) struct Resolver<'a> {
     pub(crate) import_bindings: Vec<(Symbol, DefId, bool, Span)>,
     /// Nesting depth where `Self` is a valid type name (trait / impl method signatures).
     pub(crate) self_type_depth: u32,
-    /// Crate context for block-scoped imports (phase 2 only).
-    pub(crate) import_env: Option<CrateImportEnv<'a>>,
+    /// Loaded-program context for block-scoped imports (phase 2 only).
+    pub(crate) import_env: Option<ProgramImportEnv<'a>>,
     /// Shared interner for cross-module import resolution.
     pub(crate) shared_interner: Option<&'a mut Interner>,
     /// Imported type table from dependency `.pxi` files.

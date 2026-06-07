@@ -11,7 +11,8 @@ use crate::compile::CompileError;
 use crate::link::{LinkInput, link_modules};
 use crate::lower::{lower, lower_module};
 use crate::modules::{
-    CrateLoadContext, LoadedCrate, ModulePath, load_crate_with_context, resolve_crate,
+    LoadedProgram, ModulePath, ProgramLoadContext, load_program_with_context,
+    resolve_loaded_program,
 };
 use crate::project::{BuildLayout, PackageType, ProjectConfig};
 use crate::pxi::{
@@ -30,7 +31,7 @@ use super::options::BuildOptions;
 /// Inputs shared by interface emission and incremental object collection.
 struct ArtifactEmitCtx<'a> {
     config: &'a ProjectConfig,
-    loaded: &'a LoadedCrate,
+    loaded: &'a LoadedProgram,
     typed: &'a crate::typeck::TypedProgram,
     layout: &'a BuildLayout,
     bin_path: &'a str,
@@ -72,7 +73,7 @@ pub fn build_project(
 /// Returns [`BuildError`] on I/O or interface verification failure.
 pub fn emit_interfaces_from_compiled(
     config: &ProjectConfig,
-    loaded: &LoadedCrate,
+    loaded: &LoadedProgram,
     typed: &crate::typeck::TypedProgram,
     options: BuildOptions,
     layout_override: Option<BuildLayout>,
@@ -87,7 +88,7 @@ pub fn emit_interfaces_from_compiled(
         .find(|m| m.id == loaded.root)
         .ok_or_else(|| {
             BuildError::Project(crate::project::ProjectError::Invalid {
-                message: "missing root module in loaded crate".to_owned(),
+                message: "missing root module in loaded program".to_owned(),
             })
         })?;
     let entry_logical = entry_logical_path(config, &root_module.filesystem)?;
@@ -128,7 +129,7 @@ fn build_package(
         .ensure_workspace_dirs(config.package_type)
         .map_err(|e| io_err(&e))?;
 
-    let ctx = CrateLoadContext::from_config(config);
+    let ctx = ProgramLoadContext::from_config(config);
     let entry_logical = entry_logical_path(config, &entry_file)?;
     let output_path = match config.package_type {
         PackageType::Bin => layout.bin_path(config.output_name()),
@@ -136,7 +137,7 @@ fn build_package(
     };
 
     let mut bag = phx_diagnostics::DiagnosticBag::new();
-    let loaded = load_crate_with_context(&entry_file, &ctx, Some(&layout), &mut bag)
+    let loaded = load_program_with_context(&entry_file, &ctx, Some(&layout), &mut bag)
         .ok_or(BuildError::Resolve(bag))?;
 
     let manifest_path = layout.manifest_path();
@@ -158,7 +159,7 @@ fn build_package(
         });
     }
 
-    let resolved = resolve_crate(loaded.clone()).map_err(BuildError::Resolve)?;
+    let resolved = resolve_loaded_program(loaded.clone()).map_err(BuildError::Resolve)?;
     let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
 
     if options.emit_interface_only {
@@ -166,7 +167,7 @@ fn build_package(
     }
 
     let full_ir = lower(&typed).map_err(BuildError::Lower)?;
-    let load_ctx = CrateLoadContext::from_config(config);
+    let load_ctx = ProgramLoadContext::from_config(config);
     let global_fn = build_global_fn_map(config, &layout, &load_ctx, &loaded, &typed, &full_ir)?;
     let ctx = ArtifactEmitCtx {
         config,
@@ -251,9 +252,9 @@ fn dependency_build_is_fresh(
         return false;
     }
     let entry = dep_cfg.default_entry_file();
-    let ctx = CrateLoadContext::from_config(dep_cfg);
+    let ctx = ProgramLoadContext::from_config(dep_cfg);
     let mut bag = phx_diagnostics::DiagnosticBag::new();
-    let Some(loaded) = load_crate_with_context(&entry, &ctx, Some(dep_layout), &mut bag) else {
+    let Some(loaded) = load_program_with_context(&entry, &ctx, Some(dep_layout), &mut bag) else {
         return false;
     };
     if bag.has_errors() {
@@ -280,7 +281,7 @@ fn dependency_pxi_has_function_ids(manifest: &BuildManifest, build_root: &Path) 
 
 fn write_interfaces_and_manifest(
     config: &ProjectConfig,
-    loaded: &LoadedCrate,
+    loaded: &LoadedProgram,
     typed: &crate::typeck::TypedProgram,
     layout: &BuildLayout,
     bin_path: &str,
@@ -322,7 +323,7 @@ fn write_interfaces_and_collect_objects(
         global_fn,
     } = ctx;
     let export_maps = collect_export_maps(&typed.resolved);
-    let load_ctx = CrateLoadContext::from_config(config);
+    let load_ctx = ProgramLoadContext::from_config(config);
     let dep_names: Vec<&str> = load_ctx.dep_names();
     let mut link_inputs = Vec::new();
     let mut manifest = BuildManifest {
@@ -515,7 +516,7 @@ fn module_imports_stale(deps: &[crate::pxi::PxiDependency], stale: &HashSet<Stri
 }
 
 fn workspace_stale_modules(
-    loaded: &LoadedCrate,
+    loaded: &LoadedProgram,
     layout: &BuildLayout,
     dep_names: &[&str],
     old_manifest: Option<&BuildManifest>,
@@ -561,8 +562,8 @@ fn workspace_stale_modules(
 fn build_global_fn_map(
     config: &ProjectConfig,
     _layout: &BuildLayout,
-    _load_ctx: &CrateLoadContext,
-    loaded: &LoadedCrate,
+    _load_ctx: &ProgramLoadContext,
+    loaded: &LoadedProgram,
     typed: &crate::typeck::TypedProgram,
     ir: &crate::ir::IrModule,
 ) -> Result<HashMap<DefId, u32>, BuildError> {
@@ -684,9 +685,9 @@ fn collect_export_maps(
 
 fn all_modules_fresh(
     manifest: &BuildManifest,
-    loaded: &LoadedCrate,
+    loaded: &LoadedProgram,
     layout: &BuildLayout,
-    ctx: &CrateLoadContext,
+    ctx: &ProgramLoadContext,
 ) -> bool {
     let dep_names: Vec<&str> = ctx.dep_names();
     loaded

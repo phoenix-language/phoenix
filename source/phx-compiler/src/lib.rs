@@ -52,7 +52,8 @@ pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, 
 pub use link::{LinkError, LinkInput, link_modules};
 pub use lower::lower;
 pub use modules::{
-    CrateLoadContext, LoadedCrate, LoadedModule, load_crate_with_context, resolve_crate,
+    LoadedModule, LoadedProgram, ProgramLoadContext, load_program_with_context,
+    resolve_loaded_program,
 };
 pub use phx_bytecode::BytecodeModule;
 pub use project::{

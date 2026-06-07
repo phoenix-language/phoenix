@@ -2,7 +2,7 @@
 //!
 //! Spans are byte offsets into that module's source buffer until `Span` carries a file id.
 
-/// A diagnostic tied to a dense module index in the crate.
+/// A diagnostic tied to a dense module index in the loaded program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocatedError<E> {
     /// Owning module id (matches [`phx_compiler::resolver::SourceModule::id`]).
