@@ -1,6 +1,6 @@
 //! Lower function definitions to [`IrFunction`](crate::ir::IrFunction).
 
-use phx_syntax::ast::decl::{Function, TopLevelDecl};
+use phx_syntax::ast::decl::{Function, ImplMember, TopLevelDecl};
 
 use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
@@ -90,8 +90,10 @@ fn find_function_in_crate(typed: &TypedProgram, def: DefId) -> Option<&Function>
             TopLevelDecl::Function(f) if def_matches(typed, f, def) => return Some(f),
             TopLevelDecl::Impl { members, .. } => {
                 for m in members {
-                    if def_matches(typed, m, def) {
-                        return Some(m);
+                    if let ImplMember::Method(f) = m {
+                        if def_matches(typed, f, def) {
+                            return Some(f);
+                        }
                     }
                 }
             }

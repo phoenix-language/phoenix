@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
-use phx_syntax::ast::decl::{Function, TopLevelDecl};
+use phx_syntax::ast::decl::{Function, ImplMember, TopLevelDecl};
 use phx_syntax::ast::types::GenericParam;
 
 use super::bounds::validate_instantiation_bounds;
@@ -326,8 +326,10 @@ fn find_function(resolved: &ResolvedProgram, def: DefId) -> Option<&Function> {
                 }
                 TopLevelDecl::Impl { members, .. } => {
                     for m in members {
-                        if fn_def_id(resolved, module.id, m.name.symbol) == Some(def) {
-                            return Some(m);
+                        if let ImplMember::Method(f) = m {
+                            if fn_def_id(resolved, module.id, f.name.symbol) == Some(def) {
+                                return Some(f);
+                            }
                         }
                     }
                 }
@@ -404,8 +406,10 @@ fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<
                     continue;
                 }
                 for member in members {
-                    if fn_def_id(resolved, module.id, member.name.symbol) == Some(base) {
-                        return generics.clone();
+                    if let ImplMember::Method(f) = member {
+                        if fn_def_id(resolved, module.id, f.name.symbol) == Some(base) {
+                            return generics.clone();
+                        }
                     }
                 }
             }

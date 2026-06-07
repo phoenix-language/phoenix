@@ -54,6 +54,11 @@ pub enum Type {
     },
     /// Slice `[T]`.
     Slice(Box<Node<Type>>),
+    /// Associated type projection `Self::Item`.
+    SelfAssoc {
+        /// Associated type name on the right of `Self::`.
+        member: TypeName,
+    },
 }
 
 /// Generic parameter `<T>` or `<T: Bound>`.

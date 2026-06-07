@@ -309,6 +309,18 @@ fn decl_trait_associated_type() {
 }
 
 #[test]
+fn decl_impl_associated_type() {
+    assert_ok(
+        "Counter :: struct { n: s32 }; It :: trait { type Item; peek :: () => Self::Item; }; Counter :: impl :: It { type Item = s32; peek :: () => s32 { self.n }; }; main :: () => { };",
+    );
+}
+
+#[test]
+fn type_self_assoc() {
+    assert_ok("It :: trait { type Item; f :: () => Self::Item; }; main :: () => { };");
+}
+
+#[test]
 fn decl_impl_for_trait() {
     assert_ok("P :: impl :: Eq { eq :: (self, o: &Self) => bool { true }; }; main :: () => { };");
 }

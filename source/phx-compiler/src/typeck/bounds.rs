@@ -103,10 +103,13 @@ fn type_satisfies_trait(
     let Some(concrete_def) = type_def_for_trait_check(types, concrete) else {
         return false;
     };
-    layout
-        .trait_methods
-        .keys()
-        .any(|(type_def, bound_trait, _)| *type_def == concrete_def && *bound_trait == trait_def)
+    layout.trait_impls.contains(&(concrete_def, trait_def))
+        || layout
+            .trait_methods
+            .keys()
+            .any(|(type_def, bound_trait, _)| {
+                *type_def == concrete_def && *bound_trait == trait_def
+            })
 }
 
 fn is_copyable_trait_name(resolved: &ResolvedProgram, trait_symbol: phx_syntax::Symbol) -> bool {

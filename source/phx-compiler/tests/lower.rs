@@ -236,3 +236,35 @@ fn lower_dual_generic_fn_instantiation_emits_three_functions() {
         "main should call both specialized id functions"
     );
 }
+
+#[test]
+fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
+    let source = "Opt :: <t> enum { None, Some(t), }; main :: () => { const x = Some :: <s32> (1); const n: s32 = match x { None => 0; Some(v) => v; }; const _ = n; };";
+    let unit = compile_source(source, None).expect("compile generic enum match");
+    let typed = &unit.typed;
+    let expected_type_id = typed
+        .layout
+        .specialized_type_ids
+        .values()
+        .next()
+        .copied()
+        .expect("monomorphized enum type_id");
+    let ir = lower(typed).expect("lower");
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.insts.iter().any(|i| {
+                    matches!(
+                        i,
+                        IrInst::MatchTag {
+                            type_id,
+                            variant_tag: 1,
+                            ..
+                        } if *type_id == expected_type_id
+                    )
+                })
+            })
+        }),
+        "expected MatchTag with specialized enum type_id {expected_type_id}"
+    );
+}

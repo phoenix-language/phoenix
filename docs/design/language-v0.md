@@ -231,6 +231,8 @@ Everything std types are built from: generic enums, bounds, associated types, mo
 
 **Refs:** [type-system.md](features/type-system.md)
 
+**Status:** Done
+
 ---
 
 ### V0-023 — Trait bounds and associated types (basic)
@@ -241,6 +243,8 @@ Everything std types are built from: generic enums, bounds, associated types, mo
 **Acceptance:** Program with `Iterator :: trait { type Item; … }` and a concrete `impl` type-checks and resolves `Self::Item`.
 
 **Refs:** [traits.md](features/traits.md)
+
+**Status:** Done
 
 ---
 

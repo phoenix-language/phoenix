@@ -216,6 +216,16 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "add `fn {method_name}(...)` to `{type_name} :: impl :: {trait_name}`"
             ));
         }
+        TypeCheckError::MissingAssociatedType {
+            type_name,
+            trait_name,
+            assoc_name,
+            ..
+        } => {
+            out.helps.push(format!(
+                "add `type {assoc_name} = ...;` to `{type_name} :: impl :: {trait_name}`"
+            ));
+        }
     }
     out
 }

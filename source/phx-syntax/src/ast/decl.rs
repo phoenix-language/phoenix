@@ -161,6 +161,21 @@ pub struct Function {
     pub body: BlockNode,
 }
 
+/// Trait impl member (method or associated type assignment).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum ImplMember {
+    /// `type Item = T;`
+    AssociatedType {
+        /// Associated type name.
+        name: TypeName,
+        /// Concrete type assigned on this impl.
+        ty: Node<Type>,
+    },
+    /// Method definition.
+    Method(Function),
+}
+
 /// Top-level declaration payload.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -216,7 +231,7 @@ pub enum TopLevelDecl {
         /// Optional trait name.
         trait_: Option<TypeName>,
         /// Impl members.
-        members: Vec<Function>,
+        members: Vec<ImplMember>,
     },
     /// Function at top level.
     Function(Function),

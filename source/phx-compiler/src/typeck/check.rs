@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
-    Function, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
+    Function, ImplMember, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
 use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit, UnaryOp};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
@@ -76,6 +76,12 @@ pub struct TypeChecker<'a> {
     next_type_id: u32,
     /// When checking inherent impl members, the receiver type (`Self`).
     impl_self_type: Option<TypeId>,
+    /// When checking a trait impl, `(implementer type def, trait def)`.
+    active_trait_impl: Option<(DefId, DefId)>,
+    /// Associated types assigned on the active trait impl (`Item` → concrete type).
+    impl_assoc_types: HashMap<Symbol, TypeId>,
+    /// Abstract associated types while collecting a trait definition.
+    trait_assoc_abstract: HashMap<Symbol, TypeId>,
     /// Module being collected or checked.
     current_module: u32,
     /// Active type substitution when checking a monomorphized clone.
@@ -140,6 +146,9 @@ impl<'a> TypeChecker<'a> {
             program_layout: ProgramLayout::default(),
             next_type_id: 1,
             impl_self_type: None,
+            active_trait_impl: None,
+            impl_assoc_types: HashMap::new(),
+            trait_assoc_abstract: HashMap::new(),
             current_module: resolved.root,
             subst: None,
             mono_insts: Vec::new(),
@@ -226,7 +235,9 @@ impl<'a> TypeChecker<'a> {
                     if trait_.is_some() {
                         continue;
                     }
-                    if members.iter().any(|m| self.fn_def_for(m) == Some(fn_def)) {
+                    if members.iter().any(|m| {
+                        matches!(m, ImplMember::Method(f) if self.fn_def_for(f) == Some(fn_def))
+                    }) {
                         return self.find_def(module.id, type_name.symbol, DefKind::Struct);
                     }
                 }
@@ -413,6 +424,22 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
+        if let Type::SelfAssoc { member } = &ty.inner {
+            if let Some(&concrete) = self.impl_assoc_types.get(&member.symbol) {
+                return concrete;
+            }
+            if let Some(&abstract_ty) = self.trait_assoc_abstract.get(&member.symbol) {
+                return abstract_ty;
+            }
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnknownType {
+                    symbol_index: member.symbol.index(),
+                    span: ty.span,
+                },
+            );
+            return self.poison_type();
+        }
         if let Type::Named { name, generics } = &ty.inner {
             if self.is_self_type_name(name.symbol) {
                 if let Some(self_ty) = self.impl_self_type {
@@ -557,8 +584,10 @@ impl<'a> TypeChecker<'a> {
             TopLevelDecl::Function(f) => &f.derives,
             TopLevelDecl::Impl { members, .. } => {
                 for m in members {
-                    if !m.derives.is_empty() {
-                        self.push_unsupported("#derive on impl method", m.body.span);
+                    if let ImplMember::Method(f) = m {
+                        if !f.derives.is_empty() {
+                            self.push_unsupported("#derive on impl method", f.body.span);
+                        }
                     }
                 }
                 return;
@@ -728,29 +757,57 @@ impl<'a> TypeChecker<'a> {
                     generics.as_deref(),
                 );
                 if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
-                    for m in members {
-                        self.collect_fn_sig(m);
-                        if let Some(fn_def) =
-                            self.find_def(self.current_module, m.name.symbol, DefKind::Fn)
-                        {
-                            if let Some(trait_name) = trait_ {
-                                if let Some(trait_def) =
-                                    self.type_defs.get(&trait_name.symbol).copied()
-                                {
-                                    self.program_layout
-                                        .trait_methods
-                                        .insert((type_def, trait_def, m.name.symbol), fn_def);
+                    let td = self.type_defs.clone();
+                    if let Some(trait_name) = trait_ {
+                        if let Some(trait_def) = self.type_defs.get(&trait_name.symbol).copied() {
+                            self.program_layout
+                                .trait_impls
+                                .insert((type_def, trait_def));
+                        }
+                    }
+                    for member in members {
+                        match member {
+                            ImplMember::AssociatedType { name, ty } => {
+                                if let Some(trait_name) = trait_ {
+                                    if let Some(trait_def) =
+                                        self.type_defs.get(&trait_name.symbol).copied()
+                                    {
+                                        let concrete = self.lower_ast_type_with_defs(ty, &td);
+                                        self.program_layout
+                                            .trait_assoc_impls
+                                            .insert((type_def, trait_def, name.symbol), concrete);
+                                    }
                                 }
-                            } else {
-                                self.program_layout
-                                    .inherent_methods
-                                    .insert((type_def, m.name.symbol), fn_def);
                             }
+                            ImplMember::Method(m) => {
+                                self.collect_fn_sig(m);
+                                if let Some(fn_def) =
+                                    self.find_def(self.current_module, m.name.symbol, DefKind::Fn)
+                                {
+                                    if let Some(trait_name) = trait_ {
+                                        if let Some(trait_def) =
+                                            self.type_defs.get(&trait_name.symbol).copied()
+                                        {
+                                            self.program_layout.trait_methods.insert(
+                                                (type_def, trait_def, m.name.symbol),
+                                                fn_def,
+                                            );
+                                        }
+                                    } else {
+                                        self.program_layout
+                                            .inherent_methods
+                                            .insert((type_def, m.name.symbol), fn_def);
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 } else {
-                    for m in members {
-                        self.collect_fn_sig(m);
+                    for member in members {
+                        if let ImplMember::Method(m) = member {
+                            self.collect_fn_sig(m);
+                        }
                     }
                 }
                 self.type_defs = saved_defs;
@@ -760,11 +817,31 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let mut td = self.type_defs.clone();
                 push_generics(&mut td, &self.resolved.defs, generics.as_deref());
+                let mut abstract_assoc = HashMap::new();
+                for item in items {
+                    if let TraitItem::AssociatedType(assoc_name) = item {
+                        if let Some(assoc_def) = self.find_def(
+                            self.current_module,
+                            assoc_name.symbol,
+                            DefKind::TraitAssocType,
+                        ) {
+                            let abstract_ty = self.types.intern(&Ty::Named {
+                                def: assoc_def,
+                                args: vec![],
+                            });
+                            abstract_assoc.insert(assoc_name.symbol, abstract_ty);
+                            td.insert(assoc_name.symbol, assoc_def);
+                        }
+                    }
+                }
+                let saved_abstract =
+                    std::mem::replace(&mut self.trait_assoc_abstract, abstract_assoc);
                 for item in items {
                     if let TraitItem::Method(sig) = item {
                         self.collect_fn_sig_only_with_defs(sig, &td);
                     }
                 }
+                self.trait_assoc_abstract = saved_abstract;
             }
             TopLevelDecl::Const { name, ty, .. } => {
                 if let (Some(def), Some(t)) = (
@@ -864,27 +941,48 @@ impl<'a> TypeChecker<'a> {
                 members,
                 ..
             } => {
-                if let Some(trait_name) = trait_ {
-                    self.check_trait_impl_exhaustiveness(type_name, trait_name, members, span);
-                }
                 let saved_defs = self.type_defs.clone();
                 push_generics(
                     &mut self.type_defs,
                     &self.resolved.defs,
                     generics.as_deref(),
                 );
+                let saved_trait_impl = self.active_trait_impl;
+                let saved_impl_assoc = std::mem::take(&mut self.impl_assoc_types);
+                let type_defs_snapshot = self.type_defs.clone();
+                if let (Some(trait_name), Some(&type_def)) =
+                    (trait_, self.type_defs.get(&type_name.symbol))
+                {
+                    if let Some(&trait_def) = self.type_defs.get(&trait_name.symbol) {
+                        self.active_trait_impl = Some((type_def, trait_def));
+                        for member in members {
+                            if let ImplMember::AssociatedType { name, ty } = member {
+                                let concrete =
+                                    self.lower_ast_type_with_defs(ty, &type_defs_snapshot);
+                                self.impl_assoc_types.insert(name.symbol, concrete);
+                            }
+                        }
+                    }
+                    self.check_trait_impl_exhaustiveness(type_name, trait_name, members, span);
+                }
                 if let Some(&type_def) = self.type_defs.get(&type_name.symbol) {
                     let self_ty = self.impl_self_type_id(type_def, generics.as_deref());
                     self.impl_self_type = Some(self_ty);
-                    for m in members {
-                        self.check_function(m);
+                    for member in members {
+                        if let ImplMember::Method(m) = member {
+                            self.check_function(m);
+                        }
                     }
                     self.impl_self_type = None;
                 } else {
-                    for m in members {
-                        self.check_function(m);
+                    for member in members {
+                        if let ImplMember::Method(m) = member {
+                            self.check_function(m);
+                        }
                     }
                 }
+                self.active_trait_impl = saved_trait_impl;
+                self.impl_assoc_types = saved_impl_assoc;
                 self.type_defs = saved_defs;
             }
             _ => {}
@@ -1701,42 +1799,65 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         type_name: &TypeName,
         trait_name: &TypeName,
-        members: &[Function],
+        members: &[ImplMember],
         span: Span,
     ) {
         let Some(trait_def) = self.type_defs.get(&trait_name.symbol).copied() else {
             return;
         };
-        let Some(trait_items) = self.find_trait_items(trait_def) else {
+        let Some(trait_items) = self.find_trait_items(trait_def).map(<[TraitItem]>::to_vec) else {
             return;
         };
-        let impl_methods: std::collections::HashSet<Symbol> =
-            members.iter().map(|m| m.name.symbol).collect();
-        let type_display = self.resolved.interner.resolve(type_name.symbol).to_owned();
-        let trait_display = self.resolved.interner.resolve(trait_name.symbol).to_owned();
-        let missing_methods: Vec<Symbol> = trait_items
+        let impl_methods: std::collections::HashSet<Symbol> = members
             .iter()
-            .filter_map(|item| {
-                let TraitItem::Method(sig) = item else {
-                    return None;
-                };
-                if sig.body.is_some() || impl_methods.contains(&sig.name.symbol) {
-                    return None;
-                }
-                Some(sig.name.symbol)
+            .filter_map(|m| match m {
+                ImplMember::Method(f) => Some(f.name.symbol),
+                ImplMember::AssociatedType { .. } => None,
+                _ => None,
             })
             .collect();
-        for method_symbol in missing_methods {
-            let method_display = self.resolved.interner.resolve(method_symbol).to_owned();
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::MissingTraitMethod {
-                    type_name: type_display.clone(),
-                    trait_name: trait_display.clone(),
-                    method_name: method_display,
-                    span,
-                },
-            );
+        let impl_assoc: std::collections::HashSet<Symbol> = members
+            .iter()
+            .filter_map(|m| match m {
+                ImplMember::AssociatedType { name, .. } => Some(name.symbol),
+                ImplMember::Method(_) => None,
+                _ => None,
+            })
+            .collect();
+        let type_display = self.resolved.interner.resolve(type_name.symbol).to_owned();
+        let trait_display = self.resolved.interner.resolve(trait_name.symbol).to_owned();
+        for item in trait_items {
+            match item {
+                TraitItem::AssociatedType(name) if !impl_assoc.contains(&name.symbol) => {
+                    let assoc_display = self.resolved.interner.resolve(name.symbol).to_owned();
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::MissingAssociatedType {
+                            type_name: type_display.clone(),
+                            trait_name: trait_display.clone(),
+                            assoc_name: assoc_display,
+                            span,
+                        },
+                    );
+                }
+                TraitItem::AssociatedType(_) => {}
+                TraitItem::Method(sig) => {
+                    if sig.body.is_some() || impl_methods.contains(&sig.name.symbol) {
+                        continue;
+                    }
+                    let method_display = self.resolved.interner.resolve(sig.name.symbol).to_owned();
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::MissingTraitMethod {
+                            type_name: type_display.clone(),
+                            trait_name: trait_display.clone(),
+                            method_name: method_display,
+                            span,
+                        },
+                    );
+                }
+                _ => {}
+            }
         }
     }
 
@@ -1822,8 +1943,10 @@ impl<'a> TypeChecker<'a> {
                     TopLevelDecl::Function(f) if self.fn_def_for(f) == Some(def) => return Some(f),
                     TopLevelDecl::Impl { members, .. } => {
                         for m in members {
-                            if self.fn_def_for(m) == Some(def) {
-                                return Some(m);
+                            if let ImplMember::Method(f) = m {
+                                if self.fn_def_for(f) == Some(def) {
+                                    return Some(f);
+                                }
                             }
                         }
                     }
@@ -2539,6 +2662,29 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn named_type_args(&self, ty: TypeId) -> Option<(DefId, Vec<TypeId>)> {
+        match self.types.get(ty) {
+            Ty::Named { def, args } => Some((*def, args.clone())),
+            _ => None,
+        }
+    }
+
+    fn variant_payload_for_scrutinee(
+        &mut self,
+        variant_def: DefId,
+        scrutinee: TypeId,
+    ) -> Option<VariantKind> {
+        let (_, args) = self.named_type_args(scrutinee)?;
+        if args.is_empty() {
+            return self
+                .program_layout
+                .variants
+                .get(&variant_def)
+                .map(|meta| meta.payload.clone());
+        }
+        self.substituted_variant_payload(variant_def, &args)
+    }
+
     fn error_enum_pattern_on_non_enum(&mut self, scrutinee: TypeId, span: Span) {
         self.bag.push(
             self.current_module,
@@ -2619,7 +2765,9 @@ impl<'a> TypeChecker<'a> {
                     } else {
                         self.error_enum_pattern_on_non_enum(scrutinee, span);
                     }
-                    if let VariantKind::Struct(payload) = &variant.kind {
+                    if let Some(VariantKind::Struct(payload)) =
+                        self.variant_payload_for_scrutinee(variant.def, scrutinee)
+                    {
                         let field_map: HashMap<Symbol, TypeId> = payload.iter().copied().collect();
                         for field in fields {
                             if let Some(fty) = field_map.get(&field.name.symbol) {
@@ -2649,7 +2797,9 @@ impl<'a> TypeChecker<'a> {
                     } else {
                         self.error_enum_pattern_on_non_enum(scrutinee, span);
                     }
-                    if let VariantKind::Tuple(payload) = &variant.kind {
+                    if let Some(VariantKind::Tuple(payload)) =
+                        self.variant_payload_for_scrutinee(variant.def, scrutinee)
+                    {
                         for (p, pty) in patterns.iter().zip(payload.iter()) {
                             self.check_pattern(&p.inner, *pty, span);
                         }

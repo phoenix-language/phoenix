@@ -257,6 +257,17 @@ pub enum TypeCheckError {
         /// Impl block span.
         span: Span,
     },
+    /// Trait impl block does not specify a required associated type.
+    MissingAssociatedType {
+        /// Implementing type name.
+        type_name: String,
+        /// Trait name.
+        trait_name: String,
+        /// Required associated type name.
+        assoc_name: String,
+        /// Impl block span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -290,6 +301,7 @@ impl TypeCheckError {
             Self::InferenceFailed { .. } => DiagnosticCode::new("E2024"),
             Self::InferenceAmbiguous { .. } => DiagnosticCode::new("E2025"),
             Self::MissingTraitMethod { .. } => DiagnosticCode::new("E2026"),
+            Self::MissingAssociatedType { .. } => DiagnosticCode::new("E2027"),
         }
     }
 
@@ -322,7 +334,8 @@ impl TypeCheckError {
             | Self::TraitNotSatisfied { span, .. }
             | Self::InferenceFailed { span, .. }
             | Self::InferenceAmbiguous { span, .. }
-            | Self::MissingTraitMethod { span, .. } => Some(*span),
+            | Self::MissingTraitMethod { span, .. }
+            | Self::MissingAssociatedType { span, .. } => Some(*span),
         }
     }
 }
@@ -429,6 +442,15 @@ impl fmt::Display for TypeCheckError {
             } => write!(
                 f,
                 "type `{type_name}` does not implement trait method `{method_name}` from `{trait_name}`"
+            ),
+            Self::MissingAssociatedType {
+                type_name,
+                trait_name,
+                assoc_name,
+                ..
+            } => write!(
+                f,
+                "type `{type_name}` does not specify associated type `{assoc_name}` from `{trait_name}`"
             ),
         }
     }

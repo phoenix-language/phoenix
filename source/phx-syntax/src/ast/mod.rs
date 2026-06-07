@@ -25,8 +25,9 @@ pub mod stmt;
 pub mod types;
 
 pub use decl::{
-    EnumVariant, FnDirective, Function, FunctionSig, ImportDirective, ImportItem, ImportItems,
-    Param, Program, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem, Variant,
+    EnumVariant, FnDirective, Function, FunctionSig, ImplMember, ImportDirective, ImportItem,
+    ImportItems, Param, Program, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem,
+    Variant,
 };
 pub use expr::{AssignOp, BinOp, Expr, ExprNode, PostfixOp, StructFieldInit, UnaryOp};
 pub use ident::{Ident, Path, PathSegment, TypeName};

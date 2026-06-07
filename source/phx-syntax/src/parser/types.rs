@@ -81,6 +81,10 @@ impl Parser<'_> {
             TokenKind::Keyword(Keyword::SelfUpper) => {
                 let span = self.current_span();
                 self.bump();
+                if self.eat_kind(&TokenKind::ColonColon) {
+                    let member = self.parse_type_name()?;
+                    return Ok(self.node(Type::SelfAssoc { member }, self.span_from(start)));
+                }
                 let type_name = self.intern_type_name("Self", span)?;
                 Ok(self.node(
                     Type::Named {

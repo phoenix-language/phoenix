@@ -1,6 +1,6 @@
 //! Collect all `#import` directives in a program (file scope and block scope).
 
-use crate::ast::decl::{ImportDirective, Program, TopLevelDecl, TopLevelItem};
+use crate::ast::decl::{ImplMember, ImportDirective, Program, TopLevelDecl, TopLevelItem};
 use crate::ast::expr::{Expr, LambdaBody};
 use crate::ast::pat::MatchArm;
 use crate::ast::stmt::{Block, BlockItem, Stmt};
@@ -24,7 +24,9 @@ fn walk_top_level_item<'a>(item: &'a TopLevelItem, out: &mut Vec<&'a Node<Import
         TopLevelDecl::Function(f) => walk_block(&f.body.inner, out),
         TopLevelDecl::Impl { members, .. } => {
             for m in members {
-                walk_block(&m.body.inner, out);
+                if let ImplMember::Method(f) = m {
+                    walk_block(&f.body.inner, out);
+                }
             }
         }
         TopLevelDecl::Const { init, .. } | TopLevelDecl::Var { init, .. } => {

@@ -942,7 +942,8 @@ pub(crate) fn emit_arm_condition(
             ctx.emit(IrInst::Jump { target: body_id });
         }
         Pattern::Ident(ident) => {
-            if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, ident.symbol) {
+            if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, ident.symbol)
+            {
                 ctx.emit(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
@@ -987,7 +988,7 @@ pub(crate) fn emit_arm_condition(
             }
         }
         Pattern::Struct { name, .. } => {
-            if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, name.symbol) {
+            if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, name.symbol) {
                 ctx.emit(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
@@ -1008,7 +1009,7 @@ pub(crate) fn emit_arm_condition(
             }
         }
         Pattern::Tuple { name, .. } => {
-            if let Some((type_id, tag)) = find_enum_variant_by_name(ctx, name.symbol) {
+            if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, name.symbol) {
                 ctx.emit(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
@@ -1034,16 +1035,18 @@ pub(crate) fn emit_arm_condition(
     }
 }
 
-fn find_enum_variant_by_name(ctx: &LowerCtx<'_>, name: Symbol) -> Option<(u32, u32)> {
-    for (&enum_def, el) in &ctx.typed.layout.enums {
-        for v in &el.variants {
-            if v.name == name {
-                let type_id = ctx.typed.layout.type_id(enum_def)?;
-                return Some((type_id, v.tag));
-            }
-        }
-    }
-    None
+fn enum_variant_for_scrutinee(
+    ctx: &LowerCtx<'_>,
+    scrutinee_ty: TypeId,
+    variant_name: Symbol,
+) -> Option<(u32, u32, VariantKind)> {
+    let Ty::Named { def, args } = ctx.typed.types.get(scrutinee_ty).clone() else {
+        return None;
+    };
+    let layout = ctx.typed.layout.enum_layout(def, &args)?;
+    let variant = layout.variants.iter().find(|v| v.name == variant_name)?;
+    let type_id = ctx.typed.layout.type_id_for_named(def, &args)?;
+    Some((type_id, variant.tag, variant.kind.clone()))
 }
 
 /// Binds `match` pattern variables into locals and moves payload slots when needed.
@@ -1057,7 +1060,7 @@ pub(crate) fn bind_match_pattern(
 ) {
     match pat {
         Pattern::Ident(ident) => {
-            if find_enum_variant_by_name(ctx, ident.symbol).is_some() {
+            if enum_variant_for_scrutinee(ctx, temp_ty, ident.symbol).is_some() {
                 return;
             }
             if let Some(binding) = ctx.layout.binding(ident.symbol) {
@@ -1105,64 +1108,56 @@ pub(crate) fn bind_match_pattern(
                         });
                     }
                 }
-            } else if let Some((enum_def, variant)) =
-                ctx.typed.layout.enum_variant_by_name(name.symbol)
+            } else if let Some((type_id, _tag, VariantKind::Struct(fields_payload))) =
+                enum_variant_for_scrutinee(ctx, temp_ty, name.symbol)
             {
-                let type_id = ctx.typed.layout.type_id(enum_def).unwrap_or(0);
-                if let VariantKind::Struct(payload) = &variant.kind {
-                    for (i, (fname, fty)) in payload.iter().enumerate() {
-                        let pat_field = fields.iter().find(|f| f.name.symbol == *fname);
-                        let Some(pat_field) = pat_field else {
-                            continue;
-                        };
-                        ctx.emit(IrInst::LoadLocal {
-                            slot: temp,
-                            ty: temp_ty,
-                            prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                for (i, (fname, fty)) in fields_payload.iter().enumerate() {
+                    let Some(pat_field) = fields.iter().find(|f| f.name.symbol == *fname) else {
+                        continue;
+                    };
+                    ctx.emit(IrInst::LoadLocal {
+                        slot: temp,
+                        ty: temp_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                    });
+                    let field_index = u32::try_from(i).unwrap_or(u32::MAX);
+                    ctx.emit(IrInst::GetField {
+                        type_id,
+                        field_index,
+                        result: *fty,
+                    });
+                    if let Some(p) = &pat_field.pattern {
+                        bind_match_pattern(ctx, &p.inner, temp, *fty, true);
+                    } else if let Some(binding) = ctx.layout.binding(pat_field.name.symbol) {
+                        ctx.emit(IrInst::StoreLocal {
+                            slot: binding.slot,
+                            ty: *fty,
+                            prim_kind: prim_kind_byte(ctx.typed, *fty),
                         });
-                        let field_index = u32::try_from(i).unwrap_or(u32::MAX);
-                        ctx.emit(IrInst::GetField {
-                            type_id,
-                            field_index,
-                            result: *fty,
-                        });
-                        if let Some(p) = &pat_field.pattern {
-                            bind_match_pattern(ctx, &p.inner, temp, *fty, true);
-                        } else if let Some(binding) = ctx.layout.binding(pat_field.name.symbol) {
-                            ctx.emit(IrInst::StoreLocal {
-                                slot: binding.slot,
-                                ty: *fty,
-                                prim_kind: prim_kind_byte(ctx.typed, *fty),
-                            });
-                        }
                     }
                 }
             }
         }
         Pattern::Tuple { name, patterns } => {
-            for el in ctx.typed.layout.enums.values() {
-                if let Some(variant) = el.variants.iter().find(|v| v.name == name.symbol) {
-                    let type_id = ctx.typed.layout.type_id(el.enum_def).unwrap_or(0);
-                    if let VariantKind::Tuple(payload) = &variant.kind {
-                        for (i, p) in patterns.iter().enumerate() {
-                            ctx.emit(IrInst::LoadLocal {
-                                slot: temp,
-                                ty: temp_ty,
-                                prim_kind: prim_kind_byte(ctx.typed, temp_ty),
-                            });
-                            let result_ty = payload
-                                .get(i)
-                                .copied()
-                                .unwrap_or_else(|| unit_ty(ctx.typed));
-                            ctx.emit(IrInst::GetField {
-                                type_id,
-                                field_index: u32::try_from(i).unwrap_or(u32::MAX),
-                                result: result_ty,
-                            });
-                            bind_match_pattern(ctx, &p.inner, temp, result_ty, true);
-                        }
-                    }
-                    break;
+            if let Some((type_id, _tag, VariantKind::Tuple(field_types))) =
+                enum_variant_for_scrutinee(ctx, temp_ty, name.symbol)
+            {
+                for (i, p) in patterns.iter().enumerate() {
+                    ctx.emit(IrInst::LoadLocal {
+                        slot: temp,
+                        ty: temp_ty,
+                        prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                    });
+                    let result_ty = field_types
+                        .get(i)
+                        .copied()
+                        .unwrap_or_else(|| unit_ty(ctx.typed));
+                    ctx.emit(IrInst::GetField {
+                        type_id,
+                        field_index: u32::try_from(i).unwrap_or(u32::MAX),
+                        result: result_ty,
+                    });
+                    bind_match_pattern(ctx, &p.inner, temp, result_ty, true);
                 }
             }
         }

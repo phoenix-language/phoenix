@@ -78,11 +78,12 @@ trait_item         = associated_type_decl | trait_method ;
 trait_method       = function_decl_body , ";"
                    | function_signature , ";" ;
 associated_type_decl = "type" , type_identifier , ";" ;
+associated_type_impl = "type" , type_identifier , "=" , type_expr , ";" ;
 
 impl_decl          = type_identifier , "::" , [ generic_params ] , "impl" ,
                      [ "::" , type_identifier ] , impl_block ;
 impl_block         = "{" , { impl_member } , "}" ;
-impl_member        = function_decl_body , ";" ;
+impl_member        = function_decl_body , ";" | associated_type_impl ;
 
 (* -----------------------------------------------------------------------------
    Functions

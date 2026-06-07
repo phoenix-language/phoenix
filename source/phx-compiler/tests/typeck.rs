@@ -1024,3 +1024,50 @@ fn generic_copyable_bound_fails_on_second_instantiation_site() {
         bag.errors()
     );
 }
+
+#[test]
+fn generic_enum_match_s32_compile_ok() {
+    compile_ok(
+        "Opt :: <t> enum { None, Some(t), }; main :: () => { const x = Some :: <s32> (1); const n: s32 = match x { None => 0; Some(v) => v; }; const _ = n; };",
+    );
+}
+
+#[test]
+fn generic_enum_match_dual_instantiation_compile_ok() {
+    compile_ok(
+        "Opt :: <t> enum { None, Some(t), }; main :: () => { const a = Some :: <s32> (1); const b = Some :: <bool> (true); const n: s32 = match a { None => 0; Some(v) => v; }; const m: bool = match b { None => false; Some(w) => w; }; const _ = n; const _discard = m; };",
+    );
+}
+
+#[test]
+fn trait_assoc_type_impl_compile_ok() {
+    compile_ok(
+        "Iterator :: trait { type Item; peek :: () => Self::Item; }; Counter :: struct { n: s32 }; Counter :: impl :: Iterator { type Item = s32; peek :: () => s32 { self.n }; }; main :: () => { const c = Counter { n: 42 }; const _: s32 = c.peek(); };",
+    );
+}
+
+#[test]
+fn trait_impl_missing_associated_type_rejected() {
+    let source = "Iterator :: trait { type Item; peek :: () => Self::Item; }; Counter :: struct { n: s32 }; Counter :: impl :: Iterator { peek :: () => s32 { self.n }; }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::MissingAssociatedType {
+                    assoc_name,
+                    ..
+                } if assoc_name == "Item"
+            )
+        }),
+        "expected MissingAssociatedType for Item: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn generic_user_trait_bound_at_mono_site_compile_ok() {
+    compile_ok(
+        "Marker :: trait { }; Tagged :: struct { n: s32 }; Tagged :: impl :: Marker { }; identity :: <t: Marker> (x: t) => t { x }; main :: () => { const t = Tagged { n: 1 }; const _: Tagged = identity(t); };",
+    );
+}

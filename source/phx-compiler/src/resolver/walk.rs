@@ -17,7 +17,8 @@ use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{InvalidMainReason, ResolveError, Span};
 use phx_syntax::ast::decl::{
-    Function, FunctionSig, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
+    Function, FunctionSig, ImplMember, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem,
+    Variant,
 };
 use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
@@ -120,8 +121,10 @@ impl Resolver<'_> {
             } => {
                 self.collect_generic_params(generics);
                 for member in members {
-                    let mspan = name_span_ident(&member.name);
-                    self.define_value(member.name.symbol, mspan, DefKind::Fn);
+                    if let ImplMember::Method(f) = member {
+                        let mspan = name_span_ident(&f.name);
+                        self.define_value(f.name.symbol, mspan, DefKind::Fn);
+                    }
                 }
             }
             TopLevelDecl::Function(f) => {
@@ -264,7 +267,11 @@ impl Resolver<'_> {
                 self.resolve_generics(generics);
                 self.self_type_depth += 1;
                 for member in members {
-                    self.resolve_function(member, true);
+                    match member {
+                        ImplMember::AssociatedType { ty, .. } => self.resolve_type_node(ty),
+                        ImplMember::Method(f) => self.resolve_function(f, true),
+                        _ => {}
+                    }
                 }
                 self.self_type_depth -= 1;
                 self.scopes.pop();
@@ -610,6 +617,7 @@ impl Resolver<'_> {
             Type::Unit => {}
             Type::Array { elem, .. } => self.resolve_type_node(elem),
             Type::Slice(inner) => self.resolve_type_node(inner),
+            Type::SelfAssoc { member } => self.resolve_type_name(member),
             _ => {}
         }
     }

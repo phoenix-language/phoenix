@@ -7,8 +7,9 @@ use phx_diagnostics::ExpectedToken;
 
 use crate::ast::Node;
 use crate::ast::decl::{
-    DeriveDirective, EnumVariant, FnDirective, Function, FunctionSig, ImportDirective, ImportItem,
-    ImportItems, Param, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem, Variant,
+    DeriveDirective, EnumVariant, FnDirective, Function, FunctionSig, ImplMember, ImportDirective,
+    ImportItem, ImportItems, Param, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem,
+    Variant,
 };
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
@@ -346,7 +347,7 @@ impl Parser<'_> {
     fn parse_impl_tail(
         &mut self,
         _generics: Option<Vec<crate::ast::GenericParam>>,
-    ) -> Result<(Option<crate::ast::TypeName>, Vec<Function>), ParseError> {
+    ) -> Result<(Option<crate::ast::TypeName>, Vec<ImplMember>), ParseError> {
         let trait_ = if self.peek_kind() == TokenKind::ColonColon {
             self.bump();
             Some(self.parse_type_name()?)
@@ -361,8 +362,16 @@ impl Parser<'_> {
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
         let mut members = Vec::new();
         while !self.eat_kind(&TokenKind::RBrace) {
-            members.push(self.parse_function_decl_body(false)?);
-            self.expect_semi()?;
+            if self.eat_keyword(Keyword::Type) {
+                let name = self.parse_type_name()?;
+                self.expect_kind(ExpectedToken::Punct("="), &TokenKind::Eq)?;
+                let ty = self.parse_type()?;
+                self.expect_semi()?;
+                members.push(ImplMember::AssociatedType { name, ty });
+            } else {
+                members.push(ImplMember::Method(self.parse_function_decl_body(false)?));
+                self.expect_semi()?;
+            }
         }
         Ok((trait_, members))
     }

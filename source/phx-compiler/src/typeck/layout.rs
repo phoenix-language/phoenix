@@ -1,6 +1,7 @@
 //! Struct/enum layout tables for lowering and bytecode metadata.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use phx_syntax::Symbol;
 
@@ -102,6 +103,10 @@ pub struct ProgramLayout {
     pub inherent_methods: HashMap<(DefId, Symbol), DefId>,
     /// Trait impl methods: `(type_def, trait_def, method_name) → fn_def`.
     pub trait_methods: HashMap<(DefId, DefId, Symbol), DefId>,
+    /// Concrete associated types: `(type_def, trait_def, assoc_name) → TypeId`.
+    pub trait_assoc_impls: HashMap<(DefId, DefId, Symbol), TypeId>,
+    /// Types that implement a trait (including empty impl blocks).
+    pub trait_impls: HashSet<(DefId, DefId)>,
     /// Monomorphized struct field layouts keyed by `(template, args)`.
     pub specialized_structs: HashMap<TypeMonoKey, StructLayout>,
     /// Monomorphized enum layouts keyed by `(template, args)`.
