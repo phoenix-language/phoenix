@@ -17,9 +17,29 @@ When every item in **Phases 1–6** is checked, the project reaches **Language v
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **MVP** (Phase 1)              | Minimal compiler pipeline: parse → type-check → bytecode → single-process VM. See [mvp.md](mvp.md).                                                |
 | **Language v0** (Phases 1–6)   | MVP is complete **plus** the language substrate, packaging, and std-bootstrap wiring needed to compile real library code and onboard contributors. |
-| **Std v0** (after Language v0) | `Option`, `Result`, core traits, alloc-backed collections/text — authored as Phoenix `type = lib` packages, not compiler builtins.                 |
-| **Std I/O** (explicitly later) | Requires scheduler + schedulable-I/O runtime first. Not a Language v0 gate.                                                                        |
+| **Std v0** (after Language v0) | `Option`, `Result`, core traits, conversion traits, std error types, alloc-backed collections/text — authored as Phoenix `type = lib` packages, not compiler builtins. |
+| **Std I/O** (explicitly later) | Requires scheduler + schedulable-I/O runtime first. Not a Language v0 gate. |
+| **Runtime v1** (after Std v0) | VM-managed M:N scheduler, cooperatively parked schedulable I/O, optional actors — compile-time safety from Language v0 is the prerequisite. |
 
+---
+
+## Product vision (why Language v0 matters)
+
+Language v0 deliberately ships a **compile-time-safe frontend** and a **minimal deterministic VM** — enough to author std in Phoenix, verify bytecode, and run programs on any host with a Phoenix VM.
+
+That split is intentional. Many runtime features Phoenix targets (cooperative scheduling, schedulable I/O that does not block worker threads, actor isolation, portable PHX0 bytecode, C-ABI interop) are **hard to build safely on an unsafe or dynamically typed core**. Language v0 establishes the contract first:
+
+| Language v0 delivers | Enables later |
+|---|---|
+| Static types, moves, `Result`/`Option`, trait bounds | Failures and resource ownership visible before runtime |
+| Monomorphized traits + `From` error conversion | Ergonomic layered errors without exceptions |
+| Portable PHX0 + verifier | Same bytecode on embedded, server, and desktop targets |
+| Function pointers + `@extern` path ([V0-053](#v0-053--function-pointers-and-indirect-calls)) | Interop with any C-ABI language at documented boundaries |
+| Minimal stack VM | Room to add scheduler, I/O parking, and mailboxes without rewriting the language |
+
+**Post–Language v0 direction** (documented, not v0 scope): a **VM-managed concurrency model** — all Phoenix execution under a scheduler; I/O and blocking work cooperatively parked (Tokio-like transparency, Phoenix syntax and types). See [runtime-transparency.md](features/runtime-transparency.md), [concurrency.md](features/concurrency.md).
+
+Language v0 does **not** implement the scheduler or std I/O. It **does** require the type system and std error story to be strong enough that runtime work composes cleanly on top.
 
 ---
 
@@ -339,7 +359,9 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 - Enable `Some`, `None`, `Ok`, `Err` as enum constructors tied to std definitions.
 - Enable `expr?` postfix sugar lowered against `Result` / `Option` in compatible function contexts.
 
-**Acceptance:** `read_config`-style example from [error-handling.md](features/error-handling.md) type-checks and lowers correctly.
+**Status:** Done
+
+**Acceptance:** `read_config`-style example from [error-handling.md](features/error-handling.md) type-checks and lowers correctly (`tests/cli/fixtures/std_try`).
 
 **Refs:** [error-handling.md](features/error-handling.md), [grammar-deferred.md](features/grammar-deferred.md)
 
@@ -350,6 +372,7 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 - `Clone :: trait` in std with explicit duplication semantics.
 - `Copyable` marker trait in std (or documented split: language bound vs std trait) per [ownership.md](features/ownership.md).
 - Baseline traits stubbed or implemented: `Debug`, `PartialEq`, `Eq` (minimal fmt/compare sufficient for demos).
+- Conversion traits (`From`, `Into`, `TryFrom`, `TryInto`) are **[V0-058](#v0-058--conversion-traits-from--into-in-std)** — separate checklist item.
 
 **Acceptance:** Generic function with `T: Copyable` and `T: Clone` bounds type-checks against std trait definitions.
 
@@ -365,6 +388,42 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 **Acceptance:** Prelude-enabled module uses `Option` without explicit import; non-prelude modules still require `#import`.
 
 **Refs:** [type-system.md](features/type-system.md) (Core vs std policy)
+
+---
+
+### V0-058 — Conversion traits (`From` / `Into`) in std
+
+- `std::core::convert`: `From<Source>`, `Into<Target>`, `TryFrom<Source>`, `TryInto<Target>` as ordinary generic traits in Phoenix source.
+- Type-check and monomorphize trait method calls like any other trait impl.
+- Document orphan-rule expectations for std error `From` impls.
+
+**Acceptance:** Generic function with bound `T: From<U>` compiles, monomorphizes, and runs; `TryFrom` returns `Result`; no compiler conversion builtins beyond `expr as Type` for Tier A casts.
+
+**Refs:** [traits.md](features/traits.md#conversion-traits-from--into), [type-system.md](features/type-system.md#explicit-cast-tiers)
+
+---
+
+### V0-059 — `?` with `From` error conversion
+
+- Extend `?` type-check: `Result<T, E_in>?` inside `Result<T, E_out>` when `From<E_in>` exists for `E_out` (same `T`; Ok types must unify).
+- Lower failure path: load `Err` payload → monomorphized `From::from` → `return Err(converted)`.
+- Diagnostic when `From` is missing: cite expected impl and link to [error-handling.md](features/error-handling.md).
+
+**Acceptance:** Function returning `Result<Config, Error>` may `?` a `Result<_, IoError>` call when `From<IoError> for Error` exists; fixture in `tests/cli/` or `tests/examples/errors`.
+
+**Refs:** [error-handling.md](features/error-handling.md#the--operator-v0-042-error-conversion-v0-059)
+
+---
+
+### V0-060 — Std error module
+
+- `std::error`: leaf types (`IoError`, `ParseError`, `ThreadError`, `GeneralError`) and top-level `Error` sum enum (Pattern A in [error-handling.md](features/error-handling.md)).
+- `From<LeafError> for Error` impls for each leaf type.
+- Minimal `Debug` / `Display` (or fmt trait stubs) sufficient for the `errors` demo.
+
+**Acceptance:** Layered `read_bytes` → `read_config` example type-checks with `?` across error types; builds with bundled std.
+
+**Refs:** [error-handling.md](features/error-handling.md#std-error-vocabulary--v0-060)
 
 ---
 
@@ -399,7 +458,7 @@ Polish and capabilities that make the project legible to new contributors and un
   - `hello` — `main`, `str` literal output path (stdout intrinsic or VM debug channel documented for MVP).
   - `modules` — multi-file `bin` + `lib` dependency.
   - `generics` — generic enum + trait bound monomorphization.
-  - `errors` — `Result` + `match` + `?` after Phase 5.
+  - `errors` — `Result` + `match` + `?` with `From` error conversion across std error types (V0-058–060).
 - Each example has a one-line README comment at the top of `main.phx`.
 
 **Acceptance:** All examples build and run via documented commands in CI or `just test-lang`.
@@ -475,6 +534,7 @@ When **all** items in Phases 1–6 are checked:
 | Generics + traits + monomorphization                    | Shipped |
 | Heap alloc for std data structures                      | Shipped |
 | `Option` / `Result` / core traits as Phoenix std source | Shipped |
+| Conversion traits + std error types + `?`/`From` wiring | Shipped |
 | Contributor docs + examples                             | Shipped |
 | Fn pointers, `Drop`, iterators, basic derive            | Shipped |
 
@@ -515,11 +575,12 @@ These are real Phoenix goals but **out of scope** for this list. Do not implemen
 First std modules to author **in Phoenix** once the checklist is complete (order is flexible; all depend on Phases 4–6):
 
 1. `**core::alloc`** — allocation/deallocation wrappers over VM intrinsics.
-2. `**core::option` / `core::result**` — if not already merged into std root from V0-041.
-3. `**core::clone` / `core::copyable` / `core::cmp` / `core::fmt**` — traits and minimal derive support.
-4. `**collections::vec**` — growable buffer over `alloc`.
-5. `**text::string**` — owned UTF-8 `String` over `alloc` + `Clone`.
-6. `**text::fmt**` — basic formatting builders (no OS I/O required).
+2. `**core::option` / `core::result` / `core::convert**` — enums and conversion traits (if not already in std from V0-041 / V0-058).
+3. `**error**` — `Error`, `IoError`, and `From` impls (V0-060).
+4. `**core::clone` / `core::copyable` / `core::cmp` / `core::fmt**` — traits and minimal derive support.
+5. `**collections::vec**` — growable buffer over `alloc`.
+6. `**text::string**` — owned UTF-8 `String` over `alloc` + `Clone`.
+7. `**text::fmt**` — basic formatting builders (no OS I/O required).
 
 Std I/O (`fs`, `net`, …) waits for scheduler + schedulable-I/O runtime per [modules.md](features/modules.md) and [mvp.md](mvp.md).
 

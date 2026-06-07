@@ -132,9 +132,27 @@ fn if_branch_mismatch() {
 }
 
 #[test]
-fn question_mark_unsupported_in_mvp() {
+fn question_mark_invalid_operand_without_result_context() {
     let bag = typeck_err("main :: () => { const _ = 1?; };");
-    assert!(has_unsupported(&bag, "`?`"));
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::InvalidTryOperand { .. }) })
+    );
+}
+
+#[test]
+fn question_mark_ok_with_std_imports() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_try/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = check_file(&path).unwrap_or_else(|e| panic!("std_try typeck: {e}"));
+    assert!(
+        !unit.typed.try_sites.is_empty(),
+        "expected try_sites in std_try fixture"
+    );
 }
 
 #[test]

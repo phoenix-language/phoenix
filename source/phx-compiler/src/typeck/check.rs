@@ -34,6 +34,7 @@ use super::mono::{
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::primitive::is_int_keyword;
+use super::std_kernel::{StdKernel, TrySiteMeta};
 use super::subst::Substitution;
 use super::types::is_error_type;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
@@ -92,6 +93,10 @@ pub struct TypeChecker<'a> {
     type_mono_insts: Vec<TypeMonoInst>,
     /// Expanded alias types keyed by monomorphization key (filled during checking).
     specialized_aliases: HashMap<TypeMonoKey, TypeId>,
+    /// Std `Option` / `Result` ids for `?` sugar.
+    std_kernel: StdKernel,
+    /// `expr?` sites for lowering.
+    try_sites: HashMap<ExprId, TrySiteMeta>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -154,6 +159,8 @@ impl<'a> TypeChecker<'a> {
             mono_insts: Vec::new(),
             type_mono_insts: Vec::new(),
             specialized_aliases: HashMap::new(),
+            std_kernel: StdKernel::default(),
+            try_sites: HashMap::new(),
         }
     }
 
@@ -176,6 +183,11 @@ impl<'a> TypeChecker<'a> {
             let fields: HashMap<Symbol, TypeId> = struct_layout.fields.iter().copied().collect();
             self.struct_fields.insert(*def, StructFields { fields });
         }
+    }
+
+    /// Reuses std kernel metadata from the template type-check pass during monomorphization.
+    pub(crate) fn seed_std_kernel(&mut self, kernel: &StdKernel) {
+        self.std_kernel = kernel.clone();
     }
 
     pub(crate) fn check_function_specialized(
@@ -548,6 +560,7 @@ impl<'a> TypeChecker<'a> {
 
     fn check_program(&mut self) {
         self.collect_decls();
+        self.std_kernel = StdKernel::build(self.resolved, &self.program_layout);
         self.validate_type_aliases();
         for module in &self.resolved.modules {
             self.current_module = module.id;
@@ -1079,7 +1092,10 @@ impl<'a> TypeChecker<'a> {
 
     fn check_return(&mut self, expr: Option<&ExprNode>) -> TypeId {
         if let Some(e) = expr {
+            let saved_ctor = self.ctor_expected;
+            self.ctor_expected = self.fn_ret;
             let got = self.check_expr_node(e);
+            self.ctor_expected = saved_ctor;
             if self.is_borrow_type(got) {
                 self.check_expr_escapes_local(e);
             }
@@ -1125,7 +1141,9 @@ impl<'a> TypeChecker<'a> {
             }
             Stmt::Var { name, ty, init } => {
                 let expected = self.lower_ast_type(ty);
+                self.ctor_expected = Some(expected);
                 let got = self.check_expr_node(init);
+                self.ctor_expected = None;
                 if !self.types_equal(got, expected) {
                     self.error_mismatch(
                         expected,
@@ -1279,16 +1297,22 @@ impl<'a> TypeChecker<'a> {
 
     fn check_expr_node_inner(&mut self, expr: &ExprNode, record_move: bool) -> TypeId {
         let id = self.alloc_expr_id();
-        let ty = self.check_expr_with_move(&expr.inner, expr.span, record_move);
+        let ty = self.check_expr_with_move(&expr.inner, expr.span, record_move, id);
         self.expr_types.insert(id, ty);
         ty
     }
 
-    fn check_expr_with_move(&mut self, expr: &Expr, span: Span, record_move: bool) -> TypeId {
+    fn check_expr_with_move(
+        &mut self,
+        expr: &Expr,
+        span: Span,
+        record_move: bool,
+        expr_id: ExprId,
+    ) -> TypeId {
         match expr {
             Expr::Ident(ident) => self.check_ident_inner(ident, span, record_move),
             Expr::Postfix { base, ops } => {
-                self.check_postfix_with_move(base, ops, span, record_move)
+                self.check_postfix_with_move(base, ops, span, record_move, expr_id)
             }
             _ => self.check_expr(expr, span),
         }
@@ -1494,7 +1518,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_postfix(&mut self, base: &ExprNode, ops: &[PostfixOp], span: Span) -> TypeId {
-        self.check_postfix_with_move(base, ops, span, true)
+        self.check_postfix_with_move(base, ops, span, true, ExprId::from_raw(0))
     }
 
     fn check_postfix_with_move(
@@ -1503,6 +1527,7 @@ impl<'a> TypeChecker<'a> {
         ops: &[PostfixOp],
         span: Span,
         record_move: bool,
+        expr_id: ExprId,
     ) -> TypeId {
         let field_only = ops.iter().all(|op| matches!(op, PostfixOp::Field(_)));
         let mut ty = if field_only {
@@ -1538,16 +1563,7 @@ impl<'a> TypeChecker<'a> {
                     let _ = self.check_expr_node(idx);
                     self.check_index(ty, span)
                 }
-                PostfixOp::Try => {
-                    self.bag.push(
-                        self.current_module,
-                        TypeCheckError::UnsupportedFeature {
-                            feature: "`?` operator (requires std `Option` / `Result`)",
-                            span,
-                        },
-                    );
-                    self.unit
-                }
+                PostfixOp::Try => self.check_try_expr(ty, span, expr_id),
                 _ => self.unit,
             };
         }
@@ -1953,6 +1969,95 @@ impl<'a> TypeChecker<'a> {
         None
     }
 
+    fn context_generic_args_for_enum(&self, enum_def: DefId) -> Option<Vec<TypeId>> {
+        for ctx in [self.ctor_expected, self.fn_ret] {
+            let Some(ty) = ctx else {
+                continue;
+            };
+            if let Ty::Named { def, args } = self.types.get(ty).clone() {
+                if def == enum_def && !args.is_empty() {
+                    return Some(args);
+                }
+            }
+        }
+        None
+    }
+
+    fn check_try_expr(&mut self, scrutinee_ty: TypeId, span: Span, expr_id: ExprId) -> TypeId {
+        let Some(fn_ret) = self.fn_ret else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::TryOutsideFunction { span },
+            );
+            return self.unit;
+        };
+        if self.std_kernel.is_std_result(&self.types, scrutinee_ty)
+            && self.std_kernel.is_std_result(&self.types, fn_ret)
+            && self.types_equal(scrutinee_ty, fn_ret)
+        {
+            let Some((ok_ty, _)) = self.std_kernel.result_ok_err_tys(&self.types, scrutinee_ty)
+            else {
+                return self.unit;
+            };
+            self.record_try_site(expr_id, scrutinee_ty, ok_ty);
+            return ok_ty;
+        }
+        if self.std_kernel.is_std_option(&self.types, scrutinee_ty)
+            && self.std_kernel.is_std_option(&self.types, fn_ret)
+            && self.types_equal(scrutinee_ty, fn_ret)
+        {
+            let Some(payload) = self.std_kernel.option_payload_ty(&self.types, scrutinee_ty) else {
+                return self.unit;
+            };
+            self.record_try_site(expr_id, scrutinee_ty, payload);
+            return payload;
+        }
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::InvalidTryOperand {
+                found: self.format_ty(scrutinee_ty),
+                expected_return: self.format_ty(fn_ret),
+                span,
+            },
+        );
+        self.unit
+    }
+
+    fn record_try_site(&mut self, expr_id: ExprId, scrutinee_ty: TypeId, success_ty: TypeId) {
+        let Ty::Named { def, args } = self.types.get(scrutinee_ty).clone() else {
+            return;
+        };
+        let Some(success_tag) =
+            self.std_kernel
+                .success_tag_for(&self.program_layout, &self.types, scrutinee_ty)
+        else {
+            return;
+        };
+        let Some(failure_tag) =
+            self.std_kernel
+                .failure_tag_for(&self.program_layout, &self.types, scrutinee_ty)
+        else {
+            return;
+        };
+        let Some(layout) = &mut self.layout else {
+            return;
+        };
+        let temp_slot = layout.alloc_match_scrutinee_temp(scrutinee_ty);
+        self.try_sites.insert(
+            expr_id,
+            TrySiteMeta {
+                enum_def: def,
+                enum_args: args,
+                scrutinee_ty,
+                success_ty,
+                success_tag,
+                failure_tag,
+                temp_slot,
+            },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn resolve_concrete_generic_args(
         &mut self,
         generic_nodes: Option<&[Node<Type>]>,
@@ -1961,6 +2066,7 @@ impl<'a> TypeChecker<'a> {
         param_types: &[TypeId],
         args: &[ExprNode],
         span: Span,
+        enum_def: Option<DefId>,
     ) -> Option<Vec<TypeId>> {
         let mut td = self.type_defs.clone();
         push_generics(&mut td, &self.resolved.defs, fn_generics);
@@ -2014,6 +2120,13 @@ impl<'a> TypeChecker<'a> {
             let var = subst.get(*param_def)?;
             let resolved = infer.resolve(&mut self.types, var);
             if !infer.is_resolved(&mut self.types, resolved) {
+                if let Some(enum_def) = enum_def {
+                    if let Some(ctx) = self.context_generic_args_for_enum(enum_def) {
+                        if ctx.len() == param_defs.len() {
+                            return Some(ctx);
+                        }
+                    }
+                }
                 self.bag.push(
                     self.current_module,
                     TypeCheckError::InferenceFailed { span },
@@ -2069,6 +2182,7 @@ impl<'a> TypeChecker<'a> {
             &params,
             args,
             span,
+            None,
         ) else {
             return self.unit;
         };
@@ -2133,14 +2247,22 @@ impl<'a> TypeChecker<'a> {
         else {
             return self.check_call(callee, args, span);
         };
-        let Some(concrete_args) = self.resolve_concrete_generic_args(
-            generics,
-            generic_params_for_def(self.resolved, enum_def).as_deref(),
-            &param_defs,
-            &ctor_params,
-            args,
-            span,
-        ) else {
+        let concrete_args = if generics.is_none() {
+            self.context_generic_args_for_enum(enum_def)
+        } else {
+            None
+        };
+        let Some(concrete_args) = concrete_args.or_else(|| {
+            self.resolve_concrete_generic_args(
+                generics,
+                generic_params_for_def(self.resolved, enum_def).as_deref(),
+                &param_defs,
+                &ctor_params,
+                args,
+                span,
+                Some(enum_def),
+            )
+        }) else {
             return self.unit;
         };
         self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, concrete_args.clone());
@@ -2290,6 +2412,7 @@ impl<'a> TypeChecker<'a> {
                     &infer_arg_params,
                     args,
                     span,
+                    None,
                 ) else {
                     return self.unit;
                 };
@@ -3062,6 +3185,8 @@ impl<'a> TypeChecker<'a> {
         Vec<FunctionLayout>,
         ProgramLayout,
         HashMap<TypeMonoKey, TypeId>,
+        StdKernel,
+        HashMap<ExprId, TrySiteMeta>,
     ) {
         (
             self.types,
@@ -3070,6 +3195,8 @@ impl<'a> TypeChecker<'a> {
             self.functions,
             self.program_layout,
             self.specialized_aliases,
+            self.std_kernel,
+            self.try_sites,
         )
     }
 
@@ -3085,6 +3212,7 @@ impl<'a> TypeChecker<'a> {
         ProgramLayout,
         HashMap<DefId, TypeId>,
         HashMap<TypeMonoKey, TypeId>,
+        HashMap<ExprId, TrySiteMeta>,
     ) {
         (
             self.types,
@@ -3094,6 +3222,7 @@ impl<'a> TypeChecker<'a> {
             self.program_layout,
             self.value_types,
             self.specialized_aliases,
+            self.try_sites,
         )
     }
 
@@ -3244,7 +3373,8 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
     checker.check_program();
     let mono_insts = checker.take_mono_insts();
     let type_mono_insts = checker.take_type_mono_insts();
-    let (types, expr_types, bag, functions, layout, specialized_aliases) = checker.finish();
+    let (types, expr_types, bag, functions, layout, specialized_aliases, std_kernel, try_sites) =
+        checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
@@ -3258,6 +3388,8 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         specialized_from: HashMap::new(),
         mono_insts: Vec::new(),
         specialized_aliases,
+        std_kernel,
+        try_sites,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {

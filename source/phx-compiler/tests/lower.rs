@@ -268,3 +268,33 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
         "expected MatchTag with specialized enum type_id {expected_type_id}"
     );
 }
+
+#[test]
+fn lower_std_try_emits_question_mark_unwrap() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_try/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck std_try");
+    let ir = lower(&unit.typed).expect("lower std_try");
+    let interner = &unit.typed.resolved.interner;
+    let has_try_lower = ir.functions.iter().any(|f| {
+        let name = unit
+            .typed
+            .resolved
+            .defs
+            .get(f.def.index() as usize)
+            .map(|d| interner.resolve(d.name));
+        name == Some("read_config")
+            && f.blocks.iter().any(|b| {
+                b.insts
+                    .iter()
+                    .any(|i| matches!(i, IrInst::MatchTag { .. } | IrInst::GetField { .. }))
+            })
+    });
+    assert!(
+        has_try_lower,
+        "read_config should lower ? via MatchTag/GetField"
+    );
+}

@@ -226,6 +226,18 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "add `type {assoc_name} = ...;` to `{type_name} :: impl :: {trait_name}`"
             ));
         }
+        TypeCheckError::TryOutsideFunction { .. } => {
+            out.helps.push(
+                "use `match` or `if` in `main`, or call a helper function that returns `Option` or `Result`"
+                    .to_owned(),
+            );
+        }
+        TypeCheckError::InvalidTryOperand { .. } => {
+            out.helps.push(
+                "`?` requires a std `Option` or `Result` value matching the enclosing return type"
+                    .to_owned(),
+            );
+        }
     }
     out
 }

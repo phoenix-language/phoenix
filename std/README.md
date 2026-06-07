@@ -78,7 +78,7 @@ Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
 ## Non-goals (current)
 
 - No implicit prelude — apps must `#import` (V0-044)
-- No `?` sugar until V0-042
+- `?` sugar requires `#import std::core::option` / `result` (V0-042); prelude without import is V0-044
 - No std I/O — requires scheduler (post Language v0)
 
 ## Test fixtures vs real std

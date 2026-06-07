@@ -63,6 +63,7 @@ pub fn monomorphize(
     bag
 }
 
+#[allow(clippy::too_many_lines)]
 fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mut TypeCheckBag) {
     if insts.is_empty() {
         return;
@@ -126,6 +127,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 TypeChecker::new_with_substitution(&typed.resolved, subst, typed.types.clone());
             checker.set_expr_id_base(expr_base);
             checker.seed_layout_tables(&typed.layout);
+            checker.seed_std_kernel(&typed.std_kernel);
             checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
             let (
                 checker_types,
@@ -135,6 +137,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 _program_layout,
                 value_types,
                 spec_aliases,
+                try_sites,
             ) = checker.finish_all();
             if checker_bag.has_errors() {
                 for located in checker_bag.into_errors() {
@@ -146,6 +149,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             typed.expr_types.extend(expr_types);
             typed.functions.extend(layouts);
             typed.specialized_aliases.extend(spec_aliases);
+            typed.try_sites.extend(try_sites);
             if let Some(&fn_ty) = value_types.get(&spec_def) {
                 let _ = fn_ty;
             }

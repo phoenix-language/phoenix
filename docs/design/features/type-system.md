@@ -100,17 +100,22 @@ const s2: str = arr as str;  // when `const arr = b"hi";`
 const bytes: [u8] = msg as [u8];  // when `msg: str`
 ```
 
-### Tier B — post-MVP / std (not implemented)
+### Tier B — post-MVP / std
 
-- `[u8; N] as str` with **runtime** UTF-8 validation → std `Result`-returning API once `Result` exists
-- `#unsafe` pointer / reinterpret casts
-- User-defined conversions via traits (`From` / `Into` family — see [traits.md](traits.md))
-- Contextual literal typing (e.g. `const x: f32 = 1` without `as`) — optional DX only; not implicit call coercion
+| Conversion | Status | Mechanism |
+|---|---|---|
+| `[u8; N] as str` with **runtime** UTF-8 validation | not implemented | std `TryFrom` / `Result`-returning API ([V0-058](../language-v0.md#v0-058--conversion-traits-from--into-in-std)) |
+| `#unsafe` pointer / reinterpret casts | not implemented | `#unsafe` + documented ABI |
+| User-defined infallible conversions | planned ([V0-058](../language-v0.md#v0-058--conversion-traits-from--into-in-std)) | `From` / `Into` traits ([traits.md](traits.md#conversion-traits-from--into)) |
+| Fallible conversions | planned ([V0-058](../language-v0.md#v0-058--conversion-traits-from--into-in-std)) | `TryFrom` / `TryInto` → `Result` |
+| Error type conversion at `?` sites | planned ([V0-059](../language-v0.md#v0-059--with-from-error-conversion)) | `From<E_in>` for `E_out` — not `as` ([error-handling.md](error-handling.md#error-conversion-from--into--v0-058)) |
+| Contextual literal typing (e.g. `const x: f32 = 1` without `as`) | not implemented | optional DX only; not implicit call coercion |
 
 ### Tier C — forbidden via `as`
 
 - `bool` ↔ numeric
 - Struct / enum / layout punning (except identity `as SameType`)
+- **Error or domain enum conversion** — use `From` / `TryFrom`, never `as`
 - Casts that silently allocate (e.g. `str` → owned std `String`)
 - Implicit numeric widening anywhere (calls, assignment, operators)
 
@@ -344,6 +349,6 @@ const pair: (s32, u8) = (1, 2u);
 | Sugar | Lowering direction | MVP status |
 |---|---|---|
 | `given Pat = expr { ... }` | `match`-style single-pattern branch | Included |
-| `expr?` | early return from `Result`/`Option` context | Post-MVP (requires std types) |
+| `expr?` | early return from std `Result`/`Option`; `From` on mismatched `E` ([V0-059](../language-v0.md#v0-059--with-from-error-conversion)) | V0-042 shipped (identical types); V0-059 planned |
 | `for x in y` | iterator-protocol lowering | Parseable; richer iterator semantics post-MVP |
 | `0..n`, `0..=n` | range values | Parseable; std range behavior post-MVP |

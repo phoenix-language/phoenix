@@ -1,0 +1,9 @@
+[project]
+name = "std_try"
+version = "0.1.0"
+description = "V0-042 try operator smoke test"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

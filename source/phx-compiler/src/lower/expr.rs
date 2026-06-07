@@ -15,7 +15,8 @@ use crate::lower::ctx::{
 };
 use crate::resolver::DefId;
 use crate::typeck::{
-    BindingKind, LocalSlot, Ty, TypeId, VariantKind, primitive_kind_for_type, primitive_load_signed,
+    BindingKind, ExprId, LocalSlot, TrySiteMeta, Ty, TypeId, VariantKind, primitive_kind_for_type,
+    primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -23,18 +24,20 @@ use phx_syntax::token::IntegerSuffix;
 /// Lowers `expr` so its value is on the implicit stack.
 pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
     let ty = ctx.expr_ty();
-    lower_expr_inner(ctx, &expr.inner, ty);
+    let expr_id = ExprId::from_raw(ctx.next_expr - 1);
+    lower_expr_inner(ctx, &expr.inner, ty, expr_id);
 }
 
 /// Lowers `expr` and returns its typeck-assigned type.
 fn lower_expr_typed(ctx: &mut LowerCtx<'_>, expr: &ExprNode) -> TypeId {
     let ty = ctx.expr_ty();
-    lower_expr_inner(ctx, &expr.inner, ty);
+    let expr_id = ExprId::from_raw(ctx.next_expr - 1);
+    lower_expr_inner(ctx, &expr.inner, ty, expr_id);
     ty
 }
 
 #[allow(clippy::too_many_lines)]
-fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
+fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr_id: ExprId) {
     match expr {
         Expr::Literal(lit) => lower_literal(ctx, lit, result_ty),
         Expr::Ident(ident) => lower_ident(ctx, *ident, result_ty),
@@ -153,7 +156,7 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId) {
                 }
             }
         }
-        Expr::Postfix { base, ops } => lower_postfix(ctx, base, ops, result_ty),
+        Expr::Postfix { base, ops } => lower_postfix(ctx, base, ops, result_ty, expr_id),
         Expr::If {
             cond,
             then_block,
@@ -602,8 +605,14 @@ fn lower_assign_target(ctx: &mut LowerCtx<'_>, target: &Expr) {
     }
 }
 
-fn lower_postfix(ctx: &mut LowerCtx<'_>, base: &ExprNode, ops: &[PostfixOp], result_ty: TypeId) {
-    lower_postfix_inner(ctx, base, ops, result_ty);
+fn lower_postfix(
+    ctx: &mut LowerCtx<'_>,
+    base: &ExprNode,
+    ops: &[PostfixOp],
+    result_ty: TypeId,
+    postfix_expr_id: ExprId,
+) {
+    lower_postfix_inner(ctx, base, ops, result_ty, postfix_expr_id);
 }
 
 fn lower_postfix_inner(
@@ -611,6 +620,7 @@ fn lower_postfix_inner(
     base: &ExprNode,
     ops: &[PostfixOp],
     result_ty: TypeId,
+    postfix_expr_id: ExprId,
 ) {
     let mut receiver_ty = lower_expr_typed(ctx, base);
     for op in ops {
@@ -692,10 +702,81 @@ fn lower_postfix_inner(
                 lower_expr(ctx, idx);
                 ctx.emit(IrInst::Index { result: result_ty });
             }
-            PostfixOp::Try => {}
+            PostfixOp::Try => {
+                if let Some(meta) = ctx.typed.try_sites.get(&postfix_expr_id) {
+                    lower_try(ctx, meta);
+                    receiver_ty = result_ty;
+                }
+            }
             _ => {}
         }
     }
+}
+
+/// Lowers `expr?` using `MatchTag` and early `Return` on the failure variant.
+fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
+    let Some(bytecode_type_id) = ctx
+        .typed
+        .layout
+        .type_id_for_named(meta.enum_def, &meta.enum_args)
+    else {
+        debug_assert!(
+            false,
+            "missing bytecode type id for `?` scrutinee enum (mono layout)"
+        );
+        return;
+    };
+    let temp = meta.temp_slot;
+    let temp_ty = meta.scrutinee_ty;
+    let prim = prim_kind_byte(ctx.typed, temp_ty);
+    ctx.emit(IrInst::StoreLocal {
+        slot: temp,
+        ty: temp_ty,
+        prim_kind: prim,
+    });
+
+    let succ_block = ctx.fresh_block();
+    let fail_block = ctx.fresh_block();
+    let cont_block = ctx.fresh_block();
+
+    ctx.emit(IrInst::LoadLocal {
+        slot: temp,
+        ty: temp_ty,
+        prim_kind: prim,
+    });
+    ctx.emit(IrInst::MatchTag {
+        type_id: bytecode_type_id,
+        variant_tag: meta.success_tag,
+    });
+    ctx.emit(IrInst::JumpIf {
+        then_block: succ_block,
+        else_block: fail_block,
+    });
+
+    ctx.set_current(succ_block);
+    ctx.emit(IrInst::LoadLocal {
+        slot: temp,
+        ty: temp_ty,
+        prim_kind: prim,
+    });
+    ctx.emit(IrInst::GetField {
+        type_id: bytecode_type_id,
+        field_index: 0,
+        result: meta.success_ty,
+    });
+    ctx.emit(IrInst::Jump { target: cont_block });
+
+    ctx.set_current(fail_block);
+    ctx.emit(IrInst::LoadLocal {
+        slot: temp,
+        ty: temp_ty,
+        prim_kind: prim,
+    });
+    ctx.emit(IrInst::Return {
+        ty: ctx.layout.return_type,
+    });
+
+    ctx.set_current(cont_block);
 }
 
 fn find_trait_method(ctx: &LowerCtx<'_>, type_def: DefId, method: Symbol) -> Option<DefId> {

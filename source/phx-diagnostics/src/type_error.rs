@@ -268,6 +268,20 @@ pub enum TypeCheckError {
         /// Impl block span.
         span: Span,
     },
+    /// `?` used outside a function with a compatible return type.
+    TryOutsideFunction {
+        /// Use site span.
+        span: Span,
+    },
+    /// `?` operand is not a std `Option` / `Result` compatible with the enclosing return type.
+    InvalidTryOperand {
+        /// Operand type description.
+        found: String,
+        /// Enclosing function return type description.
+        expected_return: String,
+        /// Use site span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -302,6 +316,8 @@ impl TypeCheckError {
             Self::InferenceAmbiguous { .. } => DiagnosticCode::new("E2025"),
             Self::MissingTraitMethod { .. } => DiagnosticCode::new("E2026"),
             Self::MissingAssociatedType { .. } => DiagnosticCode::new("E2027"),
+            Self::TryOutsideFunction { .. } => DiagnosticCode::new("E2028"),
+            Self::InvalidTryOperand { .. } => DiagnosticCode::new("E2029"),
         }
     }
 
@@ -335,7 +351,9 @@ impl TypeCheckError {
             | Self::InferenceFailed { span, .. }
             | Self::InferenceAmbiguous { span, .. }
             | Self::MissingTraitMethod { span, .. }
-            | Self::MissingAssociatedType { span, .. } => Some(*span),
+            | Self::MissingAssociatedType { span, .. }
+            | Self::TryOutsideFunction { span }
+            | Self::InvalidTryOperand { span, .. } => Some(*span),
         }
     }
 }
@@ -451,6 +469,17 @@ impl fmt::Display for TypeCheckError {
             } => write!(
                 f,
                 "type `{type_name}` does not specify associated type `{assoc_name}` from `{trait_name}`"
+            ),
+            Self::TryOutsideFunction { .. } => {
+                f.write_str("`?` is only valid inside a function returning `Option` or `Result`")
+            }
+            Self::InvalidTryOperand {
+                found,
+                expected_return,
+                ..
+            } => write!(
+                f,
+                "cannot apply `?` to `{found}` in function returning `{expected_return}`"
             ),
         }
     }

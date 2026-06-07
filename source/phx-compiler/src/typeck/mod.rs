@@ -22,6 +22,7 @@ mod mono;
 mod ops;
 mod ownership;
 mod primitive;
+mod std_kernel;
 mod subst;
 mod types;
 mod unify;
@@ -38,6 +39,7 @@ pub use display::format_type;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
+pub use std_kernel::{StdKernel, TrySiteMeta};
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::{DefId, ResolvedProgram};
@@ -66,4 +68,8 @@ pub struct TypedProgram {
     pub mono_insts: Vec<MonoInst>,
     /// Expanded monomorphized alias types keyed by `(template, args)`.
     pub specialized_aliases: std::collections::HashMap<layout::TypeMonoKey, TypeId>,
+    /// Std `Option` / `Result` kernel for `?` sugar (empty when std is not linked).
+    pub std_kernel: StdKernel,
+    /// `expr?` lowering metadata keyed by postfix expression id.
+    pub try_sites: std::collections::HashMap<ExprId, TrySiteMeta>,
 }
