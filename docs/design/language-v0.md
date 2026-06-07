@@ -301,6 +301,8 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 **Refs:** [modules.md](features/modules.md)
 
+**Status:** Done
+
 ---
 
 ### V0-041 — Core std types as ordinary generic enums

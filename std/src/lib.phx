@@ -1,0 +1,4 @@
+// Phoenix standard library root (V0-040 layout).
+// V0-041+ adds Option, Result, traits, and submodules.
+
+pub version :: () => s32 { 0 };

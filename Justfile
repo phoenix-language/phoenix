@@ -11,6 +11,9 @@ build-release:
 phx *args:
     cargo run -p phx -- {{args}}
 
+build-std:
+    cargo run -p phx -- build --project-root std
+
 # Compile, verify, and execute a Phoenix source file via the CLI.
 run file:
     cargo run -p phx -- run {{file}}

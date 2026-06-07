@@ -1,0 +1,3 @@
+// Submodule layout placeholder (V0-041+ content).
+
+pub placeholder :: () => { };

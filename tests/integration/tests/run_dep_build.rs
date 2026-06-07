@@ -145,3 +145,21 @@ fn path_dep_generic_call_targets_mangled_export() {
         "main should Call mangled generic export fn id {dep_fn_id}"
     );
 }
+
+#[test]
+fn path_dep_std_smoke_builds_and_runs() {
+    let _lock = fixture_fs_lock();
+    let root = cli_project("std_smoke");
+    let config = discover_cli_project(&root);
+    build_cli_project(&config, BuildOptions::force(true));
+    let dep_lib = root.join("build/deps/std/lib/std.phx0");
+    assert!(
+        dep_lib.is_file(),
+        "expected dependency lib at {}",
+        dep_lib.display()
+    );
+    let bytes = std::fs::read(root.join("build/bin/std_smoke.phx0")).expect("read bin");
+    let module = phx_bytecode::BytecodeModule::decode(&bytes).expect("decode");
+    verify(&module).expect("verify linked bin");
+    run(&module).expect("run std_smoke binary");
+}

@@ -395,6 +395,7 @@ A credible MVP demo `.phx` should be able to:
 | Import cycle + `.pxi` escape | done | `modules/graph.rs` | Fresh `.pxi` on all SCC nodes | Design in modules.md |
 | `phx build` / project `phx run` | done | `build/driver.rs`, `phx` CLI | `--no-build`, `--build` | `tests/integration/run_build.rs` |
 | Separate compile via `.pxi` | done | `build/driver.rs`, `pxi/format.rs`, `typeck/mono.rs` | Path-dep link uses prebuilt `build/deps/*/phx0`; `function_id` on concrete exports; V0-024 mangled generic fn exports + consumer worklist rebuild | `run_dep_build.rs`, `pxi.rs` |
+| Std package layout (V0-040) | done | `std/`, `std/README.md` | Repo-root `type = lib` package; `build/lib/std.phx0`; path-dep workflow | `run_build.rs`, `run_dep_build.rs`, `cli_e2e` |
 
 
 ---
@@ -535,7 +536,8 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **31
 
 1. ~~**Module graph (M1):**~~ load multiple files, `::` paths, `pub` visibility ([modules.md](design/features/modules.md)).
 2. ~~**M2 build pipeline:**~~ `phoenix.toml`, `build/`, `.pxi`, linker, incremental manifest.
-3. **Std + prelude (minimal):** `Option`/`Result` as generic enums in library; then `?` — not compiler builtins.
+3. ~~**Std package layout (V0-040):**~~ repo-root `std/` lib package, path-dep workflow — see `std/README.md`.
+4. **Std + prelude (minimal):** `Option`/`Result` as generic enums in library (V0-041+); then `?` — not compiler builtins.
 
 ### Phase 6 — Memory model & lifetimes (after modules; before scheduler/std I/O)
 

@@ -1,0 +1,13 @@
+{
+  "entry": "std_smoke",
+  "bin_path": "/Users/jamallyons/Developer/GitHub/phoenix-lang/phoenix/tests/cli/fixtures/std_smoke/build/bin/std_smoke.phx0",
+  "modules": {
+    "std_smoke": {
+      "source": "src/main.phx",
+      "source_hash": "df27562a9a5c93a6",
+      "pxi_hash": "2100bc5f8d287a93",
+      "phx0_path": "phx0/std_smoke.phx0",
+      "pxi_path": "pxi/std_smoke.pxi"
+    }
+  }
+}

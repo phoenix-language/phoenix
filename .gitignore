@@ -11,3 +11,6 @@
 # Phoenix bytecode files
 *.phx0
 *.pxi
+
+# Phoenix std package build artifacts
+std/build/

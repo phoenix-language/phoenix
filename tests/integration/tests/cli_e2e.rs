@@ -232,6 +232,24 @@ fn build_math_lib() {
 }
 
 #[test]
+fn build_std() {
+    e2e(|cli| {
+        let project = repo_root().join("std");
+        let build_dir = project.join("build");
+        if build_dir.is_dir() {
+            std::fs::remove_dir_all(&build_dir).expect("remove std/build");
+        }
+        cli.build_ok(&project);
+        assert!(project.join("build/lib/std.phx0").is_file());
+        assert!(project.join("build/manifest.json").is_file());
+        assert!(project.join("build/pxi/std.pxi").is_file());
+        assert!(project.join("build/phx0/std.phx0").is_file());
+        cli.run_project_fails(&project)
+            .assert_contains("phoenix.toml");
+    });
+}
+
+#[test]
 fn build_app_dep() {
     e2e(|cli| {
         rm_project_build_unlocked("app_dep");

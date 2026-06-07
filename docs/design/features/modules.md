@@ -81,6 +81,27 @@ Path resolution for package root `math`:
 - `pub` marks an item exportable to other modules via `#import`.
 - Paths use `::` as separator.
 
+### Standard library package (`std/`)
+
+The repository ships a first-class std lib package at **`std/`** (repo root):
+
+- `type = lib`, `project.name = "std"`, entry `std/src/lib.phx` → logical module `std`
+- `phx build --project-root std` → `std/build/lib/std.phx0`
+- Submodule files follow the same mapping (e.g. `std/src/core/mod.phx` → `std::core`)
+
+**Path dependency (local development):**
+
+```toml
+[dependencies]
+std = { path = "../std" }   # key MUST equal std's project.name
+```
+
+```phoenix
+#import std::version;
+```
+
+Std is **not** auto-linked into every module; apps must declare the dependency in `phoenix.toml` until a prelude policy is designed (V0-044). Contributor workflow: [`std/README.md`](../../../std/README.md). Smoke consumer: `tests/cli/fixtures/std_smoke/`.
+
 ---
 
 ## Import forms

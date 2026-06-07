@@ -1,0 +1,3 @@
+#import std::version;
+
+main :: () => { const _ = version(); };
