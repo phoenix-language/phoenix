@@ -13,7 +13,7 @@
     clippy::collapsible_if
 )]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{InvalidMainReason, ResolveError, Span};
 use phx_syntax::ast::decl::{
@@ -454,7 +454,69 @@ impl Resolver<'_> {
         match item {
             BlockItem::Stmt(stmt) => self.resolve_stmt(stmt),
             BlockItem::Expr(expr) => self.resolve_expr_node(expr),
+            BlockItem::Import(imp) => self.apply_block_import(imp),
             _ => {}
+        }
+    }
+
+    fn apply_block_import(
+        &mut self,
+        imp: &phx_syntax::ast::Node<phx_syntax::ast::decl::ImportDirective>,
+    ) {
+        let Some(env) = self.import_env else {
+            return;
+        };
+        let Some(interner) = self.shared_interner.as_deref_mut() else {
+            return;
+        };
+        let Some(import_types) = self.import_types.as_deref_mut() else {
+            return;
+        };
+        let Some(module) = env
+            .modules
+            .iter()
+            .find(|m| m.id.index() == self.current_module)
+        else {
+            return;
+        };
+
+        let mut seen = HashSet::new();
+        let mut ctx = crate::modules::import_resolve::ImportResolveCtx {
+            module,
+            modules: env.modules,
+            path_index: env.path_index,
+            exports: env.exports,
+            defs: env.defs,
+            layout: env.layout,
+            workspace_name: env.workspace_name,
+            dep_names: env.dep_names,
+            interner,
+            import_types,
+            bag: &mut self.bag,
+        };
+        let bindings = crate::modules::import_resolve::resolve_import_directive(
+            &imp.inner, imp.span, &mut ctx, &mut seen,
+        );
+        for &(sym, id, is_type, bind_span) in &bindings {
+            if is_type {
+                self.scopes.define_type(
+                    &self.defs,
+                    &mut self.bag,
+                    self.current_module,
+                    sym,
+                    id,
+                    bind_span,
+                );
+            } else {
+                self.scopes.define_value(
+                    &self.defs,
+                    &mut self.bag,
+                    self.current_module,
+                    sym,
+                    id,
+                    bind_span,
+                );
+            }
         }
     }
 

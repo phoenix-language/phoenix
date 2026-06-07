@@ -149,6 +149,39 @@ fn program_multiple_imports() {
 }
 
 #[test]
+fn block_import_single_item() {
+    let p = parse_ok("main :: () => { #import util::math::add; };");
+    let TopLevelDecl::Function(f) = &p.items[0].inner.decl else {
+        panic!("expected function");
+    };
+    assert!(matches!(
+        f.body.inner.items.first(),
+        Some(BlockItem::Import(_))
+    ));
+    assert_eq!(p.imports.len(), 0);
+}
+
+#[test]
+fn block_import_glob_in_if_arm() {
+    let p = parse_ok(
+        "main :: () => { if true { #import util::math::{ * }; const _ = 0; } else { const _ = 0; }; };",
+    );
+    let TopLevelDecl::Function(f) = &p.items[0].inner.decl else {
+        panic!("expected function");
+    };
+    let BlockItem::Expr(expr) = &f.body.inner.items[0] else {
+        panic!("expected if as block expr");
+    };
+    let Expr::If { then_block, .. } = &expr.inner else {
+        panic!("expected if expr");
+    };
+    assert!(matches!(
+        then_block.inner.items.first(),
+        Some(BlockItem::Import(_))
+    ));
+}
+
+#[test]
 fn program_pub_top_level() {
     assert_ok("pub main :: () => { };");
 }

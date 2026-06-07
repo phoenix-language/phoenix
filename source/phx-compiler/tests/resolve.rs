@@ -151,6 +151,15 @@ fn compile_with_module_root_glob_import_compile_ok() {
 }
 
 #[test]
+fn compile_with_module_root_block_import_compile_ok() {
+    let root = cli_fixtures_dir().join("modules");
+    let entry = root.join("block_import_main.phx");
+    let source = std::fs::read_to_string(&entry).expect("read block_import_main.phx");
+    compile_source_with_module_root(&source, &entry, &root)
+        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+}
+
+#[test]
 fn duplicate_import_in_list_rejected() {
     let root = cli_fixtures_dir().join("modules");
     let entry = root.join("import_dup.phx");

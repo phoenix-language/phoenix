@@ -962,6 +962,7 @@ impl<'a> TypeChecker<'a> {
             last = match item {
                 BlockItem::Stmt(stmt) => self.check_block_stmt_value(stmt),
                 BlockItem::Expr(expr) => self.check_expr_node(expr),
+                BlockItem::Import(_) => self.unit,
                 _ => self.unit,
             };
         }

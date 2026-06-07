@@ -1,0 +1,5 @@
+main :: () => {
+  #import util::math::add;
+  const sum = add(1, 2);
+  const _ = sum;
+};

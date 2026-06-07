@@ -172,6 +172,8 @@ Multi-file programs and a real project layout so contributors can build packages
 
 **Refs:** [modules.md](features/modules.md) (Linker contract)
 
+**Status:** Done
+
 ---
 
 ### V0-014 — Block-scoped `#import` (MVP modules)
@@ -185,6 +187,8 @@ Multi-file programs and a real project layout so contributors can build packages
 **Acceptance:** A program imports a `pub` fn only inside `main` (no file-top import of that symbol), type-checks, compiles, and runs correctly; the name is unresolved outside the block.
 
 **Refs:** [modules.md](features/modules.md) (Scoped imports)
+
+**Status:** Done
 
 ---
 

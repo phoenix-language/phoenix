@@ -37,6 +37,10 @@ impl Parser<'_> {
 
     /// Parses one block item (stmt, trailing expr, or expr-as-stmt).
     fn parse_block_item(&mut self) -> Result<BlockItem, ParseError> {
+        if matches!(self.peek_kind(), TokenKind::HashImport) {
+            let imp = self.parse_import()?;
+            return Ok(BlockItem::Import(imp));
+        }
         if self.is_block_expr_start() {
             let expr = self.parse_expr_without_semi()?;
             let _ = self.eat_kind(&TokenKind::Semicolon);

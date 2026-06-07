@@ -12,6 +12,7 @@
 //! - [`source_file`] — [`SourceFile`] bundles [`Program`] + interner after parse.
 
 pub mod ast;
+pub mod import_walk;
 pub mod intern;
 pub mod lexer;
 pub mod parser;
@@ -19,6 +20,7 @@ pub mod source_file;
 pub mod token;
 
 pub use ast::{AstNodeId, Program};
+pub use import_walk::all_imports;
 pub use intern::{Interner, Symbol, closure_def_symbol, impl_receiver_symbol};
 pub use lexer::{Lexer, lex};
 pub use parser::{parse, parse_with_interner};

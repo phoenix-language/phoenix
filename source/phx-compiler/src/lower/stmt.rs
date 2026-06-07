@@ -18,6 +18,7 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
         match item {
             BlockItem::Stmt(stmt) => lower_block_stmt(ctx, stmt),
             BlockItem::Expr(expr) => lower_expr(ctx, expr),
+            BlockItem::Import(_) => {}
             _ => {}
         }
     }

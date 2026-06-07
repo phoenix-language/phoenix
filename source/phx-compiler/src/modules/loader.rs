@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use phx_diagnostics::{DiagnosticBag, ResolveError};
-use phx_syntax::{Interner, Program, parse_with_interner};
+use phx_syntax::{Interner, Program, all_imports, parse_with_interner};
 
 use super::SourceText;
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
@@ -164,7 +164,7 @@ pub fn load_crate_with_context(
         let program = file.program;
         let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
 
-        for imp in &program.imports {
+        for imp in all_imports(&program) {
             let raw_target = super::graph::import_target_module(&imp.inner, &interner);
             let canonical =
                 ModulePath::canonicalize_import(&raw_target, &workspace.name, &dep_names);
@@ -234,9 +234,10 @@ pub fn load_crate_with_context(
     let mut edges = Vec::new();
     for m in &modules {
         let mut local_bag = DiagnosticBag::new();
+        let module_imports: Vec<_> = all_imports(&m.program).into_iter().cloned().collect();
         let mut e = collect_edges(
             m.id,
-            &m.program.imports,
+            &module_imports,
             &path_index,
             &interner,
             &workspace.name,

@@ -162,7 +162,7 @@ pub fn module_dependencies(
 ) -> Vec<PxiDependency> {
     let mut deps = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for imp in &module.program.imports {
+    for imp in phx_syntax::all_imports(&module.program) {
         let target = import_target_module(&imp.inner, interner);
         let canonical =
             crate::modules::ModulePath::canonicalize_import(&target, workspace_name, dep_names);

@@ -15,9 +15,30 @@ use std::path::PathBuf;
 use phx_diagnostics::{DiagnosticBag, Span};
 use phx_syntax::{AstNodeId, Interner, Program, SourceFile, Symbol};
 
-use crate::modules::SourceText;
+use crate::modules::{LoadedModule, ModuleId, SourceText};
+use crate::project::BuildLayout;
+use crate::pxi::PxiType;
 
 pub use def_id::{Def, DefId, DefKind};
+
+/// Crate-wide context for resolving block-scoped `#import` directives.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CrateImportEnv<'a> {
+    /// All modules in the crate.
+    pub modules: &'a [LoadedModule],
+    /// Logical path → module id.
+    pub path_index: &'a HashMap<String, ModuleId>,
+    /// Per-module export maps.
+    pub exports: &'a [HashMap<Symbol, DefId>],
+    /// All definitions collected in phase 1.
+    pub defs: &'a [Def],
+    /// Build layout when resolving under a project.
+    pub layout: Option<&'a BuildLayout>,
+    /// Workspace package name.
+    pub workspace_name: &'a str,
+    /// Path-dependency package names.
+    pub dep_names: &'a [&'a str],
+}
 
 /// Key for a name-use resolution entry (module + parse-time [`AstNodeId`], not span alone).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,6 +131,9 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         collect_only: false,
         import_bindings: Vec::new(),
         self_type_depth: 0,
+        import_env: None,
+        shared_interner: None,
+        import_types: None,
     };
     resolver.resolve_program();
     if resolver.bag.has_errors() {
@@ -159,6 +183,12 @@ pub(crate) struct Resolver<'a> {
     pub(crate) import_bindings: Vec<(Symbol, DefId, bool, Span)>,
     /// Nesting depth where `Self` is a valid type name (trait / impl method signatures).
     pub(crate) self_type_depth: u32,
+    /// Crate context for block-scoped imports (phase 2 only).
+    pub(crate) import_env: Option<CrateImportEnv<'a>>,
+    /// Shared interner for cross-module import resolution.
+    pub(crate) shared_interner: Option<&'a mut Interner>,
+    /// Imported type table from dependency `.pxi` files.
+    pub(crate) import_types: Option<&'a mut HashMap<DefId, PxiType>>,
 }
 
 impl Resolver<'_> {

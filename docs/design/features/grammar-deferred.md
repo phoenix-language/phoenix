@@ -20,7 +20,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `Option` / `Result` types | Type expressions | Parse; typeck rejects | Std generic enums + prelude |
 | `Some` / `None` / `Ok` / `Err` | Expr / patterns | Parse; typeck rejects | Std enum constructors |
 | `expr?` | Postfix `?` | Parse; typeck rejects | Sugar over std `Option`/`Result` |
-| Block-scoped `#import` | `import_directive` in `block_item` | Grammar updated; **not yet implemented** | Scoped name intro per [modules.md](modules.md#scoped-imports-mvp); [V0-014](../language-v0.md#v0-014--block-scoped-import-mvp-modules) |
+| Block-scoped `#import` | `import_directive` in `block_item` | **Implemented** — scoped name intro per [modules.md](modules.md#scoped-imports-mvp) | — |
 
 ---
 

@@ -3,6 +3,7 @@
 //! Statements inside blocks; blocks may end with a trailing expression value.
 
 use crate::ast::Node;
+use crate::ast::decl::ImportDirective;
 use crate::ast::expr::ExprNode;
 use crate::ast::ident::Ident;
 use crate::ast::pat::PatternNode;
@@ -90,6 +91,8 @@ pub enum BlockItem {
     Stmt(Stmt),
     /// Trailing expression without semicolon.
     Expr(ExprNode),
+    /// Block-scoped `#import` directive.
+    Import(Node<ImportDirective>),
 }
 
 /// A `{ … }` block.

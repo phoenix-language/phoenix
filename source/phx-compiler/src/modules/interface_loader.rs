@@ -58,7 +58,7 @@ pub fn bindings_from_pxi(
 ) -> Result<Vec<PxiBinding>, InterfaceLoadError> {
     let mut bindings = Vec::new();
 
-    for imp in &module.program.imports {
+    for imp in phx_syntax::all_imports(&module.program) {
         let target = import_target_module(&imp.inner, interner);
         let key = target.display();
         if key.is_empty() || !path_index.contains_key(&key) {
