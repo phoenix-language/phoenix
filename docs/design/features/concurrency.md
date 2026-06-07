@@ -2,6 +2,8 @@
 
 Status: post-MVP design target (documented now; scheduler and std I/O implemented later).
 
+**Prerequisite:** [Language v0](../language-v0.md) — static types, ownership moves, `Result`/`Option`, trait-based error conversion (`From`), portable PHX0 bytecode, and C-ABI function pointers. The scheduler and schedulable-I/O runtime build on that compile-time contract; they are not a substitute for it.
+
 Phoenix has no `async`/`await`. Concurrency is built into the VM runtime. **What the VM can do** (park for I/O, cross actor boundaries) must be visible at call sites — see [runtime-transparency.md](runtime-transparency.md).
 
 ---

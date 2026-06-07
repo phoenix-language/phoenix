@@ -34,6 +34,53 @@ Float caveat:
 
 `#derive(...)` is a future feature and not required for MVP code generation.
 
+Conversion traits (`From`, `Into`, `TryFrom`, `TryInto`) are required for ergonomic std error handling and for `?` with mismatched error types — see [error-handling.md](error-handling.md#error-conversion-from--into--v0-058).
+
+---
+
+## Conversion traits (`From` / `Into`)
+
+Std-defined traits in `std::core::convert` ([V0-058](../language-v0.md#v0-058--conversion-traits-from--into-in-std)). **Not** compiler builtins; the type checker resolves impls at monomorphization sites like any other trait bound.
+
+### Signatures (target)
+
+```phoenix
+pub From :: <Source> trait {
+  from :: (value: Source) => Self;
+}
+
+pub Into :: <Target> trait {
+  into :: (self) => Target;
+}
+
+pub TryFrom :: <Source> trait {
+  try_from :: (value: Source) => Result<Self, Self::Error>;
+  type Error;
+}
+
+pub TryInto :: <Target> trait {
+  try_into :: (self) => Result<Target, Self::Error>;
+  type Error;
+}
+```
+
+### Semantics
+
+| Rule | Behavior |
+|---|---|
+| Canonical direction | Implement **`From<Source>` for `Target`**; callers use `Target::from(x)` or `x.into()` when `Into` exists |
+| Dispatch | Static only — monomorphized `Call` at each site; no vtables in Language v0 |
+| vs `as` | `as` is for primitives and views ([type-system.md](type-system.md#explicit-cast-tiers)); **`as` never converts errors or user structs/enums** |
+| vs `?` | When `E_in ≠ E_out`, `?` desugars to `From::from` on the `Err` payload ([error-handling.md](error-handling.md#the--operator-v0-042-error-conversion-v0-059)) |
+| Fallible | `TryFrom` / `TryInto` return `Result`; use for parsing, bounds checks, runtime UTF-8 validation |
+| Default bodies | Blanket `Into` from `From` (Rust-style) waits on [default trait bodies](grammar-deferred.md) — until then, impl both or call `From::from` explicitly |
+
+### Error-type impl guidance
+
+- Leaf errors (`IoError`, `ParseError`, …) and the top-level `Error` enum live in `std::error` ([error-handling.md](error-handling.md#std-error-vocabulary--v0-060)).
+- Provide `From<LeafError> for Error` in the crate that defines both types (typically std root).
+- Downstream crates must not add conflicting `From` impls for std types they do not own — orphan rule applies.
+
 ---
 
 ## What a trait is
