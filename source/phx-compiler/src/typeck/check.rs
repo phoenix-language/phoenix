@@ -1753,26 +1753,30 @@ impl<'a> TypeChecker<'a> {
         })
     }
 
-    fn generic_param_defs_for_fn(&self, f: &phx_syntax::ast::decl::Function) -> Vec<DefId> {
+    fn generic_param_defs_for_fn(
+        &self,
+        f: &phx_syntax::ast::decl::Function,
+        fn_def: DefId,
+    ) -> Vec<DefId> {
         let Some(params) = f.generics.as_ref() else {
             return Vec::new();
         };
-        self.generic_param_defs_from_ast(params)
+        let module = self
+            .resolved
+            .defs
+            .get(fn_def.index() as usize)
+            .map_or(self.current_module, |d| d.module);
+        self.generic_param_defs_from_ast(module, params)
     }
 
     fn generic_param_defs_from_ast(
         &self,
+        module: u32,
         params: &[phx_syntax::ast::types::GenericParam],
     ) -> Vec<DefId> {
         params
             .iter()
-            .filter_map(|param| {
-                self.find_def(
-                    self.current_module,
-                    param.name.symbol,
-                    DefKind::GenericParam,
-                )
-            })
+            .filter_map(|param| self.find_def(module, param.name.symbol, DefKind::GenericParam))
             .collect()
     }
 
@@ -1895,8 +1899,13 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn impl_generic_param_defs(&self, type_def: DefId) -> Vec<DefId> {
+        let module = self
+            .resolved
+            .defs
+            .get(type_def.index() as usize)
+            .map_or(self.current_module, |d| d.module);
         self.find_inherent_impl_generics(type_def)
-            .map(|params| self.generic_param_defs_from_ast(&params))
+            .map(|params| self.generic_param_defs_from_ast(module, &params))
             .unwrap_or_default()
     }
 
@@ -1940,11 +1949,16 @@ impl<'a> TypeChecker<'a> {
         for module in &self.resolved.modules {
             for item in &module.program.items {
                 match &item.inner.decl {
-                    TopLevelDecl::Function(f) if self.fn_def_for(f) == Some(def) => return Some(f),
+                    TopLevelDecl::Function(f)
+                        if self.find_def(module.id, f.name.symbol, DefKind::Fn) == Some(def) =>
+                    {
+                        return Some(f);
+                    }
                     TopLevelDecl::Impl { members, .. } => {
                         for m in members {
                             if let ImplMember::Method(f) = m {
-                                if self.fn_def_for(f) == Some(def) {
+                                if self.find_def(module.id, f.name.symbol, DefKind::Fn) == Some(def)
+                                {
                                     return Some(f);
                                 }
                             }
@@ -2049,7 +2063,7 @@ impl<'a> TypeChecker<'a> {
             }
             return self.check_call(callee, args, span);
         };
-        let param_defs = self.generic_param_defs_for_fn(f);
+        let param_defs = self.generic_param_defs_for_fn(f, fn_def);
         let fn_generics = f.generics.clone();
         if param_defs.is_empty() {
             if generics.is_some() {
@@ -2254,7 +2268,7 @@ impl<'a> TypeChecker<'a> {
             return self.check_call(fn_ty, args, span);
         };
         let impl_param_defs = self.impl_generic_param_defs(type_def);
-        let method_param_defs = self.generic_param_defs_for_fn(&f);
+        let method_param_defs = self.generic_param_defs_for_fn(&f, fn_def);
         let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() else {
             return self.unit;
         };
@@ -3260,11 +3274,13 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         entry: resolved.main_fn,
         layout,
         specialized_from: HashMap::new(),
+        mono_insts: Vec::new(),
         specialized_aliases,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {
         return Err(mono_bag);
     }
+    program.mono_insts = mono_insts;
     Ok(program)
 }

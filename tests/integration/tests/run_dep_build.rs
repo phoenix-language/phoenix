@@ -112,3 +112,36 @@ fn path_dep_call_targets_dependency_function_id() {
         "main should Call dependency fn id {dep_fn_id} from linked image"
     );
 }
+
+#[test]
+fn path_dep_generic_call_targets_mangled_export() {
+    let root = build_app_dep();
+    let dep_pxi_path = root.join("build/deps/math/pxi/math.pxi");
+    let dep_pxi = PxiFile::read_from_path(&dep_pxi_path).expect("pxi");
+    let id_export = dep_pxi
+        .exports
+        .iter()
+        .find(|e| e.name.starts_with("id$"))
+        .expect("mangled id export in dep pxi");
+    let dep_fn_id = id_export
+        .function_id
+        .expect("function_id on mangled export");
+
+    let bytes = std::fs::read(root.join("build/bin/app_dep.phx0")).expect("read bin");
+    let module = phx_bytecode::BytecodeModule::decode(&bytes).expect("decode");
+    let mut saw_call = false;
+    let mut pos = 0usize;
+    while pos < module.code.len() {
+        let Ok((inst, next)) = Instruction::decode_at(&module.code, pos) else {
+            break;
+        };
+        if inst.opcode == Opcode::Call && inst.operands.first() == Some(&dep_fn_id) {
+            saw_call = true;
+        }
+        pos = next;
+    }
+    assert!(
+        saw_call,
+        "main should Call mangled generic export fn id {dep_fn_id}"
+    );
+}

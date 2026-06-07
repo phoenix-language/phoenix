@@ -9,6 +9,7 @@ use phx_syntax::ast::types::GenericParam;
 use super::bounds::validate_instantiation_bounds;
 use super::check::TypeChecker;
 use super::layout::{EnumLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout};
+use super::mangle;
 use super::subst::Substitution;
 use super::types::TypeId;
 use crate::resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram};
@@ -495,16 +496,7 @@ fn alloc_specialized_def(
     types: &super::types::TypeInterner,
 ) -> DefId {
     let base_def = &resolved.defs[base.index() as usize];
-    let suffix: String = args
-        .iter()
-        .map(|a| super::display::format_type(types, &resolved.interner, &resolved.defs, *a))
-        .map(|s| {
-            s.chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                .collect::<String>()
-        })
-        .collect();
-    let mangled = format!("{}${}", resolved.interner.resolve(base_def.name), suffix);
+    let mangled = mangle::mangle_symbol_for_specialization(resolved, base, args, types);
     let sym = resolved
         .interner
         .intern(&mangled)
@@ -520,4 +512,233 @@ fn alloc_specialized_def(
     let id = DefId::from_raw(u32::try_from(resolved.defs.len()).unwrap_or(u32::MAX));
     resolved.defs.push(def);
     id
+}
+
+/// Cross-crate generic export requested by a consumer package build.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CrossCrateMonoReq {
+    /// Path-dependency package name (e.g. `math`).
+    pub dep_package: String,
+    /// Logical module path of the generic template (e.g. `math`).
+    pub logical_module: String,
+    /// Unmangled template function name (e.g. `id`).
+    pub base_name: String,
+    /// Concrete type argument spellings in generic-parameter order.
+    pub arg_types: Vec<String>,
+    /// Mangled export symbol (e.g. `id$s32`).
+    pub mangled_name: String,
+}
+
+/// Collects monomorphization requests for exported generics defined in path dependencies.
+#[must_use]
+pub fn collect_cross_crate_mono_reqs(
+    typed: &TypedProgram,
+    workspace_package: &str,
+    module_logical: impl Fn(u32) -> Option<String>,
+) -> Vec<CrossCrateMonoReq> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for inst in &typed.mono_insts {
+        let base_def = &typed.resolved.defs[inst.base_fn.index() as usize];
+        let Some(logical) = module_logical(base_def.module) else {
+            continue;
+        };
+        if module_in_workspace_package(&logical, workspace_package) {
+            continue;
+        }
+        if !base_def.exported {
+            continue;
+        }
+        let dep_package = logical
+            .split("::")
+            .next()
+            .unwrap_or(logical.as_str())
+            .to_owned();
+        let base_name = typed.resolved.interner.resolve(base_def.name).to_owned();
+        let arg_types: Vec<_> = inst
+            .args
+            .iter()
+            .map(|a| {
+                super::display::format_type(
+                    &typed.types,
+                    &typed.resolved.interner,
+                    &typed.resolved.defs,
+                    *a,
+                )
+            })
+            .collect();
+        let mangled_name = mangle::mangle_symbol_for_specialization(
+            &typed.resolved,
+            inst.base_fn,
+            &inst.args,
+            &typed.types,
+        );
+        let key = (logical.clone(), mangled_name.clone());
+        if seen.insert(key) {
+            out.push(CrossCrateMonoReq {
+                dep_package,
+                logical_module: logical,
+                base_name,
+                arg_types,
+                mangled_name,
+            });
+        }
+    }
+    out
+}
+
+/// Applies an injected monomorphization worklist (e.g. when rebuilding a dependency lib).
+///
+/// # Errors
+///
+/// Returns a [`TypeCheckBag`] when specialization fails.
+#[must_use]
+pub fn apply_mono_worklist(
+    typed: &mut TypedProgram,
+    reqs: &[CrossCrateMonoReq],
+    module_logical: impl Fn(u32) -> Option<String>,
+) -> TypeCheckBag {
+    let mut insts = Vec::new();
+    for req in reqs {
+        if specialized_export_exists(typed, &req.mangled_name) {
+            continue;
+        }
+        let Some(base_fn) = find_exported_fn_by_name(
+            &typed.resolved,
+            &module_logical,
+            &req.logical_module,
+            &req.base_name,
+        ) else {
+            continue;
+        };
+        let mut args = Vec::with_capacity(req.arg_types.len());
+        let mut ok = true;
+        for spelling in &req.arg_types {
+            let Some(arg) = resolve_type_spelling(typed, spelling) else {
+                ok = false;
+                break;
+            };
+            args.push(arg);
+        }
+        if !ok {
+            continue;
+        }
+        insts.push(MonoInst {
+            base_fn,
+            args,
+            call_sites: Vec::new(),
+        });
+    }
+    monomorphize(typed, &insts, &[])
+}
+
+fn module_in_workspace_package(logical: &str, workspace: &str) -> bool {
+    logical == workspace || logical.starts_with(&format!("{workspace}::"))
+}
+
+fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {
+    typed.resolved.defs.iter().any(|d| {
+        d.exported
+            && d.kind == DefKind::Fn
+            && typed.resolved.interner.resolve(d.name) == mangled_name
+    })
+}
+
+/// Returns true when `def_id` is a generic function template (not a monomorphized specialization).
+#[must_use]
+pub fn is_generic_fn_template(typed: &TypedProgram, def_id: DefId) -> bool {
+    if typed.specialized_from.contains_key(&def_id) {
+        return false;
+    }
+    if typed.specialized_from.values().any(|&base| base == def_id) {
+        return true;
+    }
+    fn_decl_has_type_params(typed, def_id)
+}
+
+fn fn_decl_has_type_params(typed: &TypedProgram, def_id: DefId) -> bool {
+    let Some(def) = typed.resolved.defs.get(def_id.index() as usize) else {
+        return false;
+    };
+    for module in &typed.resolved.modules {
+        if module.id != def.module {
+            continue;
+        }
+        for item in &module.program.items {
+            match &item.inner.decl {
+                TopLevelDecl::Function(f) if fn_def_matches(typed, f, def_id) => {
+                    return f.generics.as_ref().is_some_and(|g| !g.is_empty());
+                }
+                TopLevelDecl::Impl { members, .. } => {
+                    for m in members {
+                        if let ImplMember::Method(f) = m {
+                            if fn_def_matches(typed, f, def_id) {
+                                return f.generics.as_ref().is_some_and(|g| !g.is_empty());
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+fn fn_def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
+    typed
+        .resolved
+        .defs
+        .get(def.index() as usize)
+        .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
+}
+
+fn find_exported_fn_by_name(
+    resolved: &ResolvedProgram,
+    module_logical: &impl Fn(u32) -> Option<String>,
+    logical_module: &str,
+    name: &str,
+) -> Option<DefId> {
+    resolved.defs.iter().enumerate().find_map(|(i, d)| {
+        if d.kind != DefKind::Fn || !d.exported {
+            return None;
+        }
+        let log = module_logical(d.module)?;
+        if log != logical_module {
+            return None;
+        }
+        if resolved.interner.resolve(d.name) != name {
+            return None;
+        }
+        Some(DefId::from_raw(u32::try_from(i).ok()?))
+    })
+}
+
+fn resolve_type_spelling(typed: &mut TypedProgram, spelling: &str) -> Option<TypeId> {
+    use phx_syntax::token::Keyword;
+    let norm = spelling.trim();
+    let keywords = [
+        Keyword::S8,
+        Keyword::S16,
+        Keyword::S32,
+        Keyword::S64,
+        Keyword::S128,
+        Keyword::U8,
+        Keyword::U16,
+        Keyword::U32,
+        Keyword::U64,
+        Keyword::U128,
+        Keyword::F32,
+        Keyword::F64,
+        Keyword::Bool,
+    ];
+    for kw in keywords {
+        if format!("{kw:?}").eq_ignore_ascii_case(norm) {
+            return Some(typed.types.intern(&super::types::Ty::Primitive(kw)));
+        }
+    }
+    if norm.eq_ignore_ascii_case("()") || norm == "unit" {
+        return Some(typed.types.intern(&super::types::Ty::Unit));
+    }
+    None
 }

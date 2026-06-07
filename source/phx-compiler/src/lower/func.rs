@@ -6,7 +6,7 @@ use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
 use crate::resolver::{DefId, DefKind};
-use crate::typeck::{BindingKind, FunctionLayout, TypedProgram};
+use crate::typeck::{BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template};
 use phx_diagnostics::LowerBag;
 
 /// Lowers all functions in `typed`.
@@ -114,5 +114,5 @@ fn def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
 
 /// Returns true when `def` is a generic function template replaced by monomorphization.
 fn is_generic_template(typed: &TypedProgram, def: DefId) -> bool {
-    typed.specialized_from.values().any(|&base| base == def)
+    is_generic_fn_template(typed, def)
 }

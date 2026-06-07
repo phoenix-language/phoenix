@@ -339,32 +339,88 @@ fn parse_exports(logical_module: &str, text: &str) -> Vec<PxiExport> {
     let Some(arr_start) = text[start..].find('[') else {
         return Vec::new();
     };
-    let slice = &text[start + arr_start..];
+    let slice = &text[start + arr_start + 1..];
     let mut exports = Vec::new();
-    let mut search = slice;
-    while let Some(name_pos) = search.find("\"name\"") {
-        let chunk = &search[name_pos..];
-        if let (Some(name), Some(kind), Some(sig)) = (
-            extract_field_string(chunk, "name"),
-            extract_field_string(chunk, "kind"),
-            extract_field_string(chunk, "signature"),
-        ) {
-            let export_id = extract_field_string(chunk, "export_id")
-                .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
-            let ty = parse_export_type(chunk);
-            let function_id = extract_field_u32(chunk, "function_id");
-            exports.push(PxiExport {
-                export_id,
-                name,
-                kind,
-                signature: sig,
-                ty,
-                function_id,
-            });
+    let mut i = 0usize;
+    while i < slice.len() {
+        while i < slice.len()
+            && (slice.as_bytes()[i].is_ascii_whitespace() || slice.as_bytes()[i] == b',')
+        {
+            i += 1;
         }
-        search = &search[name_pos + 6..];
+        if i >= slice.len() || slice.as_bytes()[i] == b']' {
+            break;
+        }
+        if slice.as_bytes()[i] != b'{' {
+            break;
+        }
+        let Some(obj_end) = find_matching_brace(slice, i) else {
+            break;
+        };
+        let chunk = &slice[i..=obj_end];
+        if let Some(exp) = parse_export_object(logical_module, chunk) {
+            exports.push(exp);
+        }
+        i = obj_end + 1;
     }
     exports
+}
+
+fn parse_export_object(logical_module: &str, chunk: &str) -> Option<PxiExport> {
+    let name = extract_field_string(chunk, "name")?;
+    let kind = extract_field_string(chunk, "kind")?;
+    let sig = extract_field_string(chunk, "signature")?;
+    let export_id = extract_field_string(chunk, "export_id")
+        .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
+    let ty = parse_export_type(chunk);
+    let function_id = extract_field_u32(chunk, "function_id");
+    Some(PxiExport {
+        export_id,
+        name,
+        kind,
+        signature: sig,
+        ty,
+        function_id,
+    })
+}
+
+fn find_matching_brace(text: &str, start: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    if bytes.get(start)? != &b'{' {
+        return None;
+    }
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if in_string {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if b == b'\\' {
+                escape = true;
+                continue;
+            }
+            if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if b == b'"' {
+            in_string = true;
+            continue;
+        }
+        if b == b'{' {
+            depth += 1;
+        } else if b == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(i);
+            }
+        }
+    }
+    None
 }
 
 fn parse_dependencies(text: &str) -> Vec<PxiDependency> {
@@ -463,5 +519,28 @@ mod tests {
 }"#;
         let pxi = PxiFile::parse(json).unwrap();
         assert_eq!(pxi.exports[0].function_id, Some(0));
+    }
+
+    #[test]
+    fn parse_exports_ignore_nested_type_names() {
+        let json = r#"{
+  "format_version": 2,
+  "logical_module": "math",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [
+    {"export_id": "math::add::fn", "name": "add", "kind": "fn", "signature": "(S32, S32) => S32", "function_id": 0, "type": { "kind": "fn", "params": [{ "kind": "primitive", "name": "s32" }], "ret": { "kind": "primitive", "name": "s32" } }},
+    {"export_id": "math::id::fn", "name": "id", "kind": "fn", "signature": "(T) => T"}
+  ],
+  "dependencies": []
+}"#;
+        let pxi = PxiFile::parse(json).unwrap();
+        assert_eq!(pxi.exports.len(), 2);
+        let add = pxi.exports.iter().find(|e| e.name == "add").expect("add");
+        assert_eq!(add.export_id, "math::add::fn");
+        assert_eq!(add.function_id, Some(0));
+        let id = pxi.exports.iter().find(|e| e.name == "id").expect("id");
+        assert_eq!(id.export_id, "math::id::fn");
+        assert_eq!(id.function_id, None);
     }
 }

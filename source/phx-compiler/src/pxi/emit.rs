@@ -16,6 +16,7 @@ use crate::pxi::{
 use crate::resolver::{Def, DefId, DefKind};
 use crate::typeck::BindingKind;
 use crate::typeck::TypedProgram;
+use crate::typeck::{is_generic_fn_template, mangle_export_id};
 
 /// Builds a [`PxiFile`] (format v2) for one module in a typed crate.
 #[must_use]
@@ -32,6 +33,7 @@ pub fn build_pxi_for_module(
     let interner = &typed.resolved.interner;
     let defs = &typed.resolved.defs;
     let mut pxi_exports = Vec::new();
+    let mut emitted = std::collections::HashSet::new();
 
     for (sym, &def_id) in exports {
         let Some(def) = defs.get(def_id.index() as usize) else {
@@ -40,23 +42,38 @@ pub fn build_pxi_for_module(
         if def.module != module_id || !def.exported {
             continue;
         }
-        let name = interner.resolve(*sym).to_owned();
-        let kind = def_kind_to_pxi(def.kind).to_owned();
-        let ty = export_structured_type(def, def_id, typed, logical_path);
-        let signature = export_signature_fallback(def, def_id, typed, interner);
-        let function_id = if kind == "fn" {
-            global_fn.and_then(|map| map.get(&def_id).copied())
-        } else {
-            None
-        };
-        pxi_exports.push(PxiExport {
-            export_id: stable_export_id(logical_path, &name, &kind),
-            name,
-            kind,
-            signature,
-            ty,
-            function_id,
-        });
+        push_export(
+            &mut pxi_exports,
+            &mut emitted,
+            logical_path,
+            def,
+            def_id,
+            typed,
+            interner,
+            global_fn,
+            interner.resolve(*sym),
+        );
+    }
+
+    for (i, def) in defs.iter().enumerate() {
+        if def.module != module_id || !def.exported {
+            continue;
+        }
+        let def_id = DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX));
+        if !typed.specialized_from.contains_key(&def_id) {
+            continue;
+        }
+        push_export(
+            &mut pxi_exports,
+            &mut emitted,
+            logical_path,
+            def,
+            def_id,
+            typed,
+            interner,
+            global_fn,
+            interner.resolve(def.name),
+        );
     }
     pxi_exports.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -68,6 +85,47 @@ pub fn build_pxi_for_module(
         exports: pxi_exports,
         dependencies: dependencies.to_vec(),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_export(
+    pxi_exports: &mut Vec<PxiExport>,
+    emitted: &mut std::collections::HashSet<String>,
+    logical_path: &str,
+    def: &Def,
+    def_id: DefId,
+    typed: &TypedProgram,
+    interner: &Interner,
+    global_fn: Option<&HashMap<DefId, u32>>,
+    name: &str,
+) {
+    if !emitted.insert(name.to_owned()) {
+        return;
+    }
+    let kind = def_kind_to_pxi(def.kind).to_owned();
+    let ty = export_structured_type(def, def_id, typed, logical_path);
+    let signature = export_signature_fallback(def, def_id, typed, interner);
+    let function_id = if kind == "fn" {
+        if is_generic_fn_template(typed, def_id) {
+            None
+        } else {
+            global_fn.and_then(|map| map.get(&def_id).copied())
+        }
+    } else {
+        None
+    };
+    pxi_exports.push(PxiExport {
+        export_id: if typed.specialized_from.contains_key(&def_id) {
+            mangle_export_id(logical_path, &kind, name)
+        } else {
+            stable_export_id(logical_path, name, &kind)
+        },
+        name: name.to_owned(),
+        kind,
+        signature,
+        ty,
+        function_id,
+    });
 }
 
 fn export_structured_type(

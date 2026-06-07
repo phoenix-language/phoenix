@@ -1,3 +1,7 @@
 #import math::add;
+#import math::id;
 
-main :: () => { const _ = add(1, 2); };
+main :: () => {
+    const a = add(1, 2);
+    const b = id :: <s32> (1);
+};

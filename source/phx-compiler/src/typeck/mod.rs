@@ -17,6 +17,7 @@ mod display;
 mod infer;
 mod layout;
 mod lower_ty;
+mod mangle;
 mod mono;
 mod ops;
 mod ownership;
@@ -26,12 +27,16 @@ mod types;
 mod unify;
 
 #[allow(unused_imports)]
-pub use mono::{MonoInst, TypeMonoInst, TypeMonoKind, monomorphize};
+pub use mono::{
+    CrossCrateMonoReq, MonoInst, TypeMonoInst, TypeMonoKind, apply_mono_worklist,
+    collect_cross_crate_mono_reqs, is_generic_fn_template, monomorphize,
+};
 
 pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use display::format_type;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
+pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
@@ -57,6 +62,8 @@ pub struct TypedProgram {
     pub layout: ProgramLayout,
     /// Monomorphized `DefId` → generic template `DefId` for AST lookup during lowering.
     pub specialized_from: std::collections::HashMap<DefId, DefId>,
+    /// Explicit generic function instantiations collected during type-checking.
+    pub mono_insts: Vec<MonoInst>,
     /// Expanded monomorphized alias types keyed by `(template, args)`.
     pub specialized_aliases: std::collections::HashMap<layout::TypeMonoKey, TypeId>,
 }

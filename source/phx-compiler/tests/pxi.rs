@@ -60,6 +60,37 @@ fn project_build_emits_pxi_v2_with_structured_fn_type() {
 }
 
 #[test]
+fn math_lib_pxi_exports_mangled_generic_specialization() {
+    let app_root = cli_project("app_dep");
+    let app_config = discover_cli_project(&app_root);
+    build_cli_project(&app_config, BuildOptions::force(true));
+    let pxi_path = app_root.join("build/deps/math/pxi/math.pxi");
+    let text = std::fs::read_to_string(&pxi_path).expect("read pxi");
+    let pxi = PxiFile::parse(&text).expect("parse emitted pxi");
+    let id_template = pxi
+        .exports
+        .iter()
+        .find(|e| e.name == "id")
+        .expect("id template");
+    assert!(
+        id_template.function_id.is_none(),
+        "generic template should not have function_id"
+    );
+    let id_s32 = pxi
+        .exports
+        .iter()
+        .find(|e| e.name.contains('$') && e.name.starts_with("id$"))
+        .expect("mangled id$s32 export");
+    assert!(
+        id_s32.function_id.is_some(),
+        "specialized export should have function_id"
+    );
+    assert!(id_s32.export_id.contains('$'));
+    let ty = id_s32.ty.as_ref().expect("structured fn type");
+    assert!(matches!(ty, PxiType::Fn { .. }));
+}
+
+#[test]
 fn import_types_map_populated_for_single_file() {
     let source =
         "add :: (a: s32, b: s32) => s32 { a + b };\n\nmain :: () => { const _ = add(1, 2); };\n";

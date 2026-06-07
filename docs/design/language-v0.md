@@ -255,7 +255,9 @@ Everything std types are built from: generic enums, bounds, associated types, mo
 
 **Acceptance:** Lib package exports a generic function; bin package calls a concrete instantiation via path dependency and `.pxi` only.
 
-**Refs:** [type-system.md](features/type-system.md) (Deferred: `.pxi` export mangling), [pxi-format.md](features/pxi-format.md)
+**Refs:** [type-system.md](features/type-system.md) (`.pxi` export mangling), [pxi-format.md](features/pxi-format.md)
+
+**Status:** Done
 
 ---
 

@@ -62,19 +62,24 @@ When a module imports from a dependency whose `.pxi` is fresh:
 
 ## Cross-crate generics
 
-Generic APIs in source are intended to appear in `.pxi` export lists as **monomorphized entries** only: each exported symbol would have a mangled `export_id` (for example `sort$s32`) and a fully concrete signature. Parameterized signatures do not appear in v1/v2 `.pxi` today.
+Generic APIs in source appear in `.pxi` export lists as:
 
-### Deferred: `.pxi` mangling for generics
+- **Templates** — unmangled export name (e.g. `id`), structured type from the generic signature, **`function_id` omitted** (not linkable).
+- **Specializations** — mangled export name and `export_id` (e.g. `id$s32`, `math::id$s32::fn`), fully concrete signature/`type`, **`function_id`** for cross-crate `Call` linking.
 
-**Status:** not implemented; same-crate monomorphization is sufficient for MVP.
+Callers import the generic template symbol (e.g. `#import math::id`) and call with explicit `:: <T>` at the use site; the consumer build reconciles a monomorphization worklist and rebuilds path dependencies so missing mangled exports appear in `build/deps/*/pxi/` before link.
 
-**Why deferred:**
+### Implemented: `.pxi` mangling for generics (V0-024)
 
-- Cross-crate linking needs **stable `export_id`** across builds ([modules and build](../finished-review/08-modules-and-build.md) — session `DefId` ≠ link-stable id).
-- The build driver and linker must emit and consume mangled names in `.pxi` export lists; this is not typeck-only work.
-- Single-crate and same-crate mono already resolves specialized symbols without `.pxi` mangling.
+**Status:** done — path-dependency builds emit and consume mangled fn exports; generic templates stay importable without `function_id`.
 
-**Trigger to implement:** path dependencies need to call specialized generics from another package without re-parsing source. Coordinated with [type-system.md](type-system.md#deferred-pxi-export-mangling).
+**Still out of scope:**
+
+- Cross-crate generic inference (explicit specializations only).
+- `.pxi`-only dependency loading without parsing dep source (templates still loaded from source during consumer compile).
+- Generic struct/enum cross-crate export mangling beyond fn exports.
+
+See [type-system.md](type-system.md#pxi-export-mangling-v0-024).
 
 ## Non-goals (v2)
 

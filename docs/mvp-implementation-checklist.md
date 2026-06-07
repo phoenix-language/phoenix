@@ -68,7 +68,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | `#import` via CLI on one file | `phx check` / `phx run <file>` use **parent directory** as module root (same as `check_file`). Multi-file trees need `--module-src` or `phoenix.toml` (M2). |
 | Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
-| Generics | V0-020/V0-021: generic decls, local inference, monomorphization (`id$S32`-style mangling); V0-022/V0-023: generic enum match, trait associated types |
+| Generics | V0-020/V0-021: generic decls, local inference, monomorphization (`id$s32`-style mangling); V0-022/V0-023: generic enum match, trait associated types; V0-024: cross-crate `.pxi` mangled fn exports |
 | Parser ergonomics | Bounded fixes (e.g. unclosed `(`); broader grammar ambiguities may remain |
 
 ---
@@ -394,7 +394,7 @@ A credible MVP demo `.phx` should be able to:
 | Incremental manifest | done | `build/manifest.rs` | Skip unchanged modules | Re-`phx build` fast path |
 | Import cycle + `.pxi` escape | done | `modules/graph.rs` | Fresh `.pxi` on all SCC nodes | Design in modules.md |
 | `phx build` / project `phx run` | done | `build/driver.rs`, `phx` CLI | `--no-build`, `--build` | `tests/integration/run_build.rs` |
-| Separate compile via `.pxi` | done | `build/driver.rs`, `pxi/format.rs` | Path-dep link uses prebuilt `build/deps/*/phx0`; `function_id` in `.pxi` | `run_dep_build.rs` |
+| Separate compile via `.pxi` | done | `build/driver.rs`, `pxi/format.rs`, `typeck/mono.rs` | Path-dep link uses prebuilt `build/deps/*/phx0`; `function_id` on concrete exports; V0-024 mangled generic fn exports + consumer worklist rebuild | `run_dep_build.rs`, `pxi.rs` |
 
 
 ---

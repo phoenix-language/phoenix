@@ -19,7 +19,9 @@ use crate::pxi::{
     PxiFile, build_pxi_for_module, digest_file, module_dependencies, stable_export_id,
 };
 use crate::resolver::DefId;
-use crate::typeck::type_check;
+use crate::typeck::{
+    CrossCrateMonoReq, apply_mono_worklist, collect_cross_crate_mono_reqs, type_check,
+};
 
 use super::error::BuildError;
 use super::manifest::{
@@ -63,7 +65,7 @@ pub fn build_project(
     for dep in config.dependencies.values() {
         build_dependency(config, &config.root.join(&dep.path), options)?;
     }
-    build_package(config, entry_file, options, None)
+    build_package(config, entry_file, options, None, None)
 }
 
 /// Writes `.pxi` files and `manifest.json` after a successful type-check.
@@ -121,6 +123,7 @@ fn build_package(
     entry_file: Option<&Path>,
     options: BuildOptions,
     layout_override: Option<BuildLayout>,
+    injected_mono: Option<&[CrossCrateMonoReq]>,
 ) -> Result<BuildResult, BuildError> {
     let entry_file = entry_file.map_or_else(|| config.default_entry_file(), Path::to_path_buf);
 
@@ -160,7 +163,23 @@ fn build_package(
     }
 
     let resolved = resolve_loaded_program(loaded.clone()).map_err(BuildError::Resolve)?;
-    let typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
+    let mut typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
+
+    let module_logical = |module_id: u32| -> Option<String> {
+        loaded
+            .modules
+            .get(module_id as usize)
+            .map(|m| m.logical_path.display())
+    };
+
+    if let Some(injected) = injected_mono {
+        let bag = apply_mono_worklist(&mut typed, injected, module_logical);
+        if bag.has_errors() {
+            return Err(BuildError::TypeCheck(bag));
+        }
+    } else if !config.dependencies.is_empty() {
+        reconcile_cross_crate_mono_exports(config, &loaded, &typed, options)?;
+    }
 
     if options.emit_interface_only {
         return emit_interfaces_from_compiled(config, &loaded, &typed, options, Some(layout));
@@ -228,8 +247,87 @@ fn build_dependency(
     for nested in dep_cfg.dependencies.values() {
         build_dependency(consumer, &dep_cfg.root.join(&nested.path), options)?;
     }
-    build_package(&dep_cfg, None, options, Some(dep_layout))?;
+    build_package(&dep_cfg, None, options, Some(dep_layout), None)?;
     Ok(())
+}
+
+fn build_dependency_with_mono_worklist(
+    consumer: &ProjectConfig,
+    dep_root: &Path,
+    worklist: &[CrossCrateMonoReq],
+    options: BuildOptions,
+) -> Result<(), BuildError> {
+    let dep_cfg = ProjectConfig::load(dep_root).map_err(BuildError::Project)?;
+    let dep_layout = BuildLayout::for_dependency(consumer, &dep_cfg.name);
+    dep_layout.ensure_dep_dirs().map_err(|e| io_err(&e))?;
+    for nested in dep_cfg.dependencies.values() {
+        build_dependency(consumer, &dep_cfg.root.join(&nested.path), options)?;
+    }
+    build_package(
+        &dep_cfg,
+        None,
+        BuildOptions {
+            force: true,
+            ..options
+        },
+        Some(dep_layout),
+        Some(worklist),
+    )?;
+    Ok(())
+}
+
+fn reconcile_cross_crate_mono_exports(
+    consumer: &ProjectConfig,
+    loaded: &LoadedProgram,
+    typed: &crate::typeck::TypedProgram,
+    options: BuildOptions,
+) -> Result<(), BuildError> {
+    let module_logical = |module_id: u32| -> Option<String> {
+        loaded
+            .modules
+            .get(module_id as usize)
+            .map(|m| m.logical_path.display())
+    };
+    let reqs = collect_cross_crate_mono_reqs(typed, &consumer.name, module_logical);
+    if reqs.is_empty() {
+        return Ok(());
+    }
+    let mut by_dep: HashMap<String, Vec<CrossCrateMonoReq>> = HashMap::new();
+    for req in reqs {
+        by_dep.entry(req.dep_package.clone()).or_default().push(req);
+    }
+    for dep in consumer.dependencies.values() {
+        let dep_root = consumer.root.join(&dep.path);
+        let dep_cfg = ProjectConfig::load(&dep_root).map_err(BuildError::Project)?;
+        let Some(dep_reqs) = by_dep.get(&dep_cfg.name) else {
+            continue;
+        };
+        let missing: Vec<_> = dep_reqs
+            .iter()
+            .filter(|r| !dep_pxi_has_mangled_export(consumer, &dep_cfg, r))
+            .cloned()
+            .collect();
+        if missing.is_empty() {
+            continue;
+        }
+        build_dependency_with_mono_worklist(consumer, &dep_root, &missing, options)?;
+    }
+    Ok(())
+}
+
+fn dep_pxi_has_mangled_export(
+    consumer: &ProjectConfig,
+    dep_cfg: &ProjectConfig,
+    req: &CrossCrateMonoReq,
+) -> bool {
+    let dep_layout = BuildLayout::for_dependency(consumer, &dep_cfg.name);
+    let pxi_path = dep_layout.module_artifacts(&req.logical_module).pxi;
+    let Ok(pxi) = PxiFile::read_from_path(&pxi_path) else {
+        return false;
+    };
+    pxi.exports
+        .iter()
+        .any(|e| e.name == req.mangled_name && e.kind == "fn" && e.function_id.is_some())
 }
 
 fn dependency_build_is_fresh(
@@ -271,7 +369,7 @@ fn dependency_pxi_has_function_ids(manifest: &BuildManifest, build_root: &Path) 
             return false;
         };
         for exp in &pxi.exports {
-            if exp.kind == "fn" && exp.function_id.is_none() {
+            if exp.kind == "fn" && exp.name.contains('$') && exp.function_id.is_none() {
                 return false;
             }
         }
@@ -573,6 +671,7 @@ fn build_global_fn_map(
     let interner = &typed.resolved.interner;
 
     let mut dep_export_fn_ids: HashMap<String, u32> = HashMap::new();
+    let mut dep_template_fn_exports: HashSet<String> = HashSet::new();
     let mut max_dep_id = 0u32;
 
     for dep in config.dependencies.values() {
@@ -589,11 +688,14 @@ fn build_global_fn_map(
             let pxi_path = resolve_manifest_path(dep_layout.build_root(), &rec.pxi_path);
             let pxi = PxiFile::read_from_path(&pxi_path).map_err(BuildError::Pxi)?;
             for exp in &pxi.exports {
-                if exp.kind == "fn"
-                    && let Some(id) = exp.function_id
-                {
+                if exp.kind != "fn" {
+                    continue;
+                }
+                if let Some(id) = exp.function_id {
                     dep_export_fn_ids.insert(exp.export_id.clone(), id);
                     max_dep_id = max_dep_id.max(id);
+                } else {
+                    dep_template_fn_exports.insert(exp.export_id.clone());
                 }
             }
         }
@@ -621,6 +723,9 @@ fn build_global_fn_map(
             }
             let name = interner.resolve(def.name);
             let export_id = stable_export_id(&logical, name, "fn");
+            if dep_template_fn_exports.contains(&export_id) {
+                continue;
+            }
             let id =
                 dep_export_fn_ids
                     .get(&export_id)
@@ -650,6 +755,10 @@ fn build_global_fn_map(
         if !module_in_workspace_package(&logical, workspace) {
             if !map.contains_key(&f.def) {
                 let name = interner.resolve(def.name);
+                let export_id = stable_export_id(&logical, name, "fn");
+                if dep_template_fn_exports.contains(&export_id) {
+                    continue;
+                }
                 return Err(BuildError::StaleInterface {
                     module: logical,
                     message: format!("missing function_id for dependency fn `{name}` in `.pxi`"),

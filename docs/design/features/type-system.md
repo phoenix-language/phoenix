@@ -162,11 +162,15 @@ Call sites may omit `:: <…>` when argument types constrain all generic paramet
 
 Inference uses fresh `Ty::Var` nodes and local unification at the call site only (rule 10). Explicit `:: <…>` always takes precedence.
 
-### Deferred: `.pxi` export mangling
+### `.pxi` export mangling (V0-024)
 
-Cross-crate linking needs **stable `export_id`** across builds (session `DefId` ≠ link-stable id). Emitting/consuming mangled names such as `sort$s32` in `.pxi` export lists is **build-driver + linker** work, not typeck-only. Single-crate and same-crate mono already works without `.pxi` mangling.
+Cross-crate linking uses **stable `export_id`** values in dependency `.pxi` files (session `DefId` ≠ link id). The build driver:
 
-**Trigger to implement:** path dependencies must call specialized generics from another package without re-parsing source. See [pxi-format.md](pxi-format.md#deferred-pxi-mangling-for-generics).
+1. Collects cross-crate monomorphization requests after consumer type-check.
+2. Rebuilds affected path dependencies with an injected worklist when mangled exports are missing.
+3. Writes mangled fn exports (e.g. `sort$s32`) with concrete signatures and `function_id` for link.
+
+Importers keep using unmangled template names in `#import`; explicit `:: <T>` at the call site selects the mangled export at link time. See [pxi-format.md](pxi-format.md#implemented-pxi-mangling-for-generics-v0-024).
 
 ### Deferred: `dyn Trait`
 
