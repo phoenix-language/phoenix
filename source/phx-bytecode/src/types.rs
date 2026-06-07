@@ -60,7 +60,7 @@ impl TypeTable {
     ///
     /// # Errors
     ///
-    /// Returns [`TypeTableError::Truncated`] when bytes are incomplete.
+    /// Returns `TypeTableError::Truncated` when bytes are incomplete.
     pub fn decode(bytes: &[u8]) -> Result<Self, TypeTableError> {
         if bytes.len() < 4 {
             return Err(TypeTableError::Truncated);

@@ -5,7 +5,7 @@
 /// A diagnostic tied to a dense module index in the loaded program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocatedError<E> {
-    /// Owning module id (matches [`phx_compiler::resolver::SourceModule::id`]).
+    /// Owning module id (matches `SourceModule::id` in the compiler resolver).
     pub module: u32,
     /// The underlying error.
     pub error: E,

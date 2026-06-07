@@ -1,7 +1,7 @@
 //! Phoenix lexer — source text to token stream.
 //!
 //! Tokens borrow lexeme text from the source (`Token<'src>`). Numeric lexing may allocate when
-//! stripping underscores ([`strip_underscores`]); byte string payloads use `Vec<u8>`.
+//! stripping underscores (`strip_underscores`); byte string payloads use `Vec<u8>`.
 
 use phx_diagnostics::{LexError, Span};
 

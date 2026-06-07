@@ -97,7 +97,7 @@ fn build_fn_arity_map(
 ///
 /// # Errors
 ///
-/// Returns [`CodegenError`] when section sizes exceed `u32::MAX`.
+/// Returns `CodegenError` when section sizes exceed `u32::MAX`.
 pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, CodegenError> {
     use error::u32_section;
     let layout = &typed.layout;
@@ -166,11 +166,11 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     })
 }
 
-/// Codegens one module's IR slice using global function ids for [`IrInst::Call`].
+/// Codegens one module's IR slice using global function ids for [`crate::IrInst::Call`].
 ///
 /// # Errors
 ///
-/// Returns [`CodegenError`] when section sizes exceed `u32::MAX`.
+/// Returns `CodegenError` when section sizes exceed `u32::MAX`.
 #[allow(clippy::implicit_hasher)]
 pub fn codegen_module(
     ir: &IrModule,

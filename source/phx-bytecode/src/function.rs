@@ -55,7 +55,7 @@ impl FunctionTable {
     ///
     /// # Errors
     ///
-    /// Returns [`FunctionTableError::Truncated`] when bytes are incomplete.
+    /// Returns `FunctionTableError::Truncated` when bytes are incomplete.
     pub fn decode(bytes: &[u8]) -> Result<Self, FunctionTableError> {
         const RECORD_SIZE: usize = 28;
         if bytes.len() < 4 {

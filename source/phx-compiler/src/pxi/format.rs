@@ -143,7 +143,7 @@ impl PxiFile {
     ///
     /// # Errors
     ///
-    /// Returns [`PxiError`] on unsupported version or malformed JSON.
+    /// Returns `PxiError` on unsupported version or malformed JSON.
     pub fn parse(text: &str) -> Result<Self, PxiError> {
         parse_inner(text)
     }

@@ -55,7 +55,7 @@ impl ConstPool {
     ///
     /// # Errors
     ///
-    /// Returns [`ConstPoolError::Truncated`] when bytes are incomplete.
+    /// Returns `ConstPoolError::Truncated` when bytes are incomplete.
     pub fn decode(bytes: &[u8]) -> Result<Self, ConstPoolError> {
         if bytes.len() < 4 {
             return Err(ConstPoolError::Truncated);

@@ -1,6 +1,6 @@
 //! Recursive-descent parser for Phoenix source.
 //!
-//! The [`Parser`] holds the token cursor, source slice, and [`Interner`]. Submodules split the
+//! The `Parser` holds the token cursor, source slice, and [`Interner`]. Submodules split the
 //! grammar by syntactic category (`decl`, `expr`, `stmt`, `pat`, `types`). Entry point:
 //! [`parse`].
 

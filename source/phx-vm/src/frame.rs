@@ -10,7 +10,7 @@ use phx_bytecode::{LocalLayoutTable, PrimitiveKind, ScalarValue};
 pub enum Value {
     /// Numeric / bool primitive.
     Scalar(ScalarValue),
-    /// Index into [`Machine::aggregates`].
+    /// Index into the aggregate arena (`Machine::aggregates`).
     Agg(u32),
 }
 

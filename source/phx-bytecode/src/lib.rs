@@ -1,6 +1,6 @@
 //! Phoenix bytecode — `PHX0` encode/decode, opcode definitions, and verification.
 //!
-//! Portable output of the compiler; consumed by [`phx_vm`] after the verifier pass.
+//! Portable output of the compiler; consumed by the `phx_vm` crate after the verifier pass.
 //! Format contract: `docs/design/features/vm-linear.md`.
 //!
 //! Call [`verify`] on every image before execution; the MVP VM assumes invariants checked there.

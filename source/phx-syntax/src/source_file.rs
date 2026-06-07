@@ -1,6 +1,6 @@
 //! Parsed source unit carrying the AST and interner.
 //!
-//! Does not own source text: [`Span`] offsets refer to the `&str` passed to [`crate::parse`].
+//! Does not own source text: [`phx_diagnostics::Span`] offsets refer to the `&str` passed to [`crate::parse`].
 
 use crate::ast::Program;
 use crate::intern::Interner;

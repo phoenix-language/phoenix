@@ -74,9 +74,9 @@ impl std::error::Error for LinkError {}
 /// ## Function ids and `Call` operands
 ///
 /// Per-module codegen assigns **globally unique** `function_id` values before link (see
-/// [`crate::build::driver::build_global_fn_map`]). [`Opcode::Call`] operands are those ids; the
+/// `build_global_fn_map` in the build driver). [`Opcode::Call`] operands are those ids; the
 /// linker does **not** rewrite them. It only rebases constant and type indices in each module's
-/// code via [`patch_instruction`]. Duplicate `function_id` across inputs is [`LinkError::DuplicateFunctionId`].
+/// code during instruction patching. Duplicate `function_id` across inputs is [`LinkError::DuplicateFunctionId`].
 ///
 /// `entry_function_id` is the global id of `main` (or [`ENTRY_NONE`] for libraries).
 ///

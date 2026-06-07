@@ -405,8 +405,8 @@ impl std::error::Error for CompileError {
 /// Parses and resolves Phoenix `source` as a **single compilation unit** (no crate loader).
 ///
 /// `#import` is not supported: resolution uses [`resolve`] on one file only, so imports fail with
-/// [`crate::resolver::ResolveError::ImportNotSupported`]. For multi-file programs use
-/// [`compile_source_with_module_root`], [`check_file_with_module_path`], or [`build_project`].
+/// [`phx_diagnostics::ResolveError::ImportNotSupported`]. For multi-file programs use
+/// [`compile_source_with_module_root`], [`check_file_with_module_path`], or [`crate::build_project`].
 ///
 /// # Errors
 ///

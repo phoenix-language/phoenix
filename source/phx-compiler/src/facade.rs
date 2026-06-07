@@ -1,6 +1,6 @@
 //! Stable entry points for external tools (LSP, SDK, embedders).
 //!
-//! Wraps [`crate::compile`] without duplicating pipeline logic. Internal compiler graphs
+//! Wraps the `compile` module without duplicating pipeline logic. Internal compiler graphs
 //! ([`crate::TypedProgram`], [`crate::ResolvedProgram`], [`crate::CompilationUnit`]) remain
 //! accessible in-tree but are not part of this facade.
 

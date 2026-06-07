@@ -6,11 +6,11 @@
 //!
 //! ## Modules
 //!
-//! - [`compile`] — [`compile_source`], [`check_file`], [`compile_to_module`], [`CompileError`].
-//! - [`unit`] — [`CompilationUnit`] (owned source + [`TypedProgram`]).
-//! - [`resolver`] — single-file name resolution and [`DefId`] tables.
-//! - [`typeck`] — type checking → [`TypedProgram`].
-//! - [`ir`] — intermediate representation.
+//! - `compile` — [`compile_source`], [`check_file`], [`compile_to_module`], [`CompileError`].
+//! - `unit` module — [`CompilationUnit`] (owned source + [`TypedProgram`]).
+//! - `resolver` — single-file name resolution and [`DefId`] tables.
+//! - `typeck` — type checking → [`TypedProgram`].
+//! - `ir` — intermediate representation.
 //! - [`lower`] — [`TypedProgram`] → [`IrModule`].
 //! - [`codegen`] — [`IrModule`] → [`phx_bytecode::BytecodeModule`].
 //!

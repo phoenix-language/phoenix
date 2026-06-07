@@ -42,7 +42,7 @@ pub struct CfgError {
 ///
 /// # Errors
 ///
-/// Returns [`CfgError`] when a cfg predicate uses an unknown key or malformed argument.
+/// Returns `CfgError` when a cfg predicate uses an unknown key or malformed argument.
 pub fn strip_cfg(
     program: &mut Program,
     compile_cfg: &CompileCfg,
