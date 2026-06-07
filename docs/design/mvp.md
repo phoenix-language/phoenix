@@ -56,7 +56,7 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 ## Lexer and identifiers (MVP)
 
 - **ASCII identifiers only** — `snake_case` value names and `PascalCase` type names use ASCII rules; Unicode identifiers are post-MVP ([features/ast-roadmap.md](features/ast-roadmap.md)).
-- **Deferred syntax is parsed, not lowered** — `for-in`, ranges, lambdas, `@` directives, and `#derive` build AST nodes; typeck reports `UnsupportedFeature` until std/runtime work lands ([features/grammar-deferred.md](features/grammar-deferred.md)).
+- **Deferred syntax is parsed, not lowered** — `for-in`, ranges, lambdas, `@` directives, and `#derive` build AST nodes; typeck reports `UnsupportedFeature` until std/runtime work lands ([features/grammar-deferred.md](features/grammar-deferred.md)). Bracket item attributes (`#[cfg]`, `#[deprecated]`, `#[allow]`, `#[must_use]`) are implemented per [compiler-directives.md](features/compiler-directives.md).
 
 ## Core Primitive Policy (Text View, Not Owned String)
 
@@ -88,7 +88,8 @@ MVP compiler functionality does not depend on directive-heavy features.
 
 Forward direction for readability:
 
-- `#` for compile-time directives (imports, derives, compile-time controls)
+- `#` for compile-time keyword directives (imports, unsafe regions, optimization hints)
+- `#[...]` for item metadata (conditional compilation, deprecation, lint warnings — see [compiler-directives.md](features/compiler-directives.md))
 - `@` for runtime directives (runtime actions)
 
 Older drafts may use `@` for both categories; this is transitional and should be normalized in docs.

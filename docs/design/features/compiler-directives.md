@@ -11,9 +11,10 @@ This split is the canonical direction. Older drafts that used `@` for both are l
 
 ## Taxonomy
 
-| Category | Sigil | Purpose | MVP status |
+| Category | Sigil / form | Purpose | MVP status |
 |---|---|---|---|
-| Compile-time | `#` | import, optimization hints, derive/config metadata | partially in MVP |
+| Compile-time keywords | `#` | import, unsafe regions, optimization hints | `#import` wired end-to-end; `#unsafe`, `#inline` / `#cold` / `#hot` parse-only; `#derive` parse-only (no codegen) |
+| Item attributes | `#[...]` | conditional compilation, deprecation, lint policy | **Implemented** ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)): `cfg`, `deprecated`, `allow`, `must_use` |
 | Runtime | `@` | runtime VM actions (especially actor runtime actions) | post-MVP heavy semantics |
 
 ---
