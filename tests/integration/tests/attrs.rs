@@ -58,12 +58,5 @@ fn keyword_directives_still_compile() {
 
 #[test]
 fn bracket_derive_attribute_parses() {
-    let path = cli_fixture("attr_bracket_derive.phx");
-    let source = std::fs::read_to_string(&path).expect("read fixture");
-    let bag = phx_test::expect_typeck_err(&source);
-    let msg = bag.to_string();
-    assert!(
-        msg.contains("#derive") || msg.contains("UnsupportedFeature"),
-        "expected derive rejection after parse, got: {msg}"
-    );
+    check_fixture_ok("attr_bracket_derive.phx");
 }

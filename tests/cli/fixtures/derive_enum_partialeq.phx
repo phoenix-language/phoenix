@@ -1,0 +1,22 @@
+PartialEq :: trait {
+    eq :: (self: &Self, other: &Self) => bool;
+};
+
+#derive(PartialEq)
+Shape :: enum {
+    Nil(),
+    Point(s32, s32),
+};
+
+main :: () => {
+    var a: Shape = Nil();
+    var b: Shape = Nil();
+    var c: Shape = Point(1, 2);
+    var d: Shape = Point(1, 2);
+    const same_nil: bool = a.eq(&b);
+    const same_point: bool = c.eq(&d);
+    const diff: bool = a.eq(&c);
+    const _ = same_nil;
+    const _discard1 = same_point;
+    const _discard2 = diff;
+};

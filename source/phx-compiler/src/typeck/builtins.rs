@@ -83,7 +83,15 @@ fn is_copyable_inner(
             .iter()
             .all(|e| is_copyable_inner(types, layout, std_traits, *e, seen)),
         Ty::Array { elem, .. } => is_copyable_inner(types, layout, std_traits, *elem, seen),
-        Ty::Named { def, .. } => struct_is_copyable(types, layout, std_traits, *def),
+        Ty::Named { def, .. } => {
+            if layout.structs.contains_key(def) {
+                struct_is_copyable(types, layout, std_traits, *def)
+            } else if layout.enums.contains_key(def) {
+                enum_is_copyable(types, layout, std_traits, *def)
+            } else {
+                false
+            }
+        }
     };
     seen.pop();
     ok
@@ -121,6 +129,45 @@ fn struct_is_copyable(
         }
     }
     // Compiler-eligible: all fields Copyable (implicit derived Copyable before explicit impl).
+    true
+}
+
+fn enum_is_copyable(
+    types: &TypeInterner,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+    enum_def: DefId,
+) -> bool {
+    if let Some(drop_trait) = std_traits.drop_trait {
+        if layout_has_trait_impl(layout, enum_def, &[], drop_trait, &[]) {
+            return false;
+        }
+    }
+    let Some(el) = layout.enums.get(&enum_def) else {
+        return false;
+    };
+    for variant in &el.variants {
+        let payloads_copyable = match &variant.kind {
+            crate::typeck::layout::VariantKind::Unit => true,
+            crate::typeck::layout::VariantKind::Tuple(ts) => ts
+                .iter()
+                .all(|fty| is_copyable(types, layout, std_traits, *fty)),
+            crate::typeck::layout::VariantKind::Struct(fs) => fs
+                .iter()
+                .all(|(_, fty)| is_copyable(types, layout, std_traits, *fty)),
+        };
+        if !payloads_copyable {
+            return false;
+        }
+    }
+    if let Some(copyable_trait) = std_traits.copyable_trait {
+        if layout
+            .trait_impls
+            .contains(&TraitInstKey::simple(enum_def, copyable_trait))
+        {
+            return true;
+        }
+    }
     true
 }
 

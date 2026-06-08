@@ -762,9 +762,42 @@ fn deferred_typeck_break_with_value() {
 }
 
 #[test]
-fn deferred_typeck_hash_derive() {
+fn deferred_typeck_hash_derive_on_fn() {
     let bag = typeck_err("#derive(Clone)\nmain :: () => { };");
     assert!(has_unsupported(&bag, "#derive"));
+}
+
+#[test]
+fn typeck_derive_partialeq_ok() {
+    compile_ok(
+        "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
+         #derive(PartialEq) Point :: struct { x: s32, y: s32 }; \
+         main :: () => { const p = Point { x: 1, y: 2 }; const q = Point { x: 1, y: 2 }; \
+         const _: bool = p.eq(&q); };",
+    );
+}
+
+#[test]
+fn typeck_derive_unsupported_trait() {
+    let err = compile_source(
+        "#derive(Clone) Point :: struct { x: s32 }; main :: () => { };",
+        None,
+    )
+    .expect_err("clone derive");
+    let CompileError::Resolve { bag, .. } = err else {
+        panic!("expected resolve error for unsupported derive");
+    };
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                phx_diagnostics::ResolveError::InvalidCfg { message, .. }
+                    if message.contains("unsupported derive trait")
+            )
+        }),
+        "expected unsupported derive: {:?}",
+        bag.errors()
+    );
 }
 
 #[test]

@@ -369,23 +369,25 @@ Suggested baseline (design target, not MVP implementation guarantee):
 
 ---
 
-## Derive direction (future)
+## Derive (V0-056)
 
-Compiler-generated impls are a planned feature:
+`#derive(...)` and `#[derive(...)]` expand to trait impls at compile time (before name resolution). Supported traits: **`Copyable`**, **`PartialEq`**, **`Debug`** on structs and enums. Traits must be in scope via prelude or `#import` (e.g. `std::core::cmp::PartialEq`).
 
 ```phoenix
-#derive(Debug, Clone, Eq, PartialEq)
-Point :: struct
-{
-  x: f32,
-  y: f32,
+#derive(PartialEq, Copyable)
+Point :: struct {
+  x: s32,
+  y: s32,
 }
 ```
 
-Current status:
+| Trait | Rule |
+|---|---|
+| `Copyable` | Empty impl; type must have only Copyable fields and no `Drop` impl |
+| `PartialEq` | Struct: pairwise `==` on fields; enum: variant tag + payload comparison |
+| `Debug` | Placeholder `fmt` returning a 32-byte type-name buffer |
 
-- Reserved as future functionality.
-- Parser support may exist before semantic/codegen support.
+Generic types, `Clone`/`Eq`, and custom derives are out of scope for V0-056.
 
 ---
 

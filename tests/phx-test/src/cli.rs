@@ -62,6 +62,9 @@ pub const SMOKE_FIXTURES: &[&str] = &[
     "fn_pointer.phx",
     "drop.phx",
     "for_in.phx",
+    "derive_partialeq.phx",
+    "derive_enum_partialeq.phx",
+    "attr_bracket_derive.phx",
 ];
 
 /// Negative check fixtures: `(fixture name, stderr substring)`.
@@ -79,6 +82,7 @@ pub const NEG_CHECK_FIXTURES: &[(&str, &str)] = &[
     ("drop_double.phx", "moved"),
     ("drop_use_after.phx", "moved"),
     ("for_in_bad.phx", "IntoIter"),
+    ("derive_bad.phx", "unsupported derive trait"),
 ];
 
 /// Captured output from a `phx` subprocess invocation.

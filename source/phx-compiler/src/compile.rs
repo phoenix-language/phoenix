@@ -18,6 +18,7 @@ use phx_syntax::{Interner, parse};
 
 use crate::cfg::{CompileCfg, strip_cfg};
 use crate::codegen::codegen;
+use crate::derive::expand_derives;
 use crate::lint::lint_program;
 use crate::lower::lower;
 use crate::modules::{
@@ -424,6 +425,17 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
             phx_diagnostics::ResolveError::InvalidCfg {
                 span: err.span,
                 message: err.message,
+            },
+        );
+        return Err(CompileError::Resolve { bag, context: None });
+    }
+    if let Err(err) = expand_derives(&mut source_file.program, &source_file.interner) {
+        let mut bag = DiagnosticBag::new();
+        bag.push(
+            0,
+            phx_diagnostics::ResolveError::InvalidCfg {
+                span: err.span,
+                message: format!("invalid `#derive`: {}", err.message),
             },
         );
         return Err(CompileError::Resolve { bag, context: None });

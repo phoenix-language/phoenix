@@ -38,7 +38,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Scheduler, actors, `@spawn` / mailboxes | **deferred** | Parse-rejected or documented only |
 | Full borrow checker | **deferred** | MVP: use-after-move only |
 | Std I/O, networking, collections | **deferred** | No std I/O in VM |
-| JIT, hot reload, `#derive` codegen | **deferred** | — |
+| JIT, hot reload | **deferred** | — |
 | Primitive `string` (owned) | **done** | Core **`str`** UTF-8 view + `"…"` literals; std **`String`** deferred |
 
 **Rough in-scope pass rate:** ~12 **pass**, ~4 **partial**, 0 **missing** on MVP-required surface (excluding deferred rows).
@@ -154,7 +154,8 @@ A credible MVP demo `.phx` should be able to:
 | Patterns (match arms)                                      | done             | `parser/pat.rs`                                  |                                        | Parse struct/tuple/enum patterns                |
 | `#import` syntax                                           | done             | `parser/mod.rs`                                  | Parsed into `program.imports`          | Parse `#import std::foo::Bar`                   |
 | **Parse-only / reject at parse** (`grammar-deferred.md`)   |                  |                                                  |                                        |                                                 |
-| `#derive(...)`                                             | done (parse N/A) | `parser`                                         | Rejected as unsupported syntax         | `unsupported_hash_derive` test                  |
+| `#derive(...)` on struct/enum                              | done             | `derive/mod.rs`, `typeck/check.rs`               | Expand Copyable/PartialEq/Debug (V0-056) | `derive_partialeq.phx`, `derive_bad.phx`        |
+| `#derive(...)` on fn/trait                                 | done (reject)    | `typeck/check.rs`                                | UnsupportedFeature at typeck             | `deferred_typeck_hash_derive` test                |
 | `@spawn` / `@send` / `@receive` / `@reply`                 | done (reject)    | `parser/expr.rs`                                 |                                        | `unsupported_at_spawn` etc.                     |
 | `for x in y`                                               | done             | `parser/stmt.rs`, `typeck/check.rs`, `lower/stmt.rs` | `IntoIter` + `Iterator` desugaring (V0-055) | `for_in.phx`, `std_iter/` fixtures              |
 | `0..n` / `0..=n`                                           | done (reject)    | `parser/expr.rs`                                 |                                        | Range tests                                     |
@@ -381,7 +382,7 @@ A credible MVP demo `.phx` should be able to:
 | Type-check impl methods               | done    | typeck   | Members as functions                                     |                                     |
 | Static method resolution to impl      | done    | typeck   | Lookup via `inherent_methods` / `trait_methods`          | `trait_eq.phx`                      |
 | Inherent vs trait impl disambiguation | partial | typeck   | Ambiguous trait impls diagnosed; inherent wins first     | Multiple trait impls same method  |
-| `#derive` codegen                     | missing | deferred |                                                          | —                                   |
+| `#derive` codegen (struct/enum)       | done    | V0-056   | Copyable, PartialEq, Debug                               | `derive_partialeq.phx`, `std_derive/` |
 
 
 ---
@@ -498,7 +499,7 @@ Per [mvp.md](design/mvp.md) and [grammar-deferred.md](design/features/grammar-de
 - Std I/O, networking, collections, formatting APIs
 - Primitive owned `string` type (std owns growable `String` over bytes)
 - Full borrow checker / lifetimes / exclusivity of `&mut`
-- JIT, hot reload, `#derive` / `@derive` semantic codegen
+- JIT, hot reload, extended `#derive` traits / generic derive
 - range literals (`0..n`), closures/lambdas (parse rejected today); `for` loops shipped (V0-055)
 - Package manager / build system beyond `phx` CLI
 - Post-MVP: runtime transparency, schedulable I/O ([runtime-transparency.md](design/features/runtime-transparency.md))
@@ -566,7 +567,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **34
 | Borrow checker | Full `&` / `&mut` exclusivity and lifetimes — builds on address-of + `PtrLoad` already in MVP |
 | Strings | Core **`str`** UTF-8 view; binary via `[u8]` / `b"…"`; std provides owned **`String`** |
 
-**Deferred (post memory model + MVP acceptance):** M:N scheduler, actors (`@spawn`), mailboxes, std I/O, networking, `#derive` codegen, JIT.
+**Deferred (post memory model + MVP acceptance):** M:N scheduler, actors (`@spawn`), mailboxes, std I/O, networking, extended `#derive`, JIT.
 
 ---
 

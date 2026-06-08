@@ -132,12 +132,17 @@ impl Parser<'_> {
 
     /// Parses `type`, `const`, `var`, `fn`, or `Name :: struct/enum/trait/impl`.
     fn parse_top_level_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
+        if self.peek_kind() == TokenKind::HashDerive {
+            let derives = self.parse_derive_directives()?;
+            if matches!(self.peek_kind(), TokenKind::TypeIdent(_)) {
+                return self.parse_named_decl_with_derives(derives);
+            }
+            let func = self.parse_function_decl_with_derives(derives, false)?;
+            return Ok(TopLevelDecl::Function(func));
+        }
         if matches!(
             self.peek_kind(),
-            TokenKind::HashInline
-                | TokenKind::HashCold
-                | TokenKind::HashHot
-                | TokenKind::HashDerive
+            TokenKind::HashInline | TokenKind::HashCold | TokenKind::HashHot
         ) || self.peek_keyword(Keyword::Unsafe)
         {
             let func = self.parse_function_decl_body(false)?;
@@ -226,6 +231,14 @@ impl Parser<'_> {
     /// Parses `Name :: struct | enum | trait | impl`.
     fn parse_named_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
         let derives = self.parse_derive_directives()?;
+        self.parse_named_decl_with_derives(derives)
+    }
+
+    /// Parses `Name :: struct | enum | trait | impl` with leading `#derive` already consumed.
+    fn parse_named_decl_with_derives(
+        &mut self,
+        derives: Vec<DeriveDirective>,
+    ) -> Result<TopLevelDecl, ParseError> {
         let name = self.parse_type_name()?;
         self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
         let generics = if self.peek_kind() == TokenKind::Lt {
@@ -450,6 +463,21 @@ impl Parser<'_> {
     fn parse_function_decl_body(&mut self, name_only: bool) -> Result<Function, ParseError> {
         let attrs = self.parse_attribute_list()?;
         let mut derives = self.parse_derive_directives()?;
+        derives.extend(self.derive_attrs_from_bracket(&attrs));
+        self.parse_function_decl_with_derives(derives, name_only)
+    }
+
+    /// Parses a function after `#derive` directives are already consumed.
+    fn parse_function_decl_with_derives(
+        &mut self,
+        mut derives: Vec<DeriveDirective>,
+        name_only: bool,
+    ) -> Result<Function, ParseError> {
+        let attrs = if name_only {
+            Vec::new()
+        } else {
+            self.parse_attribute_list()?
+        };
         derives.extend(self.derive_attrs_from_bracket(&attrs));
         let directives = self.parse_fn_directives();
         let unsafe_ = self.eat_keyword(Keyword::Unsafe);

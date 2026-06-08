@@ -64,9 +64,17 @@ copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 
 **`extern "C"` calls require `unsafe`.** See [ffi.md](ffi.md).
 
-### `#derive(...)` (future)
+### `#derive(...)` (V0-056)
 
-Reserved for compiler-generated trait impls (post-MVP). Also accepted as `#[derive(...)]` (see Item attributes below).
+Compiler-generated trait impls on **structs and enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)). Also accepted as `#[derive(...)]` (see Item attributes below).
+
+| Supported trait | Generated impl |
+|---|---|
+| `Copyable` | Empty marker impl when all fields / variant payloads are Copyable-eligible |
+| `PartialEq` | `eq :: (self: &Self, other: &Self) => bool` — field- or variant-wise `==` |
+| `Debug` | `fmt :: (self: &Self) => [u8; 32]` — placeholder type-name buffer (not full formatting) |
+
+**Rejected:** generic types, unknown traits (`Clone`, `Eq`, …), duplicate derive or existing manual impl, derive on functions/traits/impl methods.
 
 ---
 

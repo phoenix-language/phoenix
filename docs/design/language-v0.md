@@ -544,6 +544,8 @@ Polish and capabilities that make the project legible to new contributors and un
 
 **Refs:** [grammar-deferred.md](features/grammar-deferred.md), [traits.md](features/traits.md)
 
+**Status: Done**
+
 ---
 
 ### V0-057 — Opaque / newtype wrappers

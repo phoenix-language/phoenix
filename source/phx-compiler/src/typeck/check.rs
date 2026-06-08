@@ -977,7 +977,7 @@ impl<'a> TypeChecker<'a> {
             _ => return,
         };
         if !derives.is_empty() {
-            self.push_unsupported("#derive directive", span);
+            let _ = span;
         }
     }
 

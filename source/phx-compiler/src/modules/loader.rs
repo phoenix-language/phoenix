@@ -7,6 +7,7 @@ use phx_diagnostics::{DiagnosticBag, ResolveError};
 use phx_syntax::{Interner, Program, all_imports, parse_with_interner};
 
 use crate::cfg::{CompileCfg, strip_cfg};
+use crate::derive::expand_derives;
 
 use super::SourceText;
 use super::discover::{
@@ -209,6 +210,17 @@ pub fn load_program_with_context(
                 ResolveError::InvalidCfg {
                     span: err.span,
                     message: err.message,
+                },
+            );
+            continue;
+        }
+        if let Err(err) = expand_derives(&mut program, &interner) {
+            let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
+            bag.push(
+                current_module,
+                ResolveError::InvalidCfg {
+                    span: err.span,
+                    message: format!("invalid `#derive`: {}", err.message),
                 },
             );
             continue;

@@ -1337,6 +1337,11 @@ fn deferred_parse_hash_derive_top_level() {
 }
 
 #[test]
+fn parse_hash_derive_before_struct() {
+    assert_ok("#derive(PartialEq)\nPoint :: struct { x: s32 }; main :: () => { };");
+}
+
+#[test]
 fn deferred_parse_hash_derive_on_fn() {
     assert_ok("#derive(Clone)\nf :: () => { }; main :: () => { };");
 }

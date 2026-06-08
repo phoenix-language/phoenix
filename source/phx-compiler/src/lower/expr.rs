@@ -94,6 +94,8 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
                             signed: primitive_load_signed(kind),
                             result: result_ty,
                         });
+                    } else if aggregate_deref_target(&ctx.typed.types, result_ty) {
+                        ctx.emit(IrInst::LoadAggViaLocalPtr);
                     }
                 }
                 UnaryOp::Ref | UnaryOp::RefMut => {
@@ -1583,6 +1585,13 @@ pub(crate) fn bind_match_pattern(
         Pattern::Wildcard | Pattern::Literal(_) => {}
         _ => {}
     }
+}
+
+fn aggregate_deref_target(types: &crate::typeck::TypeInterner, ty: TypeId) -> bool {
+    matches!(
+        types.get(ty),
+        Ty::Named { .. } | Ty::Tuple(_) | Ty::Array { .. }
+    )
 }
 
 fn field_result_ty(ctx: &LowerCtx<'_>, struct_def: DefId, field: Symbol) -> TypeId {

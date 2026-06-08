@@ -10,7 +10,8 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 
 | Feature | Grammar | MVP compiler behavior | Deferred work |
 |---------|---------|----------------------|---------------|
-| `#derive(...)` | On functions, structs, enums, traits | Parse; no codegen | Emit trait impls from derive list |
+| `#derive(...)` on fn/trait | On functions, traits | Parse; reject at typeck | — |
+| `#derive(...)` on struct/enum | On structs, enums | **Implemented** — expand to trait impls ([V0-056](../language-v0.md#v0-056--derive-minimal)) | More traits, generic derive |
 | `@spawn` / `@send` / `@receive` / `@reply` | Expression-level | Parse; reject or warn at typeck | Post-MVP actor runtime |
 | `for x in y` | Statement | **Implemented** — `IntoIter` + `Iterator` desugaring ([V0-055](../language-v0.md#v0-055--iterator-protocol-and-for-lowering)) | — |
 | `0..n` / `0..=n` | Expression (`range_expr`) | Parse; reject at typeck | Std range literal syntax; use `Range { start, end }` until then |

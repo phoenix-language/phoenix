@@ -27,6 +27,7 @@ mod build;
 mod cfg;
 mod codegen;
 mod compile;
+mod derive;
 pub mod facade;
 mod ir;
 mod link;
@@ -51,6 +52,7 @@ pub use compile::{
     compile_source, compile_source_with_module_root, compile_to_module,
     compile_to_module_with_module_path, format_lints, lint_checked,
 };
+pub use derive::{DeriveError, expand_derives};
 pub use facade::{CheckOutput, CompileOutput};
 pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use link::{LinkError, LinkInput, link_modules};

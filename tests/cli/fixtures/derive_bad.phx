@@ -1,0 +1,10 @@
+Point :: struct {
+    x: s32,
+};
+
+#derive(Clone)
+Point :: struct {
+    x: s32,
+};
+
+main :: () => { };

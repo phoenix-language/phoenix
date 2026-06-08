@@ -64,6 +64,8 @@ With **`prelude = true`** (default when std is bundled), the items above except 
 
 Generic enum constructors need explicit type arguments today, e.g. `Some :: <s32> (n)`.
 
+`#derive(Copyable, PartialEq, Debug)` on structs and enums expands at compile time (V0-056). Traits must be in scope via prelude or `#import` above.
+
 See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer; [`std_traits/`](../tests/cli/fixtures/std_traits/) and [`std_prelude/`](../tests/cli/fixtures/std_prelude/) for trait bounds and prelude smoke tests; [`std_errors/`](../tests/cli/fixtures/std_errors/) for `Result` + `?` with concrete types implementing `Error` (V0-060); [`std_try_from/`](../tests/cli/fixtures/std_try_from/) for layered `From` conversion.
 
 ## Module layout (`std::core`)
