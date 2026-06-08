@@ -109,6 +109,7 @@ MVP includes the bytecode interpreter/runtime contract only; scheduler, std I/O,
 | [features/type-system.md](features/type-system.md)                 | Core vs std, deterministic MVP typing rules                  |
 | [features/traits.md](features/traits.md)                           | Trait model and baseline roadmap                             |
 | [features/vm-linear.md](features/vm-linear.md)                     | VM invariants and bytecode format contract                   |
+| [features/debug.md](features/debug.md)                           | Layered debug metadata, dev/release builds, DAP roadmap      |
 | [features/compiler-directives.md](features/compiler-directives.md) | Compile-time vs runtime directive taxonomy                   |
 | [features/runtime-transparency.md](features/runtime-transparency.md) | Runtime transparency principle and call-site taxonomy |
 | [features/concurrency.md](features/concurrency.md)                 | Scheduler, schedulable I/O, explicit actors |
