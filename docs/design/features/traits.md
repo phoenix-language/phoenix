@@ -231,6 +231,35 @@ Use `T: Clone` when explicit duplication is required. Use `T: Copyable` for impl
 
 ---
 
+## Drop (resource cleanup)
+
+**Drop** is a **standard library** trait for custom cleanup when an owned value leaves scope. The compiler inserts **drop glue** at scope exit for locals whose type implements `Drop` (static dispatch to the type's `drop` method — no dedicated bytecode opcode).
+
+```
+Drop :: trait
+{
+  drop :: (self) => ();
+}
+```
+
+| Rule | Behavior |
+|---|---|
+| Scope exit | Owned locals with a `Drop` impl are dropped in **reverse definition order** at block end, before `return`, and before `break` that exits enclosing scopes |
+| Moved locals | Bindings already **moved** are not dropped again |
+| Manual call | `x.drop()` is an ordinary trait method call; `self` is consumed — subsequent use of `x` is **use-after-move** |
+| vs Copyable | Types with a `Drop` impl are **not Copyable**; explicit `Copyable` + `Drop` on the same type is a compile error |
+| Dispatch | Static `Call` to the resolved `Drop::drop` impl at each drop site |
+
+### Heap allocation (V0-030)
+
+Heap blocks obtained via the VM `ALLOC` intrinsic (future `core::alloc::alloc_bytes`) are owned by wrapper types. Wrappers **must** implement `Drop` to release resources. Canonical deallocation (`core::alloc::dealloc_bytes` / `FREE` opcode) is deferred — until it ships, std authors document ownership and avoid leaking in tests that allocate.
+
+### Flow-insensitive limitation (MVP)
+
+Move tracking is flow-insensitive within a function: if a binding is moved on one branch, it is treated as moved at scope exit on all paths (drop may be skipped on a path where the move did not occur). Full CFG liveness for drop glue is post-V0-054.
+
+---
+
 ## Phased: Copyable (language → std)
 
 **Target architecture (aligned with [Option / Result](type-system.md#phased-option-and-result-language--std)):**

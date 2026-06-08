@@ -305,6 +305,13 @@ pub enum TypeCheckError {
         /// Call site span.
         span: Span,
     },
+    /// Type implements both `Drop` and `Copyable`, which conflict.
+    CopyableDropConflict {
+        /// Type name for diagnostics.
+        type_name: String,
+        /// Impl block span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -344,6 +351,7 @@ impl TypeCheckError {
             Self::InvalidTryOperand { .. } => DiagnosticCode::new("E2029"),
             Self::TryErrorFromMissing { .. } => DiagnosticCode::new("E2031"),
             Self::ExternCallRequiresUnsafe { .. } => DiagnosticCode::new("E2032"),
+            Self::CopyableDropConflict { .. } => DiagnosticCode::new("E2033"),
         }
     }
 
@@ -382,7 +390,8 @@ impl TypeCheckError {
             | Self::TryOutsideFunction { span }
             | Self::InvalidTryOperand { span, .. }
             | Self::TryErrorFromMissing { span, .. }
-            | Self::ExternCallRequiresUnsafe { span, .. } => Some(*span),
+            | Self::ExternCallRequiresUnsafe { span, .. }
+            | Self::CopyableDropConflict { span, .. } => Some(*span),
         }
     }
 }
@@ -522,6 +531,10 @@ impl fmt::Display for TypeCheckError {
             Self::ExternCallRequiresUnsafe { name, .. } => {
                 write!(f, "call to foreign function `{name}` requires `unsafe`")
             }
+            Self::CopyableDropConflict { type_name, .. } => write!(
+                f,
+                "type `{type_name}` cannot implement both `Drop` and `Copyable`"
+            ),
         }
     }
 }

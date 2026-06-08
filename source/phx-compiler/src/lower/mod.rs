@@ -20,6 +20,7 @@
 //! - [`stmt`] — statements, bindings, control flow
 
 mod ctx;
+mod drop_glue;
 mod expr;
 mod func;
 mod stmt;

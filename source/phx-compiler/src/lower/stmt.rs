@@ -6,6 +6,7 @@ use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 
 use crate::ir::IrInst;
 use crate::lower::ctx::{LoopLabels, LowerCtx, prim_kind_byte, unit_ty};
+use crate::lower::drop_glue::{emit_scope_drops, loop_body_scope_depth};
 use crate::lower::expr::{
     bind_match_pattern, block_ends_with_unconditional_jump, emit_arm_condition, lower_assign_expr,
     lower_expr,
@@ -14,6 +15,7 @@ use crate::typeck::TypeId;
 
 /// Lowers `block` for its trailing value (expression body or last item).
 pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
+    ctx.enter_scope();
     for item in &block.items {
         match item {
             BlockItem::Stmt(stmt) => lower_block_stmt(ctx, stmt),
@@ -22,6 +24,7 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
             _ => {}
         }
     }
+    ctx.exit_scope();
 }
 
 fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
@@ -113,6 +116,8 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
     let header = ctx.fresh_block();
     let body_id = ctx.fresh_block();
     let exit_slot = ctx.alloc_loop_exit_slot();
+    let loop_scope = ctx.scope_depth;
+    ctx.loop_body_scope_depths.push(loop_scope);
 
     ctx.emit(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
@@ -134,6 +139,7 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
     }
 
     ctx.pop_loop();
+    ctx.loop_body_scope_depths.pop();
     let exit = ctx.fresh_block();
     ctx.pending_loop_exits[exit_slot] = Some(exit);
     ctx.set_current(exit);
@@ -143,6 +149,8 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
 fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
     let header = ctx.fresh_block();
     let exit_slot = ctx.alloc_loop_exit_slot();
+    let loop_scope = ctx.scope_depth;
+    ctx.loop_body_scope_depths.push(loop_scope);
 
     ctx.emit(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
@@ -157,6 +165,7 @@ fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
     }
 
     ctx.pop_loop();
+    ctx.loop_body_scope_depths.pop();
     let exit = ctx.fresh_block();
     ctx.pending_loop_exits[exit_slot] = Some(exit);
     ctx.set_current(exit);
@@ -166,6 +175,7 @@ fn lower_break(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>)
     if let Some(e) = expr {
         lower_expr(ctx, e);
     }
+    emit_scope_drops(ctx, ctx.scope_depth, loop_body_scope_depth(ctx));
     if let Some(labels) = ctx.innermost_loop() {
         ctx.emit(IrInst::Jump {
             target: LowerCtx::loop_exit_target(labels.exit_slot),
@@ -182,6 +192,7 @@ fn lower_continue(ctx: &mut LowerCtx<'_>) {
 }
 
 fn lower_return(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>) {
+    emit_scope_drops(ctx, ctx.scope_depth, 0);
     if let Some(e) = expr {
         lower_expr(ctx, e);
         ctx.emit(IrInst::Return {
@@ -199,6 +210,7 @@ pub fn lower_function_return(ctx: &mut LowerCtx<'_>, _body: &Block, return_type:
     if block_ends_with_return(ctx, ctx.current) {
         return;
     }
+    emit_scope_drops(ctx, 0, 0);
     ctx.emit(IrInst::Return { ty: return_type });
 }
 

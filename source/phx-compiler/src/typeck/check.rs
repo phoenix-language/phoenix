@@ -20,10 +20,12 @@ use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::IndirectCallMeta;
 use super::PrimitiveMethodSite;
-use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
+use super::bindings::{BindingKind, DropEvent, FunctionLayout, FunctionLayoutBuilder};
 use super::bounds::{resolve_from_fn_for_error, trait_bound_head};
 use super::builtins::{
-    bool_type, float_literal_type, int_literal_type, is_copyable, str_type, u8_type, unit,
+    bool_type, float_literal_type, implements_drop, implements_drop_for_def, int_literal_type,
+    is_copyable, is_copyable_trait_def, is_drop_trait_def, resolve_drop_fn, str_type, u8_type,
+    unit,
 };
 use super::display::{format_type, format_type_diagnostic};
 use super::infer::InferenceCtx;
@@ -37,7 +39,7 @@ use super::mono::{
 };
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
-use super::primitive::is_int_keyword;
+use super::primitive::{is_int_keyword, primitive_kind_for_type};
 use super::std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
 use super::std_trait_kernel::StdTraitKernel;
 use super::subst::Substitution;
@@ -46,6 +48,7 @@ use super::types::{ExprId, Ty, TypeId, TypeInterner};
 use super::unify::AliasEnv;
 use super::unify::unify_branch;
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
+use phx_bytecode::{SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 use phx_syntax::token::Keyword;
 
 /// Collected struct field types.
@@ -77,6 +80,8 @@ pub struct TypeChecker<'a> {
     ctor_expected: Option<TypeId>,
     /// Nesting depth of `while` / `loop` bodies being checked.
     loop_depth: u32,
+    /// Layout scope depth at each active loop body entry (before `check_block` `enter_scope`).
+    loop_body_scope_depths: Vec<u32>,
     /// Struct/enum layouts for lowering and codegen.
     program_layout: ProgramLayout,
     next_type_id: u32,
@@ -163,6 +168,7 @@ impl<'a> TypeChecker<'a> {
             layout: None,
             ctor_expected: None,
             loop_depth: 0,
+            loop_body_scope_depths: Vec::new(),
             program_layout: ProgramLayout::default(),
             next_type_id: 1,
             impl_self_type: None,
@@ -185,6 +191,15 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn is_copyable_ty(&self, ty: TypeId) -> bool {
+        if implements_drop(
+            &self.types,
+            &self.program_layout,
+            self.resolved,
+            &self.std_trait_kernel,
+            ty,
+        ) {
+            return false;
+        }
         is_copyable(
             &self.types,
             &self.program_layout,
@@ -373,8 +388,182 @@ impl<'a> TypeChecker<'a> {
 
     fn with_loop_body<F: FnOnce(&mut Self)>(&mut self, f: F) {
         self.loop_depth = self.loop_depth.saturating_add(1);
+        let body_scope = self.layout_scope_depth();
+        self.loop_body_scope_depths.push(body_scope);
         f(self);
+        self.loop_body_scope_depths.pop();
         self.loop_depth = self.loop_depth.saturating_sub(1);
+    }
+
+    fn layout_scope_depth(&self) -> u32 {
+        self.layout
+            .as_ref()
+            .map_or(0, FunctionLayoutBuilder::scope_depth)
+    }
+
+    fn plan_drops_for_scope_depths(&mut self, from_depth: u32, to_depth: u32) {
+        if from_depth < to_depth {
+            return;
+        }
+        for depth in (to_depth..=from_depth).rev() {
+            self.plan_drops_at_scope_depth(depth);
+        }
+    }
+
+    fn plan_drops_at_scope_depth(&mut self, depth: u32) {
+        let candidates: Vec<_> = self
+            .layout
+            .as_ref()
+            .map(|layout| {
+                let mut bindings: Vec<_> = layout
+                    .bindings_at_depth(depth)
+                    .into_iter()
+                    .filter(|b| b.kind != BindingKind::MatchTemp)
+                    .collect();
+                bindings.sort_by_key(|b| b.slot.index());
+                bindings
+            })
+            .unwrap_or_default();
+        let mut planned = Vec::new();
+        for binding in candidates.into_iter().rev() {
+            if self.ownership.moved_at(binding.symbol).is_some() {
+                continue;
+            }
+            if binding.kind == BindingKind::Param {
+                if let Some(fn_def) = self.layout.as_ref().map(FunctionLayoutBuilder::def) {
+                    if self.fn_is_drop_method(fn_def) {
+                        continue;
+                    }
+                }
+            }
+            if !implements_drop(
+                &self.types,
+                &self.program_layout,
+                self.resolved,
+                &self.std_trait_kernel,
+                binding.ty,
+            ) {
+                continue;
+            }
+            let Ty::Named { def, args } = self.types.get(binding.ty).clone() else {
+                continue;
+            };
+            let Some(drop_fn) = resolve_drop_fn(
+                &self.program_layout,
+                self.resolved,
+                &self.std_trait_kernel,
+                def,
+                &args,
+            ) else {
+                continue;
+            };
+            let prim_kind = drop_prim_kind_byte(&self.types, binding.ty);
+            planned.push(DropEvent {
+                scope_depth: depth,
+                slot: binding.slot,
+                ty: binding.ty,
+                drop_fn,
+                prim_kind,
+            });
+        }
+        if let Some(layout) = &mut self.layout {
+            for event in planned {
+                layout.plan_drop(event);
+            }
+        }
+    }
+
+    fn mark_method_receiver_moved(
+        &mut self,
+        receiver_expr: &ExprNode,
+        receiver_ty: TypeId,
+        fn_def: DefId,
+    ) {
+        let Expr::Ident(ident) = &receiver_expr.inner else {
+            return;
+        };
+        if !self.method_consumes_receiver(fn_def, receiver_ty) {
+            return;
+        }
+        if !self.is_copyable_ty(receiver_ty) {
+            self.ownership
+                .move_binding(ident.symbol, receiver_expr.span);
+        }
+    }
+
+    fn method_consumes_receiver(&self, fn_def: DefId, receiver_ty: TypeId) -> bool {
+        let Some(f) = self.find_function_decl(fn_def) else {
+            return false;
+        };
+        for param in &f.params {
+            let Param::Receiver { ty, .. } = param else {
+                continue;
+            };
+            return match ty {
+                None => true,
+                Some(t) => !matches!(
+                    t.inner,
+                    phx_syntax::ast::types::Type::Ref { .. }
+                        | phx_syntax::ast::types::Type::Ptr { .. }
+                ),
+            };
+        }
+        let Some(&fn_ty) = self.value_types.get(&fn_def) else {
+            return false;
+        };
+        let Ty::Fn { params, .. } = self.types.get(fn_ty).clone() else {
+            return false;
+        };
+        let Some(first) = params.first() else {
+            return false;
+        };
+        if matches!(self.types.get(*first), Ty::Ref { .. } | Ty::Ptr { .. }) {
+            return false;
+        }
+        self.method_receiver_matches(*first, receiver_ty)
+    }
+
+    fn fn_is_drop_method(&self, fn_def: DefId) -> bool {
+        self.program_layout
+            .trait_methods
+            .iter()
+            .any(|((key, method), &def)| {
+                def == fn_def
+                    && is_drop_trait_def(self.resolved, key.trait_def)
+                    && self.resolved.interner.resolve(*method) == "drop"
+            })
+    }
+
+    fn check_copyable_drop_conflict(&mut self, type_def: DefId, trait_def: DefId, span: Span) {
+        let conflicts = if is_copyable_trait_def(self.resolved, trait_def) {
+            implements_drop_for_def(
+                &self.program_layout,
+                self.resolved,
+                &self.std_trait_kernel,
+                type_def,
+                &[],
+            )
+        } else if is_drop_trait_def(self.resolved, trait_def) {
+            self.program_layout.trait_impls.iter().any(|key| {
+                key.implementer == type_def && is_copyable_trait_def(self.resolved, key.trait_def)
+            }) || self.program_layout.trait_methods.keys().any(|(key, _)| {
+                key.implementer == type_def && is_copyable_trait_def(self.resolved, key.trait_def)
+            })
+        } else {
+            false
+        };
+        if conflicts {
+            let type_name = self
+                .resolved
+                .defs
+                .get(type_def.index() as usize)
+                .map(|d| self.resolved.interner.resolve(d.name).to_owned())
+                .unwrap_or_else(|| "type".to_owned());
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::CopyableDropConflict { type_name, span },
+            );
+        }
     }
 
     fn with_unsafe<F: FnOnce(&mut Self)>(&mut self, f: F) {
@@ -453,6 +642,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn exit_scope(&mut self) {
+        let exiting = self.layout_scope_depth();
+        self.plan_drops_at_scope_depth(exiting);
         self.ownership.exit_scope();
         if let Some(layout) = &mut self.layout {
             layout.exit_scope();
@@ -919,6 +1110,15 @@ impl<'a> TypeChecker<'a> {
                         if let Some(inst_key) =
                             self.build_trait_inst_key(type_def, vec![], &trait_ty.inner, &td)
                         {
+                            if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
+                                if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
+                                    self.check_copyable_drop_conflict(
+                                        type_def,
+                                        trait_def,
+                                        trait_ty.span,
+                                    );
+                                }
+                            }
                             self.program_layout.trait_impls.insert(inst_key);
                         }
                     }
@@ -1282,6 +1482,7 @@ impl<'a> TypeChecker<'a> {
             check_body(self);
         }
         if emit_layout {
+            self.plan_drops_at_scope_depth(0);
             if let Some(mut builder) = self.layout.take() {
                 builder.set_expr_range(expr_start, self.next_expr);
                 self.functions.push(builder.finish());
@@ -1330,6 +1531,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_return(&mut self, expr: Option<&ExprNode>) -> TypeId {
+        let current = self.layout_scope_depth();
+        self.plan_drops_for_scope_depths(current, 0);
         if let Some(e) = expr {
             let saved_ctor = self.ctor_expected;
             self.ctor_expected = self.fn_ret;
@@ -1354,6 +1557,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Const { name, ty, init } => {
@@ -1417,6 +1621,14 @@ impl<'a> TypeChecker<'a> {
                     self.error_loop_control_outside_loop("break", *span);
                 } else if value.is_some() {
                     self.push_unsupported("break with value", *span);
+                } else {
+                    let current = self.layout_scope_depth();
+                    let loop_body = self
+                        .loop_body_scope_depths
+                        .last()
+                        .copied()
+                        .map_or(0, |d| d.saturating_add(1));
+                    self.plan_drops_for_scope_depths(current, loop_body);
                 }
             }
             Stmt::Continue { span } if self.loop_depth == 0 => {
@@ -1952,7 +2164,11 @@ impl<'a> TypeChecker<'a> {
         expr_id: ExprId,
     ) -> TypeId {
         let field_only = ops.iter().all(|op| matches!(op, PostfixOp::Field(_)));
-        let mut ty = if field_only {
+        let read_receiver = field_only
+            || ops
+                .first()
+                .is_some_and(|op| matches!(op, PostfixOp::Method { .. }));
+        let mut ty = if read_receiver {
             self.check_expr_node_read(base)
         } else if record_move {
             self.check_expr_node(base)
@@ -1968,6 +2184,7 @@ impl<'a> TypeChecker<'a> {
                     args,
                     ..
                 } => self.check_method_call_with_generics(
+                    Some(base),
                     ty,
                     name,
                     generics.as_deref(),
@@ -2921,9 +3138,10 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     fn check_method_call_with_generics(
         &mut self,
+        receiver_expr: Option<&ExprNode>,
         receiver: TypeId,
         name: &Ident,
         generics: Option<&[Node<Type>]>,
@@ -3048,7 +3266,11 @@ impl<'a> TypeChecker<'a> {
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
             self.record_mono_inst(fn_def, mono_args, name.id);
-            return Substitution::apply(&mut self.types, ret, &subst);
+            let out = Substitution::apply(&mut self.types, ret, &subst);
+            if let Some(expr) = receiver_expr {
+                self.mark_method_receiver_moved(expr, receiver, fn_def);
+            }
+            return out;
         }
         if generics.is_some() {
             self.bag.push(
@@ -3074,6 +3296,9 @@ impl<'a> TypeChecker<'a> {
             if !self.types_equal(got, *p) {
                 self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
             }
+        }
+        if let Some(expr) = receiver_expr {
+            self.mark_method_receiver_moved(expr, receiver, fn_def);
         }
         ret
     }
@@ -3977,6 +4202,14 @@ impl<'a> TypeChecker<'a> {
                 },
             );
         }
+    }
+}
+
+fn drop_prim_kind_byte(types: &TypeInterner, ty: TypeId) -> u8 {
+    if matches!(types.get(ty), Ty::Fn { .. }) {
+        SLOT_KIND_FN_PTR
+    } else {
+        primitive_kind_for_type(types, ty).map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8)
     }
 }
 

@@ -8,6 +8,7 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 const STD_COPYABLE_MODULE: &str = "std::core::copyable";
 const STD_CLONE_MODULE: &str = "std::core::clone";
+const STD_DROP_MODULE: &str = "std::core::drop";
 const STD_CMP_MODULE: &str = "std::core::cmp";
 const STD_FMT_MODULE: &str = "std::core::fmt";
 
@@ -19,6 +20,8 @@ pub struct StdTraitKernel {
     pub copyable_trait: Option<DefId>,
     /// `std::core::clone::Clone`.
     pub clone_trait: Option<DefId>,
+    /// `std::core::drop::Drop`.
+    pub drop_trait: Option<DefId>,
     /// `std::core::cmp::PartialEq`.
     pub partial_eq_trait: Option<DefId>,
     /// `std::core::cmp::Eq`.
@@ -35,6 +38,7 @@ impl StdTraitKernel {
         Self {
             copyable_trait: find_trait(resolved, interner, STD_COPYABLE_MODULE, "Copyable"),
             clone_trait: find_trait(resolved, interner, STD_CLONE_MODULE, "Clone"),
+            drop_trait: find_trait(resolved, interner, STD_DROP_MODULE, "Drop"),
             partial_eq_trait: find_trait(resolved, interner, STD_CMP_MODULE, "PartialEq"),
             eq_trait: find_trait(resolved, interner, STD_CMP_MODULE, "Eq"),
             debug_trait: find_trait(resolved, interner, STD_FMT_MODULE, "Debug"),
@@ -47,6 +51,7 @@ impl StdTraitKernel {
         match name {
             "Copyable" => self.copyable_trait,
             "Clone" => self.clone_trait,
+            "Drop" => self.drop_trait,
             "PartialEq" => self.partial_eq_trait,
             "Eq" => self.eq_trait,
             "Debug" => self.debug_trait,
@@ -58,6 +63,12 @@ impl StdTraitKernel {
     #[must_use]
     pub fn is_copyable_trait(&self, trait_def: DefId) -> bool {
         self.copyable_trait == Some(trait_def)
+    }
+
+    /// Returns `true` when `trait_def` is the std `Drop` trait.
+    #[must_use]
+    pub fn is_drop_trait(&self, trait_def: DefId) -> bool {
+        self.drop_trait == Some(trait_def)
     }
 
     /// Returns whether a primitive satisfies a std trait bound.

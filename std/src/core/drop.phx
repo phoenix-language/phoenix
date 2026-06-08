@@ -1,0 +1,3 @@
+pub Drop :: trait {
+    drop :: (self) => ();
+};

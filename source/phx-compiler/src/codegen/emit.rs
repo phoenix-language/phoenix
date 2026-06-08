@@ -66,6 +66,7 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::PtrLoad { .. } => with_operands(2),
         IrInst::MakeEnum { .. } => with_operands(3),
         IrInst::Return { .. } | IrInst::Index { .. } => 2,
+        IrInst::DropLocal { .. } => with_operands(2).saturating_add(with_operands(1)),
     }
 }
 
@@ -106,6 +107,12 @@ fn apply_ir_stack_effect(
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
             let arity = *fn_arity.get(&fn_id).unwrap_or(&0);
+            let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
+        }
+        IrInst::DropLocal { drop_fn, .. } => {
+            let _ = apply_stack_effect(Opcode::LoadLocal, stack, None, none);
+            let fn_id = def_to_fn.get(drop_fn).copied().unwrap_or(0);
+            let arity = *fn_arity.get(&fn_id).unwrap_or(&1);
             let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
         }
         IrInst::MakeFnPtr { .. } => {
@@ -452,6 +459,19 @@ fn emit_inst(
         }
         IrInst::TrapGivenMismatch => {
             out.extend(encode(Opcode::Trap, &[0]));
+        }
+        IrInst::DropLocal {
+            slot,
+            prim_kind,
+            drop_fn,
+            ..
+        } => {
+            out.extend(encode(
+                Opcode::LoadLocal,
+                &[slot.index(), u32::from(*prim_kind)],
+            ));
+            let fn_id = def_to_fn.get(drop_fn).copied().unwrap_or(0);
+            out.extend(encode(Opcode::Call, &[fn_id]));
         }
     }
 }

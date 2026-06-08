@@ -129,6 +129,12 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "`{feature}` is not implemented in the MVP compiler yet"
             ));
         }
+        TypeCheckError::CopyableDropConflict { .. } => {
+            out.helps.push(
+                "remove the `Copyable` impl or the `Drop` impl — types with custom cleanup cannot be bitwise-copied"
+                    .to_owned(),
+            );
+        }
         TypeCheckError::UseAfterMove {
             name, move_span, ..
         } => {

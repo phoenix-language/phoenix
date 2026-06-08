@@ -4,6 +4,8 @@ use phx_syntax::Symbol;
 
 use crate::ir::{IrBasicBlock, IrConst, IrInst};
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
+use std::collections::HashSet;
+
 use crate::typeck::{
     ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, is_generic_fn_template,
     primitive_kind_for_type,
@@ -48,6 +50,12 @@ pub struct LowerCtx<'a> {
     pub constants: &'a mut Vec<IrConst>,
     /// Lowering errors for this function (merged into module bag on failure).
     pub bag: &'a mut LowerBag,
+    /// Block nesting depth while lowering (mirrors typeck scope depth).
+    pub scope_depth: u32,
+    /// Layout scope depth at each active loop body entry (before block `enter_scope`).
+    pub loop_body_scope_depths: Vec<u32>,
+    /// Drop slots already emitted (avoids duplicate glue on branch merge).
+    pub emitted_drop_slots: HashSet<LocalSlot>,
 }
 
 impl<'a> LowerCtx<'a> {
@@ -72,7 +80,21 @@ impl<'a> LowerCtx<'a> {
             pending_loop_exits: Vec::new(),
             constants,
             bag,
+            scope_depth: 0,
+            loop_body_scope_depths: Vec::new(),
+            emitted_drop_slots: HashSet::new(),
         }
+    }
+
+    /// Enters a nested block scope for drop-glue tracking.
+    pub fn enter_scope(&mut self) {
+        self.scope_depth = self.scope_depth.saturating_add(1);
+    }
+
+    /// Leaves a nested block scope, emitting drop glue for bindings at this depth.
+    pub fn exit_scope(&mut self) {
+        crate::lower::drop_glue::emit_scope_drops(self, self.scope_depth, self.scope_depth);
+        self.scope_depth = self.scope_depth.saturating_sub(1);
     }
 
     /// Records an unresolved call at `span` and skips emitting `IrInst::Call`.

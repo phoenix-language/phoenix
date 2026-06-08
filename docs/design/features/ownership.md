@@ -89,6 +89,28 @@ Generic bounds: prefer **`T: Copyable`** when the algorithm only needs cheap dup
 
 ---
 
+## Drop (scope-end cleanup)
+
+Types that own resources (heap buffers, handles, callbacks) implement **`Drop`** in std. The compiler calls `drop` automatically when an owned binding leaves scope.
+
+```
+Drop :: trait
+{
+  drop :: (self) => ();
+}
+```
+
+| Rule | Behavior |
+|---|---|
+| Automatic drop | At block end, before `return`, and before `break` — for locals still **valid** (not moved) whose type implements `Drop` |
+| Manual `.drop()` | Consumes `self` like any by-value method; later use of the binding is **use-after-move** (same diagnostic as a move) |
+| Copyable | A type with a `Drop` impl cannot be Copyable — custom cleanup and bitwise copy conflict |
+| Heap wrappers | Types wrapping `ALLOC` heap blocks must implement `Drop`; see [traits.md — Drop](traits.md#drop-resource-cleanup) and V0-030 |
+
+**MVP limitation:** move/drop planning is flow-insensitive (same as use-after-move on conditional branches). If a binding is moved on one branch, drop glue is skipped at scope exit even on paths where the move did not run.
+
+---
+
 ## Phased: Copyable (language → std)
 
 **Target architecture (same path as [Option / Result](type-system.md#phased-option-and-result-language--std)):**

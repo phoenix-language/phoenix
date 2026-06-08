@@ -66,7 +66,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 |-------|--------|
 | `#import` via in-process `compile_source` | Single-buffer API has **no** module root → `ImportNotSupported`. Use `check_file` / `check_file_with_module_path`, `compile_to_module*`, or `build_project`. |
 | `#import` via CLI on one file | `phx check` / `phx run <file>` use **parent directory** as module root (same as `check_file`). Multi-file trees need `--module-src` or `phoenix.toml` (M2). |
-| Explicit drop / scopes | No `Drop` opcodes or scope-end deallocation; memory model TBD |
+| Explicit drop / scopes | V0-054: compiler drop glue via static `Call` to `Drop::drop`; no dedicated drop opcode |
 | Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
 | Generics | V0-020/V0-021: generic decls, local inference, monomorphization (`id$s32`-style mangling); V0-022/V0-023: generic enum match, trait associated types; V0-024: cross-crate `.pxi` mangled fn exports |
 | Parser ergonomics | Bounded fixes (e.g. unclosed `(`); broader grammar ambiguities may remain |
@@ -81,7 +81,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
 | Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (internal) |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
-| Lifetime / drop | **Not implemented** — values live until frame/arena teardown; see [Roadmap](#roadmap-beyond-single-file-mvp) |
+| Lifetime / drop | V0-054: scope-end drop glue for `Drop` types; flow-insensitive; see [traits.md](design/features/traits.md#drop-resource-cleanup) |
 | Text | Core **`str`** view (`"…"` literals, rodata); **`[u8; N]`** / `b"…"` for binary; std **`String`** (owned) post-std |
 
 ---
@@ -266,7 +266,7 @@ A credible MVP demo `.phx` should be able to:
 | Opcode interpreter          | done    | `interpreter.rs`             | 43 opcodes; `prim_kind` on scalar ops | Unsupported opcode → clean error          |
 | Deterministic run           | done    | `interpreter.rs`             | No I/O                                | Same bytecode → same result               |
 | Division by zero            | done    | `interpreter.rs`             | `VmError::DivisionByZero`             | Test / fixture                            |
-| Scope-end drop / RAII       | missing | —                            | Post-import memory model (see roadmap) | Explicit deallocation at scope end        |
+| Scope-end drop / RAII       | done    | typeck → lower → codegen     | Static `Call` to `Drop::drop`; no drop opcode | `drop.phx` fixture; use-after-drop rejected |
 
 
 ---

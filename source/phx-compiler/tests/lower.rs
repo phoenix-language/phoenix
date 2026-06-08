@@ -321,3 +321,26 @@ fn lower_fn_pointer_emits_make_fn_ptr_and_call_indirect() {
     assert!(has_make, "expected MakeFnPtr when passing function by name");
     assert!(has_indirect, "expected CallIndirect for f(x)");
 }
+
+#[test]
+fn lower_drop_emits_drop_local_before_return() {
+    let source = r"
+Drop :: trait { drop :: (self) => (); };
+Wrapper :: struct {};
+Wrapper :: impl :: Drop { drop :: (self) => () {}; };
+main :: () => { { const w = Wrapper {}; } };
+";
+    let unit = compile_source(source, None).expect("compile");
+    let ir = lower(&unit.typed).expect("lower");
+    let main = ir
+        .functions
+        .iter()
+        .find(|f| Some(f.def) == ir.entry)
+        .expect("main");
+    let has_drop = main.blocks.iter().any(|b| {
+        b.insts
+            .iter()
+            .any(|i| matches!(i, IrInst::DropLocal { .. }))
+    });
+    assert!(has_drop, "expected DropLocal in main for scope-exit glue");
+}

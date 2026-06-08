@@ -5,6 +5,21 @@ use phx_syntax::Symbol;
 use super::types::TypeId;
 use crate::resolver::DefId;
 
+/// One compiler-planned `Drop::drop` call at a scope exit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DropEvent {
+    /// Block depth of the binding being dropped.
+    pub scope_depth: u32,
+    /// Local slot holding the owned value.
+    pub slot: LocalSlot,
+    /// Type of the local.
+    pub ty: TypeId,
+    /// Resolved `Drop::drop` function definition.
+    pub drop_fn: DefId,
+    /// Wire [`phx_bytecode::PrimitiveKind`] when the local is scalar.
+    pub prim_kind: u8,
+}
+
 /// Dense local slot index within a function (parameters + locals).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalSlot(u32);
@@ -69,6 +84,8 @@ pub struct FunctionLayout {
     pub expr_start: u32,
     /// One past the last expression id for this function (`expr_start` of the next function).
     pub expr_end: u32,
+    /// Planned scope-exit drop calls (lowering emits in reverse slot order per depth).
+    pub drop_events: Vec<DropEvent>,
 }
 
 impl FunctionLayout {
@@ -97,6 +114,8 @@ pub struct FunctionLayoutBuilder {
     expr_start: u32,
     expr_end: u32,
     scope_depth: u32,
+    drop_events: Vec<DropEvent>,
+    planned_drop_slots: std::collections::HashSet<LocalSlot>,
 }
 
 impl FunctionLayoutBuilder {
@@ -113,7 +132,21 @@ impl FunctionLayoutBuilder {
             expr_start: 0,
             expr_end: 0,
             scope_depth: 0,
+            drop_events: Vec::new(),
+            planned_drop_slots: std::collections::HashSet::new(),
         }
+    }
+
+    /// Current block nesting depth for drop planning.
+    #[must_use]
+    pub fn scope_depth(&self) -> u32 {
+        self.scope_depth
+    }
+
+    /// Function definition being laid out.
+    #[must_use]
+    pub fn def(&self) -> DefId {
+        self.def
     }
 
     /// Enters a nested block scope (recorded on each [`Binding::scope_depth`]; slots are not reclaimed).
@@ -149,6 +182,15 @@ impl FunctionLayoutBuilder {
         self.bindings.iter().rfind(|b| b.symbol == symbol)
     }
 
+    /// Returns bindings introduced at `scope_depth` (stable slot order).
+    #[must_use]
+    pub fn bindings_at_depth(&self, scope_depth: u32) -> Vec<&Binding> {
+        self.bindings
+            .iter()
+            .filter(|b| b.scope_depth == scope_depth)
+            .collect()
+    }
+
     /// Allocates a slot and records `symbol` with `ty` and `kind`.
     #[must_use]
     pub fn alloc(
@@ -171,6 +213,13 @@ impl FunctionLayoutBuilder {
         slot
     }
 
+    /// Records a planned drop if `slot` is not already scheduled.
+    pub fn plan_drop(&mut self, event: DropEvent) {
+        if self.planned_drop_slots.insert(event.slot) {
+            self.drop_events.push(event);
+        }
+    }
+
     /// Finishes the layout.
     #[must_use]
     pub fn finish(self) -> FunctionLayout {
@@ -181,6 +230,7 @@ impl FunctionLayoutBuilder {
             match_temp_slots: self.match_temp_slots,
             expr_start: self.expr_start,
             expr_end: self.expr_end,
+            drop_events: self.drop_events,
         }
     }
 }

@@ -1,3 +1,3 @@
 // Minimal prelude — compiler injects these bindings when `[project] prelude = true`.
 // Re-export list (see `source/phx-compiler/src/modules/prelude.rs`):
-// Option, Some, None, Result, Ok, Err, Copyable, Clone, PartialEq, Eq, Debug
+// Option, Some, None, Result, Ok, Err, Copyable, Clone, Drop, PartialEq, Eq, Debug

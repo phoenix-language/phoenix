@@ -1,0 +1,15 @@
+Drop :: trait {
+    drop :: (self) => ();
+};
+
+Wrapper :: struct {};
+
+Wrapper :: impl :: Drop {
+    drop :: (self) => () {};
+};
+
+main :: () => {
+    const w = Wrapper {};
+    w.drop();
+    const _ = w;
+};

@@ -5,7 +5,7 @@ use phx_syntax::token::Keyword;
 use super::layout::{ProgramLayout, TraitInstKey};
 use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
-use crate::resolver::DefId;
+use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Returns the interned unit type.
 #[must_use]
@@ -95,6 +95,13 @@ fn struct_is_copyable(
     std_traits: &StdTraitKernel,
     struct_def: DefId,
 ) -> bool {
+    // `struct_is_copyable` is called without `ResolvedProgram`; std `Drop` id is sufficient
+    // for the common case. User-defined `Drop` in the same crate is handled at impl sites.
+    if let Some(drop_trait) = std_traits.drop_trait {
+        if layout_has_trait_impl(layout, struct_def, &[], drop_trait, &[]) {
+            return false;
+        }
+    }
     let Some(sl) = layout.structs.get(&struct_def) else {
         return false;
     };
@@ -115,4 +122,114 @@ fn struct_is_copyable(
     }
     // Compiler-eligible: all fields Copyable (implicit derived Copyable before explicit impl).
     true
+}
+
+/// Returns whether `trait_def` is a trait named `Copyable`.
+#[must_use]
+pub fn is_copyable_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
+    resolved
+        .defs
+        .get(trait_def.index() as usize)
+        .is_some_and(|d| {
+            d.kind == DefKind::Trait && resolved.interner.resolve(d.name) == "Copyable"
+        })
+}
+
+/// Returns whether `trait_def` is a trait named `Drop`.
+#[must_use]
+pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
+    resolved
+        .defs
+        .get(trait_def.index() as usize)
+        .is_some_and(|d| d.kind == DefKind::Trait && resolved.interner.resolve(d.name) == "Drop")
+}
+
+/// Returns whether `def` with `args` has a `Drop` trait impl in `layout`.
+#[must_use]
+pub fn implements_drop_for_def(
+    layout: &ProgramLayout,
+    resolved: &ResolvedProgram,
+    std_traits: &StdTraitKernel,
+    def: DefId,
+    args: &[TypeId],
+) -> bool {
+    if let Some(drop_trait) = std_traits.drop_trait {
+        if layout_has_trait_impl(layout, def, args, drop_trait, &[]) {
+            return true;
+        }
+    }
+    layout.trait_methods.keys().any(|(key, _)| {
+        key.implementer == def
+            && key.implementer_args.as_slice() == args
+            && is_drop_trait_def(resolved, key.trait_def)
+    })
+}
+
+/// Returns whether `id` implements `Drop`.
+#[must_use]
+pub fn implements_drop(
+    types: &TypeInterner,
+    layout: &ProgramLayout,
+    resolved: &ResolvedProgram,
+    std_traits: &StdTraitKernel,
+    id: TypeId,
+) -> bool {
+    match types.get(id) {
+        Ty::Named { def, args } => {
+            implements_drop_for_def(layout, resolved, std_traits, *def, args)
+        }
+        _ => false,
+    }
+}
+
+/// Resolves the `Drop::drop` function for a named type instantiation.
+#[must_use]
+pub fn resolve_drop_fn(
+    layout: &ProgramLayout,
+    resolved: &ResolvedProgram,
+    _std_traits: &StdTraitKernel,
+    type_def: DefId,
+    type_args: &[TypeId],
+) -> Option<DefId> {
+    let mut matches: Vec<DefId> = layout
+        .trait_methods
+        .iter()
+        .filter(|((key, _), _)| {
+            key.implementer == type_def
+                && key.implementer_args.as_slice() == type_args
+                && is_drop_trait_def(resolved, key.trait_def)
+        })
+        .map(|(_, f)| *f)
+        .collect();
+    matches.sort_by_key(|d| d.index());
+    matches.dedup();
+    if matches.len() == 1 {
+        Some(matches[0])
+    } else {
+        None
+    }
+}
+
+fn layout_has_trait_impl(
+    layout: &ProgramLayout,
+    implementer: DefId,
+    implementer_args: &[TypeId],
+    trait_def: DefId,
+    trait_args: &[TypeId],
+) -> bool {
+    let key = TraitInstKey::new(
+        implementer,
+        implementer_args.to_vec(),
+        trait_def,
+        trait_args.to_vec(),
+    );
+    if layout.trait_impls.contains(&key) {
+        return true;
+    }
+    layout.trait_methods.keys().any(|(inst, _)| {
+        inst.implementer == implementer
+            && inst.implementer_args == implementer_args
+            && inst.trait_def == trait_def
+            && inst.trait_args == trait_args
+    })
 }

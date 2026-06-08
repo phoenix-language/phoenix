@@ -61,6 +61,11 @@ const PRELUDE_ITEMS: &[PreludeItem] = &[
         is_type: true,
     },
     PreludeItem {
+        module: "std::core::drop",
+        name: "Drop",
+        is_type: true,
+    },
+    PreludeItem {
         module: "std::core::cmp",
         name: "PartialEq",
         is_type: true,

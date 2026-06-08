@@ -1,0 +1,17 @@
+// V0-054: scope-end drop glue calls Drop::drop on owned locals.
+
+Drop :: trait {
+    drop :: (self) => ();
+};
+
+Wrapper :: struct {};
+
+Wrapper :: impl :: Drop {
+    drop :: (self) => () {};
+};
+
+main :: () => {
+    {
+        const w = Wrapper {};
+    }
+};

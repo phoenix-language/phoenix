@@ -87,6 +87,17 @@ pub enum IrInst {
         /// Return type.
         ret: TypeId,
     },
+    /// Call `Drop::drop` for an owned local. Stack: `[] → []` (loads, calls, discards `()`).
+    DropLocal {
+        /// Local holding the value to drop.
+        slot: LocalSlot,
+        /// Type of the local.
+        ty: TypeId,
+        /// Resolved `Drop::drop` function.
+        drop_fn: DefId,
+        /// Wire primitive kind when scalar.
+        prim_kind: u8,
+    },
     /// Materialize function pointer. Stack: `[] → [fn_ptr]`
     MakeFnPtr {
         /// `0` = Phoenix function id; `1` = foreign stub id.

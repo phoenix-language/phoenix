@@ -1275,3 +1275,63 @@ fn extern_call_requires_unsafe() {
 fn extern_call_in_unsafe_ok() {
     compile_ok("extern \"C\" stub :: (x: s32) => s32; main :: () => { unsafe { stub(1); }; };");
 }
+
+#[test]
+fn drop_scope_exit_plans_drop_event() {
+    let source = r"
+Drop :: trait { drop :: (self) => (); };
+Wrapper :: struct {};
+Wrapper :: impl :: Drop { drop :: (self) => () {}; };
+main :: () => { { const w = Wrapper {}; } };
+";
+    let unit = compile_source(source, None).expect("compile drop program");
+    let main_layout = unit
+        .typed
+        .functions
+        .iter()
+        .find(|f| Some(f.def) == unit.typed.entry)
+        .expect("main layout");
+    assert_eq!(
+        main_layout.drop_events.len(),
+        1,
+        "expected one scope-exit drop for `w`"
+    );
+}
+
+#[test]
+fn drop_manual_call_use_after_move() {
+    let source = r"
+Drop :: trait { drop :: (self) => (); };
+Wrapper :: struct {};
+Wrapper :: impl :: Drop { drop :: (self) => () {}; };
+main :: () => { const w = Wrapper {}; w.drop(); const _ = w; };
+";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. })),
+        "expected use-after-move after manual drop: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn copyable_drop_conflict_rejected() {
+    let source = r"
+Copyable :: trait {};
+Drop :: trait { drop :: (self) => (); };
+Wrapper :: struct {};
+Wrapper :: impl :: Copyable {};
+Wrapper :: impl :: Drop { drop :: (self) => () {}; };
+main :: () => {};
+";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::CopyableDropConflict { .. })),
+        "expected CopyableDropConflict: {:?}",
+        bag.errors()
+    );
+}
