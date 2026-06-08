@@ -1,0 +1,15 @@
+Maybe :: enum {
+    None,
+    Some(s32),
+};
+
+main :: () => {
+    const m: Maybe = Some(1);
+    var out: s32 = 0;
+    if const None = m {
+        out = 1;
+    } else {
+        out = 99;
+    };
+    const _ = out;
+};

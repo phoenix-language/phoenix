@@ -144,7 +144,6 @@ statement          = const_stmt
                    | while_stmt
                    | for_stmt
                    | loop_stmt
-                   | given_stmt
                    | unsafe_block ;
 
 const_stmt         = "const" , identifier , [ ":" , type_expr ] , "=" , expr , ";" ;
@@ -159,7 +158,6 @@ continue_stmt      = "continue" , ";" ;
 while_stmt         = "while" , expr , block ;
 for_stmt           = "for" , identifier , "in" , expr , block ;
 loop_stmt          = "loop" , block ;
-given_stmt         = "given" , pattern , "=" , expr , block ;
 unsafe_block       = "unsafe" , block ;
 
 expr_without_semi  = if_expr | match_expr | block | expr ;
@@ -208,7 +206,12 @@ primary_expr       = literal
 tuple_literal      = "(" , expr , "," , expr , { "," , expr } , [ "," ] , ")" ;
 array_literal      = "[" , [ expr , { "," , expr } , [ "," ] ] , "]" ;
 
-if_expr            = "if" , expr , block , { "else" , "if" , expr , block } , [ "else" , block ] ;
+if_condition       = logical_or_expr
+                   | "const" , pattern , "=" , expr
+                   | "var"   , pattern , "=" , expr ;
+if_expr            = "if" , if_condition , block ,
+                     { "else" , "if" , if_condition , block } ,
+                     [ "else" , block ] ;
 match_expr         = "match" , expr , "{" , match_arm , { match_arm } , "}" ;
 match_arm          = pattern , [ "if" , expr ] , "=>" , ( block | expr_without_semi ) , ";" ;
 lambda_expr        = "(" , [ param_list ] , ")" , "=>" , ( block | expr ) ;

@@ -217,7 +217,7 @@ pub enum IrInst {
         /// Element result type.
         result: TypeId,
     },
-    /// Runtime trap for non-exhaustive `given` / match failure.
+    /// Runtime trap for non-exhaustive `match` failure.
     TrapGivenMismatch,
     /// Load primitive through raw address. Stack: `[addr] → [value]`
     PtrLoad {

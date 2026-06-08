@@ -331,7 +331,7 @@ becomes something like:
   var __iter = expr.into_iter();
   loop
   {
-    given Some(item) = __iter.next()
+    if const Some(item) = __iter.next()
     {
       body
     } else { break; }

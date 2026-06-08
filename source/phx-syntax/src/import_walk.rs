@@ -1,7 +1,7 @@
 //! Collect all `#import` directives in a program (file scope and block scope).
 
 use crate::ast::decl::{ImplMember, ImportDirective, Program, TopLevelDecl, TopLevelItem};
-use crate::ast::expr::{Expr, LambdaBody};
+use crate::ast::expr::{Expr, IfCondition, LambdaBody};
 use crate::ast::pat::MatchArm;
 use crate::ast::stmt::{Block, BlockItem, Stmt};
 use crate::ast::{BlockNode, Node};
@@ -74,12 +74,13 @@ fn walk_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<&'a Node<ImportDirective>>) {
             walk_block_node(body, out);
         }
         Stmt::Loop(body) | Stmt::Unsafe(body) => walk_block_node(body, out),
-        Stmt::Given {
-            scrutinee, body, ..
-        } => {
-            walk_expr(&scrutinee.inner, out);
-            walk_block_node(body, out);
-        }
+    }
+}
+
+fn walk_if_condition<'a>(condition: &'a IfCondition, out: &mut Vec<&'a Node<ImportDirective>>) {
+    match condition {
+        IfCondition::Bool(cond) => walk_expr(&cond.inner, out),
+        IfCondition::Pattern { scrutinee, .. } => walk_expr(&scrutinee.inner, out),
     }
 }
 
@@ -110,15 +111,15 @@ fn walk_expr<'a>(expr: &'a Expr, out: &mut Vec<&'a Node<ImportDirective>>) {
             }
         }
         Expr::If {
-            cond,
+            condition,
             then_block,
             else_ifs,
             else_block,
         } => {
-            walk_expr(&cond.inner, out);
+            walk_if_condition(condition.as_ref(), out);
             walk_block_node(then_block, out);
-            for (e, b) in else_ifs {
-                walk_expr(&e.inner, out);
+            for (c, b) in else_ifs {
+                walk_if_condition(c, out);
                 walk_block_node(b, out);
             }
             if let Some(b) = else_block {

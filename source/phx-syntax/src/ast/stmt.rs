@@ -6,7 +6,6 @@ use crate::ast::Node;
 use crate::ast::decl::ImportDirective;
 use crate::ast::expr::ExprNode;
 use crate::ast::ident::Ident;
-use crate::ast::pat::PatternNode;
 use crate::ast::types::Type;
 
 /// A statement.
@@ -70,15 +69,6 @@ pub enum Stmt {
     },
     /// `loop { … }`
     Loop(BlockNode),
-    /// `given pat = expr { … }`
-    Given {
-        /// Pattern.
-        pattern: PatternNode,
-        /// Scrutinee.
-        scrutinee: ExprNode,
-        /// Body block.
-        body: BlockNode,
-    },
     /// `#unsafe { … }`
     Unsafe(BlockNode),
 }

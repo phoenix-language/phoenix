@@ -4,7 +4,7 @@
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
-**Last surveyed:** MVP partials (recursion + `given` enum fixtures). **`cargo test --workspace`:** all crates green. **`cargo clippy --workspace --all-targets -- -D warnings`:** green. **`tests/cli/run.sh`:** 31 single-file fixtures + `modules/main.phx`. **MVP acceptance:** [tests/cli/fixtures/mvp_acceptance/](../tests/cli/fixtures/mvp_acceptance/). **CI:** `.github/workflows/ci.yml` `rust` (fmt, clippy, tests) + `cli` (check, run, build, compile, help).
+**Last surveyed:** MVP partials (`if const` / `if var` pattern bindings). **`cargo test --workspace`:** all crates green. **`cargo clippy --workspace --all-targets -- -D warnings`:** green. **`tests/cli/run.sh`:** 34 single-file fixtures + `modules/main.phx`. **MVP acceptance:** [tests/cli/fixtures/mvp_acceptance/](../tests/cli/fixtures/mvp_acceptance/). **CI:** `.github/workflows/ci.yml` `rust` (fmt, clippy, tests) + `cli` (check, run, build, compile, help).
 
 ---
 
@@ -24,7 +24,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Fixed arrays, slices | **partial** | Arrays + stack-backed slice views; no heap slices |
 | User `struct` / `enum` / type aliases | **pass** | Type aliases resolve + unify (`typeck.rs` tests) |
 | Traits: parse + `Type :: impl :: Trait` | **pass** | Static dispatch; `trait_eq.phx` |
-| Control flow (`if`, `match`, loops, `return`, `given`) | **pass** | `given` pattern dispatch + enum exhaustiveness |
+| Control flow (`if`, `if const` / `if var`, `match`, loops, `return`) | **pass** | `if const` / `if var` pattern dispatch (`if let` semantics) |
 | Expressions + explicit `as` casts | **pass** | Cross-width/int/float explicit `as`; VM `Cast` opcode |
 | Modules `#import` + `pub` (M1) | **pass** | `--module-src` / `check_file_with_module_path` |
 | M2 project build (`phoenix.toml`, linker) | **pass** | `build.sh`, `run_build.rs`, `run_dep_build.rs` |
@@ -149,7 +149,7 @@ A credible MVP demo `.phx` should be able to:
 | ---------------------------------------------------------- | ---------------- | ------------------------------------------------ | -------------------------------------- | ----------------------------------------------- |
 | EBNF-aligned token set                                     | done             | `source/phx-syntax/src/token.rs`, `lexer.rs`     | Keywords, literals, `#`/`@` directives | `source/phx-syntax/tests/lexer.rs` (~100 cases) |
 | Program + top-level decls                                  | done             | `source/phx-syntax/src/parser/mod.rs`, `decl.rs` | struct/enum/trait/impl/fn/const/var    | Parser tests pass                               |
-| Expressions, blocks, statements                            | done             | `parser/expr.rs`, `stmt.rs`                      | Includes `if`/`match`/`given` syntax   | Parser tests                                    |
+| Expressions, blocks, statements                            | done             | `parser/expr.rs`, `stmt.rs`                      | Includes `if`/`if const`/`if var`/`match` syntax | Parser tests                                    |
 | Types (primitives, tuples, arrays, slices, refs, fn types) | done             | `parser/types.rs`                                |                                        | Parse `&T`, `[T; N]`, `(T, U)`                  |
 | Patterns (match arms)                                      | done             | `parser/pat.rs`                                  |                                        | Parse struct/tuple/enum patterns                |
 | `#import` syntax                                           | done             | `parser/mod.rs`                                  | Parsed into `program.imports`          | Parse `#import std::foo::Bar`                   |
@@ -201,7 +201,7 @@ A credible MVP demo `.phx` should be able to:
 | Prelude injection (V0-044)                 | done     | `modules/prelude.rs`, `project/config.rs` | `prelude = true` default when std bundled; opt-out `prelude = false` | `std_prelude`, `std_prelude_off` |
 | `?`                                        | done     | `typeck/check.rs`, `lower/expr.rs` | Postfix `?` in matching `Result`/`Option` fn return; `MatchTag` lowering   | `question_mark_*`, `std_try`, `build_std_try`          |
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
-| `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns; enum exhaustiveness                      | `enum_match.phx`, `enum_match_non_exhaustive` test     |
+| `match` / `if const` pattern checking      | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns; `match` exhaustiveness                   | `enum_match.phx`, `enum_match_non_exhaustive` test     |
 | `&&` / `||` on `bool`                      | done     | `typeck/ops.rs`                   |                                                                               | Typeck accepts                                         |
 | `%` `**` bitwise shifts                    | done     | `typeck/ops.rs`, lower, VM        |                                                                               | `mod_bitwise.phx`                                      |
 | Method calls `x.foo()`                     | done     | `typeck/check.rs`, `lower/expr.rs` | Inherent + trait impl dispatch                                          | `struct_method.phx`, `trait_eq.phx`                    |
@@ -230,7 +230,7 @@ A credible MVP demo `.phx` should be able to:
 | `return`                                      | done    | `lower/stmt.rs`           |                                                                                    |                                          |
 | Function calls                                | done    | `lower/expr.rs`           | `IrInst::Call`                                                                     | Call in sample IR                        |
 | `match`                                       | done    | `lower/expr.rs`           | Primitives + struct/enum via `MatchTag` / `GetField`                               | `enum_match.phx`, `match_int.phx`        |
-| `given`                                       | done    | `lower/stmt.rs`           | Pattern dispatch via `emit_arm_condition` + `TrapGivenMismatch` on fail            | `given_struct.phx`, `given_enum_single_variant.phx`, `given_enum_non_exhaustive` check  |
+| `if const` / `if var`                         | done    | `lower/expr.rs`           | Pattern dispatch via `emit_arm_condition`; mismatch skips to `else`                | `if_const_struct.phx`, `if_const_enum_single_variant.phx`, `if_const_else.phx`          |
 | `?`                                           | deferred  | `lower/expr.rs`           | `PostfixOp::Try => {}`; post-MVP std only                                          | After std: early-return lowering         |
 | Struct / enum value construction              | done    | `lower/expr.rs`           | `MakeStruct`, `MakeEnum`, `GetField`, `SetField`                                  | `struct_point.phx`, `struct_assign.phx`  |
 | Casts                                         | done    | `lower/expr.rs`           | `IrInst::Cast` with `from_kind`/`to_kind`                                          | `cast_width.phx`                         |
@@ -297,7 +297,7 @@ A credible MVP demo `.phx` should be able to:
 | `continue`                    | done    | full pipeline              |       | `continue_in_if.phx`                   |
 | `match` (primitives + enum/struct) | done    | full pipeline              |       | `match_int.phx`, `enum_match_struct.phx` |
 | `return`                      | done    | stmt lower + VM         |       | `function_return_stmt_ok`      |
-| `given`                       | done    | typeck + lower          |       | `given_struct.phx`, `given_enum_single_variant.phx`, exhaustiveness check |
+| `if const` / `if var`         | done    | typeck + lower          |       | `if_const_struct.phx`, `if_const_enum_single_variant.phx`, `if_const_else.phx` |
 
 
 ---
@@ -470,7 +470,7 @@ A credible MVP demo `.phx` should be able to:
 | `modules_import_adds_imported_values` | `modules/main.phx` | `s32` 3 |
 | `mvp_acceptance_along_plus_pick_is_four` | `mvp_acceptance/` project | `s32` 4 |
 | `factorial_computes_one_twenty` | `factorial.phx` | `s32` 120 |
-| `given_enum_single_variant_binds_payload` | `given_enum_single_variant.phx` | slot 1: `s32` 12 |
+| `if_const_enum_single_variant_binds_payload` | `if_const_enum_single_variant.phx` | slot 1: `s32` 12 |
 | `ref_local_derefs_to_ten` | `ref_local.phx` | slot 2: `s32` 10 |
 | `deref_ptr_reads_seventy_seven` | `deref_ptr.phx` | slot 2: `u8` 77 |
 | `byte_string_index_is_capital_b` | `byte_string.phx` | slot 1: `u8` `'B'` |
@@ -533,9 +533,9 @@ Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_met
 3. ~~**Width-faithful integers:**~~ `s8`…`s128` / `u8`…`u128` (`primitives_width.phx`, `primitives_i128.phx`).
 4. ~~**`phx compile -o`**~~ — `tests/cli/compile.sh`.
 5. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
-6. ~~**Language surface:**~~ explicit casts, tuple/array/slice runtime, `given`, trait impl dispatch, `b"…"`, frame refs.
+6. ~~**Language surface:**~~ explicit casts, tuple/array/slice runtime, `if const` / `if var`, trait impl dispatch, `b"…"`, frame refs.
 
-Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **31** programs + modules.
+Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **34** programs + modules.
 
 ### Phase 4 — Polish (mostly done)
 

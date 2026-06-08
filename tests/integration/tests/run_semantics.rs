@@ -108,9 +108,9 @@ fn factorial_computes_one_twenty() {
 }
 
 #[test]
-fn given_enum_single_variant_binds_payload() {
+fn if_const_enum_single_variant_binds_payload() {
     assert_main_locals(
-        &compile_fixture("given_enum_single_variant.phx"),
+        &compile_fixture("if_const_enum_single_variant.phx"),
         &[(1, ExpectedLocal::S32(12))],
     );
 }

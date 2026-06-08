@@ -639,17 +639,6 @@ impl Resolver<'_> {
                 self.resolve_block_node(body);
             }
             Stmt::Loop(body) => self.resolve_block_node(body),
-            Stmt::Given {
-                pattern,
-                scrutinee,
-                body,
-            } => {
-                self.resolve_expr_node(scrutinee);
-                self.scopes.push();
-                self.resolve_pattern_node(pattern);
-                self.resolve_block_node(body);
-                self.scopes.pop();
-            }
             Stmt::Unsafe(body) => self.resolve_block_node(body),
             _ => {}
         }
@@ -773,16 +762,22 @@ impl Resolver<'_> {
                 }
             }
             Expr::If {
-                cond,
+                condition,
                 then_block,
                 else_ifs,
                 else_block,
             } => {
-                self.resolve_expr_node(cond);
+                self.resolve_if_condition(condition.as_ref());
+                self.scopes.push();
+                self.resolve_if_pattern_bindings(condition.as_ref());
                 self.resolve_block_node(then_block);
+                self.scopes.pop();
                 for (c, b) in else_ifs {
-                    self.resolve_expr_node(c);
+                    self.resolve_if_condition(c);
+                    self.scopes.push();
+                    self.resolve_if_pattern_bindings(c);
                     self.resolve_block_node(b);
+                    self.scopes.pop();
                 }
                 if let Some(b) = else_block {
                     self.resolve_block_node(b);
@@ -895,6 +890,21 @@ impl Resolver<'_> {
         }
         self.resolve_expr_node(&arm.body);
         self.scopes.pop();
+    }
+
+    fn resolve_if_condition(&mut self, condition: &phx_syntax::ast::expr::IfCondition) {
+        match condition {
+            phx_syntax::ast::expr::IfCondition::Bool(cond) => self.resolve_expr_node(cond),
+            phx_syntax::ast::expr::IfCondition::Pattern { scrutinee, .. } => {
+                self.resolve_expr_node(scrutinee);
+            }
+        }
+    }
+
+    fn resolve_if_pattern_bindings(&mut self, condition: &phx_syntax::ast::expr::IfCondition) {
+        if let phx_syntax::ast::expr::IfCondition::Pattern { pattern, .. } = condition {
+            self.resolve_pattern_node(pattern);
+        }
     }
 
     fn resolve_pattern_node(&mut self, pat: &PatternNode) {

@@ -99,7 +99,7 @@ Finish the minimal pipeline defined in [mvp.md](mvp.md). Nothing in later phases
 ### V0-003 — User types and control flow
 
 - `Name :: struct`, `Name :: enum`, type aliases.
-- `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given`.
+- `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return`.
 - Arithmetic, comparison, and logical operators on primitive numerics and `bool` only.
 
 **Acceptance:** Integration tests cover struct/enum construction, `match` exhaustiveness errors, and control-flow lowering.
@@ -198,7 +198,7 @@ Multi-file programs and a real project layout so contributors can build packages
 
 ### V0-014 — Block-scoped `#import` (MVP modules)
 
-- `#import` allowed inside `{ … }` blocks (function bodies, `if`/`while`/`loop`/`given` arms, nested blocks).
+- `#import` allowed inside `{ … }` blocks (function bodies, `if`/`while`/`loop` arms, nested blocks).
 - Same import forms as file scope: single item, `{ A, B, … }`, glob `{ * }`.
 - Block import names visible only in that block and nested scopes; normal shadowing rules apply.
 - Block `#import` participates in whole-program module loading (graph discovery), not only name binding.
@@ -517,6 +517,8 @@ Polish and capabilities that make the project legible to new contributors and un
 **Acceptance:** Owned wrapper with `Drop` runs cleanup on scope exit; double-drop or use-after-drop rejected.
 
 **Refs:** [traits.md](features/traits.md), [ownership.md](features/ownership.md)
+
+**Status: Done**
 
 ---
 

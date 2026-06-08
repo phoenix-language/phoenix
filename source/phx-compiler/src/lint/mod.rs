@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use phx_diagnostics::{DiagnosticBag, Lint, LintBag, LintKind, ResolveError, Span};
 use phx_syntax::ast::decl::{Function, ImplMember, TopLevelDecl, TopLevelItem};
-use phx_syntax::ast::expr::{Expr, PostfixOp};
+use phx_syntax::ast::expr::{Expr, IfCondition, PostfixOp};
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::{ExprNode, Node};
 use phx_syntax::{Interner, Symbol};
@@ -153,12 +153,6 @@ impl LintWalker<'_> {
                 self.walk_block(&body.inner);
             }
             Stmt::Loop(body) | Stmt::Unsafe(body) => self.walk_block(&body.inner),
-            Stmt::Given {
-                scrutinee, body, ..
-            } => {
-                self.walk_expr(scrutinee);
-                self.walk_block(&body.inner);
-            }
             Stmt::Break { value: Some(v), .. } => self.walk_expr(v),
             _ => {}
         }
@@ -192,15 +186,15 @@ impl LintWalker<'_> {
                 }
             }
             Expr::If {
-                cond,
+                condition,
                 then_block,
                 else_ifs,
                 else_block,
             } => {
-                self.walk_expr(cond);
+                self.walk_if_condition(condition.as_ref());
                 self.walk_block(&then_block.inner);
                 for (c, b) in else_ifs {
-                    self.walk_expr(c);
+                    self.walk_if_condition(c);
                     self.walk_block(&b.inner);
                 }
                 if let Some(b) = else_block {
@@ -241,6 +235,13 @@ impl LintWalker<'_> {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn walk_if_condition(&mut self, condition: &IfCondition) {
+        match condition {
+            IfCondition::Bool(cond) => self.walk_expr(cond),
+            IfCondition::Pattern { scrutinee, .. } => self.walk_expr(scrutinee),
         }
     }
 

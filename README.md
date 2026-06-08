@@ -42,7 +42,7 @@ More programs: [examples/](examples/) (demos) and [tests/cli/fixtures/](tests/cl
 | Types        | Numeric primitives (`s32`, `u32`, …), `bool`, `()`, tuples, raw pointers (`*T`), borrows in signatures (`&T`, `&mut T`), fixed arrays `[T; N]`, slices `[T]`; `str` views (no owned string) |
 | Literals     | Integers default to `s32`; `42u` → `u32`; floats default to `f32`; byte strings `b"hi"` → `[u8; N]`; UTF-8 `"hi"` → `str`                                                                  |
 | Casts        | No implicit numeric widening—use `expr as Type`                                                                                                                                              |
-| Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given`                                                                                                                       |
+| Control flow | `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return`                                                                                                          |
 | Modules      | Files are modules; paths use `::`; `#import path::to::item`; `pub` exports. Single-file `phx check` needs `--module-src` when using `#import`—see [tests/cli/README.md](tests/cli/README.md) |
 | Directives   | `#` compile-time (e.g. `#import`); `@` runtime (post-MVP, e.g. actors)                                                                                                                       |
 
@@ -91,7 +91,7 @@ Demonstration programs: [examples/README.md](examples/README.md). MVP smoke proj
 
 ## Language status
 
-**Shipped (Language v0 substrate):** lex → parse → resolve → type-check → lower → `PHX0` → verifier → stack VM; `main` required; structs, enums, generics, traits with static dispatch and monomorphization; control flow including `given`; explicit casts; `#import` / `pub` / `phoenix.toml` projects; use-after-move checking; bundled `std` with `Option` / `Result`, core traits, conversion traits, and layered error types.
+**Shipped (Language v0 substrate):** lex → parse → resolve → type-check → lower → `PHX0` → verifier → stack VM; `main` required; structs, enums, generics, traits with static dispatch and monomorphization; control flow including `if const` / `if var`; explicit casts; `#import` / `pub` / `phoenix.toml` projects; use-after-move checking; bundled `std` with `Option` / `Result`, core traits, conversion traits, and layered error types.
 
 **Partial or narrow:** borrow types in signatures without a full borrow checker; fixed arrays and stack-backed slices; no std I/O (use `phx run --dump-main` to inspect `main` locals).
 

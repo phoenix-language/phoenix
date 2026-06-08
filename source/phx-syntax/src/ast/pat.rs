@@ -1,6 +1,6 @@
 //! Pattern AST.
 //!
-//! Patterns for `match`, `given`, and bindings (wildcards, literals, struct/tuple, enum ctors).
+//! Patterns for `match`, `if const` / `if var`, and bindings (wildcards, literals, struct/tuple, enum ctors).
 
 use crate::ast::Node;
 use crate::ast::expr::ExprNode;

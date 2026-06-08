@@ -7,7 +7,7 @@
 //! - [`decl`] — `Program`, functions, structs, enums, traits, impls, imports.
 //! - [`expr`] — expressions, operators, struct literals, `if`/`match`.
 //! - [`stmt`] — statements and [`Block`] items.
-//! - [`pat`] — `match` / `given` patterns and arms.
+//! - [`pat`] — `match` / `if` pattern bindings and arms.
 //! - [`types`] — type expressions and generic parameters.
 //! - [`ident`] — [`Ident`], [`TypeName`], and [`Path`] segments.
 //! - [`lit`] — literal payloads (int, float, bool, byte string).
@@ -31,7 +31,7 @@ pub use decl::{
     ImportItems, Param, Program, StructBody, StructField, TopLevelDecl, TopLevelItem, TraitItem,
     Variant,
 };
-pub use expr::{AssignOp, BinOp, Expr, ExprNode, PostfixOp, StructFieldInit, UnaryOp};
+pub use expr::{AssignOp, BinOp, Expr, ExprNode, IfCondition, PostfixOp, StructFieldInit, UnaryOp};
 pub use ident::{Ident, Path, PathSegment, TypeName};
 pub use lit::{FloatLit, IntLit, Literal};
 pub use node::Node;

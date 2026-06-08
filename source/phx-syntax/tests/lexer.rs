@@ -590,11 +590,6 @@ fn keyword_match() {
 }
 
 #[test]
-fn keyword_given() {
-    assert_tokens("given", &[Expect::Kw(Keyword::Given)]);
-}
-
-#[test]
 fn keyword_while() {
     assert_tokens("while", &[Expect::Kw(Keyword::While)]);
 }
@@ -776,7 +771,7 @@ fn type_ident_result() {
 
 #[test]
 fn keyword_all_reserved_in_one_pass() {
-    let source = "const var if else match given while for loop break continue return \
+    let source = "const var if else match while for loop break continue return \
                   struct enum type pub trait impl as in mut self Self \
                   bool \
                   s8 s16 s32 s64 s128 u8 u16 u32 u64 u128 f32 f64";
@@ -784,7 +779,7 @@ fn keyword_all_reserved_in_one_pass() {
     let got = without_eof(&all);
     assert_eq!(
         got.len(),
-        36,
+        35,
         "every Keyword variant should lex as one token"
     );
     for token in got {

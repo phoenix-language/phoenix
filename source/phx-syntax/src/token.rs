@@ -40,8 +40,6 @@ pub enum Keyword {
     Else,
     /// `match`
     Match,
-    /// `given`
-    Given,
     /// `while`
     While,
     /// `for`
@@ -127,7 +125,6 @@ impl Keyword {
             "if" => Self::If,
             "else" => Self::Else,
             "match" => Self::Match,
-            "given" => Self::Given,
             "while" => Self::While,
             "for" => Self::For,
             "loop" => Self::Loop,

@@ -53,7 +53,7 @@ pub enum MismatchKind {
         /// Field name.
         name: String,
     },
-    /// `if` / `given` condition is not `bool`.
+    /// Boolean `if` condition is not `bool`.
     Condition,
 }
 

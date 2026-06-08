@@ -6,7 +6,7 @@ use crate::ast::Node;
 use crate::ast::decl::Param;
 use crate::ast::ident::{Ident, Path, TypeName};
 use crate::ast::lit::Literal;
-use crate::ast::pat::MatchArm;
+use crate::ast::pat::{MatchArm, PatternNode};
 use crate::ast::stmt::BlockNode;
 use crate::ast::types::Type;
 
@@ -118,6 +118,22 @@ pub enum PostfixOp {
     Try,
 }
 
+/// `if` condition: boolean expression or `const` / `var` pattern binding.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IfCondition {
+    /// `if expr { … }`
+    Bool(ExprNode),
+    /// `if const pat = expr { … }` or `if var pat = expr { … }`
+    Pattern {
+        /// `true` for `if var`, `false` for `if const`.
+        mutable: bool,
+        /// Pattern to match.
+        pattern: PatternNode,
+        /// Scrutinee expression.
+        scrutinee: ExprNode,
+    },
+}
+
 /// Post-MVP runtime directive (`@spawn`, `@send`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -195,14 +211,14 @@ pub enum Expr {
         /// Postfix operations in order.
         ops: Vec<PostfixOp>,
     },
-    /// `if` expression.
+    /// `if` expression (`if cond`, `if const pat = e`, or `if var pat = e`).
     If {
-        /// Condition.
-        cond: Box<ExprNode>,
+        /// Condition or pattern binding.
+        condition: Box<IfCondition>,
         /// Then block.
         then_block: BlockNode,
-        /// `else if` / `else` arms.
-        else_ifs: Vec<(ExprNode, BlockNode)>,
+        /// `else if` arms.
+        else_ifs: Vec<(IfCondition, BlockNode)>,
         /// Final `else` block.
         else_block: Option<BlockNode>,
     },

@@ -71,7 +71,6 @@ impl Parser<'_> {
                     | Keyword::While
                     | Keyword::For
                     | Keyword::Loop
-                    | Keyword::Given
                     | Keyword::Unsafe
             )
         )
@@ -172,19 +171,6 @@ impl Parser<'_> {
                 let body = self.parse_block()?;
                 let _ = self.eat_kind(&TokenKind::Semicolon);
                 Stmt::Loop(body)
-            }
-            TokenKind::Keyword(Keyword::Given) => {
-                self.bump();
-                let pattern = self.parse_pattern()?;
-                self.expect_kind(ExpectedToken::Punct("="), &TokenKind::Eq)?;
-                let scrutinee = self.parse_expr()?;
-                let body = self.parse_block()?;
-                let _ = self.eat_kind(&TokenKind::Semicolon);
-                Stmt::Given {
-                    pattern,
-                    scrutinee,
-                    body,
-                }
             }
             TokenKind::Keyword(Keyword::Unsafe) => {
                 self.bump();

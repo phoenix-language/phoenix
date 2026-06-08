@@ -9,10 +9,10 @@ use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
     Function, ImplMember, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem, Variant,
 };
-use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit, UnaryOp};
+use phx_syntax::ast::expr::{Expr, IfCondition, PostfixOp, StructFieldInit, UnaryOp};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
-use phx_syntax::ast::pat::{MatchArm, Pattern};
+use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
@@ -1647,16 +1647,6 @@ impl<'a> TypeChecker<'a> {
                 self.with_loop_body(|this| this.check_block(&body.inner));
             }
             Stmt::Loop(body) => self.with_loop_body(|this| this.check_block(&body.inner)),
-            Stmt::Given {
-                pattern,
-                scrutinee,
-                body,
-            } => {
-                let s = self.check_expr_node(scrutinee);
-                self.check_pattern(&pattern.inner, s, pattern.span);
-                self.check_given_exhaustiveness(s, &pattern.inner, pattern.span);
-                self.check_block(&body.inner);
-            }
             Stmt::Unsafe(body) => self.with_unsafe(|this| this.check_block(&body.inner)),
             _ => {}
         }
@@ -1831,11 +1821,11 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::Postfix { base, ops } => self.check_postfix(base, ops, span),
             Expr::If {
-                cond,
+                condition,
                 then_block,
                 else_ifs,
                 else_block,
-            } => self.check_if(cond, then_block, else_ifs, else_block, span),
+            } => self.check_if(condition.as_ref(), then_block, else_ifs, else_block, span),
             Expr::Match { scrutinee, arms } => self.check_match(scrutinee, arms, span),
             Expr::Block(block) => self.check_block_expr(block),
             Expr::StructLit {
@@ -3407,23 +3397,15 @@ impl<'a> TypeChecker<'a> {
 
     fn check_if(
         &mut self,
-        cond: &ExprNode,
+        condition: &IfCondition,
         then_block: &BlockNode,
-        else_ifs: &[(ExprNode, BlockNode)],
+        else_ifs: &[(IfCondition, BlockNode)],
         else_block: &Option<BlockNode>,
         span: Span,
     ) -> TypeId {
-        let c = self.check_expr_node(cond);
-        if !self.types_equal(c, self.bool_ty) {
-            self.error_mismatch(self.bool_ty, c, cond.span, MismatchKind::Condition);
-        }
-        let mut then_ty = self.check_block_expr(then_block);
+        let mut then_ty = self.check_if_arm(condition, then_block);
         for (ec, eb) in else_ifs {
-            let e = self.check_expr_node(ec);
-            if !self.types_equal(e, self.bool_ty) {
-                self.error_mismatch(self.bool_ty, e, ec.span, MismatchKind::Condition);
-            }
-            let arm_ty = self.check_block_expr(eb);
+            let arm_ty = self.check_if_arm(ec, eb);
             then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
                 self.bag.push(
                     self.current_module,
@@ -3445,6 +3427,35 @@ impl<'a> TypeChecker<'a> {
         then_ty
     }
 
+    fn check_if_arm(&mut self, condition: &IfCondition, then_block: &BlockNode) -> TypeId {
+        match condition {
+            IfCondition::Bool(cond) => {
+                let c = self.check_expr_node(cond);
+                if !self.types_equal(c, self.bool_ty) {
+                    self.error_mismatch(self.bool_ty, c, cond.span, MismatchKind::Condition);
+                }
+                self.check_block_expr(then_block)
+            }
+            IfCondition::Pattern {
+                mutable,
+                pattern,
+                scrutinee,
+            } => {
+                let s = self.check_expr_node(scrutinee);
+                if let Some(layout) = &mut self.layout {
+                    let _ = layout.alloc_match_scrutinee_temp(s);
+                }
+                let kind = if *mutable {
+                    BindingKind::Var
+                } else {
+                    BindingKind::Const
+                };
+                self.check_pattern(&pattern.inner, s, pattern.span, kind);
+                self.check_block_expr(then_block)
+            }
+        }
+    }
+
     fn check_match(
         &mut self,
         scrutinee: &ExprNode,
@@ -3457,7 +3468,7 @@ impl<'a> TypeChecker<'a> {
         }
         let mut acc: Option<TypeId> = None;
         for arm in arms {
-            self.check_pattern(&arm.pattern.inner, s, arm.pattern.span);
+            self.check_pattern(&arm.pattern.inner, s, arm.pattern.span, BindingKind::Var);
             if let Some(g) = &arm.guard {
                 let gt = self.check_expr_node(g);
                 if !self.types_equal(gt, self.bool_ty) {
@@ -3544,22 +3555,6 @@ impl<'a> TypeChecker<'a> {
 
     fn symbol_name(&self, symbol: Symbol) -> String {
         self.resolved.interner.resolve(symbol).to_owned()
-    }
-
-    fn check_given_exhaustiveness(&mut self, scrutinee: TypeId, pat: &Pattern, span: Span) {
-        let arm = MatchArm {
-            pattern: Node::new(pat.clone(), span, phx_syntax::AstNodeId::synthetic(0)),
-            guard: None,
-            body: Node::new(
-                Expr::Literal(Literal::Int(phx_syntax::ast::lit::IntLit {
-                    value: 0,
-                    suffix: phx_syntax::token::IntegerSuffix::None,
-                })),
-                span,
-                phx_syntax::AstNodeId::synthetic(1),
-            ),
-        };
-        self.check_match_exhaustiveness(scrutinee, std::slice::from_ref(&arm), span);
     }
 
     fn check_match_exhaustiveness(
@@ -3709,7 +3704,13 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
-    fn check_pattern(&mut self, pat: &Pattern, scrutinee: TypeId, span: Span) {
+    fn check_pattern(
+        &mut self,
+        pat: &Pattern,
+        scrutinee: TypeId,
+        span: Span,
+        binding_kind: BindingKind,
+    ) {
         match pat {
             Pattern::Wildcard | Pattern::Literal(_) => {}
             Pattern::Ident(ident) => {
@@ -3724,7 +3725,7 @@ impl<'a> TypeChecker<'a> {
                         self.error_enum_pattern_on_non_enum(scrutinee, span);
                     }
                 } else {
-                    self.define_local(ident.symbol, scrutinee, BindingKind::Var, None);
+                    self.define_local(ident.symbol, scrutinee, binding_kind, None);
                 }
             }
             Pattern::Struct { name, fields } => {
@@ -3749,9 +3750,9 @@ impl<'a> TypeChecker<'a> {
                             .and_then(|sf| sf.fields.get(&field.name.symbol).copied())
                         {
                             if let Some(p) = &field.pattern {
-                                self.check_pattern(&p.inner, fty, span);
+                                self.check_pattern(&p.inner, fty, span, binding_kind);
                             } else {
-                                self.define_local(field.name.symbol, fty, BindingKind::Var, None);
+                                self.define_local(field.name.symbol, fty, binding_kind, None);
                             }
                         }
                     }
@@ -3772,14 +3773,9 @@ impl<'a> TypeChecker<'a> {
                         for field in fields {
                             if let Some(fty) = field_map.get(&field.name.symbol) {
                                 if let Some(p) = &field.pattern {
-                                    self.check_pattern(&p.inner, *fty, span);
+                                    self.check_pattern(&p.inner, *fty, span, binding_kind);
                                 } else {
-                                    self.define_local(
-                                        field.name.symbol,
-                                        *fty,
-                                        BindingKind::Var,
-                                        None,
-                                    );
+                                    self.define_local(field.name.symbol, *fty, binding_kind, None);
                                 }
                             }
                         }
@@ -3801,7 +3797,7 @@ impl<'a> TypeChecker<'a> {
                         self.variant_payload_for_scrutinee(variant.def, scrutinee)
                     {
                         for (p, pty) in patterns.iter().zip(payload.iter()) {
-                            self.check_pattern(&p.inner, *pty, span);
+                            self.check_pattern(&p.inner, *pty, span, binding_kind);
                         }
                     }
                 }

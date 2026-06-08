@@ -13,7 +13,7 @@ How Phoenix divides compiler-known types from library-defined behavior, and the 
 | Compile-time directives | Compiler behavior controls | `#import`, `#inline`, `#cold`, `#unsafe` |
 | Runtime directives | Opt-in explicit actor/message operations | `@spawn`, `@send`, `@receive`, `@reply` (post-MVP) |
 | Standard library | APIs built on language + runtime primitives | `File.read`, collections, formatting, traits |
-| Sugar | Surface syntax lowered by compiler | `given`, ranges, `for`; `?` when std `Option`/`Result` exist (post-MVP) |
+| Sugar | Surface syntax lowered by compiler | `if const` / `if var`, ranges, `for`; `?` when std `Option`/`Result` exist (post-MVP) |
 
 Notes:
 
@@ -349,7 +349,7 @@ const pair: (s32, u8) = (1, 2u);
 
 | Sugar | Lowering direction | MVP status |
 |---|---|---|
-| `given Pat = expr { ... }` | `match`-style single-pattern branch | Included |
+| `if const Pat = expr { ... }` / `if var Pat = expr { ... }` | single-pattern branch (`if let` style) | Included |
 | `expr?` | early return from std `Result`/`Option`; `From` on mismatched `E` ([V0-059](../language-v0.md#v0-059--with-from-error-conversion)) | V0-042 shipped (identical types); V0-059 planned |
 | `for x in y` | iterator-protocol lowering | Parseable; richer iterator semantics post-MVP |
 | `0..n`, `0..=n` | range values | Parseable; std range behavior post-MVP |

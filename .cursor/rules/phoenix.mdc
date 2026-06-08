@@ -74,7 +74,7 @@ Compilation fails if `main` is missing. MVP runs `main` on a plain stack interpr
 | Types | numeric primitives, `bool`, tuples, `()`, raw pointers, `&T` / `&mut T` in signatures, fixed arrays, slices |
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution per spec) |
-| Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given` |
+| Control flow | `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return` |
 | Operators | arithmetic, comparison, logical; explicit `expr as Type` |
 
 ---
@@ -138,7 +138,7 @@ Uniform `::` declaration style: `Name :: struct`, `Name :: enum`, `Name :: trait
 
 ### Errors
 
-- No exceptions. Post-MVP: discarded `Result` / `Option` without `match`, `given`, or `?` is a type error once std defines those enums.
+- No exceptions. Post-MVP: discarded `Result` / `Option` without `match`, `if const` / `if var`, or `?` is a type error once std defines those enums.
 
 ---
 

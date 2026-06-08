@@ -342,21 +342,16 @@ fn var_byte_array_as_str_rejected() {
 }
 
 #[test]
-fn given_enum_non_exhaustive() {
-    let bag = typeck_err(include_str!(
-        "../../../tests/cli/fixtures/given_enum_non_exhaustive.phx"
+fn if_const_enum_non_exhaustive_compile_ok() {
+    compile_ok(include_str!(
+        "../../../tests/cli/fixtures/if_const_enum_non_exhaustive.phx"
     ));
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
-    );
 }
 
 #[test]
-fn given_enum_single_variant_compile_ok() {
+fn if_const_enum_single_variant_compile_ok() {
     compile_ok(include_str!(
-        "../../../tests/cli/fixtures/given_enum_single_variant.phx"
+        "../../../tests/cli/fixtures/if_const_enum_single_variant.phx"
     ));
 }
 

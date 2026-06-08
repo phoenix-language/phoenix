@@ -1,7 +1,7 @@
 //! Lower expressions to IR instructions (stack-oriented).
 
 use phx_syntax::Symbol;
-use phx_syntax::ast::expr::{BinOp, Expr, ExprNode, PostfixOp, StructFieldInit};
+use phx_syntax::ast::expr::{BinOp, Expr, ExprNode, IfCondition, PostfixOp, StructFieldInit};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
@@ -158,11 +158,17 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
         }
         Expr::Postfix { base, ops } => lower_postfix(ctx, base, ops, result_ty, expr_id),
         Expr::If {
-            cond,
+            condition,
             then_block,
             else_ifs,
             else_block,
-        } => lower_if(ctx, cond, then_block, else_ifs, else_block.as_ref()),
+        } => lower_if(
+            ctx,
+            condition.as_ref(),
+            then_block,
+            else_ifs,
+            else_block.as_ref(),
+        ),
         Expr::Match { scrutinee, arms } => lower_match(ctx, scrutinee, arms),
         Expr::Block(block) => lower_block_expr(ctx, block),
         Expr::StructLit { name, fields, .. } => {
@@ -1043,23 +1049,21 @@ fn store_base_local(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
 
 fn lower_if(
     ctx: &mut LowerCtx<'_>,
-    cond: &ExprNode,
+    condition: &IfCondition,
     then_block: &BlockNode,
-    else_ifs: &[(ExprNode, BlockNode)],
+    else_ifs: &[(IfCondition, BlockNode)],
     else_block: Option<&BlockNode>,
 ) {
     let entry = ctx.current;
-    lower_expr(ctx, cond);
     let then_id = ctx.fresh_block();
     let else_id = ctx.fresh_block();
     let merge_id = ctx.fresh_block();
-    ctx.set_current(entry);
-    ctx.emit(IrInst::JumpIf {
-        then_block: then_id,
-        else_block: else_id,
-    });
+    let pattern_arm = lower_if_condition_test(ctx, condition, then_id, else_id);
 
     ctx.set_current(then_id);
+    if let Some((pattern, temp, temp_ty)) = pattern_arm {
+        bind_match_pattern(ctx, &pattern.inner, temp, temp_ty, false);
+    }
     lower_block_expr(ctx, then_block);
     if !block_ends_with_unconditional_jump(ctx, then_id) {
         ctx.emit(IrInst::Jump { target: merge_id });
@@ -1078,6 +1082,45 @@ fn lower_if(
     }
 
     ctx.set_current(merge_id);
+    let _ = entry;
+}
+
+/// Emits control flow for one `if` / `else if` condition. Returns pattern metadata when binding.
+fn lower_if_condition_test(
+    ctx: &mut LowerCtx<'_>,
+    condition: &IfCondition,
+    then_id: u32,
+    else_id: u32,
+) -> Option<(phx_syntax::ast::pat::PatternNode, LocalSlot, TypeId)> {
+    match condition {
+        IfCondition::Bool(cond) => {
+            lower_expr(ctx, cond);
+            ctx.emit(IrInst::JumpIf {
+                then_block: then_id,
+                else_block: else_id,
+            });
+            None
+        }
+        IfCondition::Pattern {
+            pattern, scrutinee, ..
+        } => {
+            let temp = ctx.next_match_temp();
+            let temp_ty = ctx
+                .layout
+                .bindings
+                .iter()
+                .find(|b| b.slot == temp)
+                .map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
+            lower_expr(ctx, scrutinee);
+            ctx.emit(IrInst::StoreLocal {
+                slot: temp,
+                ty: temp_ty,
+                prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+            });
+            emit_arm_condition(ctx, &pattern.inner, temp, temp_ty, then_id, else_id);
+            Some((pattern.clone(), temp, temp_ty))
+        }
+    }
 }
 
 /// True when `block` ends with an unconditional branch (no fall-through to merge).
@@ -1093,23 +1136,20 @@ pub(crate) fn block_ends_with_unconditional_jump(ctx: &LowerCtx<'_>, block: u32)
 
 fn lower_else_if_chain(
     ctx: &mut LowerCtx<'_>,
-    else_ifs: &[(ExprNode, BlockNode)],
+    else_ifs: &[(IfCondition, BlockNode)],
     final_else: Option<&BlockNode>,
 ) {
     let (first_cond, first_block) = &else_ifs[0];
     let rest = &else_ifs[1..];
-    let entry = ctx.current;
-    lower_expr(ctx, first_cond);
     let then_id = ctx.fresh_block();
     let else_id = ctx.fresh_block();
     let merge_id = ctx.fresh_block();
-    ctx.set_current(entry);
-    ctx.emit(IrInst::JumpIf {
-        then_block: then_id,
-        else_block: else_id,
-    });
+    let pattern_arm = lower_if_condition_test(ctx, first_cond, then_id, else_id);
 
     ctx.set_current(then_id);
+    if let Some((pattern, temp, temp_ty)) = pattern_arm {
+        bind_match_pattern(ctx, &pattern.inner, temp, temp_ty, false);
+    }
     lower_block_expr(ctx, first_block);
     if !block_ends_with_unconditional_jump(ctx, then_id) {
         ctx.emit(IrInst::Jump { target: merge_id });

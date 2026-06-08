@@ -5,7 +5,7 @@ Maybe :: enum {
 
 main :: () => {
     const m: Maybe = Some(1);
-    given Some(x) = m {
-        x;
+    if const Some(x) = m {
+        const _ = x;
     };
 };

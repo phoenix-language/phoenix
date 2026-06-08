@@ -63,7 +63,7 @@ const c = 3.14;    // f32
 - Types/variants/traits: `PascalCase`
 
 Core keywords include:
-`const`, `var`, `if`, `else`, `match`, `given`, `while`, `for`, `loop`, `break`, `continue`, `return`, `struct`, `enum`, `type`, `pub`, `trait`, `impl`, `as`, `true`, `false`, `self`
+`const`, `var`, `if`, `else`, `match`, `while`, `for`, `loop`, `break`, `continue`, `return`, `struct`, `enum`, `type`, `pub`, `trait`, `impl`, `as`, `true`, `false`, `self`
 
 Declarations use `Name :: kind` — for example `Point :: struct`, `PartialEq :: trait`, `Point :: impl :: PartialEq`. The words `struct`, `enum`, `trait`, and `impl` are keywords that follow `::`.
 
@@ -206,11 +206,14 @@ match n
 };
 ```
 
-`given` is shorthand for single-pattern matching:
+`if const` / `if var` are shorthand for single-pattern matching (Rust `if let` style):
 
 ```phoenix
-given Some(v) = maybe_value { use(v); }
+if const Some(v) = maybe_value { use(v); }
+if var Some(v) = maybe_value { v = other; }
 ```
+
+Optional `else` and `else if const` / `else if var` chains are supported. On mismatch the `then` body is skipped (or the `else` branch runs).
 
 ---
 

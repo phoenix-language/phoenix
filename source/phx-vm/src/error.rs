@@ -29,7 +29,7 @@ pub enum VmError {
     InvalidAggregate,
     /// Field or payload index out of range.
     FieldOutOfRange,
-    /// `given` pattern did not match scrutinee.
+    /// `match` pattern did not match scrutinee.
     GivenMismatch,
     /// Pointer access outside the VM heap.
     HeapOutOfBounds,
@@ -59,7 +59,7 @@ impl std::fmt::Display for VmError {
             Self::ExpectedScalar => write!(f, "expected scalar value"),
             Self::InvalidAggregate => write!(f, "invalid aggregate value"),
             Self::FieldOutOfRange => write!(f, "field index out of range"),
-            Self::GivenMismatch => write!(f, "given pattern did not match"),
+            Self::GivenMismatch => write!(f, "match pattern did not match"),
             Self::HeapOutOfBounds => write!(f, "heap access out of bounds"),
             Self::UnsupportedConst => {
                 write!(f, "byte constant pool entries are not loadable in MVP")

@@ -56,7 +56,7 @@ These are in [grammar.ebnf](../grammar.ebnf) and intended for full MVP pipeline 
 - Functions `name :: (params) => T { }`, top-level and block `const` / `var`
 - Borrow types `&T`, `&mut T`; explicit casts `expr as Type`
 - Module paths with PascalCase segments; file-level `#import`; block-scoped `#import` ([V0-014](language-v0.md#v0-014--block-scoped-import-mvp-modules))
-- `match`, `given`, control flow (MVP); `Option` / `Result` / `?` parse-only until std
+- `match`, `if const` / `if var`, control flow (MVP); `Option` / `Result` / `?` parse-only until std
 - Unit enum patterns (`Eof => …`); struct/tuple enum patterns
 
 See [mvp.md](../mvp.md) for milestone scope.

@@ -5,7 +5,7 @@ Point :: struct {
 
 main :: () => {
     const p: Point = Point { x: 3, y: 4 };
-    given Point { x, y } = (p) {
-        x + y;
+    if const Point { x, y } = (p) {
+        const _ = x + y;
     };
 };

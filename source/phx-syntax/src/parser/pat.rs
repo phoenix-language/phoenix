@@ -1,4 +1,4 @@
-//! Pattern parsing for `match`, `given`, and bindings.
+//! Pattern parsing for `match`, `if const` / `if var`, and bindings.
 //!
 //! Covers wildcards, literals, ident bindings, struct/tuple patterns, and enum variant patterns.
 

@@ -961,8 +961,8 @@ fn expr_match_type_name_scrutinee_no_parens() {
 }
 
 #[test]
-fn stmt_given_ident_scrutinee_no_parens() {
-    assert_ok(&in_main("given _ = x { };"));
+fn stmt_if_const_ident_scrutinee_no_parens() {
+    assert_ok(&in_main("if const _ = x { };"));
 }
 
 #[test]
@@ -1150,8 +1150,20 @@ fn stmt_loop() {
 }
 
 #[test]
-fn stmt_given() {
-    assert_ok(&in_main("given Some(x) = (v) { x; }"));
+fn stmt_if_const() {
+    assert_ok(&in_main("if const Some(x) = (v) { x; };"));
+}
+
+#[test]
+fn stmt_if_var() {
+    assert_ok(&in_main("if var Some(x) = (v) { x; };"));
+}
+
+#[test]
+fn stmt_if_const_else_if_const() {
+    assert_ok(&in_main(
+        "if const Some(x) = v { x; } else if const None = v { 0; } else { 1; };",
+    ));
 }
 
 #[test]

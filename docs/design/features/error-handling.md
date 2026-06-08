@@ -6,7 +6,7 @@ Phoenix has no `throw` or `catch`. Functions that can fail return `Result<T, E>`
 
 ## Handling failures
 
-Callers must handle both cases — via `match`, `given`, or `?` inside another `Result`-returning function.
+Callers must handle both cases — via `match`, `if const` / `if var`, or `?` inside another `Result`-returning function.
 
 ```
 connect :: (addr: [u8]) => Result<Connection, Error>

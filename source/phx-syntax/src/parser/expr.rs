@@ -657,8 +657,7 @@ impl Parser<'_> {
     fn parse_if_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         self.eat_keyword(Keyword::If);
-        // Condition must not include trailing `{ … }` blocks or `else`; use logical level only.
-        let cond = self.parse_logical_or_expr()?;
+        let condition = self.parse_if_condition()?;
         let then_block = self.parse_block()?;
         let mut else_ifs = Vec::new();
         while matches!(self.peek_kind(), TokenKind::Keyword(Keyword::Else))
@@ -666,7 +665,7 @@ impl Parser<'_> {
         {
             self.eat_keyword(Keyword::Else);
             self.eat_keyword(Keyword::If);
-            let econd = self.parse_logical_or_expr()?;
+            let econd = self.parse_if_condition()?;
             let eblock = self.parse_block()?;
             else_ifs.push((econd, eblock));
         }
@@ -677,13 +676,45 @@ impl Parser<'_> {
         };
         Ok(self.node(
             Expr::If {
-                cond: Box::new(cond),
+                condition: Box::new(condition),
                 then_block,
                 else_ifs,
                 else_block,
             },
             self.span_from(start),
         ))
+    }
+
+    /// Parses a boolean condition or `const` / `var` pattern binding after `if`.
+    fn parse_if_condition(&mut self) -> Result<crate::ast::expr::IfCondition, ParseError> {
+        match self.peek_kind() {
+            TokenKind::Keyword(Keyword::Const) => {
+                self.bump();
+                let pattern = self.parse_pattern()?;
+                self.expect_kind(ExpectedToken::Punct("="), &TokenKind::Eq)?;
+                let scrutinee = self.parse_expr()?;
+                Ok(crate::ast::expr::IfCondition::Pattern {
+                    mutable: false,
+                    pattern,
+                    scrutinee,
+                })
+            }
+            TokenKind::Keyword(Keyword::Var) => {
+                self.bump();
+                let pattern = self.parse_pattern()?;
+                self.expect_kind(ExpectedToken::Punct("="), &TokenKind::Eq)?;
+                let scrutinee = self.parse_expr()?;
+                Ok(crate::ast::expr::IfCondition::Pattern {
+                    mutable: true,
+                    pattern,
+                    scrutinee,
+                })
+            }
+            _ => {
+                let cond = self.parse_logical_or_expr()?;
+                Ok(crate::ast::expr::IfCondition::Bool(cond))
+            }
+        }
     }
 
     /// Parses `match scrutinee { arms… }`.

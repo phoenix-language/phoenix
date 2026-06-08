@@ -5,7 +5,7 @@ Sing :: enum {
 main :: () => {
     const s: Sing = Only(12);
     var out: s32 = 0;
-    given Only(x) = s {
+    if const Only(x) = s {
         out = x;
     };
     const _ = out;
