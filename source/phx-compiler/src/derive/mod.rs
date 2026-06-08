@@ -427,11 +427,7 @@ impl AstGen {
     }
 
     fn struct_partialeq_body(&mut self, type_name: &TypeName, body: &StructBody) -> BlockNode {
-        let type_label = TypeName {
-            symbol: type_name.symbol,
-            span: type_name.span,
-            id: self.alloc_id(),
-        };
+        let _ = type_name;
         let expr = match body {
             StructBody::Fields(fields) => {
                 let comps: Vec<ExprNode> = fields
@@ -441,37 +437,13 @@ impl AstGen {
                 self.and_chain_or_true(comps)
             }
             StructBody::Tuple(types) => {
-                let mut bindings = Vec::with_capacity(types.len());
-                let mut other_bindings = Vec::with_capacity(types.len());
-                for i in 0..types.len() {
-                    bindings.push(self.ident(&format!("a{i}")));
-                    other_bindings.push(self.ident(&format!("b{i}")));
-                }
-                let self_pat = self.tuple_pattern(&type_label, &bindings);
-                let other_pat = self.tuple_pattern(&type_label, &other_bindings);
-                let mut eq = Vec::with_capacity(bindings.len());
-                for (a, b) in bindings.iter().zip(other_bindings.iter()) {
-                    eq.push(self.ident_eq(a, b));
-                }
-                let inner = self.and_chain_or_true(eq);
-                let other_scrutinee = self.other_expr();
-                let other_match = self.match_expr(
-                    other_scrutinee,
-                    vec![MatchArm {
-                        pattern: other_pat,
-                        guard: None,
-                        body: inner,
-                    }],
-                );
-                let self_scrutinee = self.self_expr();
-                self.match_expr(
-                    self_scrutinee,
-                    vec![MatchArm {
-                        pattern: self_pat,
-                        guard: None,
-                        body: other_match,
-                    }],
-                )
+                let comps: Vec<ExprNode> = (0..types.len())
+                    .map(|i| {
+                        let field = self.ident(&i.to_string());
+                        self.field_eq(&field, &field)
+                    })
+                    .collect();
+                self.and_chain_or_true(comps)
             }
             _ => self.bool_lit(true),
         };
@@ -654,19 +626,6 @@ impl AstGen {
             scrutinee: Box::new(scrutinee),
             arms,
         })
-    }
-
-    fn tuple_pattern(&mut self, type_label: &TypeName, bindings: &[Ident]) -> PatternNode {
-        let patterns = bindings
-            .iter()
-            .map(|b| self.node(Pattern::Ident(*b)))
-            .collect();
-        let name = TypeName {
-            symbol: type_label.symbol,
-            span: type_label.span,
-            id: self.alloc_id(),
-        };
-        self.node(Pattern::Tuple { name, patterns })
     }
 
     fn deref_expr(&mut self, base: ExprNode) -> ExprNode {

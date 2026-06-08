@@ -130,6 +130,8 @@ pub struct VariantMeta {
 pub struct ProgramLayout {
     /// Struct field order by struct def.
     pub structs: HashMap<DefId, StructLayout>,
+    /// Tuple struct templates (`Name :: struct(T, …)`).
+    pub tuple_structs: HashSet<DefId>,
     /// Enum layouts by enum def.
     pub enums: HashMap<DefId, EnumLayout>,
     /// Stable bytecode type id per struct/enum def.
@@ -197,8 +199,8 @@ impl ProgramLayout {
 
     /// Returns field index for a struct field name.
     #[must_use]
-    pub fn struct_field_index(&self, def: DefId, field: Symbol) -> Option<u32> {
-        self.structs.get(&def).and_then(|s| {
+    pub fn struct_field_index(&self, def: DefId, field: Symbol, args: &[TypeId]) -> Option<u32> {
+        self.struct_layout(def, args).and_then(|s| {
             s.fields
                 .iter()
                 .position(|(name, _)| *name == field)

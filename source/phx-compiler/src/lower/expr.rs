@@ -130,7 +130,7 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
                 }
             }
             lower_expr(ctx, expr);
-            if from_ty != result_ty {
+            if from_ty != result_ty && !tuple_struct_repr_cast(ctx, from_ty, result_ty) {
                 if let (Ty::Array { elem, .. }, Ty::Slice(slice_elem)) =
                     (ctx.typed.types.get(from_ty), ctx.typed.types.get(result_ty))
                 {
@@ -593,11 +593,12 @@ pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value
         Expr::Postfix { base, ops } if ops.len() == 1 => {
             if let PostfixOp::Field(field) = &ops[0] {
                 if let Some(def) = struct_def_from_base(ctx, base) {
-                    let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                    let args = struct_args_from_base(ctx, base);
+                    let type_id = ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
                     let field_index = ctx
                         .typed
                         .layout
-                        .struct_field_index(def, field.symbol)
+                        .struct_field_index(def, field.symbol, &args)
                         .unwrap_or(0);
                     ctx.emit(IrInst::SetField {
                         type_id,
@@ -748,12 +749,12 @@ fn lower_postfix_inner(
                         _ => receiver_ty,
                     };
                 }
-                if let Some(def) = named_def_for_ty(ctx.typed, receiver_ty) {
-                    let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                if let Some((def, args)) = named_type_parts(ctx.typed, receiver_ty) {
+                    let type_id = ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
                     let field_index = ctx
                         .typed
                         .layout
-                        .struct_field_index(def, field.symbol)
+                        .struct_field_index(def, field.symbol, &args)
                         .unwrap_or(0);
                     ctx.emit(IrInst::GetField {
                         type_id,
@@ -803,6 +804,17 @@ fn lower_postfix_inner(
                     ctx.emit(IrInst::Call {
                         callee,
                         ret: result_ty,
+                    });
+                    receiver_ty = result_ty;
+                } else if let Some(struct_def) = resolve_tuple_struct_ctor(ctx, base) {
+                    for arg in args {
+                        lower_expr(ctx, arg);
+                    }
+                    let (type_id, field_count) =
+                        tuple_struct_make_operands(ctx, struct_def, result_ty);
+                    ctx.emit(IrInst::MakeStruct {
+                        type_id,
+                        field_count,
                     });
                     receiver_ty = result_ty;
                 } else if let Some(variant_def) = resolve_variant_ctor(ctx, base) {
@@ -1068,6 +1080,60 @@ fn find_trait_method(
     }
 }
 
+fn named_type_parts(typed: &TypedProgram, ty: TypeId) -> Option<(DefId, Vec<TypeId>)> {
+    match typed.types.get(ty) {
+        Ty::Named { def, args } => Some((*def, args.clone())),
+        _ => None,
+    }
+}
+
+fn tuple_struct_repr_cast(ctx: &LowerCtx<'_>, from: TypeId, to: TypeId) -> bool {
+    single_field_tuple_inner(ctx, from).is_some_and(|inner| types_same_for_cast(ctx, inner, to))
+        || single_field_tuple_inner(ctx, to)
+            .is_some_and(|inner| types_same_for_cast(ctx, inner, from))
+}
+
+fn types_same_for_cast(_ctx: &LowerCtx<'_>, a: TypeId, b: TypeId) -> bool {
+    a == b
+}
+
+fn single_field_tuple_inner(ctx: &LowerCtx<'_>, ty: TypeId) -> Option<TypeId> {
+    let (def, args) = named_type_parts(ctx.typed, ty)?;
+    if !ctx.typed.layout.tuple_structs.contains(&def) {
+        return None;
+    }
+    let layout = ctx.typed.layout.struct_layout(def, &args)?;
+    if layout.fields.len() != 1 {
+        return None;
+    }
+    Some(layout.fields[0].1)
+}
+
+fn tuple_struct_make_operands(
+    ctx: &LowerCtx<'_>,
+    struct_def: DefId,
+    result_ty: TypeId,
+) -> (u32, u32) {
+    let (def, args) = named_type_parts(ctx.typed, result_ty).unwrap_or((struct_def, Vec::new()));
+    let type_id = ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
+    let field_count = ctx
+        .typed
+        .layout
+        .struct_layout(def, &args)
+        .map_or(0, |sl| u32::try_from(sl.fields.len()).unwrap_or(u32::MAX));
+    (type_id, field_count)
+}
+
+fn resolve_tuple_struct_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
+    let node_id = path_or_ident_node_id(&base.inner)?;
+    let def = lookup_resolution(&ctx.typed.resolved, ctx.module, node_id)?;
+    if ctx.typed.layout.tuple_structs.contains(&def) {
+        Some(def)
+    } else {
+        None
+    }
+}
+
 fn resolve_variant_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
     let node_id = path_or_ident_node_id(&base.inner)?;
     let def = lookup_resolution(&ctx.typed.resolved, ctx.module, node_id)?;
@@ -1112,6 +1178,17 @@ fn struct_def_from_ty(ctx: &LowerCtx<'_>, ty: TypeId) -> Option<DefId> {
         Ty::Ref { inner, .. } => struct_def_from_ty(ctx, *inner),
         _ => None,
     }
+}
+
+fn struct_args_from_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Vec<TypeId> {
+    if let Expr::Ident(ident) = &base.inner {
+        if let Some(binding) = ctx.layout.binding(ident.symbol) {
+            if let Ty::Named { args, .. } = ctx.typed.types.get(binding.ty) {
+                return args.clone();
+            }
+        }
+    }
+    Vec::new()
 }
 
 fn struct_def_from_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
@@ -1506,7 +1583,7 @@ pub(crate) fn bind_match_pattern(
                     let field_index = ctx
                         .typed
                         .layout
-                        .struct_field_index(def, field.name.symbol)
+                        .struct_field_index(def, field.name.symbol, &[])
                         .unwrap_or(0);
                     ctx.emit(IrInst::LoadLocal {
                         slot: temp,

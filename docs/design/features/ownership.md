@@ -38,7 +38,7 @@ A type is Copyable only when:
 - The type has no owning heap payload requiring custom drop behavior
 - The type has no interior mutability that would make a bitwise copy unsafe
 
-**Typically Copyable:** integer and float scalars, `bool`, `()`, tuples of Copyable fields, and enums with only Copyable payloads.
+**Typically Copyable:** integer and float scalars, `bool`, `()`, tuples of Copyable fields, **tuple structs** whose fields are all Copyable ([V0-057](language-v0.md#v0-057--opaque--newtype-wrappers)), and enums with only Copyable payloads.
 
 **Not Copyable:** owning heap handles, mutable shared handles, and resource wrappers with cleanup requirements.
 
@@ -52,6 +52,24 @@ const id: u64 = 42u;
 ```
 
 There is no `.copy()` method on Copyable types — copying is implicit.
+
+### Tuple struct moves (V0-057)
+
+Tuple structs move and copy **field-wise** through the wrapper type — the struct name is nominal, but ownership of each anonymous field follows the same rules as a record struct with those field types.
+
+```phoenix
+Buffer :: struct([u8; 4]);
+
+store :: (b: Buffer) => () { const _ = b; };
+
+main :: () => {
+  const a: Buffer = Buffer([1u, 2u, 3u, 4u]);
+  const b = a;       // move: `a` invalid afterward (Buffer is not Copyable if a field is not)
+  store(b);
+};
+```
+
+When all fields are Copyable, `#derive(Copyable)` or compiler-known Copyable applies to the tuple struct as a whole. Use `.0`, `.1`, … or inherent impl methods to access inner values; implicit unwrap to inner types is rejected ([type-system.md](type-system.md#type-aliases-vs-opaque-newtypes-phased)).
 
 ### Clone (standard library trait)
 

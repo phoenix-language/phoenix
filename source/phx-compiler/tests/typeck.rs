@@ -1400,6 +1400,52 @@ main :: () => { const w = Wrapper {}; w.drop(); const _ = w; };
 }
 
 #[test]
+fn tuple_struct_ctor_and_field_ok() {
+    compile_ok(
+        "Millimeters :: struct(s32); \
+         main :: () => { const m: Millimeters = Millimeters(500); const x: s32 = m.0; const _ = x; };",
+    );
+}
+
+#[test]
+fn tuple_struct_implicit_inner_assign_errors() {
+    let bag = typeck_err(
+        "Millimeters :: struct(s32); main :: () => { const m: Millimeters = Millimeters(1); const x: s32 = m; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. })),
+        "expected mismatch: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn tuple_struct_fn_param_mismatch_errors() {
+    let bag = typeck_err(
+        "Millimeters :: struct(s32); \
+         f :: (x: s32) => () { const _ = (); }; \
+         main :: () => { const m: Millimeters = Millimeters(1); f(m); };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::Mismatch { .. })),
+        "expected mismatch: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn tuple_struct_single_field_cast_ok() {
+    compile_ok(
+        "Millimeters :: struct(s32); \
+         main :: () => { const m: Millimeters = 7 as Millimeters; const x: s32 = m as s32; const _ = x; };",
+    );
+}
+
+#[test]
 fn copyable_drop_conflict_rejected() {
     let source = r"
 Copyable :: trait {};

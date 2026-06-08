@@ -1,0 +1,7 @@
+Millimeters :: struct(s32);
+
+main :: () => {
+    const m: Millimeters = Millimeters(500);
+    const bad: s32 = m;
+    const _ = bad;
+};

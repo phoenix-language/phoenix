@@ -907,6 +907,11 @@ fn expr_tuple_literal() {
 }
 
 #[test]
+fn expr_tuple_struct_field_index() {
+    assert_ok(&in_main_expr("m.0"));
+}
+
+#[test]
 fn expr_array_literal_empty() {
     assert_ok(&in_main_expr("[]"));
 }

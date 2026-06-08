@@ -13,7 +13,7 @@ This split is the canonical direction. Older drafts that used `@` for both are l
 
 | Category | Sigil / form | Purpose | MVP status |
 |---|---|---|---|
-| Compile-time keywords | `#` | import, unsafe regions, optimization hints | `#import` wired end-to-end; `#unsafe`, `#inline` / `#cold` / `#hot` parse-only; `#derive` parse-only (no codegen) |
+| Compile-time keywords | `#` | import, unsafe regions, optimization hints | `#import` wired end-to-end; `#derive` codegen ([V0-056](../language-v0.md#v0-056--derive-minimal)); `#unsafe`, `#inline` / `#cold` / `#hot` parse-only |
 | Item attributes | `#[...]` | conditional compilation, deprecation, lint policy | **Implemented** ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)): `cfg`, `deprecated`, `allow`, `must_use` |
 | Runtime | `@` | runtime VM actions (especially actor runtime actions) | post-MVP heavy semantics |
 
@@ -66,7 +66,7 @@ copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 
 ### `#derive(...)` (V0-056)
 
-Compiler-generated trait impls on **structs and enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)). Also accepted as `#[derive(...)]` (see Item attributes below).
+Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and **enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)). Also accepted as `#[derive(...)]` (see Item attributes below).
 
 | Supported trait | Generated impl |
 |---|---|

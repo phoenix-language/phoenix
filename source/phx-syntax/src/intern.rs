@@ -97,6 +97,12 @@ impl Interner {
         Ok(Symbol(idx))
     }
 
+    /// Returns an existing symbol for `text`, if already interned.
+    #[must_use]
+    pub fn lookup(&self, text: &str) -> Option<Symbol> {
+        self.index.get(text).copied().map(Symbol)
+    }
+
     /// Resolves a symbol to its text.
     #[must_use]
     pub fn resolve(&self, symbol: Symbol) -> &str {

@@ -160,9 +160,9 @@ read_config :: () => Result<Config, AppError> { /* … */ };
 
 Future std subsystems (I/O, parsing) ship **concrete** error types in their own modules that implement `std::core::error::Error` — std does not centralize every failure variant in one enum.
 
-### Opaque newtypes (post–V0-057)
+### Opaque newtypes (V0-057)
 
-Distinct nominal wrappers (`UserId`-style) for domain errors. Better long-term API evolution; same `From`/`?` mechanics.
+Distinct nominal wrappers for domain errors — declare as **tuple structs** (`UserId :: struct(u64);`), not transparent `type` aliases. Better long-term API evolution; same `From`/`?` mechanics once conversion traits land. See [type-system.md — Type aliases vs opaque newtypes](type-system.md#type-aliases-vs-opaque-newtypes-phased).
 
 ### Source chains and `dyn Error` (deferred)
 

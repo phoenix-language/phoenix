@@ -289,7 +289,7 @@ impl Parser<'_> {
             match self.peek_kind() {
                 TokenKind::Dot => {
                     self.bump();
-                    let name = self.parse_ident()?;
+                    let name = self.parse_tuple_field_name()?;
                     let generics = if self.eat_kind(&TokenKind::Lt) {
                         Some(self.parse_generic_args()?)
                     } else {

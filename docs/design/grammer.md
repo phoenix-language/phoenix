@@ -141,6 +141,35 @@ const p1 = Point { x: 1, y: 2 };
 const p2 = Point { x: 3, ..p1 };
 ```
 
+### Tuple structs (opaque wrappers, V0-057)
+
+Tuple struct bodies use parenthesized field types — no field names in the declaration:
+
+```phoenix
+Millimeters :: struct(s32);
+Point :: struct(s32, s32);
+```
+
+They are **distinct nominal types**, unlike transparent aliases (`type UserId = u64` unifies with `u64`). See [type-system.md — Type aliases vs opaque newtypes](features/type-system.md#type-aliases-vs-opaque-newtypes-phased).
+
+**Construction** uses a **constructor call** (not a struct literal):
+
+```phoenix
+const m: Millimeters = Millimeters(500);
+const p: Point = Point(1, 2);
+```
+
+**Field access** uses numeric postfix indices (same as Rust tuple fields):
+
+```phoenix
+const x: s32 = m.0;
+const y: s32 = p.1;
+```
+
+Single-field tuple structs may also convert with explicit `as` when repr-identical (`500 as Millimeters`, `m as s32`). Multi-field tuple structs require `.N` access or inherent impl methods — no implicit assignability with inner field types.
+
+`#derive(Copyable, PartialEq, Debug)` applies to tuple structs the same as record structs ([traits.md — Derive](features/traits.md#derive-v0-056)).
+
 ---
 
 ## Trait and impl syntax

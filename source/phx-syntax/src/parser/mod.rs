@@ -347,6 +347,24 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Parses a tuple struct field name: `ident` or integer index (`0`, `1`, …).
+    pub(crate) fn parse_tuple_field_name(&mut self) -> Result<crate::ast::Ident, ParseError> {
+        match self.peek_kind() {
+            TokenKind::Ident(name) => {
+                let span = self.current_span();
+                self.bump();
+                self.intern_ident(name, span)
+            }
+            TokenKind::Integer { value, .. } if value >= 0 => {
+                let span = self.current_span();
+                self.bump();
+                let name = value.to_string();
+                self.intern_ident(&name, span)
+            }
+            _ => Err(self.error_unexpected(ExpectedToken::Ident)),
+        }
+    }
+
     /// Parses one symbol in a braced `#import` list (`foo` or `Error`).
     pub(crate) fn parse_import_symbol(&mut self) -> Result<crate::ast::Ident, ParseError> {
         match self.peek_kind() {

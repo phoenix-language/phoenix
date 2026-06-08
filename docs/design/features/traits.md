@@ -371,7 +371,7 @@ Suggested baseline (design target, not MVP implementation guarantee):
 
 ## Derive (V0-056)
 
-`#derive(...)` and `#[derive(...)]` expand to trait impls at compile time (before name resolution). Supported traits: **`Copyable`**, **`PartialEq`**, **`Debug`** on structs and enums. Traits must be in scope via prelude or `#import` (e.g. `std::core::cmp::PartialEq`).
+`#derive(...)` and `#[derive(...)]` expand to trait impls at compile time (before name resolution). Supported traits: **`Copyable`**, **`PartialEq`**, **`Debug`** on record structs, **tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and enums. Traits must be in scope via prelude or `#import` (e.g. `std::core::cmp::PartialEq`).
 
 ```phoenix
 #derive(PartialEq, Copyable)
@@ -381,10 +381,17 @@ Point :: struct {
 }
 ```
 
+Tuple structs ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)) use the same derive allowlist:
+
+```phoenix
+#[derive(PartialEq)]
+Millimeters :: struct(s32);
+```
+
 | Trait | Rule |
 |---|---|
 | `Copyable` | Empty impl; type must have only Copyable fields and no `Drop` impl |
-| `PartialEq` | Struct: pairwise `==` on fields; enum: variant tag + payload comparison |
+| `PartialEq` | Record struct: pairwise `==` on named fields; **tuple struct:** `self.0 == other.0 && …`; enum: variant tag + payload comparison |
 | `Debug` | Placeholder `fmt` returning a 32-byte type-name buffer |
 
 Generic types, `Clone`/`Eq`, and custom derives are out of scope for V0-056.

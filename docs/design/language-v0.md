@@ -550,13 +550,15 @@ Polish and capabilities that make the project legible to new contributors and un
 
 ### V0-057 — Opaque / newtype wrappers
 
-- Distinct nominal types that wrap a single inner representation (e.g. `UserId` around `s32`), separate from **transparent** `type Alias = T` aliases.
-- Wrapping and unwrapping require explicit conversion; inner and wrapper types are not mutually assignable without it.
-- Syntax and surface forms are specified in [type-system.md](features/type-system.md#type-aliases-vs-opaque-newtypes-phased) and [grammar.ebnf](grammar.ebnf) before implementation.
+- Rust-style **tuple structs**: `Millimeters :: struct(u32);` — distinct from transparent `type Alias = T`.
+- Construct with ctor call `Millimeters(500)`; access via `.0` / impl methods; no implicit assignability with inner field types.
+- `#derive` on tuple structs; tuple field postfix `.0` in [grammar.ebnf](grammar.ebnf).
 
-**Acceptance:** A program defines a newtype wrapper, constructs a value, passes it to a function expecting the wrapper type, and rejects implicit use where the inner type is required; explicit unwrap/conversion works; `just pre-commit` green with fixture coverage.
+**Acceptance:** `millimeters.phx` — derive + impl + ctor + pass to `fn(Millimeters)`; negative fixture rejects implicit inner use; `just pre-commit` green.
 
-**Refs:** [type-system.md](features/type-system.md#type-aliases-vs-opaque-newtypes-phased), [ownership.md](features/ownership.md)
+**Refs:** [type-system.md](features/type-system.md#type-aliases-vs-opaque-newtypes-phased), [ownership.md](features/ownership.md#tuple-struct-moves-v0-057), [grammer.md](grammer.md#tuple-structs-opaque-wrappers-v0-057), [traits.md](features/traits.md#derive-v0-056), [grammar.ebnf](grammar.ebnf)
+
+**Status: Done**
 
 ---
 

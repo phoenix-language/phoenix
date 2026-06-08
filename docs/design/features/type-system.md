@@ -88,6 +88,7 @@ Phoenix uses a single conversion operator: postfix **`expr as Type`**. Casts are
 | `[T; N] as [T]` | Slice view over array storage (no copy) |
 | `str as [u8]` | Byte slice view over the same rodata / storage |
 | `[u8; N] as str` | Allowed when UTF-8 is provable at compile time: inline `b"…"` literal **or** a **`const`** binding initialized directly from such a literal; lowers to rodata (`MakeStr`) |
+| Single-field tuple struct ↔ inner field type | **V0-057** — repr-identical no-op: `500 as Millimeters`, `m as s32` when `Millimeters :: struct(s32)` ([opaque newtypes](#type-aliases-vs-opaque-newtypes-phased)) |
 
 Examples:
 
@@ -114,7 +115,7 @@ const bytes: [u8] = msg as [u8];  // when `msg: str`
 ### Tier C — forbidden via `as`
 
 - `bool` ↔ numeric
-- Struct / enum / layout punning (except identity `as SameType`)
+- Struct / enum / layout punning (except identity `as SameType` and single-field tuple struct ↔ inner type — Tier A, V0-057)
 - **Error or domain enum conversion** — use `From` / `TryFrom`, never `as`
 - Casts that silently allocate (e.g. `str` → owned std `String`)
 - Implicit numeric widening anywhere (calls, assignment, operators)
@@ -128,19 +129,44 @@ See also [grammer.md](../grammer.md#explicit-casts) for surface syntax and prece
 | Form | Status | Semantics |
 |---|---|---|
 | `type Alias = T` | **MVP (shipped)** | **Transparent** alias — `Alias` and `T` unify for assignability, operators, and pattern matching after alias expansion. |
-| Opaque / newtype wrapper | **Planned ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers))** | **Distinct nominal** type around one inner representation — not interchangeable with the inner type without explicit conversion. |
+| Tuple struct `Name :: struct(T, …)` | **V0-057 (shipped)** | **Distinct nominal** wrapper — Rust-style `struct Millimeters(u32)`; not interchangeable with field types without ctor, `.N`, method, or explicit `as` (single-field). |
+| Opaque / newtype wrapper | **V0-057** | Same as **tuple struct** (no separate `newtype` keyword). |
 
 **Transparent aliases today:** recursive aliases are rejected; generic aliases (`type Pair<t> = (t, t);`) monomorphize like other generic declarations.
 
-**Opaque / newtype (V0-057 — design TBD):**
+**Tuple struct as opaque wrapper (V0-057):**
 
-- One inner type per wrapper (multi-field distinct types remain ordinary `struct`s).
-- Zero-cost representation may equal the inner type at runtime, but the type checker treats wrapper and inner as different types.
-- Explicit wrap/unwrap (or constructor/conversion fn) required at boundaries — e.g. `UserId` must not silently substitute for `s32`.
-- `Copyable` / move semantics follow the inner representation unless a future design doc says otherwise.
-- Surface syntax is **not** locked until grammar and this section are updated together; do not implement ad hoc forms in the compiler.
+- Declaration: `Millimeters :: struct(u32);` or multi-field `Point :: struct(s32, s32);` — not `type Alias = T`.
+- Construction: tuple struct **constructor call** `Millimeters(500)` (not struct literal `{ … }`).
+- Access: tuple fields `value.0`, `value.1`, … or inherent impl methods; single-field may also use `expr as Inner` / `inner as Wrapper`.
+- Assignability: `Millimeters` and `u32` do **not** unify; `const x: u32 = length` is an error without `.0` / method / cast.
+- Runtime repr: same as a struct with anonymous fields (zero-cost for primitive fields).
+- `Copyable` / move semantics follow field types; `#derive(Copyable, PartialEq, Debug)` supported on tuple structs (non-generic).
+- Generics: `Pair :: struct<t>(t, t);` monomorphizes like record structs.
 
-**Use cases:** newtyped IDs (`UserId`, `SessionId`), units (`Meters`, `Seconds`), std helpers like `NonZero<t>`, and FFI-adjacent distinct handles without field names.
+**Accepted example (V0-057):**
+
+```phoenix
+#[derive(PartialEq)]
+Millimeters :: struct(s32);
+
+Millimeters :: impl {
+  as_s32 :: (self: &Self) => s32 { self.0 }
+};
+
+main :: () => {
+  const length: Millimeters = Millimeters(500);
+  accept(length);
+  const raw: s32 = length.as_s32();
+  const _ = raw;
+};
+
+accept :: (m: Millimeters) => () { const _ = m; };
+```
+
+**Rejected:** `const x: s32 = length` (no `.0` / method / cast); `f(length)` when `f :: (x: s32) => ()`.
+
+**Use cases:** newtyped IDs (`UserId`, `SessionId`), units (`Meters`, `Seconds`), small product types without field names. Record structs `{ x: T }` remain named-field types.
 
 ---
 

@@ -35,7 +35,7 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Runtime model | single-process stack VM interpreter |
 | Declarations | `const`, `var`, function declarations |
 | Types | numeric primitives, `bool`, tuples, unit `()`, raw pointers, borrow types (`&T`, `&mut T`), fixed arrays, slices/views, **`str` UTF-8 text view** |
-| User types | `Name :: struct`, `Name :: enum`, type aliases |
+| User types | `Name :: struct` (record `{ … }`, tuple `(T, …)`, or unit), `Name :: enum`, type aliases (transparent); tuple struct nominal semantics — [V0-057](language-v0.md#v0-057--opaque--newtype-wrappers) |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution) |
 | Control flow | `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return` |
 | Expressions | arithmetic, comparison, logical operators; explicit casts (`expr as Type`) |

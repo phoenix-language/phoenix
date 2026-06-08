@@ -44,7 +44,6 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | Single-element tuples `(T,)` | No MVP example requires them | Add to grammar if needed |
 | Labeled `break` / `continue` | Not in overview docs | Add when loop labels are designed |
 | `#actor` / `#supervise` | Post-MVP compile directives | Actor contract metadata |
-| Opaque / newtype wrappers | Surface syntax not locked | Distinct nominal wrap of one inner type — [V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers); see [type-system.md](type-system.md#type-aliases-vs-opaque-newtypes-phased) |
 
 ---
 
@@ -52,7 +51,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 
 These are in [grammar.ebnf](../grammar.ebnf) and intended for full MVP pipeline support:
 
-- `Name :: struct` / `Name :: enum` / `type Alias = T`
+- `Name :: struct` / `Name :: enum` / `type Alias = T` (tuple struct `Name :: struct(T, …)` — [V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers))
 - `Name :: trait` / `Type :: impl` / `Type :: impl :: Trait`
 - Functions `name :: (params) => T { }`, top-level and block `const` / `var`
 - Borrow types `&T`, `&mut T`; explicit casts `expr as Type`

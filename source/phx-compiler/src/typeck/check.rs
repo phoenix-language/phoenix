@@ -1018,12 +1018,25 @@ impl<'a> TypeChecker<'a> {
                 {
                     let mut fields_map = HashMap::new();
                     let mut ordered = Vec::new();
-                    if let StructBody::Fields(fs) = body {
-                        for f in fs {
-                            let ty = self.lower_ast_type_with_defs(&f.ty, &td);
-                            fields_map.insert(f.name.symbol, ty);
-                            ordered.push((f.name.symbol, ty));
+                    match body {
+                        StructBody::Fields(fs) => {
+                            for f in fs {
+                                let ty = self.lower_ast_type_with_defs(&f.ty, &td);
+                                fields_map.insert(f.name.symbol, ty);
+                                ordered.push((f.name.symbol, ty));
+                            }
                         }
+                        StructBody::Tuple(types) => {
+                            self.program_layout.tuple_structs.insert(def);
+                            for (i, t) in types.iter().enumerate() {
+                                let ty = self.lower_ast_type_with_defs(t, &td);
+                                let field_name = self.tuple_field_symbol(i);
+                                fields_map.insert(field_name, ty);
+                                ordered.push((field_name, ty));
+                            }
+                        }
+                        StructBody::Unit => {}
+                        _ => {}
                     }
                     self.struct_fields
                         .insert(def, StructFields { fields: fields_map });
@@ -2170,6 +2183,7 @@ impl<'a> TypeChecker<'a> {
                 let td = self.type_defs.clone();
                 let to = self.lower_ast_type_with_defs(ty, &td);
                 if !check_cast(&self.alias_env(), from, to)
+                    && !self.check_tuple_struct_cast(from, to)
                     && !self.check_utf8_array_to_str_cast(from, to, &expr.inner)
                 {
                     self.bag.push(
@@ -2731,11 +2745,126 @@ impl<'a> TypeChecker<'a> {
             .collect()
     }
 
+    fn check_tuple_struct_cast(&mut self, from: TypeId, to: TypeId) -> bool {
+        if let Some(inner) = self.single_field_tuple_inner(from)
+            && self.types_equal(inner, to)
+        {
+            return true;
+        }
+        if let Some(inner) = self.single_field_tuple_inner(to)
+            && self.types_equal(inner, from)
+        {
+            return true;
+        }
+        false
+    }
+
+    fn single_field_tuple_inner(&mut self, ty: TypeId) -> Option<TypeId> {
+        let Ty::Named { def, args } = self.types.get(ty).clone() else {
+            return None;
+        };
+        if !self.program_layout.tuple_structs.contains(&def) {
+            return None;
+        }
+        let fields: Vec<TypeId> = self
+            .struct_fields_for_named(def, &args)
+            .into_values()
+            .collect();
+        if fields.len() != 1 {
+            return None;
+        }
+        fields.into_iter().next()
+    }
+
+    fn tuple_field_symbol(&self, index: usize) -> Symbol {
+        let name = index.to_string();
+        self.resolved
+            .interner
+            .lookup(&name)
+            .unwrap_or_else(|| Symbol::from_raw(0))
+    }
+
     fn enum_def_for_variant(&self, variant_def: DefId) -> Option<DefId> {
         self.program_layout
             .variants
             .get(&variant_def)
             .map(|meta| meta.enum_def)
+    }
+
+    fn check_tuple_struct_ctor_call(
+        &mut self,
+        struct_def: DefId,
+        generics: Option<&[Node<phx_syntax::ast::types::Type>]>,
+        args: &[ExprNode],
+        span: Span,
+    ) -> TypeId {
+        let param_defs = generic_param_defs_for_type(self.resolved, struct_def).unwrap_or_default();
+        let field_types: Vec<TypeId> = self
+            .program_layout
+            .structs
+            .get(&struct_def)
+            .map(|sl| sl.fields.iter().map(|(_, ty)| *ty).collect())
+            .unwrap_or_default();
+        let type_args = if param_defs.is_empty() {
+            if generics.is_some() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "type arguments on non-generic tuple struct constructor",
+                        span,
+                    },
+                );
+            }
+            Vec::new()
+        } else {
+            let Some(concrete_args) = self.resolve_concrete_generic_args(
+                generics,
+                generic_params_for_def(self.resolved, struct_def).as_deref(),
+                &param_defs,
+                &field_types,
+                args,
+                span,
+                Some(struct_def),
+                self.def_module(struct_def),
+            ) else {
+                return self.unit;
+            };
+            self.record_type_mono_inst(struct_def, TypeMonoKind::Struct, concrete_args.clone());
+            concrete_args
+        };
+        let struct_ty = self.types.intern(&Ty::Named {
+            def: struct_def,
+            args: type_args.clone(),
+        });
+        let params = self.struct_fields_for_named(struct_def, &type_args);
+        let param_types: Vec<TypeId> = self
+            .program_layout
+            .structs
+            .get(&struct_def)
+            .map(|sl| {
+                sl.fields
+                    .iter()
+                    .map(|(name, _)| *params.get(name).unwrap_or(&self.unit))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if param_types.len() != args.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_types.len(),
+                    found: args.len(),
+                    span,
+                },
+            );
+        }
+        for (index, (p, arg)) in param_types.iter().zip(args.iter()).enumerate() {
+            let got = self.check_expr_node(arg);
+            if !self.types_equal(got, *p) {
+                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
+            }
+        }
+        struct_ty
     }
 
     fn substituted_variant_payload(
@@ -3298,6 +3427,9 @@ impl<'a> TypeChecker<'a> {
             return self.check_call(callee, args, span);
         };
         let Some(f) = self.find_function_decl(fn_def) else {
+            if self.program_layout.tuple_structs.contains(&fn_def) {
+                return self.check_tuple_struct_ctor_call(fn_def, generics, args, span);
+            }
             if let Some(enum_def) = self.enum_def_for_variant(fn_def) {
                 return self.check_enum_variant_call_with_generics(
                     enum_def, fn_def, callee, generics, args, span,

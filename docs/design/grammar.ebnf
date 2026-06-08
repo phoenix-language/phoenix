@@ -69,6 +69,7 @@ reexport_path      = identifier , [ "::" , identifier ] ;
    ----------------------------------------------------------------------------- *)
 
 struct_decl        = type_identifier , "::" , [ generic_params ] , "struct" , struct_body ;
+(* Tuple body: opaque / newtype wrapper (V0-057) — Millimeters :: struct(u32); *)
 struct_body        = "{" , [ field_list ] , "}"
                    | "(" , type_expr , { "," , type_expr } , [ "," ] , ")"
                    | /* unit struct */ ;
@@ -184,8 +185,9 @@ multiplicative_expr = power_expr , { ( "*" | "/" | "%" ) , power_expr } ;
 power_expr         = unary_expr , [ "**" , unary_expr ] ;
 unary_expr         = postfix_expr | ( "-" | "!" | "~" | "*" | "&" | "&mut" ) , unary_expr ;
 postfix_expr       = primary_expr , { postfix_op } ;
-postfix_op         = "." , identifier , [ generic_args ]
-                   | "." , identifier , "(" , [ arg_list ] , ")"
+(* integer_literal after "." is tuple struct field access, e.g. value.0 (V0-057) *)
+postfix_op         = "." , ( identifier | integer_literal ) , [ generic_args ]
+                   | "." , ( identifier | integer_literal ) , "(" , [ arg_list ] , ")"
                    | "(" , [ arg_list ] , ")"
                    | "[" , expr , "]"
                    | "?" ;
