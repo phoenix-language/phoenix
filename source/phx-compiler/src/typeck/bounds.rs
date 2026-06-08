@@ -254,6 +254,59 @@ fn layout_has_trait_impl(
     })
 }
 
+/// Resolves `From::from` for `E_out: From<E_in>` when the trait impl exists.
+#[must_use]
+pub fn resolve_from_fn_for_error(
+    layout: &ProgramLayout,
+    types: &TypeInterner,
+    std_traits: &StdTraitKernel,
+    resolved: &ResolvedProgram,
+    err_out: TypeId,
+    err_in: TypeId,
+) -> Option<DefId> {
+    let from_trait_def = resolve_trait_def_by_name(resolved, std_traits, "From")?;
+    let Ty::Named {
+        def: implementer,
+        args: implementer_args,
+    } = types.get(err_out).clone()
+    else {
+        return None;
+    };
+    if !type_satisfies_trait_inst(
+        layout,
+        types,
+        std_traits,
+        err_out,
+        from_trait_def,
+        &[err_in],
+    ) {
+        return None;
+    }
+    let key = TraitInstKey::new(implementer, implementer_args, from_trait_def, vec![err_in]);
+    layout
+        .trait_methods
+        .iter()
+        .find(|((k, method), _)| k == &key && resolved.interner.resolve(*method) == "from")
+        .map(|(_, fn_def)| *fn_def)
+}
+
+fn resolve_trait_def_by_name(
+    resolved: &ResolvedProgram,
+    std_traits: &StdTraitKernel,
+    trait_name: &str,
+) -> Option<DefId> {
+    if let Some(def) = std_traits.trait_def_for_name(&resolved.interner, trait_name) {
+        return Some(def);
+    }
+    resolved.defs.iter().enumerate().find_map(|(i, d)| {
+        if d.kind == DefKind::Trait && resolved.interner.resolve(d.name) == trait_name {
+            Some(DefId::from_raw(u32::try_from(i).ok()?))
+        } else {
+            None
+        }
+    })
+}
+
 fn format_type_name(resolved: &ResolvedProgram, types: &TypeInterner, id: TypeId) -> String {
     super::display::format_type(types, &resolved.interner, &resolved.defs, id)
 }

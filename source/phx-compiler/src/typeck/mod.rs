@@ -40,7 +40,7 @@ pub use display::format_type;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
-pub use std_kernel::{StdKernel, TrySiteMeta};
+pub use std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
 pub use std_trait_kernel::StdTraitKernel;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 

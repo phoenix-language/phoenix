@@ -1,0 +1,9 @@
+[project]
+name = "std_try_ok_mismatch"
+version = "0.1.0"
+description = "V0-059 negative: Ok type mismatch at ?"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

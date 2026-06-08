@@ -1,0 +1,9 @@
+[project]
+name = "std_try_from"
+version = "0.1.0"
+description = "V0-059 try operator with From error conversion"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

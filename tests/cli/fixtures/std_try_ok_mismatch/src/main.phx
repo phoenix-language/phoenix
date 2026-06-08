@@ -1,0 +1,15 @@
+#import std::core::result::Result;
+#import std::core::result::Ok;
+
+read_a :: () => Result<s32, s32> {
+    Ok(1)
+};
+
+read_b :: () => Result<bool, s32> {
+    const x = read_a()?;
+    Ok(x)
+};
+
+main :: () => {
+    const _ = read_b();
+};

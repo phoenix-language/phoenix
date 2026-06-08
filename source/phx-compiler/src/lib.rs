@@ -79,4 +79,6 @@ pub use typeck::{
     Binding, BindingKind, ExprId, FunctionLayout, Ty, TypeId, TypeInterner, type_check,
 };
 #[doc(hidden)]
+pub use typeck::{TryFailureMode, TrySiteMeta};
+#[doc(hidden)]
 pub use unit::CompilationUnit;

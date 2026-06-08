@@ -411,6 +411,8 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ### V0-059 — `?` with `From` error conversion
 
+**Status: Done**
+
 - Extend `?` type-check: `Result<T, E_in>?` inside `Result<T, E_out>` when `From<E_in>` exists for `E_out` (same `T`; Ok types must unify).
 - Lower failure path: load `Err` payload → monomorphized `From::from` → `return Err(converted)`.
 - Diagnostic when `From` is missing: cite expected impl and link to [error-handling.md](features/error-handling.md).

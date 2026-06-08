@@ -20,7 +20,7 @@ use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::PrimitiveMethodSite;
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
-use super::bounds::trait_bound_head;
+use super::bounds::{resolve_from_fn_for_error, trait_bound_head};
 use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, str_type, u8_type, unit,
 };
@@ -37,7 +37,7 @@ use super::mono::{
 use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::primitive::is_int_keyword;
-use super::std_kernel::{StdKernel, TrySiteMeta};
+use super::std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
 use super::std_trait_kernel::StdTraitKernel;
 use super::subst::Substitution;
 use super::types::is_error_type;
@@ -2358,14 +2358,8 @@ impl<'a> TypeChecker<'a> {
         };
         if self.std_kernel.is_std_result(&self.types, scrutinee_ty)
             && self.std_kernel.is_std_result(&self.types, fn_ret)
-            && self.types_equal(scrutinee_ty, fn_ret)
         {
-            let Some((ok_ty, _)) = self.std_kernel.result_ok_err_tys(&self.types, scrutinee_ty)
-            else {
-                return self.unit;
-            };
-            self.record_try_site(expr_id, scrutinee_ty, ok_ty);
-            return ok_ty;
+            return self.check_result_try_expr(scrutinee_ty, fn_ret, span, expr_id);
         }
         if self.std_kernel.is_std_option(&self.types, scrutinee_ty)
             && self.std_kernel.is_std_option(&self.types, fn_ret)
@@ -2374,7 +2368,12 @@ impl<'a> TypeChecker<'a> {
             let Some(payload) = self.std_kernel.option_payload_ty(&self.types, scrutinee_ty) else {
                 return self.unit;
             };
-            self.record_try_site(expr_id, scrutinee_ty, payload);
+            self.record_try_site(
+                expr_id,
+                scrutinee_ty,
+                payload,
+                TryFailureMode::ReturnScrutinee,
+            );
             return payload;
         }
         self.bag.push(
@@ -2388,7 +2387,89 @@ impl<'a> TypeChecker<'a> {
         self.unit
     }
 
-    fn record_try_site(&mut self, expr_id: ExprId, scrutinee_ty: TypeId, success_ty: TypeId) {
+    fn check_result_try_expr(
+        &mut self,
+        scrutinee_ty: TypeId,
+        fn_ret: TypeId,
+        span: Span,
+        expr_id: ExprId,
+    ) -> TypeId {
+        let Some((ok_in, err_in)) = self.std_kernel.result_ok_err_tys(&self.types, scrutinee_ty)
+        else {
+            return self.unit;
+        };
+        let Some((ok_out, err_out)) = self.std_kernel.result_ok_err_tys(&self.types, fn_ret) else {
+            return self.unit;
+        };
+        if !self.types_equal(ok_in, ok_out) {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::InvalidTryOperand {
+                    found: self.format_ty(scrutinee_ty),
+                    expected_return: self.format_ty(fn_ret),
+                    span,
+                },
+            );
+            return self.unit;
+        }
+        if self.types_equal(err_in, err_out) {
+            self.record_try_site(
+                expr_id,
+                scrutinee_ty,
+                ok_in,
+                TryFailureMode::ReturnScrutinee,
+            );
+            return ok_in;
+        }
+        if let Some(from_fn) = resolve_from_fn_for_error(
+            &self.program_layout,
+            &self.types,
+            &self.std_trait_kernel,
+            self.resolved,
+            err_out,
+            err_in,
+        ) {
+            if let Some(f) = self.find_function_decl(from_fn).cloned() {
+                let param_defs = self.generic_param_defs_for_fn(&f, from_fn);
+                if !param_defs.is_empty() {
+                    self.record_mono_inst(
+                        from_fn,
+                        vec![err_in],
+                        phx_syntax::AstNodeId::synthetic(expr_id.index()),
+                    );
+                }
+            }
+            self.record_try_site(
+                expr_id,
+                scrutinee_ty,
+                ok_in,
+                TryFailureMode::ConvertErr {
+                    err_in_ty: err_in,
+                    err_out_ty: err_out,
+                    return_result_ty: fn_ret,
+                    from_fn,
+                },
+            );
+            return ok_in;
+        }
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::TryErrorFromMissing {
+                err_in: self.format_ty(err_in),
+                err_out: self.format_ty(err_out),
+                span,
+            },
+        );
+        self.unit
+    }
+
+    fn record_try_site(
+        &mut self,
+        expr_id: ExprId,
+        scrutinee_ty: TypeId,
+        success_ty: TypeId,
+        failure_mode: TryFailureMode,
+    ) {
         let Ty::Named { def, args } = self.types.get(scrutinee_ty).clone() else {
             return;
         };
@@ -2418,6 +2499,7 @@ impl<'a> TypeChecker<'a> {
                 success_tag,
                 failure_tag,
                 temp_slot,
+                failure_mode,
             },
         );
     }

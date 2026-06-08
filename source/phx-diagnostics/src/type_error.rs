@@ -289,6 +289,15 @@ pub enum TypeCheckError {
         /// Use site span.
         span: Span,
     },
+    /// `?` on `Result` with mismatched error types and no `From` impl.
+    TryErrorFromMissing {
+        /// Scrutinee `Err` payload type.
+        err_in: String,
+        /// Enclosing function `Err` type.
+        err_out: String,
+        /// Use site span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -326,6 +335,7 @@ impl TypeCheckError {
             Self::MissingAssociatedType { .. } => DiagnosticCode::new("E2027"),
             Self::TryOutsideFunction { .. } => DiagnosticCode::new("E2028"),
             Self::InvalidTryOperand { .. } => DiagnosticCode::new("E2029"),
+            Self::TryErrorFromMissing { .. } => DiagnosticCode::new("E2031"),
         }
     }
 
@@ -362,7 +372,8 @@ impl TypeCheckError {
             | Self::MissingTraitMethod { span, .. }
             | Self::MissingAssociatedType { span, .. }
             | Self::TryOutsideFunction { span }
-            | Self::InvalidTryOperand { span, .. } => Some(*span),
+            | Self::InvalidTryOperand { span, .. }
+            | Self::TryErrorFromMissing { span, .. } => Some(*span),
         }
     }
 }
@@ -492,6 +503,12 @@ impl fmt::Display for TypeCheckError {
             } => write!(
                 f,
                 "cannot apply `?` to `{found}` in function returning `{expected_return}`"
+            ),
+            Self::TryErrorFromMissing {
+                err_in, err_out, ..
+            } => write!(
+                f,
+                "cannot use `?` on `Result<_, {err_in}>` in function returning `Result<_, {err_out}`: no `From<{err_in}>` implementation for `{err_out}`"
             ),
         }
     }

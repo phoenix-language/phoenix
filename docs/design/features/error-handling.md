@@ -46,7 +46,7 @@ Errors are values, not control-flow exceptions. Failure paths stay visible in ty
 - Types must be the std definitions from `std::core::option` / `std::core::result` — not user enums with the same variant names.
 - Missing `From` impl when `E_in ≠ E_out` is a compile error with a note to implement `From<E_in>` for `E_out`.
 
-**V0-042 (shipped):** only the first row — identical `Result<T, E>`. **V0-059:** adds the second row.
+**V0-042 (shipped):** identical `Result<T, E>` only. **V0-059 (shipped):** adds the second row (`From` conversion when `E_in ≠ E_out`).
 
 ### Example
 

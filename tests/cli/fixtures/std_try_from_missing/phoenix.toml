@@ -1,0 +1,9 @@
+[project]
+name = "std_try_from_missing"
+version = "0.1.0"
+description = "V0-059 negative: missing From impl at ?"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

@@ -243,6 +243,13 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                     .to_owned(),
             );
         }
+        TypeCheckError::TryErrorFromMissing {
+            err_in, err_out, ..
+        } => {
+            out.helps.push(format!(
+                "implement `From<{err_in}>` for `{err_out}` (see docs/design/features/error-handling.md#the--operator-v0-042-error-conversion-v0-059)"
+            ));
+        }
     }
     out
 }

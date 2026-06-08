@@ -15,8 +15,8 @@ use crate::lower::ctx::{
 };
 use crate::resolver::DefId;
 use crate::typeck::{
-    BindingKind, ExprId, LocalSlot, PrimitiveMethodSite, TrySiteMeta, Ty, TypeId, VariantKind,
-    primitive_kind_for_type, primitive_load_signed,
+    BindingKind, ExprId, LocalSlot, PrimitiveMethodSite, TryFailureMode, TrySiteMeta, Ty, TypeId,
+    VariantKind, primitive_kind_for_type, primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -788,6 +788,19 @@ fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
     ctx.emit(IrInst::Jump { target: cont_block });
 
     ctx.set_current(fail_block);
+    match &meta.failure_mode {
+        TryFailureMode::ReturnScrutinee => {
+            lower_try_return_scrutinee(ctx, temp, temp_ty, prim);
+        }
+        TryFailureMode::ConvertErr { .. } => {
+            lower_try_convert_err(ctx, meta, bytecode_type_id, temp, temp_ty, prim);
+        }
+    }
+
+    ctx.set_current(cont_block);
+}
+
+fn lower_try_return_scrutinee(ctx: &mut LowerCtx<'_>, temp: LocalSlot, temp_ty: TypeId, prim: u8) {
     ctx.emit(IrInst::LoadLocal {
         slot: temp,
         ty: temp_ty,
@@ -796,8 +809,77 @@ fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
     ctx.emit(IrInst::Return {
         ty: ctx.layout.return_type,
     });
+}
 
-    ctx.set_current(cont_block);
+fn lower_try_convert_err(
+    ctx: &mut LowerCtx<'_>,
+    meta: &TrySiteMeta,
+    bytecode_type_id: u32,
+    temp: LocalSlot,
+    temp_ty: TypeId,
+    prim: u8,
+) {
+    let TryFailureMode::ConvertErr {
+        from_fn,
+        err_in_ty,
+        err_out_ty,
+        return_result_ty,
+    } = &meta.failure_mode
+    else {
+        return;
+    };
+    let callee = ctx
+        .typed
+        .specialized_from
+        .get(from_fn)
+        .copied()
+        .unwrap_or(*from_fn);
+    ctx.emit(IrInst::LoadLocal {
+        slot: temp,
+        ty: temp_ty,
+        prim_kind: prim,
+    });
+    ctx.emit(IrInst::GetField {
+        type_id: bytecode_type_id,
+        field_index: 0,
+        result: *err_in_ty,
+    });
+    ctx.emit(IrInst::Call {
+        callee,
+        ret: *err_out_ty,
+    });
+    let Ty::Named {
+        def: ret_enum_def,
+        args: ret_enum_args,
+    } = ctx.typed.types.get(*return_result_ty).clone()
+    else {
+        debug_assert!(false, "missing return Result type for `?` conversion");
+        return;
+    };
+    let Some(ret_bytecode_type_id) = ctx
+        .typed
+        .layout
+        .type_id_for_named(ret_enum_def, &ret_enum_args)
+    else {
+        debug_assert!(false, "missing bytecode type id for return Result");
+        return;
+    };
+    let Some(err_tag) = ctx.typed.std_kernel.failure_tag_for(
+        &ctx.typed.layout,
+        &ctx.typed.types,
+        *return_result_ty,
+    ) else {
+        debug_assert!(false, "missing Err tag for return Result");
+        return;
+    };
+    ctx.emit(IrInst::MakeEnum {
+        type_id: ret_bytecode_type_id,
+        variant_tag: err_tag,
+        payload_count: 1,
+    });
+    ctx.emit(IrInst::Return {
+        ty: ctx.layout.return_type,
+    });
 }
 
 fn lower_primitive_method(

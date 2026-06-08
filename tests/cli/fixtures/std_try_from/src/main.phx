@@ -1,0 +1,38 @@
+#import std::core::convert::From;
+#import std::core::result::Result;
+#import std::core::result::Ok;
+#import std::core::result::Err;
+
+Config :: struct {
+    value: s32,
+};
+
+IoError :: struct {
+    code: s32,
+};
+
+Error :: enum {
+    Io(IoError),
+};
+
+Error :: impl :: From<IoError> {
+    from :: (value: IoError) => Error {
+        Io(value)
+    };
+};
+
+read_bytes :: () => Result<Config, IoError> {
+    Ok(Config { value: 42 })
+};
+
+read_config :: () => Result<Config, Error> {
+    const cfg = read_bytes()?;
+    Ok(cfg)
+};
+
+main :: () => {
+    match read_config() {
+        Ok(c) => { const _ = c.value; };
+        Err(e) => { const _ = e; };
+    };
+};

@@ -156,6 +156,68 @@ fn question_mark_ok_with_std_imports() {
 }
 
 #[test]
+fn try_result_from_conversion_ok() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_try_from/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    check_file(&path).unwrap_or_else(|e| panic!("std_try_from typeck: {e}"));
+}
+
+#[test]
+fn try_result_from_missing() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_try_from_missing/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let err = check_file(&path).expect_err("expected type error");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::TryErrorFromMissing { .. }) }),
+        "expected TryErrorFromMissing: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn try_result_ok_mismatch() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_try_ok_mismatch/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let err = check_file(&path).expect_err("expected type error");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::InvalidTryOperand { .. }) }),
+        "expected InvalidTryOperand for Ok type mismatch: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn try_result_identical_err_regression() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_try/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    check_file(&path).unwrap_or_else(|e| panic!("std_try typeck: {e}"));
+}
+
+#[test]
 fn use_after_move_error() {
     let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var q: Point = p; const _ = p.r; };";
     let bag = typeck_err(source);
