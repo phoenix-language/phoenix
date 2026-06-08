@@ -423,14 +423,14 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ---
 
-### V0-060 — Std error module
+### V0-060 — Std error trait
 
 **Status: Done**
 
-- `std::error`: single expandable `Error` enum (minimal `Unknown` variant in v0).
-- Layered `From` conversion demonstrated with crate-local types in fixtures.
+- `std::core::error::Error` marker trait (Rust-inspired; supertrait bounds deferred).
+- Concrete error types implement `Error` in user crates; layered `From` in fixtures.
 
-**Acceptance:** `std::error::Error` imports and `Result` + `?` smoke (`std_errors`); layered `From` (`std_try_from`); `examples/errors` builds with bundled std.
+**Acceptance:** `std::core::error::Error` imports and `Result` + `?` smoke (`std_errors`); `E: Error` bound (`std_traits`); layered `From` (`std_try_from`); `examples/errors` builds with bundled std.
 
 **Refs:** [error-handling.md](features/error-handling.md#std-error-vocabulary--v0-060)
 
@@ -444,7 +444,7 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 - `pub reexport :: Item` and `pub reexport :: child::Item` build parent export maps and `.pxi` surfaces.
 - Orphan / ambiguous / missing module entry diagnostics; cross-package deep imports require `pub mod`.
 
-**Acceptance:** `std::error::Error` (not `std::error::error::Error`); `modules/` and `mvp_acceptance/` fixtures build; negative fixtures for missing `mod.phx` and orphan files; `just pre-commit` green.
+**Acceptance:** `std::core::error::Error` (not `std::core::error::error::Error`); `modules/` and `mvp_acceptance/` fixtures build; negative fixtures for missing `mod.phx` and orphan files; `just pre-commit` green.
 
 **Refs:** [modules.md](features/modules.md#mod-and-barrel-syntax)
 
@@ -609,7 +609,7 @@ First std modules to author **in Phoenix** once the checklist is complete (order
 
 1. `**core::alloc`** — allocation/deallocation wrappers over VM intrinsics.
 2. `**core::option` / `core::result` / `core::convert**` — enums and conversion traits (if not already in std from V0-041 / V0-058).
-3. `**error**` — `std::error::Error` enum (V0-060); layered `From` in user crates.
+3. `**error**` — `std::core::error::Error` trait (V0-060); concrete types + layered `From` in user crates.
 4. `**core::clone` / `core::copyable` / `core::cmp` / `core::fmt**` — traits and minimal derive support.
 5. `**collections::vec**` — growable buffer over `alloc`.
 6. `**text::string**` — owned UTF-8 `String` over `alloc` + `Clone`.

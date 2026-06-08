@@ -1,0 +1,6 @@
+// Marker trait for values used as `E` in `Result<T, E>`.
+// Implementors should also provide `Debug` and `Display`; supertrait bounds
+// (`Error: Debug + Display`) are deferred until the compiler supports them.
+
+pub Error :: trait {
+};

@@ -32,7 +32,7 @@ just phx run --no-build --project-root examples/generics
 
 ## errors
 
-`Result`, `match`, `?`, and `From` conversion across `std::error` types.
+`Result`, `match`, `?`, and concrete error types implementing `std::core::error::Error`.
 
 ```bash
 just phx build --project-root examples/errors

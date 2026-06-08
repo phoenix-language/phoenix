@@ -52,33 +52,35 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::version;
 #import std::core::option::{Option, Some, None};
 #import std::core::result::{Result, Ok, Err};
+#import std::core::error::Error;
 #import std::core::copyable::Copyable;
 #import std::core::clone::Clone;
 #import std::core::cmp::PartialEq;
 #import std::core::fmt::{Debug, Display};
-#import std::error::Error;
 ```
 
-With **`prelude = true`** (default when std is bundled), the items above plus `Option` / `Result` and their ctors are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). Error types are **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
+With **`prelude = true`** (default when std is bundled), the items above except `Error` are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). The `Error` trait is **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
 
 Generic enum constructors need explicit type arguments today, e.g. `Some :: <s32> (n)`.
 
-See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer; [`std_traits/`](../tests/cli/fixtures/std_traits/) and [`std_prelude/`](../tests/cli/fixtures/std_prelude/) for trait bounds and prelude smoke tests; [`std_errors/`](../tests/cli/fixtures/std_errors/) for `Result` + `?` with `std::error::Error` (V0-060); [`std_try_from/`](../tests/cli/fixtures/std_try_from/) for layered `From` conversion.
+See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer; [`std_traits/`](../tests/cli/fixtures/std_traits/) and [`std_prelude/`](../tests/cli/fixtures/std_prelude/) for trait bounds and prelude smoke tests; [`std_errors/`](../tests/cli/fixtures/std_errors/) for `Result` + `?` with concrete types implementing `Error` (V0-060); [`std_try_from/`](../tests/cli/fixtures/std_try_from/) for layered `From` conversion.
 
 ## Module layout (`std::core`)
 
 | Logical module | File | Status |
 |----------------|------|--------|
-| `std` | `src/lib.phx` | `version`; `pub mod core`, `error`, `ffi` |
-| `std::core` | `src/core/mod.phx` | `pub mod` for `option`, `result`, `convert`, trait modules |
+| `std` | `src/lib.phx` | `version`; `pub mod core`, `ffi` |
+| `std::core` | `src/core/mod.phx` | `pub mod` for `option`, `result`, `error`, `convert`, trait modules |
 | `std::core::option` | `src/core/option.phx` | `pub Option :: <t> enum` |
 | `std::core::result` | `src/core/result.phx` | `pub Result :: <ok, err> enum` |
+| `std::core::error` | `src/core/error.phx` | `pub Error :: trait` (marker; supertraits deferred) |
 | `std::core::copyable` | `src/core/copyable.phx` | `pub Copyable :: trait` (empty marker) |
 | `std::core::clone` | `src/core/clone.phx` | `pub Clone :: trait` |
 | `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
 | `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait` (fixed `[u8; 32]` buffer) |
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
-| `std::error` | `src/error/mod.phx` | `pub Error` enum (expand variants as subsystems land) |
+
+Future subsystem modules (e.g. `std::io`) will ship **concrete** error types that implement `std::core::error::Error` — std does not define a central error enum.
 
 Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
 
@@ -101,6 +103,7 @@ Single-file / in-process `compile_source(..., None)` does **not** inject prelude
 ## Non-goals (current)
 
 - Per-file `#no_prelude`, glob prelude, or entire std surface in prelude
+- Trait supertrait bounds (`Error: Debug + Display`) — deferred
 - Rich formatting (`Debug` / `Display` trait defs only; error-type trait impls deferred until `[u8; N]` return lowering is stable)
 - No std I/O — requires scheduler (post Language v0)
 

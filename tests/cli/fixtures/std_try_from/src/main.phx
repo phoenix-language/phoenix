@@ -1,4 +1,5 @@
 #import std::core::convert::From;
+#import std::core::error::Error;
 #import std::core::result::{Result, Ok, Err};
 
 Config :: struct {
@@ -9,8 +10,14 @@ AppIoError :: struct {
     code: s32,
 };
 
+AppIoError :: impl :: Error {
+};
+
 AppError :: enum {
     Io(AppIoError),
+};
+
+AppError :: impl :: Error {
 };
 
 AppError :: impl :: From<AppIoError> {

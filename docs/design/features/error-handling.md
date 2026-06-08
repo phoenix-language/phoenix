@@ -113,8 +113,8 @@ Enforcement is **documented only** for V0-058; the resolver does not yet reject 
 
 | Rule | Detail |
 |---|---|
-| Std `Error` | Single expandable enum in `std::error` (V0-060); std adds variants when real subsystems ship — no placeholder leaf types. |
-| Leaf error types | Crate-local structs/enums for precise failure semantics; `From<Leaf> for AppError` in the owning crate. |
+| `Error` trait | Marker trait in `std::core::error` (V0-060); std does not ship a concrete error enum. |
+| Leaf error types | Crate-local structs/enums for precise failure semantics; implement `Error` + `Debug`/`Display`; `From<Leaf> for AppError` in the owning crate. |
 | Downstream crates | Must not add `From` (or `TryFrom`) impls whose **source or target** is a std type they do not own (orphan rule). |
 | User types | `From<UserLeaf> for UserError` in the same crate is fine. |
 
@@ -124,39 +124,49 @@ See also [traits.md](traits.md#trait-impl-scope-and-orphans).
 
 ## Std error vocabulary — V0-060
 
-**Implemented** in `std/src/error/mod.phx`. Acceptance fixtures: `tests/cli/fixtures/std_errors/` (`Result` + `?`), `std_try_from/` (layered `From`).
+**Implemented** in `std/src/core/error.phx`. Acceptance fixtures: `tests/cli/fixtures/std_errors/` (`Result` + `?` + `impl Error`), `std_try_from/` (layered `From`), `std_traits/` (`E: Error` bound).
 
-Std owns one **base** `Error` enum — expandable as I/O, parsing, and threading land. The compiler only recognizes std `Result`/`Option` for `?` sugar — error enums are not special-cased (same policy as [Phased: Option and Result](type-system.md#phased-option-and-result-language--std)).
+Std defines **`Error` as a trait** in `std::core::error` — not a concrete enum. Values in `Result<T, E>` are always **concrete** structs or enums (crate-local or future subsystem modules like `std::io`); they **implement** `Error`. The compiler only recognizes std `Result`/`Option` for `?` sugar — error types are not special-cased (same policy as [Phased: Option and Result](type-system.md#phased-option-and-result-language--std)).
 
 ### Module layout
 
 ```
 std/
   core/
+    error.phx       # pub Error :: trait (marker)
     convert.phx     # From, Into, TryFrom, TryInto
     result.phx
     option.phx
-  error/
-    mod.phx         # pub Error enum
 ```
 
-### Std v0 default — minimal expandable enum
+### Std v0 — marker trait
 
 ```phoenix
-pub Error :: enum {
-  Unknown(s32),
-}
+pub Error :: trait {
+};
 ```
 
-Add variants (`Io(…)`, `Parse(…)`, …) when those subsystems exist. Crate-local leaf types and `From` bridges remain the pattern for application layering until std owns those domains.
+**Convention (not compiler-enforced in v0):** error types should also implement `Debug` and `Display`. Rust-style supertrait bounds (`Error: Debug + Display`) require **trait supertrait support** — deferred compiler/std work ([traits.md](traits.md#trait-supertraits-deferred)).
 
-### Pattern B — opaque newtypes (post–V0-057)
+**Example:**
 
-Distinct nominal wrappers (`UserId`-style) for domain errors and a structured `Error` type. Better long-term API evolution; same `From`/`?` mechanics.
+```phoenix
+AppError :: struct { code: s32 };
+
+AppError :: impl :: Error { };
+
+read_config :: () => Result<Config, AppError> { /* … */ };
+```
+
+Future std subsystems (I/O, parsing) ship **concrete** error types in their own modules that implement `std::core::error::Error` — std does not centralize every failure variant in one enum.
+
+### Opaque newtypes (post–V0-057)
+
+Distinct nominal wrappers (`UserId`-style) for domain errors. Better long-term API evolution; same `From`/`?` mechanics.
 
 ### Source chains and `dyn Error` (deferred)
 
-Language v0 uses concrete errors + `Debug` / `Display` traits only. Rust-style `Error::source()` returning trait objects waits for `dyn Trait` ([type-system.md](type-system.md#deferred-dyn-trait)). Until then, optional `context: str` fields or inherent `with_context` methods on `Error` are sufficient for demos.
+Rust-style `Error::source()` returning trait objects waits for `dyn Trait` ([type-system.md](type-system.md#deferred-dyn-trait)). Until then, optional `context` fields or inherent `with_context` methods on concrete error types are sufficient for demos.
 
 ---
 
@@ -165,7 +175,7 @@ Language v0 uses concrete errors + `Debug` / `Display` traits only. Rust-style `
 | Layer | Return type | Role |
 |---|---|---|
 | Leaf (syscall wrapper, parser) | `Result<T, LeafError>` (crate-local) | Precise, local failure semantics |
-| Module / service | `Result<T, Error>` or app enum | Composes leaf errors via `From` when types differ |
+| Module / service | `Result<T, AppError>` (app enum) | Composes leaf errors via `From` when types differ |
 | `main` | `()` + `match` on `Result` | No `?` in zero-`Result` entry |
 
 Cross-cutting concerns (schedulable I/O, actor mailboxes) will surface failure in types at call sites when those runtimes land — same `Result` model, not exceptions. See [runtime-transparency.md](runtime-transparency.md).
@@ -177,5 +187,5 @@ Cross-cutting concerns (schedulable I/O, actor mailboxes) will surface failure i
 - `Option` `?` inside `Result` functions (and vice versa).
 - Implicit error coercion without a visible `From` impl.
 - `as Error` or enum layout punning for conversions.
-- Compiler builtins for std error enums.
+- Compiler builtins for error types (beyond `Result`/`Option` `?` sugar).
 - `dyn Error` / boxed trait-object error chains.

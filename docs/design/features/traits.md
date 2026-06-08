@@ -25,6 +25,7 @@ Primary baseline traits:
 | Conversions | `From`, `Into` |
 | Iteration | `Iterator` |
 | Cleanup/drop hooks | `Drop` |
+| Error values (`Result<T, E>`) | `Error` |
 | Hashing (later) | `Hash` |
 
 Float caveat:
@@ -77,11 +78,17 @@ pub TryInto :: <Target> trait {
 
 ### Error-type impl guidance
 
-- The base `Error` enum lives in `std::error`; leaf types are crate-local until std adds real variants ([error-handling.md](error-handling.md#std-error-vocabulary--v0-060)).
+- `Error` is a marker trait in `std::core::error` ([error-handling.md](error-handling.md#std-error-vocabulary--v0-060)); concrete error types are crate-local (or future subsystem modules).
+- Implement `Type :: impl :: Error { }` on each error struct/enum used as `E` in `Result<T, E>`.
 - Provide `From<LeafError> for AppError` in the crate that defines both types.
 - Downstream crates must not add conflicting `From` impls for std types they do not own — orphan rule applies.
 
+### Trait supertraits (deferred)
+
+Rust's `core::error::Error` requires `Debug + Display` as supertraits. Phoenix v0 uses an **empty marker** `Error` trait plus documented convention until the compiler supports trait supertrait bounds (`Error: Debug + Display`). Same gap blocks `Error::source()` returning `dyn Error` — see [deferred `dyn Trait`](type-system.md#deferred-dyn-trait).
+
 ---
+
 
 ## What a trait is
 

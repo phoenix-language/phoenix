@@ -21,14 +21,15 @@ fn std_lib_root() -> PathBuf {
 }
 
 #[test]
-fn std_lib_builds_with_error_modules() {
+fn std_lib_builds_with_core_error_trait() {
     let _lock = fixture_fs_lock();
     let root = std_lib_root();
     if !root.join("phoenix.toml").is_file() {
         return;
     }
     let config = ProjectConfig::load(&root).expect("load std");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std with error modules");
+    build_project(&config, None, BuildOptions::force(true))
+        .expect("build std with core::error trait");
 }
 
 #[test]

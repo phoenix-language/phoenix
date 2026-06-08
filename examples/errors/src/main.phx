@@ -1,18 +1,25 @@
-// Demo: errors — Result + ? with std::error::Error.
-// Layered error conversion (leaf → app enum via From) is in tests/cli/fixtures/std_try_from/.
+// Demo: errors — concrete error type implementing std::core::error::Error.
+// Layered From conversion is in tests/cli/fixtures/std_try_from/.
 
+#import std::core::error::Error;
 #import std::core::result::{Err, Ok, Result};
-#import std::error::Error;
 
 Config :: struct {
     value: s32,
 };
 
-read_bytes :: () => Result<Config, Error> {
+AppError :: struct {
+    code: s32,
+};
+
+AppError :: impl :: Error {
+};
+
+read_bytes :: () => Result<Config, AppError> {
     Ok(Config { value: 42 })
 };
 
-read_config :: () => Result<Config, Error> {
+read_config :: () => Result<Config, AppError> {
     const cfg = read_bytes()?;
     Ok(cfg)
 };

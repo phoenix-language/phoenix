@@ -1,9 +1,14 @@
 #import std::core::copyable::Copyable;
 #import std::core::clone::Clone;
 #import std::core::cmp::PartialEq;
+#import std::core::error::Error;
 
 dup :: <t: Copyable + Clone> (x: t) => t {
     x.clone()
+};
+
+pass_err :: <e: Error> (x: e) => e {
+    x
 };
 
 main :: () => {

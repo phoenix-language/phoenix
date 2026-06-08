@@ -1,5 +1,0 @@
-// std::error — shared failure vocabulary. Add variants as real subsystems land.
-
-pub Error :: enum {
-    Unknown(s32),
-};
