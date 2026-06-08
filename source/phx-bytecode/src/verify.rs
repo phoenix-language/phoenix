@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::cast::{PrimitiveKind, SLOT_KIND_AGG};
+use super::cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 use super::const_pool::{ConstEntry, ConstTag};
 use super::function::FunctionRecord;
 use super::header::MAGIC;
@@ -11,6 +11,7 @@ use super::local_layout::{FunctionLocalLayout, LocalLayoutTable};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
 use super::stack_flow::{StackFlowError, analyze_stack_cfg};
+use super::types::TypeKind;
 
 /// Verifier failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +136,36 @@ pub enum VerifyError {
         /// Operand `prim_kind` wire byte.
         prim_kind: u8,
     },
+    /// `MakeFnPtr` `target_kind` is not `0` (Phoenix) or `1` (foreign).
+    InvalidFnPtrTargetKind {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Invalid `target_kind` operand.
+        target_kind: u32,
+    },
+    /// `MakeFnPtr` Phoenix target references an unknown function id.
+    InvalidFnPtrTarget {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Invalid `target_id` operand.
+        target_id: u32,
+    },
+    /// `CallIndirect` `sig_type_id` is missing or not `TypeKind::FnSig`.
+    InvalidFnSigType {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// Invalid `sig_type_id` operand.
+        sig_type_id: u32,
+    },
+    /// `CallIndirect` `expected_arity` does not match `FnSig` param count.
+    CallIndirectArityMismatch {
+        /// Function containing the instruction.
+        function_id: u32,
+        /// `expected_arity` operand.
+        expected_arity: u32,
+        /// Param count from type table aux.
+        sig_param_count: u32,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -243,6 +274,35 @@ impl std::fmt::Display for VerifyError {
             } => write!(
                 f,
                 "local slot {slot} prim_kind {prim_kind} mismatch in function {function_id}"
+            ),
+            Self::InvalidFnPtrTargetKind {
+                function_id,
+                target_kind,
+            } => write!(
+                f,
+                "invalid fn ptr target_kind {target_kind} in function {function_id}"
+            ),
+            Self::InvalidFnPtrTarget {
+                function_id,
+                target_id,
+            } => write!(
+                f,
+                "invalid fn ptr target_id {target_id} in function {function_id}"
+            ),
+            Self::InvalidFnSigType {
+                function_id,
+                sig_type_id,
+            } => write!(
+                f,
+                "invalid fn sig type id {sig_type_id} in function {function_id}"
+            ),
+            Self::CallIndirectArityMismatch {
+                function_id,
+                expected_arity,
+                sig_param_count,
+            } => write!(
+                f,
+                "call indirect arity {expected_arity} != sig param count {sig_param_count} in function {function_id}"
             ),
         }
     }
@@ -515,6 +575,16 @@ fn check_local_slot(
         }
         return Ok(());
     }
+    if slot_kind.is_fn_ptr() {
+        if prim_kind_byte != SLOT_KIND_FN_PTR {
+            return Err(VerifyError::LocalPrimKindMismatch {
+                function_id,
+                slot,
+                prim_kind: prim_kind_byte,
+            });
+        }
+        return Ok(());
+    }
     let Some(expected) = slot_kind.primitive_kind() else {
         return Ok(());
     };
@@ -589,7 +659,10 @@ fn verify_operands(
                     prim_kind: 0xFF,
                 });
             };
-            if prim_kind_byte != SLOT_KIND_AGG && PrimitiveKind::from_u8(prim_kind_byte).is_none() {
+            if prim_kind_byte != SLOT_KIND_AGG
+                && prim_kind_byte != SLOT_KIND_FN_PTR
+                && PrimitiveKind::from_u8(prim_kind_byte).is_none()
+            {
                 return Err(VerifyError::InvalidPrimKind {
                     function_id,
                     offset,
@@ -708,8 +781,73 @@ fn verify_operands(
                 return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
             }
         }
+        Opcode::MakeFnPtr => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+            let target_kind = inst.operands.first().copied().unwrap_or(0);
+            let target_id = inst.operands.get(1).copied().unwrap_or(0);
+            if target_kind > 1 {
+                return Err(VerifyError::InvalidFnPtrTargetKind {
+                    function_id,
+                    target_kind,
+                });
+            }
+            if target_kind == 0 && !fn_arity.contains_key(&target_id) {
+                return Err(VerifyError::InvalidFnPtrTarget {
+                    function_id,
+                    target_id,
+                });
+            }
+        }
+        Opcode::CallIndirect => {
+            if inst.operands.len() != 2 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+            let expected_arity = inst.operands.first().copied().unwrap_or(0);
+            let sig_type_id = inst.operands.get(1).copied().unwrap_or(0);
+            let Some(record) = module
+                .types
+                .records
+                .iter()
+                .find(|r| r.type_id == sig_type_id)
+            else {
+                return Err(VerifyError::InvalidFnSigType {
+                    function_id,
+                    sig_type_id,
+                });
+            };
+            if record.kind != TypeKind::FnSig {
+                return Err(VerifyError::InvalidFnSigType {
+                    function_id,
+                    sig_type_id,
+                });
+            }
+            let sig_param_count = fn_sig_param_count(&record.aux);
+            if sig_param_count != expected_arity {
+                return Err(VerifyError::CallIndirectArityMismatch {
+                    function_id,
+                    expected_arity,
+                    sig_param_count,
+                });
+            }
+        }
     }
     Ok(())
+}
+
+/// Reads `param_count` from a `TypeKind::FnSig` aux payload (`u32` LE).
+fn fn_sig_param_count(aux: &[u8]) -> u32 {
+    if aux.len() < 4 {
+        return 0;
+    }
+    u32::from_le_bytes([aux[0], aux[1], aux[2], aux[3]])
 }
 
 #[cfg(test)]
@@ -718,7 +856,7 @@ mod tests {
     use super::*;
     use crate::{
         ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable, Instruction,
-        LocalLayoutTable, Opcode, PrimitiveKind, TypeTable,
+        LocalLayoutTable, Opcode, PrimitiveKind, TypeKind, TypeRecord, TypeTable,
     };
 
     fn minimal_module(code: Vec<u8>, stack_max: u16, entry_arity: u16) -> BytecodeModule {
@@ -925,6 +1063,138 @@ mod tests {
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
+        ));
+    }
+
+    fn module_with_types(code: Vec<u8>, types: TypeTable) -> BytecodeModule {
+        BytecodeModule {
+            header: FileHeader::new(5, 0),
+            constants: ConstPool {
+                entries: vec![ConstEntry {
+                    tag: ConstTag::SignedInt,
+                    payload: 1i32.to_le_bytes().to_vec(),
+                }],
+            },
+            types,
+            functions: FunctionTable {
+                functions: vec![
+                    FunctionRecord {
+                        function_id: 0,
+                        name_symbol_id: 0,
+                        arity: 0,
+                        local_count: 0,
+                        stack_max: 8,
+                        flags: 0,
+                        code_offset: 0,
+                        code_len: u32::try_from(code.len()).unwrap_or(0),
+                        return_type_id: 0,
+                    },
+                    FunctionRecord {
+                        function_id: 1,
+                        name_symbol_id: 0,
+                        arity: 1,
+                        local_count: 1,
+                        stack_max: 8,
+                        flags: 0,
+                        code_offset: 0,
+                        code_len: 0,
+                        return_type_id: 0,
+                    },
+                ],
+            },
+            code,
+            local_layouts: LocalLayoutTable::default(),
+        }
+    }
+
+    #[test]
+    fn valid_make_fn_ptr_and_call_indirect_passes() {
+        let sig_type = TypeRecord {
+            type_id: 10,
+            kind: TypeKind::FnSig,
+            aux: 1u32.to_le_bytes().to_vec(),
+        };
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::MakeFnPtr,
+                operands: vec![0, 1],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::CallIndirect,
+                operands: vec![1, 10],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = module_with_types(
+            code,
+            TypeTable {
+                records: vec![sig_type],
+            },
+        );
+        verify(&module).expect("verify indirect call");
+    }
+
+    #[test]
+    fn reject_call_indirect_arity_mismatch() {
+        let sig_type = TypeRecord {
+            type_id: 10,
+            kind: TypeKind::FnSig,
+            aux: 2u32.to_le_bytes().to_vec(),
+        };
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::MakeFnPtr,
+                operands: vec![0, 1],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::CallIndirect,
+                operands: vec![1, 10],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = module_with_types(
+            code,
+            TypeTable {
+                records: vec![sig_type],
+            },
+        );
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::CallIndirectArityMismatch {
+                expected_arity: 1,
+                sig_param_count: 2,
+                ..
+            }
         ));
     }
 }

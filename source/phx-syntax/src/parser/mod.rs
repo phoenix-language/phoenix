@@ -127,11 +127,15 @@ impl<'src> Parser<'src> {
                 | TokenKind::HashInline
                 | TokenKind::HashCold
                 | TokenKind::HashHot
-                | TokenKind::HashUnsafe
                 | TokenKind::Ident(_)
                 | TokenKind::TypeIdent(_)
                 | TokenKind::Keyword(
-                    Keyword::Pub | Keyword::Type | Keyword::Const | Keyword::Var,
+                    Keyword::Unsafe
+                    | Keyword::Extern
+                    | Keyword::Pub
+                    | Keyword::Type
+                    | Keyword::Const
+                    | Keyword::Var,
                 ) => {
                     return;
                 }
@@ -340,6 +344,23 @@ impl<'src> Parser<'src> {
                 self.intern_ident(name, span)
             }
             _ => Err(self.error_unexpected(ExpectedToken::Ident)),
+        }
+    }
+
+    /// Parses a type alias name (`PascalCase` or lowercase C-style `c_int`).
+    pub(crate) fn parse_type_alias_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
+        match self.peek_kind() {
+            TokenKind::TypeIdent(name) | TokenKind::Ident(name) => {
+                let span = self.current_span();
+                self.bump();
+                self.intern_type_name(name, span)
+            }
+            TokenKind::Keyword(Keyword::SelfUpper) => {
+                let span = self.current_span();
+                self.bump();
+                self.intern_type_name("Self", span)
+            }
+            _ => Err(self.error_unexpected(ExpectedToken::TypeIdent)),
         }
     }
 

@@ -53,7 +53,9 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::MakeTuple { .. }
         | IrInst::MakeArray { .. }
         | IrInst::TrapGivenMismatch => with_operands(1),
-        IrInst::Const { .. }
+        IrInst::MakeFnPtr { .. }
+        | IrInst::CallIndirect { .. }
+        | IrInst::Const { .. }
         | IrInst::LoadLocal { .. }
         | IrInst::StoreLocal { .. }
         | IrInst::MakeStruct { .. }
@@ -105,6 +107,13 @@ fn apply_ir_stack_effect(
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
             let arity = *fn_arity.get(&fn_id).unwrap_or(&0);
             let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
+        }
+        IrInst::MakeFnPtr { .. } => {
+            let _ = apply_stack_effect(Opcode::MakeFnPtr, stack, None, none);
+        }
+        IrInst::CallIndirect { expected_arity, .. } => {
+            let arity = u16::try_from(*expected_arity).unwrap_or(0);
+            let _ = apply_stack_effect(Opcode::CallIndirect, stack, Some(arity), none);
         }
         IrInst::JumpIf { .. } => {
             let _ = apply_stack_effect(Opcode::JumpIfTrue, stack, None, none);
@@ -327,6 +336,23 @@ fn emit_inst(
         IrInst::Call { callee, .. } => {
             let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
             out.extend(encode(Opcode::Call, &[fn_id]));
+        }
+        IrInst::MakeFnPtr {
+            target_kind,
+            target_id,
+            ..
+        } => {
+            out.extend(encode(Opcode::MakeFnPtr, &[*target_kind, *target_id]));
+        }
+        IrInst::CallIndirect {
+            sig_type_id,
+            expected_arity,
+            ..
+        } => {
+            out.extend(encode(
+                Opcode::CallIndirect,
+                &[*expected_arity, *sig_type_id],
+            ));
         }
         IrInst::Return { .. } => {
             out.extend(encode(Opcode::Return, &[]));

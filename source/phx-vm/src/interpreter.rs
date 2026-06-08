@@ -2,10 +2,12 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstTag, ENTRY_NONE, FunctionRecord, InstrError, Instruction, Opcode,
-    PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue,
+    PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue, decode_fn_ptr,
+    fn_ptr_from_id, is_fn_ptr,
 };
 
 use crate::VmError;
+use crate::foreign::dispatch_foreign;
 use crate::frame::{Aggregate, Machine, Value};
 
 /// Captured VM state when the entry function returns (integration tests only).
@@ -189,27 +191,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
             }
             Opcode::Call => {
                 let callee_id = inst.operands.first().copied().unwrap_or(0);
-                let callee = find_function(module, callee_id)
-                    .ok_or(VmError::InvalidFunctionId(callee_id))?;
-                let arity = usize::from(callee.arity);
-                if machine.stack.len() < arity {
-                    return Err(VmError::StackUnderflow);
-                }
-                let mut args = Vec::with_capacity(arity);
-                for _ in 0..arity {
-                    args.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
-                }
-                args.reverse();
-                machine.push_frame(callee_id, callee.local_count, &module.local_layouts);
-                let callee_frame = machine
-                    .frames
-                    .last_mut()
-                    .ok_or(VmError::InvalidFunctionId(callee_id))?;
-                for (i, arg) in args.iter().enumerate() {
-                    if let Some(slot) = callee_frame.locals.get_mut(i) {
-                        *slot = *arg;
-                    }
-                }
+                call_phoenix(&mut machine, module, callee_id)?;
             }
             Opcode::Return => {
                 let return_value = machine.stack.pop();
@@ -500,6 +482,42 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 }
                 return Err(VmError::UnsupportedOpcode(inst.opcode.as_u8()));
             }
+            Opcode::MakeFnPtr => {
+                let target_kind = inst.operands.first().copied().unwrap_or(0);
+                let target_id = inst.operands.get(1).copied().unwrap_or(0);
+                let ptr = fn_ptr_from_id(target_kind, target_id);
+                machine.stack.push(Value::Scalar(ScalarValue::Ptr(ptr)));
+            }
+            Opcode::CallIndirect => {
+                let expected_arity = inst.operands.first().copied().unwrap_or(0);
+                let arity = usize::try_from(expected_arity).map_err(|_| VmError::StackUnderflow)?;
+                if machine.stack.len() < arity.saturating_add(1) {
+                    return Err(VmError::StackUnderflow);
+                }
+                let mut args = Vec::with_capacity(arity);
+                for _ in 0..arity {
+                    args.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
+                }
+                args.reverse();
+                let fn_ptr_val = pop_scalar(&mut machine.stack)?;
+                let ScalarValue::Ptr(ptr) = fn_ptr_val else {
+                    return Err(VmError::InvalidFnPtr);
+                };
+                if !is_fn_ptr(ptr) {
+                    return Err(VmError::InvalidFnPtr);
+                }
+                let (target_kind, target_id) = decode_fn_ptr(ptr);
+                match target_kind {
+                    0 => call_phoenix_with_args(&mut machine, module, target_id, &args)?,
+                    1 => {
+                        for arg in &args {
+                            machine.stack.push(*arg);
+                        }
+                        dispatch_foreign(target_id, &mut machine, module)?;
+                    }
+                    _ => return Err(VmError::InvalidFnPtr),
+                }
+            }
         }
     }
     Ok(VmRunCapture {
@@ -515,6 +533,44 @@ fn find_function(module: &BytecodeModule, id: u32) -> Option<&FunctionRecord> {
         .functions
         .iter()
         .find(|f| f.function_id == id)
+}
+
+fn call_phoenix(
+    machine: &mut Machine,
+    module: &BytecodeModule,
+    callee_id: u32,
+) -> Result<(), VmError> {
+    let callee = find_function(module, callee_id).ok_or(VmError::InvalidFunctionId(callee_id))?;
+    let arity = usize::from(callee.arity);
+    if machine.stack.len() < arity {
+        return Err(VmError::StackUnderflow);
+    }
+    let mut args = Vec::with_capacity(arity);
+    for _ in 0..arity {
+        args.push(machine.stack.pop().ok_or(VmError::StackUnderflow)?);
+    }
+    args.reverse();
+    call_phoenix_with_args(machine, module, callee_id, &args)
+}
+
+fn call_phoenix_with_args(
+    machine: &mut Machine,
+    module: &BytecodeModule,
+    callee_id: u32,
+    args: &[Value],
+) -> Result<(), VmError> {
+    let callee = find_function(module, callee_id).ok_or(VmError::InvalidFunctionId(callee_id))?;
+    machine.push_frame(callee_id, callee.local_count, &module.local_layouts);
+    let callee_frame = machine
+        .frames
+        .last_mut()
+        .ok_or(VmError::InvalidFunctionId(callee_id))?;
+    for (i, arg) in args.iter().enumerate() {
+        if let Some(slot) = callee_frame.locals.get_mut(i) {
+            *slot = *arg;
+        }
+    }
+    Ok(())
 }
 
 fn function_code<'a>(module: &'a BytecodeModule, rec: &FunctionRecord) -> &'a [u8] {

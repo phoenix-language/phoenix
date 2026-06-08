@@ -1240,3 +1240,38 @@ fn try_from_assoc_type_impl_compile_ok() {
         "Result :: <ok, err> enum { Ok(ok), Err(err), }; TryFromLocal :: <source> trait { type Error; try_from :: (value: source) => Result<Self, Self::Error>; }; Box :: struct { n: s32 }; Box :: impl :: TryFromLocal<s32> { type Error = s32; try_from :: (value: s32) => Result<Box, s32> { if value >= 0 { Ok(Box { n: value }) } else { Err(value) } }; }; main :: () => { const b = Box::try_from(3); const _ = b; };",
     );
 }
+
+#[test]
+fn fn_pointer_indirect_call_ok() {
+    let source = "double :: (x: s32) => s32 { x + x }; apply :: (f: :: (s32) => s32, x: s32) => s32 { f(x) }; main :: () => { const n: s32 = apply(double, 3); const _ = n; };";
+    let typed = typed_program(source);
+    assert!(
+        !typed.indirect_call_sites.is_empty(),
+        "expected indirect call site for apply(double, 3)"
+    );
+}
+
+#[test]
+fn fn_pointer_value_is_copyable() {
+    compile_ok(
+        "double :: (x: s32) => s32 { x + x }; main :: () => { const f = double; const g = f; const _ = g(1); };",
+    );
+}
+
+#[test]
+fn extern_call_requires_unsafe() {
+    let source = "extern \"C\" stub :: (x: s32) => s32; main :: () => { stub(1); };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::ExternCallRequiresUnsafe { .. }) }),
+        "expected ExternCallRequiresUnsafe: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn extern_call_in_unsafe_ok() {
+    compile_ok("extern \"C\" stub :: (x: s32) => s32; main :: () => { unsafe { stub(1); }; };");
+}

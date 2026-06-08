@@ -126,6 +126,7 @@ const fn def_kind_diagnostic_label(kind: DefKind) -> Option<&'static str> {
         DefKind::TypeAlias => Some("type"),
         DefKind::Trait => Some("trait"),
         DefKind::Fn
+        | DefKind::ExternFn
         | DefKind::Const
         | DefKind::Var
         | DefKind::Param

@@ -298,6 +298,13 @@ pub enum TypeCheckError {
         /// Use site span.
         span: Span,
     },
+    /// `extern "C"` call requires an `unsafe` block or `unsafe fn`.
+    ExternCallRequiresUnsafe {
+        /// Foreign symbol name.
+        name: String,
+        /// Call site span.
+        span: Span,
+    },
 }
 
 impl TypeCheckError {
@@ -336,6 +343,7 @@ impl TypeCheckError {
             Self::TryOutsideFunction { .. } => DiagnosticCode::new("E2028"),
             Self::InvalidTryOperand { .. } => DiagnosticCode::new("E2029"),
             Self::TryErrorFromMissing { .. } => DiagnosticCode::new("E2031"),
+            Self::ExternCallRequiresUnsafe { .. } => DiagnosticCode::new("E2032"),
         }
     }
 
@@ -373,7 +381,8 @@ impl TypeCheckError {
             | Self::MissingAssociatedType { span, .. }
             | Self::TryOutsideFunction { span }
             | Self::InvalidTryOperand { span, .. }
-            | Self::TryErrorFromMissing { span, .. } => Some(*span),
+            | Self::TryErrorFromMissing { span, .. }
+            | Self::ExternCallRequiresUnsafe { span, .. } => Some(*span),
         }
     }
 }
@@ -510,6 +519,9 @@ impl fmt::Display for TypeCheckError {
                 f,
                 "cannot use `?` on `Result<_, {err_in}>` in function returning `Result<_, {err_out}`: no `From<{err_in}>` implementation for `{err_out}`"
             ),
+            Self::ExternCallRequiresUnsafe { name, .. } => {
+                write!(f, "call to foreign function `{name}` requires `unsafe`")
+            }
         }
     }
 }

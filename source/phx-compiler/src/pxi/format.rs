@@ -216,6 +216,7 @@ impl std::error::Error for PxiError {}
 pub fn def_kind_to_pxi(kind: DefKind) -> &'static str {
     match kind {
         DefKind::Fn => "fn",
+        DefKind::ExternFn => "extern_fn",
         DefKind::Struct => "struct",
         DefKind::Enum => "enum",
         DefKind::TypeAlias => "type",

@@ -296,3 +296,19 @@ fn codegen_associated_from_call_verifies() {
     let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("verify associated from call");
 }
+
+#[test]
+fn codegen_fn_pointer_indirect_call_verifies() {
+    let source = "double :: (x: s32) => s32 { x + x }; apply :: (f: :: (s32) => s32, x: s32) => s32 { f(x) }; main :: () => { const n: s32 = apply(double, 3); const _ = n; };";
+    let unit = compile_source(source, None).expect("compile fn pointer program");
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
+    assert!(
+        module.code.contains(&Opcode::MakeFnPtr.as_u8()),
+        "expected MakeFnPtr opcode in main"
+    );
+    assert!(
+        module.code.contains(&Opcode::CallIndirect.as_u8()),
+        "expected CallIndirect opcode in apply"
+    );
+    verify(&module).expect("verify fn pointer indirect call module");
+}

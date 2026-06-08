@@ -16,14 +16,16 @@ use std::collections::HashMap;
 use crate::PxiType;
 use crate::ir::IrModule;
 use crate::resolver::DefId;
-use crate::typeck::{BindingKind, ProgramLayout, TypedProgram, slot_kind_for_binding};
+use crate::typeck::{
+    BindingKind, ProgramLayout, Ty, TypeInterner, TypedProgram, slot_kind_for_binding,
+};
 
 pub use const_pool::ConstPoolBuilder;
 pub use error::CodegenError;
 
 /// Builds the bytecode types section from typeck layout tables.
 #[must_use]
-pub fn build_type_table(layout: &ProgramLayout) -> TypeTable {
+pub fn build_type_table(layout: &ProgramLayout, types: &TypeInterner) -> TypeTable {
     let mut records = Vec::new();
 
     for (&def, sl) in &layout.structs {
@@ -61,6 +63,18 @@ pub fn build_type_table(layout: &ProgramLayout) -> TypeTable {
             type_id,
             kind: TypeKind::Enum,
             aux,
+        });
+    }
+
+    for (&fn_ty, &type_id) in &layout.fn_sig_ids {
+        let param_count = match types.get(fn_ty) {
+            Ty::Fn { params, .. } => u32::try_from(params.len()).unwrap_or(u32::MAX),
+            _ => 0,
+        };
+        records.push(TypeRecord {
+            type_id,
+            kind: TypeKind::FnSig,
+            aux: param_count.to_le_bytes().to_vec(),
         });
     }
 
@@ -159,7 +173,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
             ..FileHeader::new(5, entry_function_id)
         },
         constants,
-        types: build_type_table(layout),
+        types: build_type_table(layout, &typed.types),
         functions: FunctionTable { functions: records },
         code,
         local_layouts,
@@ -248,7 +262,7 @@ pub fn codegen_module(
             ..FileHeader::new(5, entry_function_id)
         },
         constants,
-        types: build_type_table(layout),
+        types: build_type_table(layout, &typed.types),
         functions: FunctionTable { functions: records },
         code,
         local_layouts: LocalLayoutTable { layouts },

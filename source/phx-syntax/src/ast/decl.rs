@@ -150,7 +150,7 @@ pub struct Function {
     pub derives: Vec<DeriveDirective>,
     /// Directives (`#inline`, …).
     pub directives: Vec<FnDirective>,
-    /// `#unsafe` on the function.
+    /// `unsafe` on the function.
     pub unsafe_: bool,
     /// Name.
     pub name: Ident,
@@ -265,6 +265,20 @@ pub enum TopLevelDecl {
     Reexport {
         /// Target path after leading `::` (`Item` or `child::Item`).
         path: Path,
+    },
+    /// `extern "C" { … }` — foreign symbol block.
+    ExternBlock {
+        /// ABI string literal (e.g. `"C"`).
+        abi: String,
+        /// Imported foreign signatures.
+        items: Vec<FunctionSig>,
+    },
+    /// `extern "C" name :: (…) => T` — single foreign symbol.
+    ExternItem {
+        /// ABI string literal.
+        abi: String,
+        /// Foreign signature.
+        sig: FunctionSig,
     },
 }
 

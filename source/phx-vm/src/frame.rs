@@ -114,6 +114,8 @@ impl Machine {
             for slot_kind in layout.slots.iter().take(n) {
                 if slot_kind.is_aggregate() {
                     locals.push(Value::Agg(0));
+                } else if slot_kind.is_fn_ptr() {
+                    locals.push(Value::Scalar(ScalarValue::Ptr(0)));
                 } else if let Some(kind) = slot_kind.primitive_kind() {
                     locals.push(Value::Scalar(ScalarValue::zero(kind)));
                 } else {
@@ -144,6 +146,7 @@ impl Machine {
     }
 
     /// Borrows an aggregate by handle.
+    #[must_use]
     pub fn aggregate(&self, handle: u32) -> Option<&Aggregate> {
         self.aggregates.get(handle as usize)
     }

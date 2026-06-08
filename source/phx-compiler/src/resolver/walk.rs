@@ -175,7 +175,26 @@ impl Resolver<'_> {
                     );
                 }
             }
+            TopLevelDecl::ExternBlock { items, .. } => {
+                self.collect_extern_fns(items, exported, &item_attrs);
+            }
+            TopLevelDecl::ExternItem { sig, .. } => {
+                self.collect_extern_fns(std::slice::from_ref(sig), exported, &item_attrs);
+            }
             _ => {}
+        }
+    }
+
+    fn collect_extern_fns(
+        &mut self,
+        sigs: &[FunctionSig],
+        exported: bool,
+        item_attrs: &crate::attrs::ItemAttrs,
+    ) {
+        for sig in sigs {
+            let sig_span = name_span_ident(&sig.name);
+            let id = self.define_exported(sig.name.symbol, sig_span, DefKind::ExternFn, exported);
+            self.record_def_attrs(id, item_attrs.clone());
         }
     }
 
@@ -201,7 +220,11 @@ impl Resolver<'_> {
                         def.span,
                     );
                 }
-                DefKind::Fn | DefKind::Const | DefKind::Var | DefKind::EnumVariant => {
+                DefKind::Fn
+                | DefKind::Const
+                | DefKind::Var
+                | DefKind::EnumVariant
+                | DefKind::ExternFn => {
                     self.scopes.define_value(
                         &self.defs,
                         &mut self.bag,
@@ -316,6 +339,14 @@ impl Resolver<'_> {
             TopLevelDecl::Var { ty, init, .. } => {
                 self.resolve_type_node(ty);
                 self.resolve_expr_node(init);
+            }
+            TopLevelDecl::ExternBlock { items, .. } => {
+                for sig in items {
+                    self.resolve_extern_sig(sig);
+                }
+            }
+            TopLevelDecl::ExternItem { sig, .. } => {
+                self.resolve_extern_sig(sig);
             }
             _ => {}
         }
@@ -453,6 +484,15 @@ impl Resolver<'_> {
         }
         if let Some(body) = &sig.body {
             self.resolve_block_node(body);
+        }
+        self.scopes.pop();
+    }
+
+    fn resolve_extern_sig(&mut self, sig: &FunctionSig) {
+        self.scopes.push();
+        self.resolve_params(&sig.params);
+        if let Some(ret) = &sig.ret {
+            self.resolve_type_node(ret);
         }
         self.scopes.pop();
     }

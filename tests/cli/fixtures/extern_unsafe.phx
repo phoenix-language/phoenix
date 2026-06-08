@@ -1,0 +1,7 @@
+// V0-053: extern "C" calls require unsafe.
+
+extern "C" c_add :: (a: s32, b: s32) => s32;
+
+main :: () => {
+    c_add(10, 2);
+};

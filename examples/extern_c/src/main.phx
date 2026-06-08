@@ -1,0 +1,14 @@
+// Demo: Phase-A extern "C" import; calls require unsafe.
+
+#import std::ffi::c_int;
+
+extern "C" {
+    c_add :: (a: s32, b: s32) => c_int;
+};
+
+main :: () => {
+    unsafe {
+        const sum: c_int = c_add(10, 2);
+        const _ = sum;
+    };
+};

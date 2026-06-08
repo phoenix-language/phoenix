@@ -388,7 +388,7 @@ impl Parser<'_> {
             }
             TokenKind::Keyword(Keyword::If) => self.parse_if_expr(),
             TokenKind::Keyword(Keyword::Match) => self.parse_match_expr(),
-            TokenKind::HashUnsafe => {
+            TokenKind::Keyword(Keyword::Unsafe) => {
                 self.bump();
                 let block = self.parse_block()?;
                 Ok(self.node(Expr::Unsafe(block), self.span_from(start)))

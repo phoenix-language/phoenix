@@ -137,11 +137,14 @@ impl Parser<'_> {
             TokenKind::HashInline
                 | TokenKind::HashCold
                 | TokenKind::HashHot
-                | TokenKind::HashUnsafe
                 | TokenKind::HashDerive
-        ) {
+        ) || self.peek_keyword(Keyword::Unsafe)
+        {
             let func = self.parse_function_decl_body(false)?;
             return Ok(TopLevelDecl::Function(func));
+        }
+        if self.peek_keyword(Keyword::Extern) {
+            return self.parse_extern_decl();
         }
         match self.peek_kind() {
             TokenKind::Keyword(Keyword::Type) => self.parse_type_alias(),
@@ -209,7 +212,7 @@ impl Parser<'_> {
     /// Parses `type Name [= generics] = Ty`.
     fn parse_type_alias(&mut self) -> Result<TopLevelDecl, ParseError> {
         self.bump();
-        let name = self.parse_type_name()?;
+        let name = self.parse_type_alias_name()?;
         let generics = if self.peek_kind() == TokenKind::Lt {
             Some(self.parse_generic_params()?)
         } else {
@@ -449,7 +452,7 @@ impl Parser<'_> {
         let mut derives = self.parse_derive_directives()?;
         derives.extend(self.derive_attrs_from_bracket(&attrs));
         let directives = self.parse_fn_directives();
-        let unsafe_ = self.eat_kind(&TokenKind::HashUnsafe);
+        let unsafe_ = self.eat_keyword(Keyword::Unsafe);
         let name = if name_only {
             self.parse_ident()?
         } else {
@@ -505,7 +508,9 @@ impl Parser<'_> {
             | TopLevelDecl::Var { .. }
             | TopLevelDecl::Impl { .. }
             | TopLevelDecl::Mod { .. }
-            | TopLevelDecl::Reexport { .. } => {}
+            | TopLevelDecl::Reexport { .. }
+            | TopLevelDecl::ExternBlock { .. }
+            | TopLevelDecl::ExternItem { .. } => {}
         }
     }
 
@@ -596,6 +601,51 @@ impl Parser<'_> {
         self.expect_kind(ExpectedToken::Punct(":"), &TokenKind::Colon)?;
         let ty = self.parse_type()?;
         Ok(Param::Named { name, ty })
+    }
+
+    /// Parses `extern "ABI" { sig; … }` or `extern "ABI" sig`.
+    fn parse_extern_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
+        self.eat_keyword(Keyword::Extern);
+        let abi = self.parse_abi_string()?;
+        if self.peek_kind() == TokenKind::LBrace {
+            self.bump();
+            let mut items = Vec::new();
+            while !self.eat_kind(&TokenKind::RBrace) {
+                items.push(self.parse_extern_function_sig()?);
+                self.expect_semi()?;
+            }
+            Ok(TopLevelDecl::ExternBlock { abi, items })
+        } else {
+            let sig = self.parse_extern_function_sig()?;
+            Ok(TopLevelDecl::ExternItem { abi, sig })
+        }
+    }
+
+    fn parse_abi_string(&mut self) -> Result<String, ParseError> {
+        match self.peek_kind() {
+            TokenKind::String(s) => {
+                self.bump();
+                Ok(s)
+            }
+            _ => Err(self.error_unexpected(ExpectedToken::Literal)),
+        }
+    }
+
+    fn parse_extern_function_sig(&mut self) -> Result<FunctionSig, ParseError> {
+        let name = self.parse_ident()?;
+        self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
+        if self.peek_kind() == TokenKind::Lt {
+            return Err(self.error_unexpected(ExpectedToken::Punct("(")));
+        }
+        let params = self.parse_params()?;
+        let ret = self.parse_optional_return_type()?;
+        Ok(FunctionSig {
+            name,
+            generics: None,
+            params,
+            ret,
+            body: None,
+        })
     }
 }
 

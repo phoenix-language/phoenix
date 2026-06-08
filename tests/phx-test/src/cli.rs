@@ -56,6 +56,7 @@ pub const SMOKE_FIXTURES: &[&str] = &[
     "generic_enum_infer.phx",
     "generic_enum_match.phx",
     "generic_impl_method.phx",
+    "fn_pointer.phx",
 ];
 
 /// Negative check fixtures: `(fixture name, stderr substring)`.
@@ -70,6 +71,7 @@ pub const NEG_CHECK_FIXTURES: &[(&str, &str)] = &[
     ("trait_impl_incomplete.phx", "trait method"),
     ("deferred_break_value.phx", "break"),
     ("deferred_at_send.phx", "@send"),
+    ("extern_unsafe.phx", "unsafe"),
 ];
 
 /// Captured output from a `phx` subprocess invocation.

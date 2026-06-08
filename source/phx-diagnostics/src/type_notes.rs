@@ -250,6 +250,11 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "implement `From<{err_in}>` for `{err_out}` (see docs/design/features/error-handling.md#the--operator-v0-042-error-conversion-v0-059)"
             ));
         }
+        TypeCheckError::ExternCallRequiresUnsafe { .. } => {
+            out.helps.push(String::from(
+                "wrap the call in `unsafe { ... }` or declare the enclosing function as `unsafe`",
+            ));
+        }
     }
     out
 }

@@ -264,8 +264,6 @@ impl<'src> Lexer<'src> {
         }
         if self.consume_bytes(b"import") {
             Ok(TokenKind::HashImport)
-        } else if self.consume_bytes(b"unsafe") {
-            Ok(TokenKind::HashUnsafe)
         } else if self.consume_bytes(b"inline") {
             Ok(TokenKind::HashInline)
         } else if self.consume_bytes(b"cold") {

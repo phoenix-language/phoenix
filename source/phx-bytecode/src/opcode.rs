@@ -100,6 +100,10 @@ pub enum Opcode {
     MakeStr = 43,
     /// Convert `str` aggregate to `[u8]` slice view. Stack: `[str] → [slice]`
     StrAsSlice = 44,
+    /// Materialize function pointer. Stack: `[] → [fn_ptr]` — operands: `target_kind`, `target_id`.
+    MakeFnPtr = 45,
+    /// Call through fn pointer. Stack: `[fn_ptr, args…] → [ret]` — operands: `expected_arity`, `sig_type_id`.
+    CallIndirect = 46,
 }
 
 impl Opcode {
@@ -155,6 +159,8 @@ impl Opcode {
             42 => Ok(Self::AddressOfLocal),
             43 => Ok(Self::MakeStr),
             44 => Ok(Self::StrAsSlice),
+            45 => Ok(Self::MakeFnPtr),
+            46 => Ok(Self::CallIndirect),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

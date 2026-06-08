@@ -432,7 +432,7 @@ fn decl_function_directive_hot() {
 
 #[test]
 fn decl_function_unsafe() {
-    let p = parse_ok("#unsafe f :: () => { }; main :: () => { };");
+    let p = parse_ok("unsafe f :: () => { }; main :: () => { };");
     let TopLevelDecl::Function(f) = &p.items[0].inner.decl else {
         panic!("fn");
     };
@@ -992,7 +992,7 @@ fn expr_block_as_expr() {
 
 #[test]
 fn expr_unsafe_block() {
-    assert_ok(&in_main_expr("#unsafe { 1 }"));
+    assert_ok(&in_main_expr("unsafe { 1 }"));
 }
 
 #[test]
@@ -1151,7 +1151,7 @@ fn stmt_given() {
 
 #[test]
 fn stmt_unsafe() {
-    assert_ok(&in_main("#unsafe { };"));
+    assert_ok(&in_main("unsafe { };"));
 }
 
 #[test]

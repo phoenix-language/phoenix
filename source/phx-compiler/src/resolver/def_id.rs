@@ -31,6 +31,8 @@ impl DefId {
 pub enum DefKind {
     /// Top-level or nested function.
     Fn,
+    /// `extern "C"` foreign function signature.
+    ExternFn,
     /// `const` binding.
     Const,
     /// `var` binding.

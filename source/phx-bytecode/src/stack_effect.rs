@@ -33,7 +33,8 @@ pub fn apply_stack_effect(
         | Opcode::LoadLocal
         | Opcode::AddressOfLocal
         | Opcode::Alloc
-        | Opcode::MakeStr => {
+        | Opcode::MakeStr
+        | Opcode::MakeFnPtr => {
             *depth = depth.saturating_add(1);
         }
         Opcode::StoreLocal
@@ -74,6 +75,14 @@ pub fn apply_stack_effect(
                 return Err(StackEffectError::Underflow);
             }
             *depth -= arity;
+            *depth += 1;
+        }
+        Opcode::CallIndirect => {
+            let arity = u32::from(call_arity.ok_or(StackEffectError::MissingCallArity)?);
+            if *depth < arity.saturating_add(1) {
+                return Err(StackEffectError::Underflow);
+            }
+            *depth -= arity.saturating_add(1);
             *depth += 1;
         }
         Opcode::MakeStruct | Opcode::MakeEnum | Opcode::MakeTuple | Opcode::MakeArray => {

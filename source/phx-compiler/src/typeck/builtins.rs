@@ -75,7 +75,8 @@ fn is_copyable_inner(
     seen.push(id);
     let ok = match types.get(id) {
         Ty::Primitive(_) | Ty::Unit => true,
-        Ty::Ref { .. } | Ty::Ptr { .. } | Ty::Fn { .. } | Ty::Var(_) | Ty::Error => false,
+        Ty::Ref { .. } | Ty::Ptr { .. } | Ty::Var(_) | Ty::Error => false,
+        Ty::Fn { .. } => true,
         Ty::Str => true,
         Ty::Slice(inner) => is_copyable_inner(types, layout, std_traits, *inner, seen),
         Ty::Tuple(elems) => elems

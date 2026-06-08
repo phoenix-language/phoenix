@@ -1,6 +1,7 @@
 #import bad_dup::witness;
 #import util::math::add;
 
+mod bad_dup;
 mod util;
 
 main :: () => { const _ = add(1, 2); };

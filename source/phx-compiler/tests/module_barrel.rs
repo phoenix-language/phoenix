@@ -72,9 +72,10 @@ fn orphan_file_fails_load() {
     }
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
+    let layout = BuildLayout::new(&config);
     let ctx = phx_compiler::ProgramLoadContext::from_config(&config);
     let mut bag = DiagnosticBag::new();
-    let loaded = load_program_with_context(&entry, &ctx, None, &mut bag);
+    let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag);
     assert!(loaded.is_none(), "expected orphan file to fail load");
     let msg = bag.to_string();
     assert!(

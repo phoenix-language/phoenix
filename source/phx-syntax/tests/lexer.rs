@@ -1238,8 +1238,8 @@ fn directive_hash_import() {
 }
 
 #[test]
-fn directive_hash_unsafe() {
-    assert_tokens("#unsafe", &[Expect::Kind(TokenKind::HashUnsafe)]);
+fn directive_hash_unsafe_removed() {
+    assert_lex_err("#unsafe", |e| matches!(e, LexError::UnexpectedChar { .. }));
 }
 
 #[test]

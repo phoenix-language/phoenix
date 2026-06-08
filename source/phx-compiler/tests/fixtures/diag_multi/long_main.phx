@@ -1,4 +1,6 @@
-#import diag_multi::tiny::oops;
+#import tiny::oops;
+
+mod tiny;
 
 // Padding so entry source is longer than tiny.phx (mis-routing heuristic would pick wrong file).
 // line 4

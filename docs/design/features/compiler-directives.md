@@ -41,12 +41,12 @@ Block imports are compile-time only: they introduce names locally; they do not c
 
 Optimization and placement hints (implementation-dependent).
 
-### `#unsafe`
+### `unsafe`
 
-Marks unsafe function or block region:
+Marks unsafe function or block region (keyword — not a `#` directive):
 
 ```phoenix
-#unsafe raw_write :: (ptr: *mut u8, len: u32) => ()
+unsafe raw_write :: (ptr: *mut u8, len: u32) => ()
 {
   // raw pointer logic
 };
@@ -55,12 +55,14 @@ Marks unsafe function or block region:
 ```phoenix
 copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 {
-  #unsafe
+  unsafe
   {
     // raw pointer reads/writes
   };
 };
 ```
+
+**`extern "C"` calls require `unsafe`.** See [ffi.md](ffi.md).
 
 ### `#derive(...)` (future)
 
@@ -70,7 +72,7 @@ Reserved for compiler-generated trait impls (post-MVP). Also accepted as `#[deri
 
 ## Item attributes (`#[...]`)
 
-Item metadata uses **bracket attributes** alongside keyword directives. Keyword forms (`#import`, `#unsafe`, `#inline`, …) remain for statement/block/function-prefix placement; bracket attributes attach to declarations.
+Item metadata uses **bracket attributes** alongside `#` compile-time directives. **`unsafe` and `extern` are language keywords**, not `#` directives.
 
 ```phoenix
 #[deprecated(since = "0.2.0", note = "use new_name instead", suggestion = "new_name")]

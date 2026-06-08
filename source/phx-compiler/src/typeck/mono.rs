@@ -142,6 +142,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 spec_aliases,
                 try_sites,
                 associated_fn_sites,
+                indirect_call_sites,
             ) = checker.finish_all();
             if checker_bag.has_errors() {
                 for located in checker_bag.into_errors() {
@@ -155,6 +156,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             typed.specialized_aliases.extend(spec_aliases);
             typed.try_sites.extend(try_sites);
             typed.associated_fn_sites.extend(associated_fn_sites);
+            typed.indirect_call_sites.extend(indirect_call_sites);
             typed.value_types.extend(value_types);
         }
         for node_id in &inst.call_sites {

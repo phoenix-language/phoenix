@@ -76,12 +76,25 @@ pub struct TypedProgram {
     pub std_trait_kernel: StdTraitKernel,
     /// `expr?` lowering metadata keyed by postfix expression id.
     pub try_sites: std::collections::HashMap<ExprId, TrySiteMeta>,
+    /// Indirect fn pointer call sites keyed by postfix `Call` expression id.
+    pub indirect_call_sites: std::collections::HashMap<ExprId, IndirectCallMeta>,
     /// Compiler builtin method sites on primitives (`eq`, `clone`).
     pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → callee fn def.
     pub associated_fn_sites: std::collections::HashMap<ExprId, DefId>,
     /// Value types for defs (functions, types, consts) from the template pass; used when re-checking mono bodies.
     pub value_types: std::collections::HashMap<crate::resolver::DefId, TypeId>,
+}
+
+/// Lowering hint for indirect function pointer calls (`CallIndirect`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndirectCallMeta {
+    /// Bytecode type-table `FnSig` id for verifier arity contract.
+    pub sig_type_id: u32,
+    /// Callee parameter count.
+    pub expected_arity: u32,
+    /// `true` when the call target is an `extern "C"` symbol.
+    pub foreign: bool,
 }
 
 /// Lowering hint for trait method calls on primitive receivers.

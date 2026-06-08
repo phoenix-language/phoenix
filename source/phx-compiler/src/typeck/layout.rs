@@ -150,6 +150,8 @@ pub struct ProgramLayout {
     pub specialized_enums: HashMap<TypeMonoKey, EnumLayout>,
     /// Bytecode `type_id` per monomorphized struct/enum key.
     pub specialized_type_ids: HashMap<TypeMonoKey, u32>,
+    /// Bytecode `FnSig` type ids keyed by interned `Ty::Fn`.
+    pub fn_sig_ids: HashMap<TypeId, u32>,
 }
 
 impl ProgramLayout {

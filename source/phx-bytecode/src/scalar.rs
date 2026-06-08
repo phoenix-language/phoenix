@@ -8,6 +8,8 @@ pub const PTR_LOCAL_TAG: u64 = 0x8000_0000_0000_0000;
 pub const PTR_AGG_TAG: u64 = 0x4000_0000_0000_0000;
 /// Address tag for constant-pool indices (`pool_index` in low bits).
 pub const PTR_CONST_TAG: u64 = 0x2000_0000_0000_0000;
+/// Address tag for function pointer values (`target_kind` in bits 32–39, id in low 32 bits).
+pub const PTR_FN_TAG: u64 = 0x1000_0000_0000_0000;
 
 /// A primitive value with storage matching its Phoenix type width.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -88,6 +90,12 @@ impl ScalarValue {
     #[must_use]
     pub fn local_ptr(slot: u32) -> Self {
         Self::Ptr(PTR_LOCAL_TAG | u64::from(slot))
+    }
+
+    /// Encodes a function pointer value.
+    #[must_use]
+    pub fn fn_ptr(target_kind: u32, id: u32) -> Self {
+        Self::Ptr(fn_ptr_from_id(target_kind, id))
     }
 
     /// Decodes a local slot from a local pointer, if tagged correctly.
@@ -203,5 +211,45 @@ impl ScalarValue {
             Self::F32(v) => v != 0.0,
             Self::F64(v) => v != 0.0,
         }
+    }
+}
+
+/// Encodes a function pointer raw address.
+///
+/// `target_kind` `0` = Phoenix `function_id`; `1` = foreign stub id.
+#[must_use]
+pub fn fn_ptr_from_id(target_kind: u32, id: u32) -> u64 {
+    PTR_FN_TAG | ((u64::from(target_kind) & 0xFF) << 32) | u64::from(id)
+}
+
+/// Decodes `(target_kind, id)` from a function pointer raw address.
+#[must_use]
+pub fn decode_fn_ptr(ptr: u64) -> (u32, u32) {
+    let id = u32::try_from(ptr & 0xFFFF_FFFF).unwrap_or(0);
+    let target_kind = u32::try_from((ptr >> 32) & 0xFF).unwrap_or(0);
+    (target_kind, id)
+}
+
+/// Returns `true` when `ptr` carries the function-pointer tag.
+#[must_use]
+pub fn is_fn_ptr(ptr: u64) -> bool {
+    ptr & PTR_FN_TAG == PTR_FN_TAG
+}
+
+#[cfg(test)]
+mod fn_ptr_tests {
+    use super::*;
+
+    #[test]
+    fn fn_ptr_roundtrip() {
+        let ptr = fn_ptr_from_id(0, 42);
+        assert!(is_fn_ptr(ptr));
+        assert_eq!(decode_fn_ptr(ptr), (0, 42));
+    }
+
+    #[test]
+    fn foreign_fn_ptr_roundtrip() {
+        let ptr = fn_ptr_from_id(1, 7);
+        assert_eq!(decode_fn_ptr(ptr), (1, 7));
     }
 }

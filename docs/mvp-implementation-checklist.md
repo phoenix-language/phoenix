@@ -331,6 +331,11 @@ A credible MVP demo `.phx` should be able to:
 | `return expr;`                   | done    | lower + VM     |                              |                                    |
 | Recursion                        | done    | VM `CALL`      | Direct self-call              | `factorial.phx`, `factorial_computes_one_twenty` |
 | Methods / receiver               | done    | typeck + lower | Synthetic receiver param; inherent + trait dispatch | `struct_method.phx`, `trait_eq.phx` |
+| Function pointers (Layer 2)      | done    | typeck + lower + VM | `MakeFnPtr`, `CallIndirect`; `Ty::Fn` Copyable | `fn_pointer.phx`, `fn_pointer_run` |
+| Generic callback parameters      | done    | typeck mono    | Monomorphize to concrete `Ty::Fn` | `fn_pointer.phx` |
+| `extern "C"` (Phase A)           | done    | parse + typeck + VM stubs | Keyword `extern`; calls require `unsafe` | `extern_unsafe.phx`, `extern_c` fixture |
+| Keyword `unsafe`                 | done    | parse + typeck | Replaces `#unsafe` | `extern_unsafe.phx`, parser tests |
+| `std::ffi` C aliases             | done    | `std/src/ffi`  | Opt-in `#import std::ffi::*` | `extern_c` fixture, `examples/extern_c` |
 
 
 ---

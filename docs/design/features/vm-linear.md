@@ -209,7 +209,7 @@ This fixed-width operand unit simplifies MVP decoding.
 | Bitwise/logical | `BIT_AND`, `BIT_OR`, `BIT_XOR`, `SHL`, `SHR`, `NOT`, `AND`, `OR` |
 | Compare | `EQ`, `NE`, `LT`, `LE`, `GT`, `GE` |
 | Control flow | `JUMP`, `JUMP_IF_TRUE`, `JUMP_IF_FALSE`, `RETURN` |
-| Calls | `CALL`, `CALL_INDIRECT` (optional), `RET` |
+| Calls | `CALL`, `MAKE_FN_PTR`, `CALL_INDIRECT`, `RET` |
 | Data construction | `MAKE_TUPLE`, `MAKE_ARRAY`, `MAKE_STRUCT`, `MAKE_ENUM`, `MAKE_SLICE` |
 | Data access | `GET_FIELD`, `SET_FIELD`, `INDEX` |
 | Addressing | `ADDRESS_OF_LOCAL` |
@@ -218,6 +218,18 @@ This fixed-width operand unit simplifies MVP decoding.
 | Memory intrinsics | `ALLOC`, `PTR_LOAD`, `PTR_STORE` (unsafe boundary) |
 
 Exact opcode numeric assignments are VM-implementation-defined but must remain stable per file format version.
+
+#### Function pointer opcodes (format minor ≥ 2)
+
+| Opcode | Stack | Operands |
+|---|---|---|
+| **`MAKE_FN_PTR`** (wire `45`) | `[] → [fn_ptr]` | `target_kind: u32`, `target_id: u32` |
+| **`CALL_INDIRECT`** (wire `46`) | `[fn_ptr, args…] → [ret]` | `expected_arity: u32`, `sig_type_id: u32` |
+
+- **`target_kind`:** `0` = Phoenix `function_id`; `1` = foreign stub id (`extern "C"`).
+- **`fn_ptr` value:** `ScalarValue::Ptr` with tag **`PTR_FN_TAG`** (`0x1000_0000_0000_0000`); low 32 bits = id.
+- **`SLOT_KIND_FN_PTR`:** wire byte `0xFE` for `Ty::Fn` local/param slots (pointer-sized scalar).
+- **`sig_type_id`:** type-table record (`TypeKind::FnSig`) used by verifier for arity contract on `CALL_INDIRECT`.
 
 ### Primitive kind operands
 

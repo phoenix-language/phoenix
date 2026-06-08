@@ -108,6 +108,10 @@ pub enum Keyword {
     F64,
     /// `str` UTF-8 text view
     Str,
+    /// `unsafe` — unsafe fn or block
+    Unsafe,
+    /// `extern` — FFI declarations
+    Extern,
 }
 
 impl Keyword {
@@ -157,6 +161,8 @@ impl Keyword {
             "f32" => Self::F32,
             "f64" => Self::F64,
             "str" => Self::Str,
+            "unsafe" => Self::Unsafe,
+            "extern" => Self::Extern,
             _ => return None,
         })
     }
@@ -288,8 +294,6 @@ pub enum TokenKind<'src> {
     HashBracket,
     /// `#import`
     HashImport,
-    /// `#unsafe`
-    HashUnsafe,
     /// `#inline`
     HashInline,
     /// `#cold`

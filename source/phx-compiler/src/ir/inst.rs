@@ -87,6 +87,26 @@ pub enum IrInst {
         /// Return type.
         ret: TypeId,
     },
+    /// Materialize function pointer. Stack: `[] → [fn_ptr]`
+    MakeFnPtr {
+        /// `0` = Phoenix function id; `1` = foreign stub id.
+        target_kind: u32,
+        /// Callee or stub id.
+        target_id: u32,
+        /// Result fn pointer type.
+        ty: TypeId,
+    },
+    /// Call through fn pointer. Stack: `[fn_ptr, args…] → [ret]`
+    CallIndirect {
+        /// Type-table `FnSig` id for verifier contract.
+        sig_type_id: u32,
+        /// Argument count (must match signature).
+        expected_arity: u32,
+        /// Return type.
+        ret: TypeId,
+        /// `true` when callee is a foreign stub (`target_kind = 1`).
+        foreign: bool,
+    },
     /// Pop value and return from function. Stack: `[value] → []` (terminator)
     Return {
         /// Returned type.

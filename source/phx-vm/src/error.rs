@@ -37,6 +37,10 @@ pub enum VmError {
     UnsupportedConst,
     /// Header `entry_function_id` is `ENTRY_NONE` (library object).
     NoEntryPoint,
+    /// Function pointer value is not tagged as `PTR_FN_TAG`.
+    InvalidFnPtr,
+    /// Foreign stub id was not registered.
+    InvalidForeignStub(u32),
 }
 
 impl std::fmt::Display for VmError {
@@ -61,6 +65,8 @@ impl std::fmt::Display for VmError {
                 write!(f, "byte constant pool entries are not loadable in MVP")
             }
             Self::NoEntryPoint => write!(f, "module has no entry function"),
+            Self::InvalidFnPtr => write!(f, "invalid function pointer value"),
+            Self::InvalidForeignStub(id) => write!(f, "invalid foreign stub id {id}"),
         }
     }
 }

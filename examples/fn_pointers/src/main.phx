@@ -1,0 +1,14 @@
+// Demo: pass a function pointer to a higher-order function and call it indirectly.
+
+lt :: (a: s32, b: s32) => bool {
+    a < b
+};
+
+invoke :: (cmp: :: (s32, s32) => bool, x: s32, y: s32) => bool {
+    cmp(x, y)
+};
+
+main :: () => {
+    const ok: bool = invoke(lt, 1, 2);
+    const _ = ok;
+};

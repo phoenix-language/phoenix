@@ -1,6 +1,6 @@
 //! Per-function local slot layout metadata for typed load/store.
 
-use crate::cast::{PrimitiveKind, SLOT_KIND_AGG};
+use crate::cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 
 /// One local slot descriptor (`0xFF` = aggregate, else [`PrimitiveKind`] wire byte).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +11,12 @@ impl LocalSlotKind {
     #[must_use]
     pub const fn aggregate() -> Self {
         Self(SLOT_KIND_AGG)
+    }
+
+    /// Function pointer slot (`Ty::Fn`, pointer-sized scalar).
+    #[must_use]
+    pub const fn fn_ptr() -> Self {
+        Self(SLOT_KIND_FN_PTR)
     }
 
     /// Primitive slot.
@@ -25,10 +31,16 @@ impl LocalSlotKind {
         self.0 == SLOT_KIND_AGG
     }
 
-    /// Returns the primitive kind when not aggregate.
+    /// Returns `true` for function-pointer slots.
+    #[must_use]
+    pub const fn is_fn_ptr(self) -> bool {
+        self.0 == SLOT_KIND_FN_PTR
+    }
+
+    /// Returns the primitive kind when not aggregate or fn pointer.
     #[must_use]
     pub fn primitive_kind(self) -> Option<PrimitiveKind> {
-        if self.is_aggregate() {
+        if self.is_aggregate() || self.is_fn_ptr() {
             None
         } else {
             PrimitiveKind::from_u8(self.0)

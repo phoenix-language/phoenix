@@ -298,3 +298,26 @@ fn lower_std_try_emits_question_mark_unwrap() {
         "read_config should lower ? via MatchTag/GetField"
     );
 }
+
+#[test]
+fn lower_fn_pointer_emits_make_fn_ptr_and_call_indirect() {
+    let source = "double :: (x: s32) => s32 { x + x }; apply :: (f: :: (s32) => s32, x: s32) => s32 { f(x) }; main :: () => { const n: s32 = apply(double, 3); const _ = n; };";
+    let unit = compile_source(source, None).expect("compile fn pointer program");
+    let ir = lower(&unit.typed).expect("lower");
+    let has_make = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|i| matches!(i, IrInst::MakeFnPtr { .. }))
+        })
+    });
+    let has_indirect = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|i| matches!(i, IrInst::CallIndirect { .. }))
+        })
+    });
+    assert!(has_make, "expected MakeFnPtr when passing function by name");
+    assert!(has_indirect, "expected CallIndirect for f(x)");
+}

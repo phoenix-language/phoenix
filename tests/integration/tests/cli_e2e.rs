@@ -419,3 +419,22 @@ fn examples_errors_build_run() {
         cli.run_no_build_ok(&root);
     });
 }
+
+#[test]
+fn examples_fn_pointers_build_run() {
+    e2e(|cli| {
+        let root = cli.example_project("fn_pointers");
+        rm_example_build(&root);
+        cli.build_ok(&root);
+        cli.run_no_build_ok(&root);
+    });
+}
+
+#[test]
+fn examples_extern_c_builds() {
+    e2e(|cli| {
+        let root = cli.example_project("extern_c");
+        rm_example_build(&root);
+        cli.build_ok(&root);
+    });
+}

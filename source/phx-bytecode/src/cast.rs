@@ -47,6 +47,9 @@ pub enum PrimitiveKind {
 /// Wire tag for non-primitive local slots (aggregates).
 pub const SLOT_KIND_AGG: u8 = 0xFF;
 
+/// Wire tag for function pointer local/param slots (`Ty::Fn`).
+pub const SLOT_KIND_FN_PTR: u8 = 0xFE;
+
 impl PrimitiveKind {
     /// Decodes a cast operand.
     #[must_use]

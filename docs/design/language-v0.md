@@ -4,7 +4,7 @@ Status: Active checklist
 
 This document is **the list** — the ordered checklist that marks the end of MVP, what is required to **show Phoenix to contributors**, and what must land before **writing the standard library in Phoenix source**.
 
-When every item in **Phases 1–6** is checked, the project reaches **Language v0**: a demonstrable, contributor-ready compiler that can host an in-language std bootstrap.
+When every item in **Phases 1-6** is checked, the project reaches **Language v0**: a demonstrable, contributor-ready compiler that can host an in-language std bootstrap.
 
 **Authority:** Language semantics come from the design docs. This file only sequences work and defines acceptance criteria. If behavior is ambiguous, update the relevant design doc first — do not invent semantics in implementation.
 
@@ -16,7 +16,7 @@ When every item in **Phases 1–6** is checked, the project reaches **Language v
 | Milestone                      | Meaning                                                                                                                                            |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **MVP** (Phase 1)              | Minimal compiler pipeline: parse → type-check → bytecode → single-process VM. See [mvp.md](mvp.md).                                                |
-| **Language v0** (Phases 1–6)   | MVP is complete **plus** the language substrate, packaging, and std-bootstrap wiring needed to compile real library code and onboard contributors. |
+| **Language v0** (Phases 1-6)   | MVP is complete **plus** the language substrate, packaging, and std-bootstrap wiring needed to compile real library code and onboard contributors. |
 | **Std v0** (after Language v0) | `Option`, `Result`, core traits, conversion traits, std error types, alloc-backed collections/text — authored as Phoenix `type = lib` packages, not compiler builtins. |
 | **Std I/O** (explicitly later) | Requires scheduler + schedulable-I/O runtime first. Not a Language v0 gate. |
 | **Runtime v1** (after Std v0) | VM-managed M:N scheduler, cooperatively parked schedulable I/O, optional actors — compile-time safety from Language v0 is the prerequisite. |
@@ -37,7 +37,7 @@ That split is intentional. Many runtime features Phoenix targets (cooperative sc
 | Function pointers + `@extern` path ([V0-053](#v0-053--function-pointers-and-indirect-calls)) | Interop with any C-ABI language at documented boundaries |
 | Minimal stack VM | Room to add scheduler, I/O parking, and mailboxes without rewriting the language |
 
-**Post–Language v0 direction** (documented, not v0 scope): a **VM-managed concurrency model** — all Phoenix execution under a scheduler; I/O and blocking work cooperatively parked (Tokio-like transparency, Phoenix syntax and types). See [runtime-transparency.md](features/runtime-transparency.md), [concurrency.md](features/concurrency.md).
+**Post-Language v0 direction** (documented, not v0 scope): a **VM-managed concurrency model** — all Phoenix execution under a scheduler; I/O and blocking work cooperatively parked (Tokio-like transparency, Phoenix syntax and types). See [runtime-transparency.md](features/runtime-transparency.md), [concurrency.md](features/concurrency.md).
 
 Language v0 does **not** implement the scheduler or std I/O. It **does** require the type system and std error story to be strong enough that runtime work composes cleanly on top.
 
@@ -489,7 +489,7 @@ Polish and capabilities that make the project legible to new contributors and un
   - `hello` — `main`, `str` literal; `phx run --dump-main` VM debug channel.
   - `modules` — multi-file `bin` + `lib` dependency.
   - `generics` — generic enum + trait bound monomorphization.
-  - `errors` — `Result` + `match` + `?` with `From` error conversion across std error types (V0-058–060).
+  - `errors` — `Result` + `match` + `?` with `From` error conversion across std error types (V0-058-060).
 - Each example has a one-line `//` README comment at the top of `main.phx`.
 
 **Acceptance:** All examples build and run via documented commands in `just test-lang` (`cli_e2e` examples tests).
@@ -505,6 +505,8 @@ Polish and capabilities that make the project legible to new contributors and un
 **Acceptance:** Program passes a function pointer to another function and invokes it indirectly; verifier enforces stack and type contract.
 
 **Refs:** [type-system.md](features/type-system.md) (Callable values: Layer 2), [vm-linear.md](features/vm-linear.md)
+
+**Status: Done**
 
 ---
 
@@ -555,7 +557,7 @@ Polish and capabilities that make the project legible to new contributors and un
 
 ## Language v0 complete — definition of done
 
-When **all** items in Phases 1–6 are checked:
+When **all** items in Phases 1-6 are checked:
 
 
 | Outcome                                                 | Status  |
@@ -578,7 +580,7 @@ Announce **Language v0** when the demonstration programs in V0-052 run and `just
 
 ## Explicitly not Language v0 (do not block the checklist)
 
-These are real Phoenix goals but **out of scope** for this list. Do not implement them while Phases 1–6 are open unless a design doc is updated to promote an item.
+These are real Phoenix goals but **out of scope** for this list. Do not implement them while Phases 1-6 are open unless a design doc is updated to promote an item.
 
 
 | Feature                                                     | Why deferred                                     | When                                                                                                                        |
@@ -592,7 +594,7 @@ These are real Phoenix goals but **out of scope** for this list. Do not implemen
 | Qualified paths without `#import`                           | Expr-path resolution spec                        | After or with block imports; [modules.md](features/modules.md#import-evolution-phased)                                      |
 | `dyn Trait`                                                 | Runtime vtables; static mono first               | When plugin-style APIs needed                                                                                               |
 | Std I/O and networking                                      | Requires schedulable runtime                     | After scheduler lands                                                                                                       |
-| Layered debug protocol (symbols, trace, breakpoints, DAP)   | Interim `--dump-main` only; full spec in [debug.md](features/debug.md) | Parallel to scheduler; D1+ post–Language v0                                                                      |
+| Layered debug protocol (symbols, trace, breakpoints, DAP)   | Interim `--dump-main` only; full spec in [debug.md](features/debug.md) | Parallel to scheduler; D1+ post-Language v0                                                                      |
 | JIT, hot reload                                             | Operational                                      | Post-v0                                                                                                                     |
 | Unicode identifiers                                         | ASCII-only for v0                                | [ast-roadmap.md](features/ast-roadmap.md)                                                                                   |
 | Primitive owned `string`                                    | Std `String` only                                | Never as language primitive                                                                                                 |
@@ -604,7 +606,7 @@ These are real Phoenix goals but **out of scope** for this list. Do not implemen
 
 ## After Language v0 — Std v0 starting point
 
-First std modules to author **in Phoenix** once the checklist is complete (order is flexible; all depend on Phases 4–6):
+First std modules to author **in Phoenix** once the checklist is complete (order is flexible; all depend on Phases 4-6):
 
 1. `**core::alloc`** — allocation/deallocation wrappers over VM intrinsics.
 2. `**core::option` / `core::result` / `core::convert**` — enums and conversion traits (if not already in std from V0-041 / V0-058).

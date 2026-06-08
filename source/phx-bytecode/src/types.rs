@@ -18,6 +18,8 @@ pub enum TypeKind {
     Struct = 5,
     /// User enum (aux: variant metadata).
     Enum = 6,
+    /// Function signature (aux: `param_count` as `u32` LE).
+    FnSig = 7,
 }
 
 /// One type table record.
@@ -89,6 +91,7 @@ impl TypeTable {
                 4 => TypeKind::Bool,
                 5 => TypeKind::Struct,
                 6 => TypeKind::Enum,
+                7 => TypeKind::FnSig,
                 _ => return Err(TypeTableError::UnknownKind(kind_byte)),
             };
             records.push(TypeRecord {

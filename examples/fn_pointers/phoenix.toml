@@ -1,0 +1,10 @@
+[project]
+name = "fn_pointers_demo"
+version = "0.1.0"
+description = "Function pointer values and indirect calls (V0-053)"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"

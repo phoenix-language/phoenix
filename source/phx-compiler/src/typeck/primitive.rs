@@ -70,7 +70,9 @@ pub fn primitive_load_signed(kind: PrimitiveKind) -> u8 {
 /// Maps a binding type to a bytecode local slot kind.
 #[must_use]
 pub fn slot_kind_for_binding(types: &TypeInterner, ty: TypeId) -> LocalSlotKind {
-    if let Some(kind) = primitive_kind_for_type(types, ty) {
+    if matches!(types.get(ty), Ty::Fn { .. }) {
+        LocalSlotKind::fn_ptr()
+    } else if let Some(kind) = primitive_kind_for_type(types, ty) {
         LocalSlotKind::primitive(kind)
     } else {
         LocalSlotKind::aggregate()

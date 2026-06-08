@@ -103,6 +103,8 @@ pub fn analyze_stack_cfg(
                     });
                 };
                 Some(*arity)
+            } else if inst.opcode == Opcode::CallIndirect {
+                Some(u16::try_from(inst.operands.first().copied().unwrap_or(0)).unwrap_or(u16::MAX))
             } else {
                 None
             };

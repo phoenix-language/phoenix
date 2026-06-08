@@ -21,7 +21,7 @@ mod stack_flow;
 mod types;
 mod verify;
 
-pub use cast::{PrimitiveKind, SLOT_KIND_AGG};
+pub use cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
 pub use encode::{EncodeError, u32_len};
 pub use function::{FunctionRecord, FunctionTable};
@@ -30,7 +30,10 @@ pub use instr::{InstrError, Instruction};
 pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
 pub use module::{BytecodeModule, ModuleError};
 pub use opcode::{Opcode, OpcodeError};
-pub use scalar::{PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, ScalarValue};
+pub use scalar::{
+    PTR_AGG_TAG, PTR_CONST_TAG, PTR_FN_TAG, PTR_LOCAL_TAG, ScalarValue, decode_fn_ptr,
+    fn_ptr_from_id, is_fn_ptr,
+};
 pub use section::{SectionEntry, SectionError, SectionKind};
 pub use stack_effect::{StackEffectError, apply_stack_effect};
 pub use stack_flow::{StackFlowError, StackFlowSummary, analyze_stack_cfg};
@@ -67,6 +70,8 @@ mod tests {
         assert_eq!(Opcode::Const.as_u8(), 0);
         assert_eq!(Opcode::LoadLocal.as_u8(), 1);
         assert_eq!(Opcode::Call.as_u8(), 14);
+        assert_eq!(Opcode::MakeFnPtr.as_u8(), 45);
+        assert_eq!(Opcode::CallIndirect.as_u8(), 46);
     }
 
     #[test]

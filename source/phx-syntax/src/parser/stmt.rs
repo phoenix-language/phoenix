@@ -58,7 +58,7 @@ impl Parser<'_> {
         Ok(BlockItem::Stmt(Stmt::Expr(expr)))
     }
 
-    /// Returns `true` when the next token starts a statement keyword or `#unsafe`.
+    /// Returns `true` when the next token starts a statement keyword or `unsafe`.
     fn is_stmt_keyword(&self) -> bool {
         matches!(
             self.peek_kind(),
@@ -72,7 +72,8 @@ impl Parser<'_> {
                     | Keyword::For
                     | Keyword::Loop
                     | Keyword::Given
-            ) | TokenKind::HashUnsafe
+                    | Keyword::Unsafe
+            )
         )
     }
 
@@ -185,7 +186,7 @@ impl Parser<'_> {
                     body,
                 }
             }
-            TokenKind::HashUnsafe => {
+            TokenKind::Keyword(Keyword::Unsafe) => {
                 self.bump();
                 let body = self.parse_block()?;
                 let _ = self.eat_kind(&TokenKind::Semicolon);

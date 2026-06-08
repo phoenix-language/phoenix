@@ -187,18 +187,18 @@ These extend the single-threaded rules for **global linear ownership** across ac
 - Runtime send/reply move message ownership
 - Mailbox receives produce owned values
 
-These rules apply in safe code and are not weakened by `#unsafe`.
+These rules apply in safe code and are not weakened by `unsafe`.
 
 ---
 
 ## Safe vs unsafe regions
 
-Phoenix has two `#unsafe` forms:
+Phoenix has two **`unsafe` keyword** forms:
 
 | Form | Syntax | Scope |
 |------|--------|-------|
-| Unsafe function | `#unsafe name :: (…) => T { … }` | Entire body |
-| Unsafe block | `#unsafe { … }` | Block inside a safe function |
+| Unsafe function | `unsafe name :: (…) => T { … }` | Entire body |
+| Unsafe block | `unsafe { … }` | Block inside a safe function |
 
 ### What stays enforced
 
@@ -215,7 +215,11 @@ In both unsafe forms:
 - Conflicts between shared and mutable access on **raw** paths only
 - FFI coercions (e.g. `*u8` from buffers)
 
-Unsafe is for intra-context low-level work — not for bypassing explicit actor isolation. Raw blocking syscalls via `#unsafe`/FFI can stall worker threads and bypass cooperative scheduling.
+### Extern calls
+
+**`extern "C"` symbol calls require `unsafe`.** The compiler cannot verify C ABI or foreign behavior at compile time. Taking an extern fn as a fn pointer value is safe; **invoking** it is not.
+
+Unsafe is for intra-context low-level work — not for bypassing explicit actor isolation. Raw blocking syscalls via `unsafe`/FFI can stall worker threads and bypass cooperative scheduling.
 
 ---
 

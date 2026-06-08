@@ -18,6 +18,7 @@ use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
 use phx_syntax::{Symbol, impl_receiver_symbol};
 
+use super::IndirectCallMeta;
 use super::PrimitiveMethodSite;
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::bounds::{resolve_from_fn_for_error, trait_bound_head};
@@ -107,6 +108,10 @@ pub struct TypeChecker<'a> {
     primitive_method_sites: HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → monomorphized or template fn def.
     associated_fn_sites: HashMap<ExprId, DefId>,
+    /// Indirect fn pointer call sites for lowering.
+    indirect_call_sites: HashMap<ExprId, IndirectCallMeta>,
+    /// Nesting depth of `unsafe` blocks and `unsafe fn` bodies.
+    unsafe_depth: u32,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -174,6 +179,8 @@ impl<'a> TypeChecker<'a> {
             try_sites: HashMap::new(),
             primitive_method_sites: HashMap::new(),
             associated_fn_sites: HashMap::new(),
+            indirect_call_sites: HashMap::new(),
+            unsafe_depth: 0,
         }
     }
 
@@ -368,6 +375,74 @@ impl<'a> TypeChecker<'a> {
         self.loop_depth = self.loop_depth.saturating_add(1);
         f(self);
         self.loop_depth = self.loop_depth.saturating_sub(1);
+    }
+
+    fn with_unsafe<F: FnOnce(&mut Self)>(&mut self, f: F) {
+        self.unsafe_depth = self.unsafe_depth.saturating_add(1);
+        f(self);
+        self.unsafe_depth = self.unsafe_depth.saturating_sub(1);
+    }
+
+    fn alloc_fn_sig_type_id(&mut self, fn_ty: TypeId) -> u32 {
+        if let Some(&id) = self.program_layout.fn_sig_ids.get(&fn_ty) {
+            return id;
+        }
+        let Ty::Fn { params, .. } = self.types.get(fn_ty).clone() else {
+            return 0;
+        };
+        let id = self.next_type_id;
+        self.next_type_id = self.next_type_id.saturating_add(1);
+        self.program_layout.fn_sig_ids.insert(fn_ty, id);
+        let _ = params;
+        id
+    }
+
+    fn is_static_fn_callee(&self, def: DefId) -> bool {
+        self.resolved
+            .defs
+            .get(def.index() as usize)
+            .is_some_and(|d| d.kind == DefKind::Fn)
+    }
+
+    fn check_extern_call(&mut self, def: DefId, span: Span) {
+        let Some(record) = self.resolved.defs.get(def.index() as usize) else {
+            return;
+        };
+        if record.kind != DefKind::ExternFn || self.unsafe_depth > 0 {
+            return;
+        }
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::ExternCallRequiresUnsafe {
+                name: self.symbol_name(record.name),
+                span,
+            },
+        );
+    }
+
+    fn record_indirect_call(
+        &mut self,
+        callee_ty: TypeId,
+        callee_def: Option<DefId>,
+        expr_id: ExprId,
+        foreign: bool,
+    ) {
+        if callee_def.is_some_and(|d| self.is_static_fn_callee(d)) {
+            return;
+        }
+        let Ty::Fn { params, .. } = self.types.get(callee_ty).clone() else {
+            return;
+        };
+        let sig_type_id = self.alloc_fn_sig_type_id(callee_ty);
+        let expected_arity = u32::try_from(params.len()).unwrap_or(u32::MAX);
+        self.indirect_call_sites.insert(
+            expr_id,
+            IndirectCallMeta {
+                sig_type_id,
+                expected_arity,
+                foreign,
+            },
+        );
     }
 
     fn enter_scope(&mut self) {
@@ -953,6 +1028,14 @@ impl<'a> TypeChecker<'a> {
                     self.value_types.insert(def, tid);
                 }
             }
+            TopLevelDecl::ExternBlock { items, .. } => {
+                for sig in items {
+                    self.collect_extern_sig(sig);
+                }
+            }
+            TopLevelDecl::ExternItem { sig, .. } => {
+                self.collect_extern_sig(sig);
+            }
             _ => {}
         }
     }
@@ -987,6 +1070,27 @@ impl<'a> TypeChecker<'a> {
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
         if let Some(def) = self.find_def(self.current_module, sig.name.symbol, DefKind::Fn) {
+            self.value_types.insert(def, fn_ty);
+        }
+    }
+
+    fn collect_extern_sig(&mut self, sig: &phx_syntax::ast::decl::FunctionSig) {
+        let ret = sig
+            .ret
+            .as_ref()
+            .map(|r| self.lower_ast_type(r))
+            .unwrap_or(self.unit);
+        let params: Vec<_> = sig
+            .params
+            .iter()
+            .filter_map(|p| match p {
+                Param::Named { ty, .. } => Some(self.lower_ast_type(ty)),
+                Param::Receiver { ty, .. } => ty.as_ref().map(|t| self.lower_ast_type(t)),
+                _ => None,
+            })
+            .collect();
+        let fn_ty = self.types.intern(&Ty::Fn { params, ret });
+        if let Some(def) = self.find_def(self.current_module, sig.name.symbol, DefKind::ExternFn) {
             self.value_types.insert(def, fn_ty);
         }
     }
@@ -1161,14 +1265,21 @@ impl<'a> TypeChecker<'a> {
                 self.define_local(impl_receiver_symbol(), self_ty, BindingKind::Param, None);
             }
         }
-        let body_ty = self.check_block_value(&f.body.inner);
-        if !self.types_equal(body_ty, ret) {
-            self.error_mismatch(ret, body_ty, f.body.span, MismatchKind::FunctionBody);
-        }
-        if self.is_borrow_type(body_ty) {
-            if let Some(expr) = trailing_value_expr(&f.body.inner) {
-                self.check_expr_escapes_local(expr);
+        let check_body = |this: &mut Self| {
+            let body_ty = this.check_block_value(&f.body.inner);
+            if !this.types_equal(body_ty, ret) {
+                this.error_mismatch(ret, body_ty, f.body.span, MismatchKind::FunctionBody);
             }
+            if this.is_borrow_type(body_ty) {
+                if let Some(expr) = trailing_value_expr(&f.body.inner) {
+                    this.check_expr_escapes_local(expr);
+                }
+            }
+        };
+        if f.unsafe_ {
+            self.with_unsafe(|this| check_body(this));
+        } else {
+            check_body(self);
         }
         if emit_layout {
             if let Some(mut builder) = self.layout.take() {
@@ -1334,7 +1445,7 @@ impl<'a> TypeChecker<'a> {
                 self.check_given_exhaustiveness(s, &pattern.inner, pattern.span);
                 self.check_block(&body.inner);
             }
-            Stmt::Unsafe(body) => self.check_block(&body.inner),
+            Stmt::Unsafe(body) => self.with_unsafe(|this| this.check_block(&body.inner)),
             _ => {}
         }
     }
@@ -1520,7 +1631,13 @@ impl<'a> TypeChecker<'a> {
                 generics,
                 fields,
             } => self.check_struct_lit(name, generics.as_deref(), fields, span),
-            Expr::Unsafe(block) => self.check_block_expr(block),
+            Expr::Unsafe(block) => {
+                let mut result = self.unit;
+                self.with_unsafe(|this| {
+                    result = this.check_block_expr(block);
+                });
+                result
+            }
             Expr::Range { start, end, .. } => {
                 let _ = self.check_expr_node(start);
                 let _ = self.check_expr_node(end);
@@ -1859,6 +1976,17 @@ impl<'a> TypeChecker<'a> {
                     expr_id,
                 ),
                 PostfixOp::Call { generics, args } => {
+                    let callee_ty = ty;
+                    let callee_def = self.callee_def_from_expr(base);
+                    let foreign = callee_def.is_some_and(|d| {
+                        self.resolved
+                            .defs
+                            .get(d.index() as usize)
+                            .is_some_and(|rec| rec.kind == DefKind::ExternFn)
+                    });
+                    if let Some(def) = callee_def {
+                        self.check_extern_call(def, span);
+                    }
                     ty = if let Some((target_ty, method)) = self.associated_fn_target(base) {
                         self.check_associated_fn_call(
                             target_ty,
@@ -1869,9 +1997,8 @@ impl<'a> TypeChecker<'a> {
                             expr_id,
                         )
                     } else {
-                        let callee_def = self.callee_def_from_expr(base);
                         self.check_call_with_generics(
-                            ty,
+                            callee_ty,
                             callee_def,
                             base,
                             generics.as_deref(),
@@ -1879,6 +2006,7 @@ impl<'a> TypeChecker<'a> {
                             span,
                         )
                     };
+                    self.record_indirect_call(callee_ty, callee_def, expr_id, foreign);
                     ty
                 }
                 PostfixOp::Index(idx) => {
@@ -3719,6 +3847,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, PrimitiveMethodSite>,
         HashMap<ExprId, DefId>,
         HashMap<DefId, TypeId>,
+        HashMap<ExprId, IndirectCallMeta>,
     ) {
         (
             self.types,
@@ -3733,6 +3862,7 @@ impl<'a> TypeChecker<'a> {
             self.primitive_method_sites,
             self.associated_fn_sites,
             self.value_types,
+            self.indirect_call_sites,
         )
     }
 
@@ -3750,6 +3880,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<TypeMonoKey, TypeId>,
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, DefId>,
+        HashMap<ExprId, IndirectCallMeta>,
     ) {
         (
             self.types,
@@ -3761,6 +3892,7 @@ impl<'a> TypeChecker<'a> {
             self.specialized_aliases,
             self.try_sites,
             self.associated_fn_sites,
+            self.indirect_call_sites,
         )
     }
 
@@ -3933,6 +4065,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         primitive_method_sites,
         associated_fn_sites,
         value_types,
+        indirect_call_sites,
     ) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
@@ -3953,6 +4086,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         primitive_method_sites,
         associated_fn_sites,
         value_types,
+        indirect_call_sites,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {

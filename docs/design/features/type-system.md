@@ -271,10 +271,11 @@ In-language polymorphism via vtables is a separate path from fn pointers.
 
 | Item | Today |
 |---|---|
-| `Ty::Fn` in type checker / parser | Exists for function **types** in signatures (`fn` types in `@extern`, parameters) |
-| First-class fn **values** | **Not implemented** — top-level fn names resolve to static **`Call`** only |
-| `Ty::Fn` Copyability | **Not Copyable** in [`is_copyable`](../../../source/phx-compiler/src/typeck/builtins.rs) — temporary/incorrect for value use; **target** is Copyable fn pointers |
-| `IndirectCall` / `CALL_INDIRECT` | **Not implemented** in compiler or VM |
+| `Ty::Fn` in type checker / parser | Function types in signatures and **fn pointer values** |
+| First-class fn **values** | **Implemented (V0-053)** — Copyable, pointer-sized; static `Call` when callee known |
+| `Ty::Fn` Copyability | **Copyable** (bitwise fn address) |
+| `IndirectCall` / `CALL_INDIRECT` | **Implemented (V0-053)** |
+| `extern "C"` | **Implemented (V0-053)** — calls require `unsafe`; types via `std::ffi` |
 
 Do not treat a function name as a move-only non-copyable value blob; that shape is a bug relative to this design.
 
@@ -283,8 +284,8 @@ Do not treat a function name as a move-only non-copyable value blob; that shape 
 | Layer | Now (MVP+) | Next (FFI) | Later |
 |---|---|---|---|
 | Static calls | `Call` opcode, static `DefId` | same | same |
-| Fn pointer values | Not implemented; document design | Copyable, pointer-sized, `IndirectCall` | — |
-| C ABI | `@extern` sketch ([ffi.md](ffi.md)) | concrete fn pointer types at boundary | native export |
+| Fn pointer values | Copyable, `MakeFnPtr`, `CallIndirect` | same | — |
+| C ABI | `extern "C"` + `std::ffi` ([ffi.md](ffi.md)) | dynamic link | native export |
 | Avoid | fn name as move-only non-copyable value | — | — |
 | Closures / `dyn Trait` | deferred | — | fat pointers / vtables |
 

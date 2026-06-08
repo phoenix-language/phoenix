@@ -10,10 +10,10 @@ use phx_syntax::ast::stmt::BlockNode;
 use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
-    LowerCtx, bool_ty, lookup_resolution, named_def_for_ty, prim_kind_byte, slot_for_symbol,
-    struct_def_by_name, unit_ty,
+    LowerCtx, bool_ty, fn_ptr_target, lookup_resolution, named_def_for_ty, prim_kind_byte,
+    slot_for_symbol, struct_def_by_name, unit_ty,
 };
-use crate::resolver::DefId;
+use crate::resolver::{DefId, DefKind};
 use crate::typeck::{
     BindingKind, ExprId, LocalSlot, PrimitiveMethodSite, TryFailureMode, TrySiteMeta, Ty, TypeId,
     VariantKind, primitive_kind_for_type, primitive_load_signed,
@@ -387,6 +387,16 @@ fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
             ty,
             prim_kind: prim_kind_byte(ctx.typed, binding.ty),
         });
+        return;
+    }
+    if let Some(def) = lookup_resolution(&ctx.typed.resolved, ctx.module, ident.id) {
+        if let Some((target_kind, target_id)) = fn_ptr_target(ctx.typed, def) {
+            ctx.emit(IrInst::MakeFnPtr {
+                target_kind,
+                target_id,
+                ty,
+            });
+        }
     }
 }
 
@@ -623,6 +633,28 @@ fn lower_postfix_inner(
     result_ty: TypeId,
     postfix_expr_id: ExprId,
 ) {
+    let static_call = ops.len() == 1
+        && matches!(ops[0], PostfixOp::Call { .. })
+        && resolve_call_callee(ctx, base).is_some();
+    if static_call {
+        if let PostfixOp::Call { args, .. } = &ops[0] {
+            // Typeck assigns an expr id to the call base; static `Call` does not load it.
+            let _ = ctx.expr_ty();
+            let Some(callee) = resolve_call_callee(ctx, base) else {
+                ctx.error_unresolved_callee(base.span);
+                return;
+            };
+            for arg in args {
+                lower_expr(ctx, arg);
+            }
+            ctx.emit(IrInst::Call {
+                callee,
+                ret: result_ty,
+            });
+        }
+        return;
+    }
+
     let mut receiver_ty = lower_expr_typed(ctx, base);
     for op in ops {
         match op {
@@ -705,6 +737,17 @@ fn lower_postfix_inner(
                         });
                         receiver_ty = result_ty;
                     }
+                } else if let Some(meta) = ctx.typed.indirect_call_sites.get(&postfix_expr_id) {
+                    for arg in args {
+                        lower_expr(ctx, arg);
+                    }
+                    ctx.emit(IrInst::CallIndirect {
+                        sig_type_id: meta.sig_type_id,
+                        expected_arity: meta.expected_arity,
+                        ret: result_ty,
+                        foreign: meta.foreign,
+                    });
+                    receiver_ty = result_ty;
                 } else {
                     let Some(callee) = resolve_call_callee(ctx, base) else {
                         ctx.error_unresolved_callee(base.span);
@@ -947,7 +990,18 @@ fn resolve_variant_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
 
 fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
     let node_id = path_or_ident_node_id(&base.inner)?;
-    lookup_resolution(&ctx.typed.resolved, ctx.module, node_id)
+    let def = lookup_resolution(&ctx.typed.resolved, ctx.module, node_id)?;
+    if ctx
+        .typed
+        .resolved
+        .defs
+        .get(def.index() as usize)
+        .is_some_and(|d| d.kind == DefKind::Fn)
+    {
+        Some(def)
+    } else {
+        None
+    }
 }
 
 fn path_or_ident_node_id(expr: &Expr) -> Option<phx_syntax::AstNodeId> {

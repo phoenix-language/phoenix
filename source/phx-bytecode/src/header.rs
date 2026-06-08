@@ -10,7 +10,7 @@ pub const HEADER_SIZE: usize = 24;
 pub const VERSION_MAJOR: u16 = 0;
 
 /// Format minor version for MVP.
-pub const VERSION_MINOR: u16 = 1;
+pub const VERSION_MINOR: u16 = 2;
 
 /// Sentinel `entry_function_id` for library images with no `main`.
 pub const ENTRY_NONE: u32 = u32::MAX;

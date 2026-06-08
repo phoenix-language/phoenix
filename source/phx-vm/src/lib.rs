@@ -18,11 +18,13 @@
 //! first parameter taken from the lower stack position.
 
 mod error;
+mod foreign;
 mod frame;
 mod interpreter;
 
 pub use error::VmError;
-pub use frame::{Aggregate, Value};
+pub use foreign::{ForeignStubFn, clear_foreign_stubs, dispatch_foreign, register_foreign_stub};
+pub use frame::{Aggregate, Machine, Value};
 pub use interpreter::{VmRunCapture, run_captured};
 pub use phx_bytecode::BytecodeModule;
 

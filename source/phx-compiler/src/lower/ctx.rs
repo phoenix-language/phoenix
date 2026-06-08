@@ -3,11 +3,13 @@
 use phx_syntax::Symbol;
 
 use crate::ir::{IrBasicBlock, IrConst, IrInst};
-use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
+use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
 use crate::typeck::{
-    ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, primitive_kind_for_type,
+    ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, is_generic_fn_template,
+    primitive_kind_for_type,
 };
 use phx_bytecode::SLOT_KIND_AGG;
+use phx_bytecode::SLOT_KIND_FN_PTR;
 use phx_diagnostics::{LowerBag, LowerError, Span};
 
 /// Jump target placeholder for a loop exit not yet allocated (`0xF000_0000 + slot`).
@@ -249,11 +251,42 @@ pub fn bool_ty(typed: &TypedProgram) -> TypeId {
     TypeId::from_raw(0)
 }
 
+/// Returns `(target_kind, target_id)` for `MakeFnPtr` when `def` is a callable symbol.
+#[must_use]
+pub fn fn_ptr_target(typed: &TypedProgram, def: DefId) -> Option<(u32, u32)> {
+    let record = typed.resolved.defs.get(def.index() as usize)?;
+    match record.kind {
+        DefKind::Fn => {
+            let idx = typed
+                .functions
+                .iter()
+                .filter(|layout| !is_generic_fn_template(typed, layout.def))
+                .position(|layout| layout.def == def)?;
+            Some((0, u32::try_from(idx).ok()?))
+        }
+        DefKind::ExternFn => {
+            let id = typed
+                .resolved
+                .defs
+                .get(..def.index() as usize)?
+                .iter()
+                .filter(|d| d.kind == DefKind::ExternFn)
+                .count();
+            Some((1, u32::try_from(id).ok()?))
+        }
+        _ => None,
+    }
+}
+
 /// Wire primitive kind byte for `ty` (aggregate types use [`SLOT_KIND_AGG`]).
 #[must_use]
 pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
-    primitive_kind_for_type(&typed.types, ty)
-        .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8)
+    if matches!(typed.types.get(ty), Ty::Fn { .. }) {
+        SLOT_KIND_FN_PTR
+    } else {
+        primitive_kind_for_type(&typed.types, ty)
+            .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8)
+    }
 }
 
 /// Maps slot for symbol in layout.
