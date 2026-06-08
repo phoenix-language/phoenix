@@ -93,6 +93,19 @@ Phoenix does **not** convert errors with `as` or implicit coercions. Conversions
 
 Primitive numeric conversions remain **`expr as Type`** (truncating/wrapping). `From`/`TryFrom` for numerics are separate, explicit APIs — Phoenix does not silently widen or narrow at call sites.
 
+### Orphan rule for std error `From` impls (V0-058)
+
+Enforcement is **documented only** for V0-058; the resolver does not yet reject orphan violations.
+
+| Rule | Detail |
+|---|---|
+| Leaf error types | `IoError`, `ParseError`, `ThreadError`, and similar leaf enums/structs are defined in `std::error` (V0-060). |
+| Top-level `Error` | The closed sum `Error` enum lives in std; only std may define `From<LeafError> for Error` for std-owned leaf types. |
+| Downstream crates | Must not add `From` (or `TryFrom`) impls whose **source or target** is a std error type they do not own. Application crates convert at boundaries with explicit wrappers or local leaf types. |
+| User types | `From<UserLeaf> for UserError` in the same crate is fine; `From<IoError> for MyAppError` belongs in the crate that defines `MyAppError` only when `IoError` is also defined there (otherwise wait for std's `Error` + `?` bridging in V0-059). |
+
+See also [traits.md](traits.md#trait-impl-scope-and-orphans).
+
 ---
 
 ## Std error vocabulary — V0-060

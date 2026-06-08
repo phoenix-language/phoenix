@@ -345,7 +345,7 @@ A credible MVP demo `.phx` should be able to:
 | Unknown until std prelude              | done    | `resolver/walk.rs`| Without prelude/import: `UnresolvedType` | `std_prelude_off`, `*_unresolved_until_std` tests |
 | `?` lowering (identical `Result`)      | done    | typeck + lower    | Strict same `T` and `E`    | `tests/cli/fixtures/std_try` |
 | `?` + `From` error conversion          | missing | typeck + lower    | [V0-059](design/language-v0.md#v0-059--with-from-error-conversion) | `IoError` → `Error` at `?`   |
-| `From` / `Into` / `TryFrom` in std     | missing | `std::core::convert` | [V0-058](design/language-v0.md#v0-058--conversion-traits-from--into-in-std) | Generic `T: From<U>` |
+| `From` / `Into` / `TryFrom` in std     | done    | `std::core::convert` | [V0-058](design/language-v0.md#v0-058--conversion-traits-from--into-in-std) | `std_convert`, `build_std_convert`, parameterized bounds |
 | Std error module                       | missing | `std::error`      | [V0-060](design/language-v0.md#v0-060--std-error-module) | Layered errors demo          |
 | `match` on std enums                   | partial | typeck + lower    | `Option` match in `std_smoke`; multi-param `Result` scrutinee TBD | `std_smoke`                  |
 

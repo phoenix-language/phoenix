@@ -8,6 +8,43 @@ use phx_syntax::Symbol;
 use super::types::TypeId;
 use crate::resolver::DefId;
 
+/// Identifies a concrete trait implementation: `Target: From<Source>`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TraitInstKey {
+    /// Implementing type definition.
+    pub implementer: DefId,
+    /// Type arguments on the implementer (empty when monomorphic).
+    pub implementer_args: Vec<TypeId>,
+    /// Trait template definition.
+    pub trait_def: DefId,
+    /// Trait type arguments (e.g. `[Source]` for `From<Source>`).
+    pub trait_args: Vec<TypeId>,
+}
+
+impl TraitInstKey {
+    /// Builds a trait impl lookup key.
+    #[must_use]
+    pub fn new(
+        implementer: DefId,
+        implementer_args: Vec<TypeId>,
+        trait_def: DefId,
+        trait_args: Vec<TypeId>,
+    ) -> Self {
+        Self {
+            implementer,
+            implementer_args,
+            trait_def,
+            trait_args,
+        }
+    }
+
+    /// Returns a key with empty implementer and trait argument lists.
+    #[must_use]
+    pub fn simple(implementer: DefId, trait_def: DefId) -> Self {
+        Self::new(implementer, Vec::new(), trait_def, Vec::new())
+    }
+}
+
 /// Key for a monomorphized struct, enum, or alias instantiation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeMonoKey {
@@ -101,12 +138,12 @@ pub struct ProgramLayout {
     pub variants: HashMap<DefId, VariantMeta>,
     /// Inherent impl methods: `(type_def, method_name) → fn_def`.
     pub inherent_methods: HashMap<(DefId, Symbol), DefId>,
-    /// Trait impl methods: `(type_def, trait_def, method_name) → fn_def`.
-    pub trait_methods: HashMap<(DefId, DefId, Symbol), DefId>,
-    /// Concrete associated types: `(type_def, trait_def, assoc_name) → TypeId`.
-    pub trait_assoc_impls: HashMap<(DefId, DefId, Symbol), TypeId>,
-    /// Types that implement a trait (including empty impl blocks).
-    pub trait_impls: HashSet<(DefId, DefId)>,
+    /// Trait impl methods: `(TraitInstKey, method_name) → fn_def`.
+    pub trait_methods: HashMap<(TraitInstKey, Symbol), DefId>,
+    /// Concrete associated types: `(TraitInstKey, assoc_name) → TypeId`.
+    pub trait_assoc_impls: HashMap<(TraitInstKey, Symbol), TypeId>,
+    /// Types that implement a trait instantiation (including empty impl blocks).
+    pub trait_impls: HashSet<TraitInstKey>,
     /// Monomorphized struct field layouts keyed by `(template, args)`.
     pub specialized_structs: HashMap<TypeMonoKey, StructLayout>,
     /// Monomorphized enum layouts keyed by `(template, args)`.

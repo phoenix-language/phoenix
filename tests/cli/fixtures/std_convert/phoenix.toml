@@ -1,0 +1,11 @@
+[project]
+name = "std_convert"
+version = "0.1.0"
+description = "V0-058 std conversion traits smoke test"
+type = "bin"
+module_src = "src"
+bundle_std = true
+prelude = false
+
+[build]
+dir = "build"

@@ -79,6 +79,7 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::clone` | `src/core/clone.phx` | `pub Clone :: trait` |
 | `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
 | `std::core::fmt` | `src/core/fmt.phx` | `pub Debug :: trait` (fixed `[u8; 32]` buffer) |
+| `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::prelude` | `src/prelude.phx` | Compiler-injected re-exports when `prelude = true` |
 
 Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
@@ -103,7 +104,6 @@ Single-file / in-process `compile_source(..., None)` does **not** inject prelude
 
 - Per-file `#no_prelude`, glob prelude, or entire std surface in prelude
 - Rich formatting (`Debug` uses a small fixed buffer only)
-- `From` / `Into` conversion traits (V0-058)
 - No std I/O — requires scheduler (post Language v0)
 
 ## Test fixtures vs real std

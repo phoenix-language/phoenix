@@ -35,6 +35,8 @@ pub(crate) struct Parser<'src> {
     recovery: Option<*mut ParseBag>,
     /// Next [`AstNodeId`] to assign (monotonic per parse).
     next_node_id: u32,
+    /// Set when an inner `>` was absorbed from `>>` and closes the enclosing generic list.
+    deferred_generic_closing: bool,
 }
 
 impl<'src> Parser<'src> {
@@ -51,6 +53,7 @@ impl<'src> Parser<'src> {
             interner,
             recovery: None,
             next_node_id: 0,
+            deferred_generic_closing: false,
         }
     }
 

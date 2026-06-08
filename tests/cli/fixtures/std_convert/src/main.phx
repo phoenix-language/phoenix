@@ -1,0 +1,47 @@
+#import std::core::convert::From;
+#import std::core::convert::Into;
+#import std::core::convert::TryFrom;
+#import std::core::result::Result;
+#import std::core::result::Ok;
+#import std::core::result::Err;
+
+Wrap :: struct {
+    n: s32,
+};
+
+Wrap :: impl :: From<s32> {
+    from :: (value: s32) => Wrap { Wrap { n: value } };
+};
+
+Wrap :: impl :: Into<s32> {
+    into :: (self) => s32 {
+        self.n
+    };
+};
+
+convert :: <t: From<s32>> (x: s32) => t {
+    t::from(x)
+};
+
+Parseable :: struct {
+    ok: bool,
+};
+
+Parseable :: impl :: TryFrom<s32> {
+    type Error = s32;
+    try_from :: (value: s32) => Result<Parseable, s32> {
+        if value >= 0 {
+            Ok(Parseable { ok: true })
+        } else {
+            Err(value)
+        }
+    };
+};
+
+main :: () => {
+    const w: Wrap = convert :: <Wrap>(42);
+    const n: s32 = w.into();
+    const p = Parseable::try_from(1);
+    const _ = n;
+    const _discard = p;
+};

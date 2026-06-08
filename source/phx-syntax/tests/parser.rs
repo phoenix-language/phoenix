@@ -359,6 +359,20 @@ fn decl_function_generics() {
 }
 
 #[test]
+fn decl_generic_param_from_bound() {
+    assert_ok(
+        "From :: <source> trait { from :: (value: source) => Self; }; to :: <u, t: From<u>> (x: u) => t { t::from(x) }; main :: () => { };",
+    );
+}
+
+#[test]
+fn decl_impl_parameterized_trait() {
+    assert_ok(
+        "From :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: From<s32> { from :: (value: s32) => Wrap { Wrap { n: value } } }; main :: () => { };",
+    );
+}
+
+#[test]
 fn decl_function_receiver_self() {
     assert_ok("f :: (self) => s32 { 0 }; main :: () => { };");
 }

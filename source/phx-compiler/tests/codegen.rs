@@ -288,3 +288,11 @@ fn const_pool_dedupes_identical_literals() {
     );
     verify(&module).expect("deduped module verifies");
 }
+
+#[test]
+fn codegen_associated_from_call_verifies() {
+    let source = "FromLocal :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32, }; Wrap :: impl :: FromLocal<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; main :: () => { const w: Wrap = Wrap::from(42); const _ = w.n; };";
+    let unit = compile_source(source, None).expect("compile associated from");
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
+    verify(&module).expect("verify associated from call");
+}

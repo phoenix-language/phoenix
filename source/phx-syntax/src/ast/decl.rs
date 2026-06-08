@@ -231,8 +231,8 @@ pub enum TopLevelDecl {
         type_name: TypeName,
         /// Generic parameters on impl.
         generics: Option<Vec<GenericParam>>,
-        /// Optional trait name.
-        trait_: Option<TypeName>,
+        /// Optional trait (`PartialEq`, `From<Source>`, …).
+        trait_: Option<Node<Type>>,
         /// Impl members.
         members: Vec<ImplMember>,
     },

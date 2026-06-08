@@ -16,6 +16,7 @@
 use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{InvalidMainReason, ResolveError, Span};
+use phx_syntax::ast::Type;
 use phx_syntax::ast::decl::{
     Function, FunctionSig, ImplMember, Param, StructBody, TopLevelDecl, TopLevelItem, TraitItem,
     Variant,
@@ -24,7 +25,7 @@ use phx_syntax::ast::expr::{Expr, PostfixOp, StructFieldInit};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
-use phx_syntax::ast::types::{GenericParam, Type};
+use phx_syntax::ast::types::GenericParam;
 use phx_syntax::ast::{BlockNode, ExprNode, Node, PatternNode};
 use phx_syntax::{Symbol, closure_def_symbol, impl_receiver_symbol};
 
@@ -217,13 +218,18 @@ impl Resolver<'_> {
         }
     }
 
-    fn register_trait_impl(&mut self, type_name: &TypeName, trait_: &Option<TypeName>, span: Span) {
-        let Some(trait_name) = trait_ else {
+    fn register_trait_impl(
+        &mut self,
+        type_name: &TypeName,
+        trait_: &Option<Node<Type>>,
+        span: Span,
+    ) {
+        let Some(trait_ty) = trait_ else {
             return;
         };
-        let key = (type_name.symbol, trait_name.symbol);
-        for &(ty, tr, first_span) in &self.trait_impls {
-            if ty == key.0 && tr == Some(key.1) {
+        let key = (type_name.symbol, trait_ty.inner.clone());
+        for &(ty, ref tr, first_span) in &self.trait_impls {
+            if ty == key.0 && tr.as_ref().is_some_and(|tr| trait_types_equal(tr, &key.1)) {
                 self.bag.push(
                     self.current_module,
                     ResolveError::DuplicateTraitImpl { span, first_span },
@@ -655,11 +661,13 @@ impl Resolver<'_> {
         }
     }
 
-    fn resolve_trait_bound(&mut self, bound: &TypeName) {
-        if self.is_bootstrap_trait_bound(bound.symbol) {
-            return;
+    fn resolve_trait_bound(&mut self, bound: &Node<Type>) {
+        if let Type::Named { name, .. } = &bound.inner {
+            if self.is_bootstrap_trait_bound(name.symbol) {
+                return;
+            }
         }
-        self.resolve_type_name(bound);
+        self.resolve_type_node(bound);
     }
 
     fn is_self_type_name(&self, name: &TypeName) -> bool {
@@ -915,6 +923,19 @@ impl Resolver<'_> {
         if path.segments.is_empty() {
             return;
         }
+        if path.segments.len() >= 2 && matches!(path.segments[1], PathSegment::Ident(_)) {
+            match &path.segments[0] {
+                PathSegment::Type(name) => self.resolve_type_or_value_name(name, span),
+                PathSegment::Ident(ident) => self.resolve_type_param_in_assoc_path(ident),
+            }
+            for seg in path.segments.iter().skip(2) {
+                match seg {
+                    PathSegment::Ident(ident) => self.resolve_ident(ident),
+                    PathSegment::Type(name) => self.resolve_type_name(name),
+                }
+            }
+            return;
+        }
         match &path.segments[0] {
             PathSegment::Ident(ident) => self.resolve_ident(ident),
             PathSegment::Type(name) => {
@@ -931,6 +952,24 @@ impl Resolver<'_> {
         } else {
             let _ = span;
         }
+    }
+
+    fn resolve_type_param_in_assoc_path(&mut self, ident: &Ident) {
+        if let Some(id) = self
+            .scopes
+            .lookup_type(ident.symbol)
+            .or_else(|| self.scopes.lookup_value(ident.symbol))
+        {
+            if self
+                .defs
+                .get(id.index() as usize)
+                .is_some_and(|d| matches!(d.kind, DefKind::GenericParam))
+            {
+                self.record_resolution(ident.id, Some(id));
+                return;
+            }
+        }
+        self.resolve_ident(ident);
     }
 
     /// Validates MVP entry `main :: () => { … }`.
@@ -1018,6 +1057,39 @@ impl Resolver<'_> {
 
 fn type_is_unit(ty: &Type) -> bool {
     matches!(ty, Type::Unit)
+}
+
+fn trait_types_equal(a: &Type, b: &Type) -> bool {
+    match (a, b) {
+        (
+            Type::Named {
+                name: na,
+                generics: ga,
+            },
+            Type::Named {
+                name: nb,
+                generics: gb,
+            },
+        ) => {
+            if na.symbol != nb.symbol {
+                return false;
+            }
+            match (ga, gb) {
+                (None, None) => true,
+                (Some(a_args), Some(b_args)) => {
+                    a_args.len() == b_args.len()
+                        && a_args
+                            .iter()
+                            .zip(b_args)
+                            .all(|(a, b)| trait_types_equal(&a.inner, &b.inner))
+                }
+                _ => false,
+            }
+        }
+        (Type::Primitive(ka), Type::Primitive(kb)) => ka == kb,
+        (Type::Unit, Type::Unit) => true,
+        _ => false,
+    }
 }
 
 fn name_span_ident(ident: &Ident) -> Span {

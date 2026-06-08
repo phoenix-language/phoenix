@@ -130,6 +130,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             checker.seed_layout_tables(&typed.layout);
             checker.seed_std_kernel(&typed.std_kernel);
             checker.seed_std_trait_kernel(&typed.std_trait_kernel);
+            checker.seed_value_types(&typed.value_types);
             checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
             let (
                 checker_types,
@@ -140,6 +141,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 value_types,
                 spec_aliases,
                 try_sites,
+                associated_fn_sites,
             ) = checker.finish_all();
             if checker_bag.has_errors() {
                 for located in checker_bag.into_errors() {
@@ -152,9 +154,8 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             typed.functions.extend(layouts);
             typed.specialized_aliases.extend(spec_aliases);
             typed.try_sites.extend(try_sites);
-            if let Some(&fn_ty) = value_types.get(&spec_def) {
-                let _ = fn_ty;
-            }
+            typed.associated_fn_sites.extend(associated_fn_sites);
+            typed.value_types.extend(value_types);
         }
         for node_id in &inst.call_sites {
             for module in &typed.resolved.modules {
@@ -404,15 +405,9 @@ fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<
         }
         for item in &module.program.items {
             if let TopLevelDecl::Impl {
-                generics,
-                members,
-                trait_,
-                ..
+                generics, members, ..
             } = &item.inner.decl
             {
-                if trait_.is_some() {
-                    continue;
-                }
                 for member in members {
                     if let ImplMember::Method(f) = member {
                         if fn_def_id(resolved, module.id, f.name.symbol) == Some(base) {

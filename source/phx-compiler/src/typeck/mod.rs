@@ -78,6 +78,10 @@ pub struct TypedProgram {
     pub try_sites: std::collections::HashMap<ExprId, TrySiteMeta>,
     /// Compiler builtin method sites on primitives (`eq`, `clone`).
     pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
+    /// Trait associated fn call sites (`Target::from`) → callee fn def.
+    pub associated_fn_sites: std::collections::HashMap<ExprId, DefId>,
+    /// Value types for defs (functions, types, consts) from the template pass; used when re-checking mono bodies.
+    pub value_types: std::collections::HashMap<crate::resolver::DefId, TypeId>,
 }
 
 /// Lowering hint for trait method calls on primitive receivers.

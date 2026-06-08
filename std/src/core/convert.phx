@@ -1,0 +1,19 @@
+#import std::core::result::Result;
+
+pub From :: <source> trait {
+    from :: (value: source) => Self;
+};
+
+pub Into :: <target> trait {
+    into :: (self) => target;
+};
+
+pub TryFrom :: <source> trait {
+    type Error;
+    try_from :: (value: source) => Result<Self, Self::Error>;
+};
+
+pub TryInto :: <target> trait {
+    type Error;
+    try_into :: (self) => Result<target, Self::Error>;
+};

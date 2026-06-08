@@ -2,7 +2,7 @@
 
 use phx_syntax::token::Keyword;
 
-use super::layout::ProgramLayout;
+use super::layout::{ProgramLayout, TraitInstKey};
 use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::DefId;
@@ -105,7 +105,10 @@ fn struct_is_copyable(
         return false;
     }
     if let Some(copyable_trait) = std_traits.copyable_trait {
-        if layout.trait_impls.contains(&(struct_def, copyable_trait)) {
+        if layout
+            .trait_impls
+            .contains(&TraitInstKey::simple(struct_def, copyable_trait))
+        {
             return true;
         }
     }

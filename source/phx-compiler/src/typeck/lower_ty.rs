@@ -124,20 +124,28 @@ pub fn build_type_def_map(defs: &[crate::resolver::Def]) -> TypeDefMap {
 pub fn push_generics(
     type_defs: &mut TypeDefMap,
     defs: &[crate::resolver::Def],
+    module: u32,
     generics: Option<&[phx_syntax::ast::types::GenericParam]>,
 ) {
     if let Some(params) = generics {
         for param in params {
-            if let Some(id) = find_def_by_name(defs, param.name.symbol) {
+            if let Some(id) = find_generic_param(defs, module, param.name.symbol) {
                 type_defs.insert(param.name.symbol, id);
             }
         }
     }
 }
 
-fn find_def_by_name(defs: &[crate::resolver::Def], name: phx_syntax::Symbol) -> Option<DefId> {
-    defs.iter()
-        .enumerate()
-        .find(|(_, d)| d.name == name)
-        .map(|(i, _)| DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+fn find_generic_param(
+    defs: &[crate::resolver::Def],
+    module: u32,
+    name: phx_syntax::Symbol,
+) -> Option<DefId> {
+    defs.iter().enumerate().find_map(|(i, d)| {
+        if d.module == module && d.kind == DefKind::GenericParam && d.name == name {
+            Some(DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+        } else {
+            None
+        }
+    })
 }

@@ -1144,3 +1144,37 @@ fn generic_user_trait_bound_at_mono_site_compile_ok() {
         "Marker :: trait { }; Tagged :: struct { n: s32 }; Tagged :: impl :: Marker { }; identity :: <t: Marker> (x: t) => t { x }; main :: () => { const t = Tagged { n: 1 }; const _: Tagged = identity(t); };",
     );
 }
+
+#[test]
+fn associated_from_call_compile_ok() {
+    compile_ok(
+        "FromLocal :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: FromLocal<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; main :: () => { const w: Wrap = Wrap::from(42); const _ = w.n; };",
+    );
+}
+
+#[test]
+fn generic_from_bound_at_mono_site_compile_ok() {
+    compile_ok(
+        "FromLocal :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: FromLocal<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; convert :: <t: FromLocal<s32>> (x: s32) => t { t::from(x) }; main :: () => { const w: Wrap = convert :: <Wrap>(42); const _ = w.n; };",
+    );
+}
+
+#[test]
+fn from_bound_missing_impl_errors() {
+    let source = "FromLocal :: <source> trait { from :: (value: source) => Self; }; Pair :: struct { a: s32 }; to :: <u, t: FromLocal<u>> (x: u) => t { t::from(x) }; main :: () => { const _: Pair = to :: <s32, Pair>(1); };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::TraitNotSatisfied { .. })),
+        "expected TraitNotSatisfied for missing From impl: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn try_from_assoc_type_impl_compile_ok() {
+    compile_ok(
+        "Result :: <ok, err> enum { Ok(ok), Err(err), }; TryFromLocal :: <source> trait { type Error; try_from :: (value: source) => Result<Self, Self::Error>; }; Box :: struct { n: s32 }; Box :: impl :: TryFromLocal<s32> { type Error = s32; try_from :: (value: s32) => Result<Box, s32> { if value >= 0 { Ok(Box { n: value }) } else { Err(value) } }; }; main :: () => { const b = Box::try_from(3); const _ = b; };",
+    );
+}

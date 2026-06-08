@@ -349,10 +349,10 @@ impl Parser<'_> {
     fn parse_impl_tail(
         &mut self,
         _generics: Option<Vec<crate::ast::GenericParam>>,
-    ) -> Result<(Option<crate::ast::TypeName>, Vec<ImplMember>), ParseError> {
+    ) -> Result<(Option<crate::ast::Node<crate::ast::Type>>, Vec<ImplMember>), ParseError> {
         let trait_ = if self.peek_kind() == TokenKind::ColonColon {
             self.bump();
-            Some(self.parse_type_name()?)
+            Some(self.parse_trait_bound()?)
         } else if self.peek_kind() == TokenKind::Keyword(Keyword::For) {
             self.bump();
             return Err(self.reject_unsupported(

@@ -263,7 +263,7 @@ generic_params     = "<" , generic_param , { "," , generic_param } , ">" ;
 generic_param      = identifier , [ ":" , trait_bounds ] ;
 generic_args       = "<" , type_expr , { "," , type_expr } , ">" ;
 trait_bounds       = trait_bound , { "+" , trait_bound } ;
-trait_bound        = type_identifier ;
+trait_bound        = type_identifier , [ generic_args ] ;
 
 primitive_type     = signed_int
                    | unsigned_int

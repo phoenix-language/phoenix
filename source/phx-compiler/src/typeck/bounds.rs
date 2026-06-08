@@ -2,11 +2,15 @@
 
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 use phx_syntax::Span;
+use phx_syntax::ast::Node;
+use phx_syntax::ast::Type;
 use phx_syntax::ast::types::GenericParam;
 
 use super::builtins::is_copyable;
-use super::layout::ProgramLayout;
+use super::layout::{ProgramLayout, TraitInstKey};
+use super::lower_ty::{build_type_def_map, lower_type};
 use super::std_trait_kernel::StdTraitKernel;
+use super::subst::Substitution;
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
@@ -33,6 +37,11 @@ pub fn validate_instantiation_bounds(
     if generic_params.len() != param_defs.len() || param_defs.len() != concrete_args.len() {
         return true;
     }
+    let mut subst = Substitution::new();
+    for (param_def, concrete) in param_defs.iter().zip(concrete_args) {
+        subst.insert(*param_def, *concrete);
+    }
+    let type_defs = build_type_def_map(&resolved.defs);
     let mut ok = true;
     for ((param, &param_def), &concrete) in generic_params.iter().zip(param_defs).zip(concrete_args)
     {
@@ -40,8 +49,21 @@ pub fn validate_instantiation_bounds(
             continue;
         };
         for bound in bounds {
-            let bound_name = resolved.interner.resolve(bound.symbol);
-            if is_copyable_bound_name(bound_name, std_traits, bound.symbol, resolved) {
+            let Some((trait_symbol, trait_arg_nodes)) = trait_bound_head(&bound.inner) else {
+                bag.push(
+                    module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "non-trait generic bound",
+                        span: bound.span,
+                    },
+                );
+                ok = false;
+                continue;
+            };
+            let bound_name = resolved.interner.resolve(trait_symbol);
+            if is_copyable_bound_name(bound_name, std_traits, trait_symbol, resolved)
+                && trait_arg_nodes.is_none()
+            {
                 if !type_satisfies_copyable(types, layout, std_traits, concrete) {
                     let type_name = format_type_name(resolved, types, concrete);
                     bag.push(
@@ -56,20 +78,28 @@ pub fn validate_instantiation_bounds(
                 }
                 continue;
             }
-            let Some(trait_def) = resolve_trait_def(resolved, std_traits, bound.symbol) else {
+            let Some(trait_def) = resolve_trait_def(resolved, std_traits, trait_symbol) else {
                 bag.push(
                     module,
                     TypeCheckError::UnknownTraitBound {
-                        trait_name: bound_name.to_owned(),
-                        span,
+                        trait_name: format_trait_bound(resolved, types, &bound.inner),
+                        span: bound.span,
                     },
                 );
                 ok = false;
                 continue;
             };
-            if !type_satisfies_trait(layout, types, std_traits, concrete, trait_def) {
+            let trait_args = lower_trait_bound_args(types, &type_defs, trait_arg_nodes, &subst);
+            if !type_satisfies_trait_inst(
+                layout,
+                types,
+                std_traits,
+                concrete,
+                trait_def,
+                &trait_args,
+            ) {
                 let type_name = format_type_name(resolved, types, concrete);
-                let trait_name = resolved.interner.resolve(bound.symbol).to_owned();
+                let trait_name = format_trait_bound(resolved, types, &bound.inner);
                 bag.push(
                     module,
                     TypeCheckError::TraitNotSatisfied {
@@ -84,6 +114,34 @@ pub fn validate_instantiation_bounds(
         let _ = param_def;
     }
     ok
+}
+
+/// Returns the trait name and optional generic arguments from a bound type.
+#[must_use]
+pub fn trait_bound_head(ty: &Type) -> Option<(phx_syntax::Symbol, Option<&[Node<Type>]>)> {
+    match ty {
+        Type::Named { name, generics } => Some((name.symbol, generics.as_deref())),
+        _ => None,
+    }
+}
+
+fn lower_trait_bound_args(
+    types: &TypeInterner,
+    type_defs: &super::lower_ty::TypeDefMap,
+    trait_arg_nodes: Option<&[Node<Type>]>,
+    subst: &Substitution,
+) -> Vec<TypeId> {
+    let Some(nodes) = trait_arg_nodes else {
+        return Vec::new();
+    };
+    let mut interner = types.clone();
+    nodes
+        .iter()
+        .map(|node| {
+            let id = lower_type(&mut interner, type_defs, &node.inner);
+            Substitution::apply(&mut interner, id, subst)
+        })
+        .collect()
 }
 
 fn is_copyable_bound_name(
@@ -130,42 +188,98 @@ fn type_satisfies_copyable(
     is_copyable(types, layout, std_traits, concrete)
 }
 
-fn type_satisfies_trait(
+/// Returns `true` when `concrete` implements `trait_def` with the given trait type arguments.
+#[must_use]
+pub fn type_satisfies_trait_inst(
     layout: &ProgramLayout,
     types: &TypeInterner,
     std_traits: &StdTraitKernel,
     concrete: TypeId,
     trait_def: DefId,
+    trait_args: &[TypeId],
 ) -> bool {
-    if std_traits.is_copyable_trait(trait_def) {
+    if std_traits.is_copyable_trait(trait_def) && trait_args.is_empty() {
         return type_satisfies_copyable(types, layout, std_traits, concrete);
     }
     match types.get(concrete) {
-        Ty::Primitive(kw) => std_traits.primitive_satisfies(*kw, trait_def),
+        Ty::Primitive(kw) => {
+            trait_args.is_empty() && std_traits.primitive_satisfies(*kw, trait_def)
+        }
         Ty::Unit => {
-            std_traits.copyable_trait == Some(trait_def)
-                || std_traits.clone_trait == Some(trait_def)
-                || std_traits.partial_eq_trait == Some(trait_def)
-                || std_traits.eq_trait == Some(trait_def)
-                || std_traits.debug_trait == Some(trait_def)
+            trait_args.is_empty()
+                && (std_traits.copyable_trait == Some(trait_def)
+                    || std_traits.clone_trait == Some(trait_def)
+                    || std_traits.partial_eq_trait == Some(trait_def)
+                    || std_traits.eq_trait == Some(trait_def)
+                    || std_traits.debug_trait == Some(trait_def))
         }
-        Ty::Named { def, .. } => {
-            layout.trait_impls.contains(&(*def, trait_def))
-                || layout
-                    .trait_methods
-                    .keys()
-                    .any(|(type_def, bound_trait, _)| {
-                        *type_def == *def && *bound_trait == trait_def
-                    })
+        Ty::Named { def, args } => layout_has_trait_impl(layout, *def, args, trait_def, trait_args),
+        Ty::Tuple(elems) => {
+            trait_args.is_empty()
+                && elems.iter().all(|e| {
+                    type_satisfies_trait_inst(layout, types, std_traits, *e, trait_def, trait_args)
+                })
         }
-        Ty::Tuple(elems) => elems
-            .iter()
-            .all(|e| type_satisfies_trait(layout, types, std_traits, *e, trait_def)),
-        Ty::Array { elem, .. } => type_satisfies_trait(layout, types, std_traits, *elem, trait_def),
+        Ty::Array { elem, .. } => {
+            trait_args.is_empty()
+                && type_satisfies_trait_inst(
+                    layout, types, std_traits, *elem, trait_def, trait_args,
+                )
+        }
         _ => false,
     }
 }
 
+fn layout_has_trait_impl(
+    layout: &ProgramLayout,
+    implementer: DefId,
+    implementer_args: &[TypeId],
+    trait_def: DefId,
+    trait_args: &[TypeId],
+) -> bool {
+    let key = TraitInstKey::new(
+        implementer,
+        implementer_args.to_vec(),
+        trait_def,
+        trait_args.to_vec(),
+    );
+    if layout.trait_impls.contains(&key) {
+        return true;
+    }
+    layout.trait_methods.keys().any(|(inst, _)| {
+        inst.implementer == implementer
+            && inst.implementer_args == implementer_args
+            && inst.trait_def == trait_def
+            && inst.trait_args == trait_args
+    })
+}
+
 fn format_type_name(resolved: &ResolvedProgram, types: &TypeInterner, id: TypeId) -> String {
     super::display::format_type(types, &resolved.interner, &resolved.defs, id)
+}
+
+fn format_trait_bound(resolved: &ResolvedProgram, types: &TypeInterner, ty: &Type) -> String {
+    match ty {
+        Type::Named {
+            name,
+            generics: None,
+        } => resolved.interner.resolve(name.symbol).to_owned(),
+        Type::Named {
+            name,
+            generics: Some(args),
+        } => {
+            let head = resolved.interner.resolve(name.symbol);
+            let type_defs = build_type_def_map(&resolved.defs);
+            let mut interner = types.clone();
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| {
+                    let id = lower_type(&mut interner, &type_defs, &a.inner);
+                    format_type_name(resolved, &interner, id)
+                })
+                .collect();
+            format!("{head}<{}>", arg_strs.join(", "))
+        }
+        _ => "?".to_owned(),
+    }
 }

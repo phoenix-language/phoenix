@@ -5,8 +5,8 @@
 
 use phx_diagnostics::{ExpectedToken, ParseError};
 
+use crate::ast::Node;
 use crate::ast::types::{GenericParam, Type};
-use crate::ast::{Node, TypeName};
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
@@ -182,6 +182,14 @@ impl Parser<'_> {
         while self.eat_kind(&TokenKind::Comma) {
             params.push(self.parse_generic_param()?);
         }
+        if self.deferred_generic_closing {
+            self.deferred_generic_closing = false;
+            return Ok(params);
+        }
+        if self.peek_kind() == TokenKind::Shr {
+            self.bump();
+            return Ok(params);
+        }
         self.expect_kind(ExpectedToken::Punct(">"), &TokenKind::Gt)?;
         Ok(params)
     }
@@ -196,12 +204,22 @@ impl Parser<'_> {
         Ok(GenericParam { name, bounds })
     }
 
-    fn parse_trait_bounds(&mut self) -> Result<Vec<TypeName>, ParseError> {
-        let mut bounds = vec![self.parse_type_name()?];
+    fn parse_trait_bounds(&mut self) -> Result<Vec<Node<Type>>, ParseError> {
+        let mut bounds = vec![self.parse_trait_bound()?];
         while self.eat_kind(&TokenKind::Plus) {
-            bounds.push(self.parse_type_name()?);
+            bounds.push(self.parse_trait_bound()?);
         }
         Ok(bounds)
+    }
+
+    /// Parses a trait bound: `Clone` or `From<U>`.
+    pub(crate) fn parse_trait_bound(&mut self) -> Result<Node<Type>, ParseError> {
+        let start = self.pos;
+        let ty = self.parse_type_postfix(start)?;
+        match &ty.inner {
+            Type::Named { .. } => Ok(ty),
+            _ => Err(self.error_unexpected(ExpectedToken::Type)),
+        }
     }
 
     /// Parses comma-separated type arguments; the leading `<` must already be consumed.
@@ -210,6 +228,11 @@ impl Parser<'_> {
         let mut args = vec![self.parse_type_expr()?];
         while self.eat_kind(&TokenKind::Comma) {
             args.push(self.parse_type_expr()?);
+        }
+        if self.peek_kind() == TokenKind::Shr {
+            self.deferred_generic_closing = true;
+            self.bump();
+            return Ok(args);
         }
         self.expect_kind(ExpectedToken::Punct(">"), &TokenKind::Gt)?;
         Ok(args)

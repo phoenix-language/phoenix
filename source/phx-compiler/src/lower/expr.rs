@@ -615,6 +615,7 @@ fn lower_postfix(
     lower_postfix_inner(ctx, base, ops, result_ty, postfix_expr_id);
 }
 
+#[allow(clippy::too_many_lines)]
 fn lower_postfix_inner(
     ctx: &mut LowerCtx<'_>,
     base: &ExprNode,
@@ -649,12 +650,18 @@ fn lower_postfix_inner(
                 let callee =
                     lookup_resolution(&ctx.typed.resolved, ctx.module, name.id).or_else(|| {
                         let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
+                        let implementer_args = match ctx.typed.types.get(receiver_ty) {
+                            Ty::Named { args, .. } => args.as_slice(),
+                            _ => &[],
+                        };
                         ctx.typed
                             .layout
                             .inherent_methods
                             .get(&(type_def, name.symbol))
                             .copied()
-                            .or_else(|| find_trait_method(ctx, type_def, name.symbol))
+                            .or_else(|| {
+                                find_trait_method(ctx, type_def, implementer_args, name.symbol)
+                            })
                     });
                 if let Some(callee) = callee {
                     for arg in args {
@@ -667,7 +674,16 @@ fn lower_postfix_inner(
                 }
             }
             PostfixOp::Call { args, .. } => {
-                if let Some(variant_def) = resolve_variant_ctor(ctx, base) {
+                if let Some(callee) = ctx.typed.associated_fn_sites.get(&postfix_expr_id).copied() {
+                    for arg in args {
+                        lower_expr(ctx, arg);
+                    }
+                    ctx.emit(IrInst::Call {
+                        callee,
+                        ret: result_ty,
+                    });
+                    receiver_ty = result_ty;
+                } else if let Some(variant_def) = resolve_variant_ctor(ctx, base) {
                     if let Some(meta) = ctx.typed.layout.variants.get(&variant_def) {
                         for arg in args {
                             lower_expr(ctx, arg);
@@ -810,13 +826,22 @@ fn lower_primitive_method(
     }
 }
 
-fn find_trait_method(ctx: &LowerCtx<'_>, type_def: DefId, method: Symbol) -> Option<DefId> {
+fn find_trait_method(
+    ctx: &LowerCtx<'_>,
+    type_def: DefId,
+    implementer_args: &[TypeId],
+    method: Symbol,
+) -> Option<DefId> {
     let mut matches: Vec<DefId> = ctx
         .typed
         .layout
         .trait_methods
         .iter()
-        .filter(|((t, _, m), _)| *t == type_def && *m == method)
+        .filter(|((key, m), _)| {
+            key.implementer == type_def
+                && key.implementer_args.as_slice() == implementer_args
+                && *m == method
+        })
         .map(|(_, f)| *f)
         .collect();
     matches.sort_by_key(|d| d.index());

@@ -62,12 +62,12 @@ pub enum Type {
 }
 
 /// Generic parameter `<T>` or `<T: Bound>`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenericParam {
     /// Parameter name.
     pub name: Ident,
-    /// Optional trait bounds.
-    pub bounds: Option<Vec<TypeName>>,
+    /// Optional trait bounds (`Clone`, `From<U>`, …).
+    pub bounds: Option<Vec<Node<Type>>>,
 }
 
 /// Generic argument list.

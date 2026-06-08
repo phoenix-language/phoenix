@@ -397,6 +397,8 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ### V0-058 — Conversion traits (`From` / `Into`) in std
 
+**Status: Done**
+
 - `std::core::convert`: `From<Source>`, `Into<Target>`, `TryFrom<Source>`, `TryInto<Target>` as ordinary generic traits in Phoenix source.
 - Type-check and monomorphize trait method calls like any other trait impl.
 - Document orphan-rule expectations for std error `From` impls.

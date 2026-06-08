@@ -176,8 +176,8 @@ pub(crate) struct Resolver<'a> {
     pub(crate) closures: HashMap<DefId, ClosureInfo>,
     /// Active closure defs (innermost last) while resolving lambda bodies.
     pub(crate) closure_stack: Vec<DefId>,
-    /// `(type, optional trait)` pairs for overlapping trait-impl detection.
-    pub(crate) trait_impls: Vec<(Symbol, Option<Symbol>, Span)>,
+    /// `(type, optional trait type)` pairs for overlapping trait-impl detection.
+    pub(crate) trait_impls: Vec<(Symbol, Option<phx_syntax::ast::Type>, Span)>,
     pub(crate) main_fn: Option<DefId>,
     pub(crate) current_module: u32,
     pub(crate) root_module: u32,
