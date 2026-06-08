@@ -16,5 +16,6 @@ Deep dives for language features that go beyond surface syntax. Start with [gram
 | [modules.md](modules.md) | File-based modules, `pub`, `#import` |
 | [compiler-directives.md](compiler-directives.md) | `#` compile-time vs `@` runtime directives |
 | [concurrency.md](concurrency.md) | Scheduler, schedulable I/O, explicit actors |
+| [../research/concurrency-models-research.md](../research/concurrency-models-research.md) | Cross-language concurrency research (informing post-MVP design) |
 | [vm-linear.md](vm-linear.md) | MVP bytecode format and VM contract |
 | [wide-integers.md](wide-integers.md) | Why 256/512-bit types are deferred |
