@@ -57,6 +57,7 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::core::clone::Clone;
 #import std::core::cmp::PartialEq;
 #import std::core::fmt::{Debug, Display};
+#import std::core::iter::{Iterator, IntoIter, Range, RangeIter};
 ```
 
 With **`prelude = true`** (default when std is bundled), the items above except `Error` are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). The `Error` trait is **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
@@ -70,7 +71,7 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | Logical module | File | Status |
 |----------------|------|--------|
 | `std` | `src/lib.phx` | `version`; `pub mod core`, `ffi` |
-| `std::core` | `src/core/mod.phx` | `pub mod` for `option`, `result`, `error`, `convert`, trait modules |
+| `std::core` | `src/core/mod.phx` | `pub mod` for `option`, `result`, `error`, `convert`, `iter`, trait modules |
 | `std::core::option` | `src/core/option.phx` | `pub Option :: <t> enum` |
 | `std::core::result` | `src/core/result.phx` | `pub Result :: <ok, err> enum` |
 | `std::core::error` | `src/core/error.phx` | `pub Error :: trait` (marker; supertraits deferred) |
@@ -79,6 +80,7 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
 | `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait` (fixed `[u8; 32]` buffer) |
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
+| `std::core::iter` | `src/core/iter.phx` | `pub Iterator`, `IntoIter`, `Range`, `RangeIter` (V0-055) |
 
 Future subsystem modules (e.g. `std::io`) will ship **concrete** error types that implement `std::core::error::Error` — std does not define a central error enum.
 

@@ -135,6 +135,8 @@ pub enum IrInst {
         /// Target when false.
         else_block: u32,
     },
+    /// Discard stack top. Stack: `[value] → []`
+    Pop,
     /// Build struct aggregate. Stack: `[fields…] → [agg]`
     MakeStruct {
         /// Bytecode type id.
@@ -233,6 +235,8 @@ pub enum IrInst {
         /// Local slot index.
         slot: LocalSlot,
     },
+    /// Resolve aggregate through a local pointer (caller frame). Stack: `[local_ptr] → [agg]`
+    LoadAggViaLocalPtr,
     /// Build slice from array aggregate. Stack: `[array] → [slice]`
     MakeSlice {
         /// Element primitive wire kind (or `0xFF` for aggregates).

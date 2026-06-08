@@ -739,7 +739,11 @@ fn verify_operands(
                 return Err(VerifyError::InvalidConstIndex { function_id, index });
             }
         }
-        Opcode::StrAsSlice | Opcode::Index | Opcode::Pop | Opcode::Return => {
+        Opcode::StrAsSlice
+        | Opcode::Index
+        | Opcode::Pop
+        | Opcode::Return
+        | Opcode::LoadAggViaLocalPtr => {
             if !inst.operands.is_empty() {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

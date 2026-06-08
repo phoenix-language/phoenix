@@ -112,7 +112,7 @@ Traits may declare **associated types** — type slots filled in by each `impl`:
 Iterator :: trait
 {
   type Item;
-  next :: (mut self) => Option<Self::Item>;
+  next :: (mut self: &mut Self) => Option<Self::Item>;
 }
 ```
 
@@ -305,11 +305,17 @@ The MVP operator set is compiler-defined for primitive types. Trait-based operat
 
 ## Iteration
 
-Iteration is not a primitive special-case. The language can lower `for` loops through iterator traits.
+Iteration is not a primitive special-case. The language lowers `for` loops through iterator traits ([V0-055](../language-v0.md#v0-055--iterator-protocol-and-for-lowering)).
 
-Conceptual std definition:
+Std definitions (`std::core::iter`):
 
 ```
+Iterator :: trait
+{
+  type Item;
+  next :: (mut self: &mut Self) => Option<Self::Item>;
+}
+
 IntoIter :: trait
 {
   type Item;
@@ -318,20 +324,22 @@ IntoIter :: trait
 }
 ```
 
-Desugaring (conceptual):
+`next` uses `mut self: &mut Self` so the iterator state can advance across calls without moving the owned iterator value each time ([ownership.md](ownership.md#passing-parameters)).
+
+Desugaring (implemented):
 
 ```
 for item in expr { body }
 ```
 
-becomes something like:
+lowers to:
 
 ```
 {
   var __iter = expr.into_iter();
   loop
   {
-    if const Some(item) = __iter.next()
+    if const Some(item) = (&mut __iter).next()
     {
       body
     } else { break; }
@@ -339,7 +347,9 @@ becomes something like:
 }
 ```
 
-A type can participate in `for` when it implements the iterator protocol traits.
+A type participates in `for` when it implements `IntoIter` and the resulting `IntoIter` type implements `Iterator` with matching `Item` associated types.
+
+**Reference std iterator (V0-055):** `Range { start, end }` with `RangeIter` — construct manually (`Range { start: 0, end: 3 }`); range *literals* (`0..n`) remain deferred ([grammar-deferred.md](grammar-deferred.md)).
 
 ---
 

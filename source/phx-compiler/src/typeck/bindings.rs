@@ -1,9 +1,41 @@
 //! Per-function local slots and bindings for lowering.
 
+use phx_diagnostics::Span;
 use phx_syntax::Symbol;
 
 use super::types::TypeId;
 use crate::resolver::DefId;
+
+/// Reserved symbol for a `for`-loop `__iter` temporary (one per plan index).
+#[must_use]
+pub const fn for_in_iter_symbol(plan_index: u32) -> Symbol {
+    Symbol::from_raw(0x8000_1000 | plan_index)
+}
+
+/// Lowering metadata for one `for binding in iter` loop (iterator protocol desugaring).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForInPlan {
+    /// Loop binding name (`binding` in `for binding in …`).
+    pub binding: Symbol,
+    /// `IntoIter::Item` / loop binding type.
+    pub item_ty: TypeId,
+    /// Local holding iterator state after `into_iter`.
+    pub iter_temp_slot: LocalSlot,
+    /// Concrete `IntoIter::IntoIter` type.
+    pub iter_state_ty: TypeId,
+    /// Resolved `into_iter` function.
+    pub into_iter_fn: DefId,
+    /// Resolved `next` function on the iterator state type.
+    pub next_fn: DefId,
+    /// `Option<Item>` scrutinee type for each `next` call.
+    pub option_ty: TypeId,
+    /// Temp slot holding the latest `next()` result.
+    pub option_match_temp: LocalSlot,
+    /// `Some` variant name on `option_ty` (for pattern tests).
+    pub some_variant: Symbol,
+    /// Source span of the `for` statement.
+    pub stmt_span: Span,
+}
 
 /// One compiler-planned `Drop::drop` call at a scope exit.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +118,8 @@ pub struct FunctionLayout {
     pub expr_end: u32,
     /// Planned scope-exit drop calls (lowering emits in reverse slot order per depth).
     pub drop_events: Vec<DropEvent>,
+    /// `for`-loop desugaring plans in source visit order.
+    pub for_in_plans: Vec<ForInPlan>,
 }
 
 impl FunctionLayout {
@@ -116,6 +150,8 @@ pub struct FunctionLayoutBuilder {
     scope_depth: u32,
     drop_events: Vec<DropEvent>,
     planned_drop_slots: std::collections::HashSet<LocalSlot>,
+    for_in_plans: Vec<ForInPlan>,
+    for_in_serial: u32,
 }
 
 impl FunctionLayoutBuilder {
@@ -134,6 +170,8 @@ impl FunctionLayoutBuilder {
             scope_depth: 0,
             drop_events: Vec::new(),
             planned_drop_slots: std::collections::HashSet::new(),
+            for_in_plans: Vec::new(),
+            for_in_serial: 0,
         }
     }
 
@@ -220,6 +258,19 @@ impl FunctionLayoutBuilder {
         }
     }
 
+    /// Records iterator-protocol metadata for one `for` loop.
+    pub fn plan_for_in(&mut self, plan: ForInPlan) {
+        self.for_in_plans.push(plan);
+    }
+
+    /// Returns the next `for`-loop plan index and advances the serial counter.
+    #[must_use]
+    pub fn next_for_in_plan_index(&mut self) -> u32 {
+        let index = self.for_in_serial;
+        self.for_in_serial += 1;
+        index
+    }
+
     /// Finishes the layout.
     #[must_use]
     pub fn finish(self) -> FunctionLayout {
@@ -231,6 +282,7 @@ impl FunctionLayoutBuilder {
             expr_start: self.expr_start,
             expr_end: self.expr_end,
             drop_events: self.drop_events,
+            for_in_plans: self.for_in_plans,
         }
     }
 }

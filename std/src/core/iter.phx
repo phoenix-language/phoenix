@@ -1,0 +1,44 @@
+#import std::core::option::{Option, Some, None};
+
+pub Iterator :: trait {
+    type Item;
+    next :: (self: &mut Self) => Option<Self::Item>;
+};
+
+pub IntoIter :: trait {
+    type Item;
+    type IntoIter;
+    into_iter :: (self) => Self::IntoIter;
+};
+
+pub Range :: struct {
+    start: s32,
+    end: s32,
+};
+
+pub RangeIter :: struct {
+    cur: s32,
+    end: s32,
+};
+
+Range :: impl :: IntoIter {
+    type Item = s32;
+    type IntoIter = RangeIter;
+    into_iter :: (self) => RangeIter {
+        RangeIter { cur: self.start, end: self.end }
+    };
+};
+
+RangeIter :: impl :: Iterator {
+    type Item = s32;
+    next :: (self: &mut Self) => Option<s32> {
+        const cur = self.cur;
+        const end = self.end;
+        if cur < end {
+            self.cur = cur + 1;
+            Some :: <s32> (cur)
+        } else {
+            None :: <s32> ()
+        }
+    };
+};

@@ -373,7 +373,7 @@ fn decl_generic_param_from_bound() {
 #[test]
 fn decl_impl_parameterized_trait() {
     assert_ok(
-        "From :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: From<s32> { from :: (value: s32) => Wrap { Wrap { n: value } } }; main :: () => { };",
+        "From :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: From<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; main :: () => { };",
     );
 }
 

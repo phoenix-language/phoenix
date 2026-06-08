@@ -20,7 +20,7 @@ Reserved and planned AST shapes referenced by compiler reviews. Implementation o
 
 | Variant | Purpose |
 |---------|---------|
-| `Stmt::ForIn` | Parsed; iterator desugaring TBD |
+| `Stmt::ForIn` | Lowered via `IntoIter` + `Iterator` protocol ([V0-055](../language-v0.md#v0-055--iterator-protocol-and-for-lowering)) |
 | Labeled `break` / `continue` | Not in grammar yet |
 
 ## Unicode identifiers

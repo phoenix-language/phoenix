@@ -1,13 +1,21 @@
 //! Lower statements and blocks to IR control flow.
 
+use phx_diagnostics::Span;
 use phx_syntax::ast::expr::Expr;
+use phx_syntax::ast::ident::{Ident, TypeName};
+use phx_syntax::ast::node_id::AstNodeId;
+use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
+use phx_syntax::ast::{Node, PatternNode};
 
 use crate::ir::IrInst;
 use crate::lower::ctx::{LoopLabels, LowerCtx, prim_kind_byte, unit_ty};
 use crate::lower::drop_glue::{emit_scope_drops, loop_body_scope_depth};
-use crate::lower::expr::{block_ends_with_unconditional_jump, lower_assign_expr, lower_expr};
-use crate::typeck::TypeId;
+use crate::lower::expr::{
+    bind_match_pattern, block_ends_with_unconditional_jump, emit_arm_condition, lower_assign_expr,
+    lower_expr,
+};
+use crate::typeck::{ForInPlan, TypeId};
 
 /// Lowers `block` for its trailing value (expression body or last item).
 pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
@@ -49,7 +57,12 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
         }
         Stmt::Return(expr) => lower_return(ctx, expr.as_ref()),
         Stmt::While { cond, body } => lower_while(ctx, cond, &body.inner),
-        Stmt::ForIn { .. } => {}
+        Stmt::ForIn { iter, body, .. } => {
+            if let Some(plan) = ctx.layout.for_in_plans.get(ctx.for_in_index) {
+                lower_for_in(ctx, plan, iter, &body.inner);
+                ctx.for_in_index += 1;
+            }
+        }
         Stmt::Loop(body) => lower_loop(ctx, &body.inner),
         Stmt::Unsafe(body) => lower_block_value(ctx, &body.inner),
         Stmt::Break { value, .. } => lower_break(ctx, value.as_ref()),
@@ -128,6 +141,117 @@ fn lower_break(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>)
             target: LowerCtx::loop_exit_target(labels.exit_slot),
         });
     }
+}
+
+/// Lowers `for binding in iter { body }` via iterator protocol desugaring.
+fn lower_for_in(
+    ctx: &mut LowerCtx<'_>,
+    plan: &ForInPlan,
+    iter: &phx_syntax::ast::ExprNode,
+    body: &Block,
+) {
+    ctx.enter_scope();
+
+    lower_expr(ctx, iter);
+    ctx.emit(IrInst::Call {
+        callee: plan.into_iter_fn,
+        ret: plan.iter_state_ty,
+    });
+    ctx.emit(IrInst::StoreLocal {
+        slot: plan.iter_temp_slot,
+        ty: plan.iter_state_ty,
+        prim_kind: prim_kind_byte(ctx.typed, plan.iter_state_ty),
+    });
+
+    let header = ctx.fresh_block();
+    let body_id = ctx.fresh_block();
+    let else_id = ctx.fresh_block();
+    let exit_slot = ctx.alloc_loop_exit_slot();
+    let loop_scope = ctx.scope_depth;
+    ctx.loop_body_scope_depths.push(loop_scope);
+
+    ctx.emit(IrInst::Jump { target: header });
+    ctx.push_loop(LoopLabels {
+        exit_slot,
+        continue_target: header,
+    });
+
+    ctx.set_current(header);
+    ctx.emit(IrInst::AddressOfLocal {
+        slot: plan.iter_temp_slot,
+    });
+    ctx.emit(IrInst::Call {
+        callee: plan.next_fn,
+        ret: plan.option_ty,
+    });
+    ctx.emit(IrInst::StoreLocal {
+        slot: plan.option_match_temp,
+        ty: plan.option_ty,
+        prim_kind: prim_kind_byte(ctx.typed, plan.option_ty),
+    });
+    let some_pat = some_binding_pattern(plan.binding, plan.some_variant);
+    emit_arm_condition(
+        ctx,
+        &some_pat.inner,
+        plan.option_match_temp,
+        plan.option_ty,
+        body_id,
+        else_id,
+    );
+
+    ctx.set_current(body_id);
+    bind_match_pattern(
+        ctx,
+        &some_pat.inner,
+        plan.option_match_temp,
+        plan.option_ty,
+        false,
+    );
+    lower_block_value(ctx, body);
+    if !block_ends_with_unconditional_jump(ctx, ctx.current) {
+        ctx.emit(IrInst::Jump { target: header });
+    }
+
+    ctx.set_current(else_id);
+    emit_scope_drops(ctx, ctx.scope_depth, loop_body_scope_depth(ctx));
+    ctx.emit(IrInst::Jump {
+        target: LowerCtx::loop_exit_target(exit_slot),
+    });
+
+    ctx.pop_loop();
+    ctx.loop_body_scope_depths.pop();
+    let exit = ctx.fresh_block();
+    ctx.pending_loop_exits[exit_slot] = Some(exit);
+    ctx.set_current(exit);
+    ctx.exit_scope();
+}
+
+fn some_binding_pattern(
+    binding: phx_syntax::Symbol,
+    some_variant: phx_syntax::Symbol,
+) -> PatternNode {
+    let span = Span::new(0, 0);
+    let dummy_id = AstNodeId::from_raw(0);
+    Node::new(
+        Pattern::Tuple {
+            name: TypeName {
+                symbol: some_variant,
+                span,
+                id: dummy_id,
+            },
+            patterns: vec![Node::new(
+                Pattern::Ident(Ident {
+                    symbol: binding,
+                    span,
+                    id: dummy_id,
+                }),
+                span,
+                dummy_id,
+            )],
+        },
+        span,
+        dummy_id,
+    )
 }
 
 fn lower_continue(ctx: &mut LowerCtx<'_>) {

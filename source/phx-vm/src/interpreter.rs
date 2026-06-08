@@ -414,6 +414,29 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                     .stack
                     .push(Value::Scalar(ScalarValue::local_ptr(slot)));
             }
+            Opcode::LoadAggViaLocalPtr => {
+                let ptr = pop_scalar(&mut machine.stack)?;
+                let ScalarValue::Ptr(encoded) = ptr else {
+                    return Err(VmError::ExpectedScalar);
+                };
+                let slot = ScalarValue::local_slot_from_ptr(encoded)
+                    .ok_or(VmError::InvalidConstPayload)?;
+                let frame_idx = machine.frames.len().saturating_sub(2);
+                let frame = machine
+                    .frames
+                    .get(frame_idx)
+                    .ok_or(VmError::InvalidLocalSlot(slot))?;
+                let idx = usize::try_from(slot).map_err(|_| VmError::InvalidLocalSlot(slot))?;
+                let local = frame
+                    .locals
+                    .get(idx)
+                    .copied()
+                    .ok_or(VmError::InvalidLocalSlot(slot))?;
+                let Value::Agg(_) = local else {
+                    return Err(VmError::InvalidAggregate);
+                };
+                machine.stack.push(local);
+            }
             Opcode::MakeStr => {
                 let idx = inst.operands.first().copied().unwrap_or(0);
                 let entry = module

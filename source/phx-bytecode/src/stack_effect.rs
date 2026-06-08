@@ -97,7 +97,8 @@ pub fn apply_stack_effect(
         | Opcode::MatchTag
         | Opcode::MakeSlice
         | Opcode::StrAsSlice
-        | Opcode::PtrLoad => {
+        | Opcode::PtrLoad
+        | Opcode::LoadAggViaLocalPtr => {
             if *depth == 0 {
                 return Err(StackEffectError::Underflow);
             }

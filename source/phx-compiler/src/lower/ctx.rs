@@ -44,6 +44,8 @@ pub struct LowerCtx<'a> {
     pub loop_stack: Vec<LoopLabels>,
     /// Next index into [`FunctionLayout::match_temp_slots`].
     pub match_temp_index: usize,
+    /// Next index into [`FunctionLayout::for_in_plans`].
+    pub for_in_index: usize,
     /// Loop exit blocks allocated after loop bodies (for `break` / `while` exit).
     pub pending_loop_exits: Vec<Option<u32>>,
     /// Module constant literals (shared across functions).
@@ -77,6 +79,7 @@ impl<'a> LowerCtx<'a> {
             current: 0,
             loop_stack: Vec::new(),
             match_temp_index: 0,
+            for_in_index: 0,
             pending_loop_exits: Vec::new(),
             constants,
             bag,

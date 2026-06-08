@@ -344,3 +344,35 @@ main :: () => { { const w = Wrapper {}; } };
     });
     assert!(has_drop, "expected DropLocal in main for scope-exit glue");
 }
+
+#[test]
+fn lower_for_in_emits_iterator_protocol() {
+    let source = include_str!("../../../tests/cli/fixtures/for_in.phx");
+    let unit = compile_source(source, Some(Path::new("for_in.phx")))
+        .unwrap_or_else(|e| panic!("compile for_in.phx: {e}"));
+    let ir = lower(&unit.typed).expect("lower");
+    let main = ir
+        .functions
+        .iter()
+        .find(|f| Some(f.def) == ir.entry)
+        .expect("main");
+    let insts: Vec<_> = main.blocks.iter().flat_map(|b| &b.insts).collect();
+    assert!(
+        insts.iter().any(|i| matches!(i, IrInst::Call { .. })),
+        "expected into_iter / next Call"
+    );
+    assert!(
+        insts
+            .iter()
+            .any(|i| matches!(i, IrInst::AddressOfLocal { .. })),
+        "expected AddressOfLocal for &mut __iter.next()"
+    );
+    assert!(
+        insts.iter().any(|i| matches!(i, IrInst::Jump { .. })),
+        "expected loop Jump"
+    );
+    assert!(
+        insts.iter().any(|i| matches!(i, IrInst::JumpIf { .. })),
+        "expected if-const Some JumpIf"
+    );
+}

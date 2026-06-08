@@ -65,7 +65,9 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::Cast { .. }
         | IrInst::PtrLoad { .. } => with_operands(2),
         IrInst::MakeEnum { .. } => with_operands(3),
-        IrInst::Return { .. } | IrInst::Index { .. } => 2,
+        IrInst::Return { .. } | IrInst::Index { .. } | IrInst::LoadAggViaLocalPtr | IrInst::Pop => {
+            2
+        }
         IrInst::DropLocal { .. } => with_operands(2).saturating_add(with_operands(1)),
     }
 }
@@ -175,6 +177,12 @@ fn apply_ir_stack_effect(
         }
         IrInst::AddressOfLocal { .. } => {
             let _ = apply_stack_effect(Opcode::AddressOfLocal, stack, None, none);
+        }
+        IrInst::LoadAggViaLocalPtr => {
+            let _ = apply_stack_effect(Opcode::LoadAggViaLocalPtr, stack, None, none);
+        }
+        IrInst::Pop => {
+            let _ = apply_stack_effect(Opcode::Pop, stack, None, none);
         }
         IrInst::TrapGivenMismatch => {
             let _ = apply_stack_effect(Opcode::Trap, stack, None, none);
@@ -446,6 +454,12 @@ fn emit_inst(
         }
         IrInst::AddressOfLocal { slot } => {
             out.extend(encode(Opcode::AddressOfLocal, &[slot.index()]));
+        }
+        IrInst::LoadAggViaLocalPtr => {
+            out.extend(encode(Opcode::LoadAggViaLocalPtr, &[]));
+        }
+        IrInst::Pop => {
+            out.extend(encode(Opcode::Pop, &[]));
         }
         IrInst::MakeSlice { elem_kind } => {
             out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)]));

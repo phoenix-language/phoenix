@@ -4,6 +4,7 @@ pub mod option;
 pub mod result;
 pub mod error;
 pub mod convert;
+pub mod iter;
 pub mod copyable;
 pub mod clone;
 pub mod drop;

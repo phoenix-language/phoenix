@@ -156,7 +156,7 @@ A credible MVP demo `.phx` should be able to:
 | **Parse-only / reject at parse** (`grammar-deferred.md`)   |                  |                                                  |                                        |                                                 |
 | `#derive(...)`                                             | done (parse N/A) | `parser`                                         | Rejected as unsupported syntax         | `unsupported_hash_derive` test                  |
 | `@spawn` / `@send` / `@receive` / `@reply`                 | done (reject)    | `parser/expr.rs`                                 |                                        | `unsupported_at_spawn` etc.                     |
-| `for x in y`                                               | done (reject)    | `parser/stmt.rs`                                 |                                        | `unsupported_for_in` test                       |
+| `for x in y`                                               | done             | `parser/stmt.rs`, `typeck/check.rs`, `lower/stmt.rs` | `IntoIter` + `Iterator` desugaring (V0-055) | `for_in.phx`, `std_iter/` fixtures              |
 | `0..n` / `0..=n`                                           | done (reject)    | `parser/expr.rs`                                 |                                        | Range tests                                     |
 | Lambda `(…) => …`                                          | done (reject)    | `parser/expr.rs`                                 |                                        | Lambda tests                                    |
 | Trait default bodies in trait decl                         | partial          | `parser/decl.rs`                                 | Parsed; no default body codegen        | Parse trait with method body (AST exists)       |
@@ -499,7 +499,7 @@ Per [mvp.md](design/mvp.md) and [grammar-deferred.md](design/features/grammar-de
 - Primitive owned `string` type (std owns growable `String` over bytes)
 - Full borrow checker / lifetimes / exclusivity of `&mut`
 - JIT, hot reload, `#derive` / `@derive` semantic codegen
-- `for` loops, range literals, closures/lambdas (parse rejected today)
+- range literals (`0..n`), closures/lambdas (parse rejected today); `for` loops shipped (V0-055)
 - Package manager / build system beyond `phx` CLI
 - Post-MVP: runtime transparency, schedulable I/O ([runtime-transparency.md](design/features/runtime-transparency.md))
 - Post-MVP: std `Option` / `Result` / `?` ([type-system.md](design/features/type-system.md#phased-option-and-result-language--std))

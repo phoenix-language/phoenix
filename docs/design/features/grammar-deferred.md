@@ -12,8 +12,8 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 |---------|---------|----------------------|---------------|
 | `#derive(...)` | On functions, structs, enums, traits | Parse; no codegen | Emit trait impls from derive list |
 | `@spawn` / `@send` / `@receive` / `@reply` | Expression-level | Parse; reject or warn at typeck | Post-MVP actor runtime |
-| `for x in y` | Statement | Parse; limited or no lowering | Iterator trait desugaring |
-| `0..n` / `0..=n` | Expression (`range_expr`) | Parse | Std range types and iteration |
+| `for x in y` | Statement | **Implemented** — `IntoIter` + `Iterator` desugaring ([V0-055](../language-v0.md#v0-055--iterator-protocol-and-for-lowering)) | — |
+| `0..n` / `0..=n` | Expression (`range_expr`) | Parse; reject at typeck | Std range literal syntax; use `Range { start, end }` until then |
 | `lambda_expr` | `(params) => expr \| block` | Parse | Closure typing, capture, lowering TBD |
 | Trait default bodies | `Name :: trait { fn :: () => T { … }; }` | Parse | Inherit defaults in typeck/codegen |
 | `break expr` | `break` , [ expr ] | Parse | Loop-value / labeled break semantics TBD |

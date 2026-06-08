@@ -7,6 +7,7 @@ use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::BlockNode;
 
+use crate::TypedProgram;
 use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
@@ -15,8 +16,8 @@ use crate::lower::ctx::{
 };
 use crate::resolver::{DefId, DefKind};
 use crate::typeck::{
-    BindingKind, ExprId, LocalSlot, PrimitiveMethodSite, TryFailureMode, TrySiteMeta, Ty, TypeId,
-    VariantKind, primitive_kind_for_type, primitive_load_signed,
+    BindingKind, ExprId, FunctionLayout, LocalSlot, PrimitiveMethodSite, TryFailureMode,
+    TrySiteMeta, Ty, TypeId, VariantKind, primitive_kind_for_type, primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -600,7 +601,15 @@ pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value
                         type_id,
                         field_index,
                     });
-                    store_base_local(ctx, base);
+                    if let Expr::Ident(ident) = &base.inner {
+                        if binding_is_ref_to_struct(ctx, ident.symbol) {
+                            ctx.emit(IrInst::Pop);
+                        } else {
+                            store_base_local(ctx, base);
+                        }
+                    } else {
+                        store_base_local(ctx, base);
+                    }
                 }
             }
         }
@@ -613,7 +622,7 @@ fn lower_assign_target(ctx: &mut LowerCtx<'_>, target: &Expr) {
         Expr::Ident(_) => {}
         Expr::Postfix { base, ops } if ops.len() == 1 => {
             if let PostfixOp::Field(_) = &ops[0] {
-                lower_expr(ctx, base);
+                emit_load_struct_base(ctx, base);
             }
         }
         Expr::Literal(_) | Expr::Path(_) => {}
@@ -629,6 +638,64 @@ fn lower_postfix(
     postfix_expr_id: ExprId,
 ) {
     lower_postfix_inner(ctx, base, ops, result_ty, postfix_expr_id);
+}
+
+fn function_layout(typed: &TypedProgram, def: DefId) -> Option<&FunctionLayout> {
+    typed.functions.iter().find(|f| f.def == def)
+}
+
+fn method_ref_receiver_ty(ctx: &LowerCtx<'_>, callee: DefId) -> Option<TypeId> {
+    let layout = function_layout(ctx.typed, callee)?;
+    let first_param = layout
+        .bindings
+        .iter()
+        .find(|b| b.kind == BindingKind::Param)?;
+    match ctx.typed.types.get(first_param.ty) {
+        Ty::Ref { .. } => Some(first_param.ty),
+        _ => None,
+    }
+}
+
+fn resolve_method_callee(ctx: &LowerCtx<'_>, base: &ExprNode, name: &Ident) -> Option<DefId> {
+    let receiver_ty = match &base.inner {
+        Expr::Ident(ident) => ctx.layout.binding(ident.symbol).map(|b| b.ty)?,
+        _ => return None,
+    };
+    let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
+    let implementer_args = match ctx.typed.types.get(receiver_ty) {
+        Ty::Named { args, .. } => args.as_slice(),
+        _ => &[],
+    };
+    ctx.typed
+        .layout
+        .inherent_methods
+        .get(&(type_def, name.symbol))
+        .copied()
+        .or_else(|| find_trait_method(ctx, type_def, implementer_args, name.symbol))
+}
+
+fn emit_ref_method_receiver(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
+    if let Expr::Ident(ident) = &base.inner
+        && let Some(slot) = slot_for_symbol(ctx.layout, ident.symbol)
+    {
+        ctx.emit(IrInst::AddressOfLocal { slot });
+    }
+}
+
+fn single_method_with_ref_receiver(
+    ctx: &LowerCtx<'_>,
+    base: &ExprNode,
+    ops: &[PostfixOp],
+) -> Option<(DefId, TypeId)> {
+    if ops.len() != 1 {
+        return None;
+    }
+    let PostfixOp::Method { name, .. } = &ops[0] else {
+        return None;
+    };
+    let callee = resolve_method_callee(ctx, base, name)?;
+    let ref_ty = method_ref_receiver_ty(ctx, callee)?;
+    Some((callee, ref_ty))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -661,10 +728,24 @@ fn lower_postfix_inner(
         return;
     }
 
-    let mut receiver_ty = lower_expr_typed(ctx, base);
+    let ref_method = single_method_with_ref_receiver(ctx, base, ops);
+    let mut receiver_ty = if let Some((_, ref_ty)) = ref_method {
+        let _ = ctx.expr_ty();
+        emit_ref_method_receiver(ctx, base);
+        ref_ty
+    } else {
+        lower_expr_typed(ctx, base)
+    };
     for op in ops {
         match op {
             PostfixOp::Field(field) => {
+                if matches!(ctx.typed.types.get(receiver_ty), Ty::Ref { .. }) {
+                    ctx.emit(IrInst::LoadAggViaLocalPtr);
+                    receiver_ty = match ctx.typed.types.get(receiver_ty) {
+                        Ty::Ref { inner, .. } => *inner,
+                        _ => receiver_ty,
+                    };
+                }
                 if let Some(def) = named_def_for_ty(ctx.typed, receiver_ty) {
                     let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
                     let field_index = ctx
@@ -685,7 +766,7 @@ fn lower_postfix_inner(
                     receiver_ty = result_ty;
                     continue;
                 }
-                let callee =
+                let callee = ref_method.as_ref().map(|(c, _)| *c).or_else(|| {
                     lookup_resolution(&ctx.typed.resolved, ctx.module, name.id).or_else(|| {
                         let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
                         let implementer_args = match ctx.typed.types.get(receiver_ty) {
@@ -700,7 +781,8 @@ fn lower_postfix_inner(
                             .or_else(|| {
                                 find_trait_method(ctx, type_def, implementer_args, name.symbol)
                             })
-                    });
+                    })
+                });
                 if let Some(callee) = callee {
                     for arg in args {
                         lower_expr(ctx, arg);
@@ -1022,22 +1104,46 @@ fn path_or_ident_node_id(expr: &Expr) -> Option<phx_syntax::AstNodeId> {
     }
 }
 
+fn struct_def_from_ty(ctx: &LowerCtx<'_>, ty: TypeId) -> Option<DefId> {
+    match ctx.typed.types.get(ty) {
+        Ty::Named { def, .. } if ctx.typed.layout.structs.contains_key(def) => Some(*def),
+        Ty::Ref { inner, .. } => struct_def_from_ty(ctx, *inner),
+        _ => None,
+    }
+}
+
 fn struct_def_from_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
     if let Expr::Ident(ident) = &base.inner {
         if let Some(binding) = ctx.layout.binding(ident.symbol) {
-            if let Some(def) = named_def_for_ty(ctx.typed, binding.ty) {
-                if ctx.typed.layout.structs.contains_key(&def) {
-                    return Some(def);
-                }
-            }
+            return struct_def_from_ty(ctx, binding.ty);
         }
     }
     None
 }
 
+fn binding_is_ref_to_struct(ctx: &LowerCtx<'_>, symbol: Symbol) -> bool {
+    ctx.layout
+        .binding(symbol)
+        .is_some_and(|b| matches!(ctx.typed.types.get(b.ty), Ty::Ref { inner, .. } if struct_def_from_ty(ctx, *inner).is_some()))
+}
+
+fn emit_load_struct_base(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
+    let ty = ctx.expr_ty();
+    let expr_id = ExprId::from_raw(ctx.next_expr - 1);
+    if let Expr::Ident(ident) = &base.inner {
+        if binding_is_ref_to_struct(ctx, ident.symbol) {
+            lower_ident(ctx, *ident, ty);
+            ctx.emit(IrInst::LoadAggViaLocalPtr);
+            return;
+        }
+    }
+    lower_expr_inner(ctx, &base.inner, ty, expr_id);
+}
+
 fn store_base_local(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
     if let Expr::Ident(ident) = &base.inner
         && let Some(binding) = ctx.layout.binding(ident.symbol)
+        && !matches!(ctx.typed.types.get(binding.ty), Ty::Ref { .. })
     {
         ctx.emit(IrInst::StoreLocal {
             slot: binding.slot,

@@ -659,9 +659,64 @@ fn match_unreachable_duplicate_enum_variant() {
 }
 
 #[test]
-fn deferred_typeck_for_in_loop() {
+fn typeck_for_in_loop_ok() {
+    let source = r"
+Option :: <t> enum { None, Some(t) };
+IntoIter :: trait {
+    type Item;
+    type IntoIter;
+    into_iter :: (self) => Self::IntoIter;
+};
+Iterator :: trait {
+    type Item;
+    next :: (self: &mut Self) => Option<Self::Item>;
+};
+R :: struct { n: s32 };
+S :: struct {};
+R :: impl :: IntoIter {
+    type Item = s32;
+    type IntoIter = S;
+    into_iter :: (self) => S { S {} };
+};
+S :: impl :: Iterator {
+    type Item = s32;
+    next :: (self: &mut Self) => Option<s32> { None :: <s32> () };
+};
+main :: () => { for x in R { n: 0 } { const _ = x; }; };
+";
+    let typed = typed_program(source);
+    let main_layout = typed
+        .functions
+        .iter()
+        .find(|f| {
+            typed
+                .resolved
+                .defs
+                .get(f.def.index() as usize)
+                .is_some_and(|d| typed.resolved.interner.resolve(d.name) == "main")
+        })
+        .expect("main layout");
+    assert_eq!(
+        main_layout.for_in_plans.len(),
+        1,
+        "expected one ForInPlan on main"
+    );
+}
+
+#[test]
+fn typeck_for_in_not_iterable() {
     let bag = typeck_err("main :: () => { for x in 0 { }; };");
-    assert!(has_unsupported(&bag, "for-in"));
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::TraitNotSatisfied { trait_name, .. }
+                    if trait_name == "IntoIter"
+            )
+        }),
+        "expected IntoIter TraitNotSatisfied: {:?}",
+        bag.errors()
+    );
 }
 
 #[test]

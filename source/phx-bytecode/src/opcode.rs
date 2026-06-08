@@ -104,6 +104,8 @@ pub enum Opcode {
     MakeFnPtr = 45,
     /// Call through fn pointer. Stack: `[fn_ptr, args…] → [ret]` — operands: `expected_arity`, `sig_type_id`.
     CallIndirect = 46,
+    /// Load aggregate from caller local slot via local pointer. Stack: `[local_ptr] → [agg]`
+    LoadAggViaLocalPtr = 47,
 }
 
 impl Opcode {
@@ -161,6 +163,7 @@ impl Opcode {
             44 => Ok(Self::StrAsSlice),
             45 => Ok(Self::MakeFnPtr),
             46 => Ok(Self::CallIndirect),
+            47 => Ok(Self::LoadAggViaLocalPtr),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

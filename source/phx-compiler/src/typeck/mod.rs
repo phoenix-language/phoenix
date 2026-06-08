@@ -34,7 +34,7 @@ pub use mono::{
     collect_cross_crate_mono_reqs, is_generic_fn_template, monomorphize,
 };
 
-pub use bindings::{Binding, BindingKind, FunctionLayout, LocalSlot};
+pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use display::format_type;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
