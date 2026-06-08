@@ -110,6 +110,8 @@ See also [traits.md](traits.md#trait-impl-scope-and-orphans).
 
 ## Std error vocabulary — V0-060
 
+**Implemented** in `std/src/error/` (leaf modules, `Error` sum, `From` bridges in `from_*.phx`). Acceptance fixture: `tests/cli/fixtures/std_errors/`.
+
 Std owns the shared failure vocabulary. The compiler only recognizes std `Result`/`Option` for `?` sugar — error enums are not special-cased (same policy as [Phased: Option and Result](type-system.md#phased-option-and-result-language--std)).
 
 ### Module layout (target)

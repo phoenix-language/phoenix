@@ -1,0 +1,1 @@
+// std::error — shared failure vocabulary (leaf errors + top-level Error sum).

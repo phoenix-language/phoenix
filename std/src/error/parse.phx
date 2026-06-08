@@ -1,0 +1,3 @@
+pub ParseError :: struct {
+    code: s32,
+};

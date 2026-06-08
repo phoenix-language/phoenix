@@ -1,0 +1,10 @@
+#import std::core::convert::From;
+#import std::error::error::Error;
+#import std::error::error::Thread;
+#import std::error::thread::ThreadError;
+
+Error :: impl :: From<ThreadError> {
+    from :: (value: ThreadError) => Error {
+        Thread(value)
+    };
+};

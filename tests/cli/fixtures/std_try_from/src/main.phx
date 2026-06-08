@@ -7,25 +7,25 @@ Config :: struct {
     value: s32,
 };
 
-IoError :: struct {
+AppIoError :: struct {
     code: s32,
 };
 
-Error :: enum {
-    Io(IoError),
+AppError :: enum {
+    Io(AppIoError),
 };
 
-Error :: impl :: From<IoError> {
-    from :: (value: IoError) => Error {
+AppError :: impl :: From<AppIoError> {
+    from :: (value: AppIoError) => AppError {
         Io(value)
     };
 };
 
-read_bytes :: () => Result<Config, IoError> {
+read_bytes :: () => Result<Config, AppIoError> {
     Ok(Config { value: 42 })
 };
 
-read_config :: () => Result<Config, Error> {
+read_config :: () => Result<Config, AppError> {
     const cfg = read_bytes()?;
     Ok(cfg)
 };

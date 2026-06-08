@@ -1,0 +1,11 @@
+#import std::error::general::GeneralError;
+#import std::error::io::IoError;
+#import std::error::parse::ParseError;
+#import std::error::thread::ThreadError;
+
+pub Error :: enum {
+    Io(IoError),
+    Parse(ParseError),
+    Thread(ThreadError),
+    General(GeneralError),
+};

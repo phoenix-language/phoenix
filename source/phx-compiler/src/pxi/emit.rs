@@ -75,6 +75,26 @@ pub fn build_pxi_for_module(
             interner.resolve(def.name),
         );
     }
+
+    // Trait/inherent impl methods are module-private but must appear in `.pxi` so
+    // dependents can link associated fns (e.g. `From::from` in `std::error::from_io`).
+    for (i, def) in defs.iter().enumerate() {
+        if def.module != module_id || def.exported || def.kind != DefKind::Fn {
+            continue;
+        }
+        let def_id = DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX));
+        push_export(
+            &mut pxi_exports,
+            &mut emitted,
+            logical_path,
+            def,
+            def_id,
+            typed,
+            interner,
+            global_fn,
+            interner.resolve(def.name),
+        );
+    }
     pxi_exports.sort_by(|a, b| a.name.cmp(&b.name));
 
     PxiFile {

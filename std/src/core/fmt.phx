@@ -1,3 +1,7 @@
 pub Debug :: trait {
     fmt :: (self: &Self) => [u8; 32];
 };
+
+pub Display :: trait {
+    fmt :: (self: &Self) => [u8; 32];
+};

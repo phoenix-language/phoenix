@@ -1,0 +1,10 @@
+#import std::core::convert::From;
+#import std::error::error::Error;
+#import std::error::error::Io;
+#import std::error::io::IoError;
+
+Error :: impl :: From<IoError> {
+    from :: (value: IoError) => Error {
+        Io(value)
+    };
+};

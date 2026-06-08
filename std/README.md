@@ -59,13 +59,16 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::core::clone::Clone;
 #import std::core::cmp::PartialEq;
 #import std::core::fmt::Debug;
+#import std::core::fmt::Display;
+#import std::error::error::Error;
+#import std::error::io::IoError;
 ```
 
-With **`prelude = true`** (default when std is bundled), the items above plus `Option` / `Result` and their ctors are in scope without explicit `#import`. See [Prelude](#prelude-v0-044).
+With **`prelude = true`** (default when std is bundled), the items above plus `Option` / `Result` and their ctors are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). Error types are **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
 
 Generic enum constructors need explicit type arguments today, e.g. `Some :: <s32> (n)`.
 
-See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer; [`std_traits/`](../tests/cli/fixtures/std_traits/) and [`std_prelude/`](../tests/cli/fixtures/std_prelude/) for trait bounds and prelude smoke tests.
+See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer; [`std_traits/`](../tests/cli/fixtures/std_traits/) and [`std_prelude/`](../tests/cli/fixtures/std_prelude/) for trait bounds and prelude smoke tests; [`std_errors/`](../tests/cli/fixtures/std_errors/) for layered `?` across std error types (V0-060).
 
 ## Module layout (`std::core`)
 
@@ -78,9 +81,17 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::copyable` | `src/core/copyable.phx` | `pub Copyable :: trait` (empty marker) |
 | `std::core::clone` | `src/core/clone.phx` | `pub Clone :: trait` |
 | `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
-| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug :: trait` (fixed `[u8; 32]` buffer) |
+| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait` (fixed `[u8; 32]` buffer) |
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::prelude` | `src/prelude.phx` | Compiler-injected re-exports when `prelude = true` |
+| `std::error` | `src/error/mod.phx` | Namespace anchor |
+| `std::error::kind` | `src/error/kind.phx` | `pub ErrorKind :: enum` |
+| `std::error::io` | `src/error/io.phx` | `pub IoError :: struct` |
+| `std::error::parse` | `src/error/parse.phx` | `pub ParseError :: struct` |
+| `std::error::thread` | `src/error/thread.phx` | `pub ThreadError :: struct` |
+| `std::error::general` | `src/error/general.phx` | `pub GeneralError :: struct` |
+| `std::error::error` | `src/error/error.phx` | `pub Error :: enum` (Pattern A sum) |
+| `std::error::from_*` | `src/error/from_*.phx` | `From<Leaf> for Error` (one leaf per file) |
 
 Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
 
@@ -103,7 +114,7 @@ Single-file / in-process `compile_source(..., None)` does **not** inject prelude
 ## Non-goals (current)
 
 - Per-file `#no_prelude`, glob prelude, or entire std surface in prelude
-- Rich formatting (`Debug` uses a small fixed buffer only)
+- Rich formatting (`Debug` / `Display` trait defs only; error-type trait impls deferred until `[u8; N]` return lowering is stable)
 - No std I/O — requires scheduler (post Language v0)
 
 ## Test fixtures vs real std

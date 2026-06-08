@@ -1,0 +1,3 @@
+pub IoError :: struct {
+    code: s32,
+};

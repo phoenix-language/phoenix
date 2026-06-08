@@ -1,0 +1,3 @@
+pub ThreadError :: struct {
+    code: s32,
+};

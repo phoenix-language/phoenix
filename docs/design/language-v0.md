@@ -425,6 +425,8 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ### V0-060 — Std error module
 
+**Status: Done**
+
 - `std::error`: leaf types (`IoError`, `ParseError`, `ThreadError`, `GeneralError`) and top-level `Error` sum enum (Pattern A in [error-handling.md](features/error-handling.md)).
 - `From<LeafError> for Error` impls for each leaf type.
 - Minimal `Debug` / `Display` (or fmt trait stubs) sufficient for the `errors` demo.
