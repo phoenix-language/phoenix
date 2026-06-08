@@ -1,0 +1,9 @@
+[project]
+name = "errors_demo"
+version = "0.1.0"
+description = "Result, match, and ? with std error conversion"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

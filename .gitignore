@@ -12,5 +12,9 @@
 *.phx0
 *.pxi
 
-# Phoenix std package build artifacts
-std/build/
+# Phoenix project build output (phoenix.toml [build].dir, default "build")
+**/build/
+
+# Compiler build driver sources — Rust module, not project artifacts
+!source/phx-compiler/src/build/
+!source/phx-compiler/src/build/**

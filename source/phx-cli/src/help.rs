@@ -80,6 +80,7 @@ pub fn print_command_help(sub: SubcommandName) {
                --dep name=path       Path dependency for standalone mode (repeatable)\n\
                --build               Force rebuild (project mode)\n\
                --no-build            Skip build and load existing artifact (project mode)\n\
+               --dump-main           Print `main` local slots to stderr after run (MVP debug channel)\n\
              \n\
              In a project directory, `phx run` without a file runs the project entry.\n\
              Passing a non-entry file in a project directory is an error."

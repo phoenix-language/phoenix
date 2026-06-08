@@ -81,7 +81,7 @@ Section kinds (MVP):
 - `2`: types
 - `3`: functions
 - `4`: code
-- `5`: symbols (optional debug names; **not written** by the MVP compiler — reserved for future tooling)
+- `5`: symbols (optional debug names; **not written** by the MVP compiler — reserved for future tooling; see [debug.md](debug.md))
 - `6`: local layouts (format minor 1+; verifier cross-checks slot kinds)
 
 **Compiler-only notes (MVP):**
@@ -258,6 +258,7 @@ Loader must reject bytecode when:
 ### MVP interpreter contract (`phx-vm`)
 
 - Production entry is `phx_vm::run` on **verified** bytecode. `run_captured` is `#[doc(hidden)]` for integration tests that assert `main` local slots via [`VmRunCapture::main_local`](../../source/phx-vm/src/interpreter.rs) or the optional stack `return_value` after return.
+- **MVP debug channel (D0):** `phx run --dump-main` prints `main[N]: …` lines to stderr after a successful run (uses `run_captured` internally). Full layered debug (symbols, trace, breakpoints, DAP) is specified in [debug.md](debug.md). There is no std I/O until the schedulable runtime ships; see [`examples/hello`](../../../examples/hello/src/main.phx).
 - Header `entry_function_id` must name a zero-arity `main` for executables. Library objects use `ENTRY_NONE` (`0xFFFF_FFFF`); the VM returns an error if execution is attempted.
 - `ConstTag::Bytes` pool entries are not loadable via generic `Const` (operand pushes scalars only). UTF-8 string literals `"…"` lower to `ConstTag::Bytes` in the pool plus opcode **`MakeStr`** (pool index → rodata `str` view). Byte string literals `b"…"` still lower to per-byte `Const` + `MakeArray`.
 - Typeck rejects returning `&T`, `&mut T`, `[T]` slice views, or **`str`** views formed from function-local bindings; see [`ownership.md`](ownership.md).

@@ -119,6 +119,8 @@ pub struct RunCommandArgs {
     pub force_build: bool,
     /// Skip build in project mode.
     pub skip_build: bool,
+    /// After run, print `main` local slots to stderr (MVP debug channel).
+    pub dump_main: bool,
 }
 
 /// Argument parse failure with a user-facing message.
@@ -346,6 +348,7 @@ fn parse_run_flags(iter: &mut impl Iterator<Item = String>) -> Result<RunCommand
             }
             "--build" => args.force_build = true,
             "--no-build" => args.skip_build = true,
+            "--dump-main" => args.dump_main = true,
             "--emit-interface-only" => {
                 return Err(ParseError::new(
                     "`phx run` does not support --emit-interface-only (no runnable artifact)",

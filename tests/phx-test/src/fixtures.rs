@@ -32,6 +32,16 @@ pub fn cli_modules_dir() -> PathBuf {
     cli_fixtures_dir().join("modules")
 }
 
+/// Top-level demonstration programs (`examples/`).
+pub fn examples_dir() -> PathBuf {
+    repo_root().join("examples")
+}
+
+/// Path to an example project directory under [`examples_dir`].
+pub fn examples_project(name: &str) -> PathBuf {
+    examples_dir().join(name)
+}
+
 /// Assert a fixture path exists (panics with a clear message when missing).
 pub fn assert_fixture_exists(path: &Path) {
     assert!(

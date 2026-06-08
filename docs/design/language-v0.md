@@ -457,20 +457,25 @@ Polish and capabilities that make the project legible to new contributors and un
 
 ### V0-050 — CLI and diagnostics UX
 
+**Status: Done**
+
 - `phx check`, `phx build`, `phx run`, `phx explain <code>` (or equivalent) with stable, tested diagnostic output.
 - Errors show file, line, column, span snippet, and error code; internal panics never leak to users.
+- `phx run --dump-main` documents the MVP VM debug channel for inspecting `main` locals.
 
-**Acceptance:** `tests/cli/` scripts pass; diagnostic fixtures match committed `.stderr` golden files.
+**Acceptance:** `tests/integration/tests/cli_e2e.rs` and `diagnostics.rs` pass; diagnostic fixtures match committed `.stderr` golden files; `just test-lang` includes both.
 
-**Refs:** Existing `tests/cli/`, `tests/integration/diagnostics/`
+**Refs:** [tests/cli/fixtures/](../../tests/cli/fixtures/), [tests/integration/diagnostics/](../../tests/integration/diagnostics/)
 
 ---
 
 ### V0-051 — Contributor documentation
 
-- `README` (or `docs/contributing.md`) explains: build, test, project layout, and **this checklist**.
+**Status: Done**
+
+- [docs/contributing.md](../contributing.md) explains: build, test, project layout, and **this checklist**.
 - “First program” and “first library” tutorials using `phoenix.toml`.
-- Link to design authority table in [mvp.md](mvp.md) / [README.md](README.md).
+- Link to design authority table in [mvp.md](mvp.md) / [README.md](../../README.md).
 
 **Acceptance:** New contributor can clone, run `just pre-commit`, build a `bin` + `lib` example without reading the compiler source.
 
@@ -478,14 +483,16 @@ Polish and capabilities that make the project legible to new contributors and un
 
 ### V0-052 — Demonstration programs
 
-- `examples/` (or `tests/examples/`) with at least:
-  - `hello` — `main`, `str` literal output path (stdout intrinsic or VM debug channel documented for MVP).
+**Status: Done**
+
+- [examples/](../../examples/) with at least:
+  - `hello` — `main`, `str` literal; `phx run --dump-main` VM debug channel.
   - `modules` — multi-file `bin` + `lib` dependency.
   - `generics` — generic enum + trait bound monomorphization.
   - `errors` — `Result` + `match` + `?` with `From` error conversion across std error types (V0-058–060).
-- Each example has a one-line README comment at the top of `main.phx`.
+- Each example has a one-line `//` README comment at the top of `main.phx`.
 
-**Acceptance:** All examples build and run via documented commands in CI or `just test-lang`.
+**Acceptance:** All examples build and run via documented commands in `just test-lang` (`cli_e2e` examples tests).
 
 ---
 
@@ -585,6 +592,7 @@ These are real Phoenix goals but **out of scope** for this list. Do not implemen
 | Qualified paths without `#import`                           | Expr-path resolution spec                        | After or with block imports; [modules.md](features/modules.md#import-evolution-phased)                                      |
 | `dyn Trait`                                                 | Runtime vtables; static mono first               | When plugin-style APIs needed                                                                                               |
 | Std I/O and networking                                      | Requires schedulable runtime                     | After scheduler lands                                                                                                       |
+| Layered debug protocol (symbols, trace, breakpoints, DAP)   | Interim `--dump-main` only; full spec in [debug.md](features/debug.md) | Parallel to scheduler; D1+ post–Language v0                                                                      |
 | JIT, hot reload                                             | Operational                                      | Post-v0                                                                                                                     |
 | Unicode identifiers                                         | ASCII-only for v0                                | [ast-roadmap.md](features/ast-roadmap.md)                                                                                   |
 | Primitive owned `string`                                    | Std `String` only                                | Never as language primitive                                                                                                 |

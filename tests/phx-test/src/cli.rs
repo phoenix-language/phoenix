@@ -5,7 +5,8 @@ use std::process::{Command, Output, Stdio};
 use std::sync::{Once, OnceLock};
 
 use crate::fixtures::{
-    assert_fixture_exists, cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project, repo_root,
+    assert_fixture_exists, cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project,
+    examples_dir, examples_project, repo_root,
 };
 use crate::incremental::fixture_fs_lock;
 
@@ -145,11 +146,20 @@ impl PhxCli {
 
     /// Run `phx` with arbitrary arguments from the repository root.
     pub fn run(&self, args: &[&str]) -> PhxOutput {
-        let output = Command::new(&self.bin)
-            .args(args)
+        self.run_with_env(args, &[])
+    }
+
+    /// Run `phx` with extra environment variables (integration tests only).
+    pub fn run_with_env(&self, args: &[&str], extra_env: &[(&str, &str)]) -> PhxOutput {
+        let mut cmd = Command::new(&self.bin);
+        cmd.args(args)
             .current_dir(repo_root())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
+        let output = cmd
             .output()
             .unwrap_or_else(|e| panic!("spawn {} {:?}: {e}", self.bin.display(), args));
         PhxOutput::from_output(&output)
@@ -347,6 +357,16 @@ impl PhxCli {
     /// Convenience: run a CLI fixture by name.
     pub fn run_fixture_ok(&self, name: &str) -> &Self {
         self.run_ok(&cli_fixture(name))
+    }
+
+    /// Path to the top-level `examples/` directory.
+    pub fn examples_root(&self) -> PathBuf {
+        examples_dir()
+    }
+
+    /// Path to an example project under `examples/`.
+    pub fn example_project(&self, name: &str) -> PathBuf {
+        examples_project(name)
     }
 }
 

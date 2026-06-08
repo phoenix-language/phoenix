@@ -18,6 +18,8 @@ pub enum CliExit {
     Verify = 4,
     /// VM runtime failure.
     Runtime = 5,
+    /// Internal compiler or VM panic (should not happen on valid input).
+    Internal = 6,
 }
 
 impl CliExit {

@@ -435,7 +435,7 @@ A credible MVP demo `.phx` should be able to:
 | Resolver / typeck / lower / codegen tests | done    | `source/phx-compiler/tests/`            |                                                     |                                                      |
 | Verifier tests                            | done    | `source/phx-bytecode/src/verify.rs`     | `#[cfg(test)]`                                      |                                                      |
 | Verifier mutation tests                   | done    | `source/phx-bytecode/tests/verify_mutation.rs` | Encode/decode/mutate; verify rejects; VM no panic | `cargo test -p phx-bytecode --test verify_mutation`  |
-| CLI shell tests                           | done    | `tests/cli/*.sh`                        | check, run, build, compile, help                  | CI: `rust` job + `cli` job (all shell scripts)       |
+| CLI integration tests                     | done    | `tests/integration/tests/cli_e2e.rs`   | check, run, build, compile, help, explain, examples | CI: `rust` job + `cli` job; `just test-lang`        |
 | `just test-lang`                          | done    | `Justfile`                              | check + run + build + help                        | `just pre-commit`; `just test-cli` adds `compile.sh` |
 | Integration `run_sample`                  | done    | `tests/integration/tests/run_sample.rs` |                                                     |                                                      |
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |

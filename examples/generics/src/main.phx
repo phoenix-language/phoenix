@@ -1,0 +1,20 @@
+// Demo: generics — generic enum, match, and generic function monomorphization (trait bounds: see std_traits fixture).
+
+Opt :: <t> enum {
+    None,
+    Some(t),
+};
+
+twice :: <t> (x: t) => Opt<t> {
+    const y: Opt<t> = Some :: <t> (x);
+    y
+};
+
+main :: () => {
+    const x = twice :: <s32> (7);
+    const n: s32 = match x {
+        None => 0;
+        Some(v) => v;
+    };
+    const _ = n;
+};

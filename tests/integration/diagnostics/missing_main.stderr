@@ -3,10 +3,3 @@ error[E1013]: missing entry function `main`
   |
 3 | add :: (a: s32, b: s32) => s32 {
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-error[E1013]: missing entry function `main`
-  --> tests/cli/fixtures/missing_main.phx:3:1
-  |
-3 | add :: (a: s32, b: s32) => s32 {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: aborting due to 2 previous errors

@@ -1,0 +1,8 @@
+// Demo: hello — str literal; run with `phx run --dump-main` to inspect main locals (MVP debug channel).
+
+main :: () => {
+    const s: str = "hello";
+    const sl: [u8] = s as [u8];
+    const first: u8 = sl[0];
+    const _ = first;
+};

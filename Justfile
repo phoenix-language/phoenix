@@ -28,7 +28,7 @@ test-integration:
     cargo test -p phx-integration-tests
 
 test-lang:
-    cargo test -p phx-integration-tests --test cli_e2e --test run_smoke -- --test-threads=1
+    cargo test -p phx-integration-tests --test cli_e2e --test run_smoke --test diagnostics -- --test-threads=1
 
 test-cli: test-lang
 

@@ -20,7 +20,10 @@ pub use cli::{
     rm_project_build_unlocked, shared_cli,
 };
 pub use compile::{compile_ok, expect_compile_err, expect_resolve_err, expect_typeck_err};
-pub use fixtures::{cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project, repo_root};
+pub use fixtures::{
+    cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project, examples_dir, examples_project,
+    repo_root,
+};
 pub use golden::{
     assert_golden, format_check_file, format_check_with_module_root, format_compile_source,
     integration_diagnostics_dir, normalize_diagnostics,

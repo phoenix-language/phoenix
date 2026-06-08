@@ -1,5 +1,6 @@
 //! `phx run` handler.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
@@ -7,6 +8,7 @@ use phx_bytecode::verify;
 use phx_compiler::{
     BuildOptions, build_project, compile_standalone_with_context, load_project_binary,
 };
+use phx_vm::{Value, run_captured};
 
 use crate::args::RunCommandArgs;
 use crate::color::ColorChoice;
@@ -15,7 +17,12 @@ use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_run_mode};
 
 /// Runs `phx run`.
-pub fn run_run(args: RunCommandArgs, color: ColorChoice, verbose: bool) -> CliExit {
+pub fn run_run(
+    args: RunCommandArgs,
+    color: ColorChoice,
+    verbose: bool,
+    dump_main: bool,
+) -> CliExit {
     let style = crate::color::diagnostic_style(color);
     let reporter = Reporter::new(&style);
 
@@ -39,11 +46,15 @@ pub fn run_run(args: RunCommandArgs, color: ColorChoice, verbose: bool) -> CliEx
             args.force_build,
             args.skip_build,
             verbose,
+            dump_main,
         ),
-        CompileMode::Standalone { options } => run_standalone(&reporter, &options, verbose),
+        CompileMode::Standalone { options } => {
+            run_standalone(&reporter, &options, verbose, dump_main)
+        }
     }
 }
 
+#[allow(clippy::fn_params_excessive_bools)]
 fn run_project(
     reporter: &Reporter<'_>,
     config: &phx_compiler::ProjectConfig,
@@ -51,6 +62,7 @@ fn run_project(
     force: bool,
     skip_build: bool,
     verbose: bool,
+    dump_main: bool,
 ) -> CliExit {
     if !skip_build {
         reporter.verbose(verbose, "building project...");
@@ -71,13 +83,14 @@ fn run_project(
             return CliExit::Compile;
         }
     };
-    execute_module(reporter, &module, verbose)
+    execute_module(reporter, &module, verbose, dump_main)
 }
 
 fn run_standalone(
     reporter: &Reporter<'_>,
     options: &phx_compiler::StandaloneOptions,
     verbose: bool,
+    dump_main: bool,
 ) -> CliExit {
     let source = match fs::read_to_string(&options.entry) {
         Ok(s) => s,
@@ -104,13 +117,14 @@ fn run_standalone(
             return CliExit::Compile;
         }
     };
-    execute_module(reporter, &module, verbose)
+    execute_module(reporter, &module, verbose, dump_main)
 }
 
 fn execute_module(
     reporter: &Reporter<'_>,
     module: &phx_bytecode::BytecodeModule,
     verbose: bool,
+    dump_main: bool,
 ) -> CliExit {
     reporter.verbose(verbose, "verifying bytecode...");
     if let Err(e) = verify(module) {
@@ -118,9 +132,29 @@ fn execute_module(
         return CliExit::Verify;
     }
     reporter.verbose(verbose, "running...");
-    if let Err(e) = phx_vm::run(module) {
+    if dump_main {
+        match run_captured(module) {
+            Ok(capture) => {
+                dump_main_locals(capture.main_locals.as_slice());
+                CliExit::Ok
+            }
+            Err(e) => {
+                reporter.runtime_error(&e.to_string());
+                CliExit::Runtime
+            }
+        }
+    } else if let Err(e) = phx_vm::run(module) {
         reporter.runtime_error(&e.to_string());
-        return CliExit::Runtime;
+        CliExit::Runtime
+    } else {
+        CliExit::Ok
     }
-    CliExit::Ok
+}
+
+fn dump_main_locals(locals: &[Value]) {
+    for (index, value) in locals.iter().enumerate() {
+        let mut line = format!("main[{index}]: ");
+        let _ = write!(line, "{value:?}");
+        eprintln!("{line}");
+    }
 }

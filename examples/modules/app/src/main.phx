@@ -1,0 +1,10 @@
+// Demo: modules — multi-file bin + path library dependency (`math`).
+
+#import math::add;
+#import math::id;
+
+main :: () => {
+    const sum = add(10, 2);
+    const value = id :: <s32> (sum);
+    const _ = value;
+};

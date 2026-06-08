@@ -13,4 +13,5 @@ workspace = true
 phx-bytecode = { path = "../../source/phx-bytecode" }
 phx-compiler = { path = "../../source/phx-compiler" }
 phx-diagnostics = { path = "../../source/phx-diagnostics" }
+phx-syntax = { path = "../../source/phx-syntax" }
 phx-vm = { path = "../../source/phx-vm" }

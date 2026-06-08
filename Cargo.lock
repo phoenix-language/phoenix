@@ -65,6 +65,7 @@ dependencies = [
  "phx-bytecode",
  "phx-compiler",
  "phx-diagnostics",
+ "phx-syntax",
  "phx-vm",
 ]
 

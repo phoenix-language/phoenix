@@ -1,4 +1,4 @@
-error[E1003]: duplicate definition of `<invalid-symbol>`
+error[E1003]: duplicate definition of `foo`
   --> <entry>:3:1
   |
 3 | foo :: () => { };
@@ -9,7 +9,7 @@ error[E1003]: duplicate definition of `<invalid-symbol>`
 2 | foo :: () => { };
   | ^^^^^^^^^^^^^^^^^
 
-error[E1003]: duplicate definition of `<invalid-symbol>`
+error[E1003]: duplicate definition of `bar`
   --> <entry>:5:1
   |
 5 | bar :: () => { };

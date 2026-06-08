@@ -1,7 +1,7 @@
 error[E2017]: use of moved value `p`
   --> tests/cli/fixtures/use_after_move.phx:9:15
   |
-9 |     const _ = p.x;
+9 |     const _ = p.r;
   |               ^
    = note: value `p` was moved here
   --> tests/cli/fixtures/use_after_move.phx:8:20

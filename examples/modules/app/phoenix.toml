@@ -1,0 +1,13 @@
+[project]
+name = "modules_app"
+version = "0.1.0"
+description = "Example binary depending on a path library"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[dependencies]
+math = { path = "../math_lib" }
+
+[build]
+dir = "build"

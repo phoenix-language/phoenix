@@ -25,8 +25,19 @@ pub mod workflow;
 use args::{Command, ParseError, parse_env_args};
 use exit::CliExit;
 
+/// Environment variable used by integration tests to force a controlled panic path.
+pub const TEST_FORCE_PANIC_ENV: &str = "PHX_TEST_FORCE_PANIC";
+
 /// Runs the CLI with process arguments.
+///
+/// # Panics
+///
+/// Panics when [`TEST_FORCE_PANIC_ENV`] is set (integration tests only).
 pub fn run() -> CliExit {
+    assert!(
+        std::env::var_os(TEST_FORCE_PANIC_ENV).is_none(),
+        "integration test forced panic"
+    );
     match parse_env_args() {
         Ok((opts, cmd)) => dispatch(opts, cmd),
         Err(e) => args::handle_parse_error(e, true),
@@ -51,7 +62,10 @@ fn dispatch(opts: args::CliOptions, cmd: Command) -> CliExit {
         Command::Check(args) => commands::run_check(args, opts.color, opts.verbose),
         Command::Build(args) => commands::run_build(args, opts.color, opts.verbose),
         Command::Compile(args) => commands::run_compile(args, opts.color, opts.verbose),
-        Command::Run(args) => commands::run_run(args, opts.color, opts.verbose),
+        Command::Run(args) => {
+            let dump_main = args.dump_main;
+            commands::run_run(args, opts.color, opts.verbose, dump_main)
+        }
     }
 }
 

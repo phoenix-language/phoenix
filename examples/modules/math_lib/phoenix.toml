@@ -1,0 +1,10 @@
+[project]
+name = "math"
+version = "0.1.0"
+description = "Example library for the modules demo"
+type = "lib"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"

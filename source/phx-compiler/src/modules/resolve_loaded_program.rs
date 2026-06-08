@@ -209,11 +209,6 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         }
     }
 
-    if package_type == PackageType::Bin && main_fn.is_none() {
-        let span = root_hint_span(&source_modules, root.index());
-        bag.push(root.index(), ResolveError::MissingMain { span });
-    }
-
     if bag.has_errors() {
         return Err(bag);
     }
@@ -370,17 +365,4 @@ fn main_function_span(program: &Program, interner: &Interner) -> Option<Span> {
         }
     }
     None
-}
-
-fn root_hint_span(modules: &[SourceModule], root: u32) -> Span {
-    let Some(m) = modules.iter().find(|m| m.id == root) else {
-        return Span::new(0, 1);
-    };
-    if let Some(item) = m.program.items.first() {
-        item.span
-    } else if let Some(imp) = m.program.imports.first() {
-        imp.span
-    } else {
-        Span::new(0, 1)
-    }
 }

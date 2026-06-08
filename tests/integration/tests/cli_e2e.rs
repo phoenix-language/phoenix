@@ -332,3 +332,90 @@ fn help_shows_usage() {
         cli.help_ok();
     });
 }
+
+#[test]
+fn explain_known_code() {
+    e2e(|cli| {
+        cli.run(&["explain", "E2001"])
+            .assert_success()
+            .assert_contains("type does not match");
+    });
+}
+
+#[test]
+fn explain_unknown_code() {
+    e2e(|cli| {
+        cli.run(&["explain", "E9999"])
+            .assert_failure()
+            .assert_contains("no explanation available");
+    });
+}
+
+#[test]
+fn explain_invalid_code() {
+    e2e(|cli| {
+        cli.run(&["explain", "not-a-code"])
+            .assert_failure()
+            .assert_contains("invalid diagnostic code");
+    });
+}
+
+#[test]
+fn panic_is_caught_without_rust_backtrace() {
+    e2e(|cli| {
+        let out = cli.run_with_env(&["version"], &[("PHX_TEST_FORCE_PANIC", "1")]);
+        out.assert_failure();
+        assert!(
+            !out.combined.contains("thread 'main' panicked"),
+            "got:\n{}",
+            out.combined
+        );
+        out.assert_contains("internal compiler error");
+        assert_eq!(out.status.code(), Some(6));
+    });
+}
+
+fn rm_example_build(project_root: &std::path::Path) {
+    let _ = std::fs::remove_dir_all(project_root.join("build"));
+}
+
+#[test]
+fn examples_hello_dump_main() {
+    e2e(|cli| {
+        let entry = "examples/hello/src/main.phx";
+        cli.run(&["run", "--dump-main", entry])
+            .assert_success()
+            .assert_contains("main[")
+            .assert_contains("U8(104)");
+    });
+}
+
+#[test]
+fn examples_modules_build_run() {
+    e2e(|cli| {
+        let app = cli.example_project("modules/app");
+        rm_example_build(&app);
+        cli.build_ok(&app);
+        cli.run_no_build_ok(&app);
+    });
+}
+
+#[test]
+fn examples_generics_build_run() {
+    e2e(|cli| {
+        let root = cli.example_project("generics");
+        rm_example_build(&root);
+        cli.build_ok(&root);
+        cli.run_no_build_ok(&root);
+    });
+}
+
+#[test]
+fn examples_errors_build_run() {
+    e2e(|cli| {
+        let root = cli.example_project("errors");
+        rm_example_build(&root);
+        cli.build_ok(&root);
+        cli.run_no_build_ok(&root);
+    });
+}

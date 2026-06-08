@@ -2,13 +2,15 @@
 
 **Experimental alpha** — statically typed language that compiles to portable bytecode and runs on a stack VM.
 
+**Contributing:** [docs/contributing.md](docs/contributing.md) · **Language v0 checklist:** [docs/design/language-v0.md](docs/design/language-v0.md)
+
 ## What is Phoenix?
 
 Phoenix targets systems-style programs without a garbage collector. Memory safety is moving toward ownership, moves, and (post-MVP) borrow checking; the MVP compiler already rejects use-after-move.
 
-Programs compile to `**PHX0` bytecode** (portable on disk) and execute on a **Phoenix VM** (per platform). The long-term model keeps runtime effects visible—schedulable I/O and explicit actors are designed into the type system rather than hidden behind opaque OS-thread or GC abstractions. MVP runs `main` on a single-process stack interpreter with no scheduler and no standard I/O.
+Programs compile to **`PHX0` bytecode** (portable on disk) and execute on a **Phoenix VM** (per platform). The long-term model keeps runtime effects visible—schedulable I/O and explicit actors are designed into the type system rather than hidden behind opaque OS-thread or GC abstractions. MVP runs `main` on a single-process stack interpreter with no scheduler and no standard I/O.
 
-Post-MVP, errors are **values** (`Result`, `Option` in the standard library, `?` propagation)—not exceptions. Those types are not built into the MVP compiler.
+Errors are **values** (`Result`, `Option` in the standard library, `?` propagation)—not exceptions. The bundled `std` defines those types as ordinary Phoenix enums.
 
 Authoritative scope: [docs/design/mvp.md](docs/design/mvp.md).
 
@@ -28,7 +30,7 @@ main :: () => {
 };
 ```
 
-More fixtures: [tests/cli/fixtures/](tests/cli/fixtures/) (e.g. [sample.phx](tests/cli/fixtures/sample.phx)).
+More programs: [examples/](examples/) (demos) and [tests/cli/fixtures/](tests/cli/fixtures/) (regression fixtures).
 
 ## Basic syntax
 
@@ -37,8 +39,8 @@ More fixtures: [tests/cli/fixtures/](tests/cli/fixtures/) (e.g. [sample.phx](tes
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Declarations | Uniform `::` style: `name :: (…) => T { … }`, `Name :: struct { … }`, `Name :: enum { … }`, `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait`                                         |
 | Bindings     | `const` and `var`; function parameters are always typed                                                                                                                                      |
-| Types        | Numeric primitives (`s32`, `u32`, …), `bool`, `()`, tuples, raw pointers (`*T`), borrows in signatures (`&T`, `&mut T`), fixed arrays `[T; N]`, slices `[T]`; no primitive `string` in MVP   |
-| Literals     | Integers default to `s32`; `42u` → `u32`; floats default to `f32`; byte strings `b"hi"` → `[u8; N]`                                                                                          |
+| Types        | Numeric primitives (`s32`, `u32`, …), `bool`, `()`, tuples, raw pointers (`*T`), borrows in signatures (`&T`, `&mut T`), fixed arrays `[T; N]`, slices `[T]`; `str` views (no owned string) |
+| Literals     | Integers default to `s32`; `42u` → `u32`; floats default to `f32`; byte strings `b"hi"` → `[u8; N]`; UTF-8 `"hi"` → `str`                                                                  |
 | Casts        | No implicit numeric widening—use `expr as Type`                                                                                                                                              |
 | Control flow | `if`, `match`, `while`, `loop`, `break`, `continue`, `return`, `given`                                                                                                                       |
 | Modules      | Files are modules; paths use `::`; `#import path::to::item`; `pub` exports. Single-file `phx check` needs `--module-src` when using `#import`—see [tests/cli/README.md](tests/cli/README.md) |
@@ -60,6 +62,7 @@ Single file (no `phoenix.toml`):
 ```bash
 cargo run -p phx -- check path/to/file.phx
 cargo run -p phx -- run path/to/file.phx
+cargo run -p phx -- run path/to/file.phx --dump-main   # print main locals (MVP debug channel)
 ```
 
 Multi-file modules:
@@ -75,29 +78,43 @@ cargo run -p phx -- build
 cargo run -p phx -- run
 ```
 
-Workspace checks: `cargo test --workspace`, `just test-lang` (CLI fixtures). MVP smoke project: [tests/cli/fixtures/mvp_acceptance/](tests/cli/fixtures/mvp_acceptance/). Details: [tests/cli/README.md](tests/cli/README.md).
+**Just recipes** (requires [just](https://github.com/casey/just)):
+
+```bash
+just phx run examples/hello/src/main.phx --dump-main
+just pre-commit    # fmt, clippy, doc-check, dep-check, test-lang
+just test-lang     # CLI E2E + diagnostics goldens
+just test          # full workspace tests
+```
+
+Demonstration programs: [examples/README.md](examples/README.md). MVP smoke project: [tests/cli/fixtures/mvp_acceptance/](tests/cli/fixtures/mvp_acceptance/). Fixture details: [tests/cli/README.md](tests/cli/README.md).
 
 ## Language status
 
-**MVP pipeline (in scope today):** lex → parse → resolve → type-check → lower → `PHX0` → verifier → stack VM. `main :: () => { … }` is required. Structs, enums, traits with static dispatch, control flow including `given`, explicit casts, `#import` / `pub` projects, and use-after-move checking are in place.
+**Shipped (Language v0 substrate):** lex → parse → resolve → type-check → lower → `PHX0` → verifier → stack VM; `main` required; structs, enums, generics, traits with static dispatch and monomorphization; control flow including `given`; explicit casts; `#import` / `pub` / `phoenix.toml` projects; use-after-move checking; bundled `std` with `Option` / `Result`, core traits, conversion traits, and layered error types.
 
-**Partial or narrow:** borrow types in signatures without a full borrow checker; fixed arrays and stack-backed slices; generics scaffold only.
+**Partial or narrow:** borrow types in signatures without a full borrow checker; fixed arrays and stack-backed slices; no std I/O (use `phx run --dump-main` to inspect `main` locals).
 
-**Post-MVP (not implemented):** M:N scheduler, schedulable I/O, actors and mailboxes, std I/O and networking, primitive `string`, std `Option` / `Result` / `?`, full ownership verifier, JIT, hot reload.
+**Post-MVP (not implemented):** M:N scheduler, schedulable I/O, actors and mailboxes, std I/O and networking, full ownership verifier, JIT, hot reload.
 
-Implementation tracker: [docs/mvp-implementation-checklist.md](docs/mvp-implementation-checklist.md).
+Implementation tracker: [docs/mvp-implementation-checklist.md](docs/mvp-implementation-checklist.md). Phase checklist: [docs/design/language-v0.md](docs/design/language-v0.md).
 
 ## Documentation
 
 
 | Document                                                                                     | Purpose                                 |
 | -------------------------------------------------------------------------------------------- | --------------------------------------- |
+| [docs/contributing.md](docs/contributing.md)                                                 | Build, test, layout, tutorials          |
 | [docs/design/README.md](docs/design/README.md)                                               | Design doc index                        |
+| [docs/design/language-v0.md](docs/design/language-v0.md)                                     | Language v0 phased checklist            |
 | [docs/design/mvp.md](docs/design/mvp.md)                                                     | MVP in/out of scope                     |
 | [docs/design/features/type-system.md](docs/design/features/type-system.md)                   | Types, literals, casts                  |
 | [docs/design/features/ownership.md](docs/design/features/ownership.md)                       | Moves, Copyable, borrows (phased)       |
 | [docs/design/features/vm-linear.md](docs/design/features/vm-linear.md)                       | Bytecode format and verifier            |
-| [docs/design/features/modules.md](docs/design/features/modules.md)                           | `#import`, `pub`, file modules          |
+| [docs/design/features/debug.md](docs/design/features/debug.md)                             | Debug layers, dev/release, tooling roadmap |
+| [docs/design/features/modules.md](docs/design/features/modules.md)                           | `#import`, `pub`, `phoenix.toml`        |
+| [docs/design/features/traits.md](docs/design/features/traits.md)                             | Traits and static dispatch              |
+| [docs/design/features/error-handling.md](docs/design/features/error-handling.md)             | `Result`, `?`, std errors               |
 | [docs/design/features/runtime-transparency.md](docs/design/features/runtime-transparency.md) | Runtime visibility (post-MVP direction) |
 | [docs/mvp-implementation-checklist.md](docs/mvp-implementation-checklist.md)                 | What is implemented in `source/`        |
 
