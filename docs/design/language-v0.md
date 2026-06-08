@@ -437,6 +437,20 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ---
 
+### V0-061 — Rust-style `mod.phx` module entries
+
+**Status: Done**
+
+- Child module declarations (`mod name`, `pub mod name`) gate module loading for all package kinds (`bin`, `lib`, path deps, bundled `std`).
+- `pub reexport :: Item` and `pub reexport :: child::Item` build parent export maps and `.pxi` surfaces.
+- Orphan / ambiguous / missing module entry diagnostics; cross-package deep imports require `pub mod`.
+
+**Acceptance:** `std::error::IoError` (not `std::error::error::IoError`); `modules/` and `mvp_acceptance/` fixtures build; negative fixtures for missing `mod.phx` and orphan files; `just pre-commit` green.
+
+**Refs:** [modules.md](features/modules.md#mod-and-barrel-syntax)
+
+---
+
 ## Phase 6 — Contributor showcase and std authoring enablers
 
 Polish and capabilities that make the project legible to new contributors and unblock real std development.

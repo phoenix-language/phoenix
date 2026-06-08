@@ -54,7 +54,13 @@ top_level_decl     = struct_decl
                    | impl_decl
                    | function_decl
                    | const_decl
-                   | var_binding ;
+                   | var_binding
+                   | mod_decl
+                   | reexport_decl ;
+
+mod_decl           = "mod" , identifier ;
+reexport_decl      = "reexport" , "::" , reexport_path ;
+reexport_path      = identifier , [ "::" , identifier ] ;
 
 (* -----------------------------------------------------------------------------
    Declarations

@@ -256,6 +256,16 @@ pub enum TopLevelDecl {
         /// Initializer.
         init: ExprNode,
     },
+    /// `mod name` — register a child module file.
+    Mod {
+        /// Module stem (`from_io` → `from_io.phx`).
+        name: Ident,
+    },
+    /// `pub reexport :: path` — re-export a symbol at this module path.
+    Reexport {
+        /// Target path after leading `::` (`Item` or `child::Item`).
+        path: Path,
+    },
 }
 
 /// Top-level item with optional `pub`.

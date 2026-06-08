@@ -1,4 +1,8 @@
 // Phoenix standard library root.
 // Core types: std::core::option::Option, std::core::result::Result, …
 
+pub mod core;
+pub mod error;
+pub mod prelude;
+
 pub version :: () => s32 { 1 };

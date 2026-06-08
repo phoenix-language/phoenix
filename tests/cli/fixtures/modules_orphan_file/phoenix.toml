@@ -1,0 +1,10 @@
+[project]
+name = "modules_orphan_file"
+version = "0.1.0"
+description = "Orphan util/extra.phx diagnostic"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"

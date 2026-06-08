@@ -1,7 +1,7 @@
 #import std::core::convert::From;
-#import std::error::error::Error;
-#import std::error::error::Thread;
-#import std::error::error::ThreadError;
+#import std::error::Error;
+#import std::error::Thread;
+#import std::error::ThreadError;
 
 Error :: impl :: From<ThreadError> {
     from :: (value: ThreadError) => Error {

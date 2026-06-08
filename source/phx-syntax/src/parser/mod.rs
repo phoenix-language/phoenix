@@ -390,6 +390,25 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Returns true when the next token is `kw`.
+    pub(crate) fn peek_keyword(&self, kw: Keyword) -> bool {
+        matches!(self.peek_kind(), TokenKind::Keyword(k) if k == kw)
+    }
+
+    /// Requires the next token to be `kw`.
+    pub(crate) fn expect_keyword(&mut self, kw: Keyword) -> Result<(), ParseError> {
+        if self.eat_keyword(kw) {
+            Ok(())
+        } else {
+            let label = match kw {
+                Keyword::Mod => "mod",
+                Keyword::Reexport => "reexport",
+                _ => "keyword",
+            };
+            Err(self.error_unexpected(ExpectedToken::Punct(label)))
+        }
+    }
+
     /// Consumes the next token when its kind equals `kind`.
     pub(crate) fn eat_kind(&mut self, kind: &TokenKind<'src>) -> bool {
         if self.peek_kind() == *kind {

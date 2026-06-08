@@ -1,2 +1,9 @@
 // std::core — language-foundation types and traits.
-// Submodules: option, result; V0-043+ adds clone, copyable, cmp, fmt, alloc, …
+
+pub mod option;
+pub mod result;
+pub mod convert;
+pub mod copyable;
+pub mod clone;
+pub mod cmp;
+pub mod fmt;

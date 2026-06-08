@@ -115,7 +115,16 @@ impl Parser<'_> {
         let start = self.pos;
         let attrs = self.parse_attribute_list()?;
         let pub_ = self.eat_keyword(Keyword::Pub);
-        let mut decl = self.parse_top_level_decl()?;
+        let mut decl =
+            if pub_ && (self.peek_keyword(Keyword::Reexport) || self.peek_keyword(Keyword::Mod)) {
+                if self.peek_keyword(Keyword::Reexport) {
+                    self.parse_reexport_decl()?
+                } else {
+                    self.parse_mod_decl()?
+                }
+            } else {
+                self.parse_top_level_decl()?
+            };
         self.merge_bracket_derives(&mut decl, &attrs);
         self.expect_semi()?;
         Ok(self.node(TopLevelItem { attrs, pub_, decl }, self.span_from(start)))
@@ -136,6 +145,7 @@ impl Parser<'_> {
         }
         match self.peek_kind() {
             TokenKind::Keyword(Keyword::Type) => self.parse_type_alias(),
+            TokenKind::Keyword(Keyword::Mod) => self.parse_mod_decl(),
             TokenKind::Ident(_) => {
                 let func = self.parse_function_decl_body(false)?;
                 Ok(TopLevelDecl::Function(func))
@@ -164,6 +174,36 @@ impl Parser<'_> {
             }
             _ => Err(self.error_unexpected(ExpectedToken::Token)),
         }
+    }
+
+    /// Parses `mod name` (visibility from enclosing `pub` on the item).
+    fn parse_mod_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
+        self.expect_keyword(Keyword::Mod)?;
+        let name = self.parse_ident()?;
+        Ok(TopLevelDecl::Mod { name })
+    }
+
+    /// Parses `pub reexport :: path`.
+    fn parse_reexport_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
+        self.expect_keyword(Keyword::Reexport)?;
+        self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
+        let path = self.parse_reexport_path()?;
+        Ok(TopLevelDecl::Reexport { path })
+    }
+
+    /// Parses `item` or `child::item` after `reexport ::`.
+    fn parse_reexport_path(&mut self) -> Result<crate::ast::Path, ParseError> {
+        let mut segments = Vec::new();
+        while let TokenKind::Ident(seg) = self.peek_kind() {
+            segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
+            if !self.eat_kind(&TokenKind::ColonColon) {
+                break;
+            }
+        }
+        if segments.is_empty() {
+            return Err(self.error_unexpected(ExpectedToken::Ident));
+        }
+        Ok(crate::ast::Path { segments })
     }
 
     /// Parses `type Name [= generics] = Ty`.
@@ -463,7 +503,9 @@ impl Parser<'_> {
             TopLevelDecl::TypeAlias { .. }
             | TopLevelDecl::Const { .. }
             | TopLevelDecl::Var { .. }
-            | TopLevelDecl::Impl { .. } => {}
+            | TopLevelDecl::Impl { .. }
+            | TopLevelDecl::Mod { .. }
+            | TopLevelDecl::Reexport { .. } => {}
         }
     }
 

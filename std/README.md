@@ -60,8 +60,8 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::core::cmp::PartialEq;
 #import std::core::fmt::Debug;
 #import std::core::fmt::Display;
-#import std::error::error::Error;
-#import std::error::error::IoError;
+#import std::error::Error;
+#import std::error::IoError;
 ```
 
 With **`prelude = true`** (default when std is bundled), the items above plus `Option` / `Result` and their ctors are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). Error types are **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
@@ -74,8 +74,8 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 
 | Logical module | File | Status |
 |----------------|------|--------|
-| `std` | `src/lib.phx` | `version` only |
-| `std::core` | `src/core/mod.phx` | Namespace anchor (no re-exports yet) |
+| `std` | `src/lib.phx` | `version`; `pub mod core`, `error`, `prelude` |
+| `std::core` | `src/core/mod.phx` | `pub mod` for `option`, `result`, `convert`, trait modules |
 | `std::core::option` | `src/core/option.phx` | `pub Option :: <t> enum` |
 | `std::core::result` | `src/core/result.phx` | `pub Result :: <ok, err> enum` |
 | `std::core::copyable` | `src/core/copyable.phx` | `pub Copyable :: trait` (empty marker) |
@@ -84,9 +84,8 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait` (fixed `[u8; 32]` buffer) |
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::prelude` | `src/prelude.phx` | Compiler-injected re-exports when `prelude = true` |
-| `std::error` | `src/error/mod.phx` | Namespace anchor |
-| `std::error::error` | `src/error/error.phx` | Leaf errors + `Error` sum (Pattern A); `ErrorKind` deferred (variant name clash in one module) |
-| `std::error::from_*` | `src/error/from_*.phx` | `From<Leaf> for Error` (one `from` per file) |
+| `std::error` | `src/error/mod.phx` | Leaf errors + `Error` sum (Pattern A); `ErrorKind` deferred (variant name clash in one module) |
+| `std::error::from_*` | `src/error/from_*.phx` | Private `mod` children; `From<Leaf> for Error` (one `from` per file) |
 
 Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
 

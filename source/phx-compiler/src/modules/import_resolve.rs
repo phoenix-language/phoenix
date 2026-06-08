@@ -11,6 +11,8 @@ use crate::project::BuildLayout;
 use crate::pxi::{PxiFile, PxiType};
 use crate::resolver::{Def, DefId, DefKind};
 
+use super::discover::SubmoduleRegistry;
+use super::discover::is_module_importable;
 use super::loader::{LoadedModule, ModuleId};
 use super::path::ModulePath;
 
@@ -40,10 +42,12 @@ pub(crate) struct ImportResolveCtx<'a> {
     pub import_types: &'a mut HashMap<DefId, PxiType>,
     /// Diagnostic bag.
     pub bag: &'a mut DiagnosticBag,
+    /// Submodule graph for visibility checks.
+    pub submodules: &'a SubmoduleRegistry,
 }
 
 /// Resolves one `#import` into scope bindings `(symbol, def_id, is_type, span)`.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn resolve_import_directive(
     imp: &ImportDirective,
     span: Span,
@@ -62,6 +66,17 @@ pub(crate) fn resolve_import_directive(
     let Some(&dep_id) = ctx.path_index.get(&key) else {
         return bindings;
     };
+    let importer_key = ctx.module.logical_path.display();
+    if !is_module_importable(&importer_key, &key, ctx.submodules) {
+        ctx.bag.push(
+            ctx.module.id.index(),
+            ResolveError::PrivateSubmodule {
+                span,
+                path: key.clone(),
+            },
+        );
+        return bindings;
+    }
     let dep_idx = dep_id.index() as usize;
     let dep_exports = exports_for_dependency(
         &key,

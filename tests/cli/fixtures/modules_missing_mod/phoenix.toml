@@ -1,0 +1,10 @@
+[project]
+name = "modules_missing_mod"
+version = "0.1.0"
+description = "Missing util/mod.phx diagnostic"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"

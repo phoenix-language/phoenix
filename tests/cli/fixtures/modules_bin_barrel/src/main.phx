@@ -1,4 +1,4 @@
-#import util::math::add;
+#import util::add;
 
 mod util;
 

@@ -1,5 +1,7 @@
 #import shapes::math::pick;
 
+mod shapes;
+
 Point :: struct {
     x: s32,
     y: s32,

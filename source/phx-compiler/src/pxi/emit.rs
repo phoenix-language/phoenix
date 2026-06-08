@@ -39,7 +39,7 @@ pub fn build_pxi_for_module(
         let Some(def) = defs.get(def_id.index() as usize) else {
             continue;
         };
-        if def.module != module_id || !def.exported {
+        if !def.exported {
             continue;
         }
         push_export(

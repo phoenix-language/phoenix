@@ -1,6 +1,6 @@
 //! Load all modules reachable from the entry file.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use phx_diagnostics::{DiagnosticBag, ResolveError};
@@ -9,6 +9,10 @@ use phx_syntax::{Interner, Program, all_imports, parse_with_interner};
 use crate::cfg::{CompileCfg, strip_cfg};
 
 use super::SourceText;
+use super::discover::{
+    SubmoduleRegistry, effective_submodule_parent, resolve_submodule_file,
+    validate_ambiguous_module_entries, validate_missing_module_entries, validate_orphan_files,
+};
 use super::graph::{collect_edges, topo_sort_with_pxi_escape};
 use super::load_context::ProgramLoadContext;
 use super::path::ModulePath;
@@ -68,6 +72,8 @@ pub struct LoadedProgram {
     pub build_layout: Option<BuildLayout>,
     /// Inject std prelude bindings during resolve.
     pub prelude_enabled: bool,
+    /// Submodule declarations discovered while loading.
+    pub submodules: SubmoduleRegistry,
 }
 
 /// Loads the module graph starting at `entry_file` under `module_root` (single-package fallback).
@@ -114,6 +120,8 @@ pub fn load_program_with_context(
     let mut interner = Interner::new();
     let mut pending: Vec<(ModulePath, PathBuf, phx_diagnostics::Span, u32)> = Vec::new();
     let mut loaded_paths: HashMap<String, PathBuf> = HashMap::new();
+    let mut submodules = SubmoduleRegistry::default();
+    let mut packages_to_validate: HashSet<(PathBuf, String)> = HashSet::new();
 
     pending.push((
         entry_logical.clone(),
@@ -122,17 +130,23 @@ pub fn load_program_with_context(
         0,
     ));
     loaded_paths.insert(entry_logical.display(), entry_file.clone());
-    enqueue_all_lib_modules(
-        &workspace.module_src,
-        &workspace.name,
-        workspace.package_type,
-        &mut pending,
-        &mut loaded_paths,
-    );
+    packages_to_validate.insert((workspace.module_src.clone(), workspace.name.clone()));
+
+    if workspace.package_type == PackageType::Lib {
+        enqueue_package_root(
+            &workspace.module_src,
+            &workspace.name,
+            workspace.package_type,
+            &mut pending,
+            &mut loaded_paths,
+        );
+    }
+
     if ctx.prelude {
         for dep in &ctx.dependencies {
             if dep.name == "std" {
-                enqueue_all_lib_modules(
+                packages_to_validate.insert((dep.module_src.clone(), dep.name.clone()));
+                enqueue_package_root(
                     &dep.module_src,
                     &dep.name,
                     dep.package_type,
@@ -201,6 +215,21 @@ pub fn load_program_with_context(
         }
         let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
 
+        let submodule_parent =
+            effective_submodule_parent(&logical, &fs_path, &workspace.module_src, &workspace.name);
+        submodules.ingest_module(&submodule_parent.display(), &program, &interner);
+        enqueue_declared_submodules(
+            &submodule_parent,
+            &fs_path,
+            &submodules,
+            &mut pending,
+            &mut loaded_paths,
+            bag,
+            current_module,
+            ctx,
+            &mut packages_to_validate,
+        );
+
         for imp in all_imports(&program) {
             let raw_target = super::graph::import_target_module(&imp.inner, &interner);
             let canonical =
@@ -210,6 +239,11 @@ pub fn load_program_with_context(
                 continue;
             }
             if loaded_paths.contains_key(&key) {
+                continue;
+            }
+            let current_pkg = logical.package_name();
+            let import_pkg = canonical.package_name();
+            if import_pkg == current_pkg {
                 continue;
             }
             let Some(pkg) = ctx.package_for_logical(&key) else {
@@ -222,6 +256,17 @@ pub fn load_program_with_context(
                 );
                 continue;
             };
+            let pkg_root = ModulePath::new(vec![import_pkg.to_owned()]);
+            let root_key = pkg_root.display();
+            if import_pkg != current_pkg && !loaded_paths.contains_key(&root_key) {
+                enqueue_package_root(
+                    &pkg.module_src,
+                    &pkg.name,
+                    pkg.package_type,
+                    &mut pending,
+                    &mut loaded_paths,
+                );
+            }
             let Some(dep_fs) = ModulePath::resolve_existing_file(
                 &pkg.module_src,
                 &canonical,
@@ -238,10 +283,27 @@ pub fn load_program_with_context(
                 continue;
             };
             loaded_paths.insert(key.clone(), dep_fs.clone());
+            if let Some(pkg) = ctx.package_for_logical(&key) {
+                packages_to_validate.insert((pkg.module_src.clone(), pkg.name.clone()));
+            }
             pending.push((canonical, dep_fs, imp.span, current_module));
         }
 
         modules_raw.push((logical, fs_path, SourceText::from(source), program));
+    }
+
+    // Filesystem layout rules apply to phoenix.toml projects, not ad-hoc `--module-src` checks.
+    if layout.is_some() {
+        let reporter = u32::try_from(modules_raw.len()).unwrap_or(0);
+        for (module_src, package_name) in packages_to_validate {
+            if package_name != workspace.name {
+                continue;
+            }
+            validate_ambiguous_module_entries(&module_src, bag, reporter);
+            validate_missing_module_entries(&module_src, bag, reporter);
+            let loaded: HashSet<String> = loaded_paths.keys().cloned().collect();
+            validate_orphan_files(&module_src, &package_name, &loaded, bag, reporter);
+        }
     }
 
     if bag.has_errors() {
@@ -344,49 +406,75 @@ pub fn load_program_with_context(
         dep_package_names: ctx.dependencies.iter().map(|d| d.name.clone()).collect(),
         build_layout: layout.cloned(),
         prelude_enabled: ctx.prelude,
+        submodules,
     })
 }
 
-/// Queues every `.phx` file under `module_src` for `type = lib` packages.
-///
-/// Library roots are not required to `#import` every submodule from `lib.phx`; the
-/// build still compiles and exports all sources under `module_src`.
-fn enqueue_all_lib_modules(
+fn enqueue_package_root(
     module_src: &Path,
     package_name: &str,
     package_type: PackageType,
     pending: &mut Vec<(ModulePath, PathBuf, phx_diagnostics::Span, u32)>,
     loaded_paths: &mut HashMap<String, PathBuf>,
 ) {
-    if package_type != PackageType::Lib {
+    let root_logical = ModulePath::new(vec![package_name.to_owned()]);
+    let key = root_logical.display();
+    if loaded_paths.contains_key(&key) {
         return;
     }
-    let mut files = Vec::new();
-    collect_phx_files(module_src, &mut files);
-    for path in files {
-        let Some(logical) = ModulePath::from_file_path(module_src, &path, package_name) else {
+    let Some(fs) =
+        ModulePath::resolve_existing_file(module_src, &root_logical, package_name, package_type)
+    else {
+        return;
+    };
+    loaded_paths.insert(key, fs.clone());
+    pending.push((root_logical, fs, phx_diagnostics::Span::new(0, 1), 0));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enqueue_declared_submodules(
+    parent_logical: &ModulePath,
+    parent_fs: &Path,
+    submodules: &SubmoduleRegistry,
+    pending: &mut Vec<(ModulePath, PathBuf, phx_diagnostics::Span, u32)>,
+    loaded_paths: &mut HashMap<String, PathBuf>,
+    bag: &mut DiagnosticBag,
+    importer_module: u32,
+    ctx: &ProgramLoadContext,
+    packages_to_validate: &mut HashSet<(PathBuf, String)>,
+) {
+    let parent_key = parent_logical.display();
+    let Some(decls) = submodules.decls.get(&parent_key) else {
+        return;
+    };
+    let Some(pkg) = ctx.package_for_logical(&parent_key) else {
+        return;
+    };
+    packages_to_validate.insert((pkg.module_src.clone(), pkg.name.clone()));
+    for decl in decls {
+        let Some((child_logical, child_fs)) = resolve_submodule_file(
+            &pkg.module_src,
+            parent_fs,
+            parent_logical,
+            &decl.name,
+            &pkg.name,
+            pkg.package_type,
+        ) else {
+            bag.push(
+                importer_module,
+                ResolveError::ModuleNotFound {
+                    span: decl.span,
+                    path: format!("{parent_key}::{}", decl.name),
+                },
+            );
             continue;
         };
-        let key = logical.display();
+        let key = child_logical.display();
         if loaded_paths.contains_key(&key) {
             continue;
         }
-        loaded_paths.insert(key, path.clone());
-        pending.push((logical, path, phx_diagnostics::Span::new(0, 1), 0));
-    }
-}
-
-fn collect_phx_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_phx_files(&path, out);
-        } else if path.extension().is_some_and(|ext| ext == "phx") {
-            out.push(path);
-        }
+        loaded_paths.insert(key, child_fs.clone());
+        pending.push((child_logical, child_fs, decl.span, importer_module));
     }
 }
 

@@ -1,5 +1,6 @@
 //! Multi-file module loading, import graph, and crate assembly.
 
+mod discover;
 mod graph;
 pub(crate) mod import_resolve;
 #[allow(dead_code)]
@@ -12,6 +13,7 @@ mod prelude;
 mod resolve_loaded_program;
 mod source_text;
 
+pub use discover::SubmoduleRegistry;
 pub use graph::import_target_module;
 pub use load_context::ProgramLoadContext;
 pub use loader::{LoadedModule, LoadedProgram, ModuleId, load_program, load_program_with_context};

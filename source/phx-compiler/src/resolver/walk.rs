@@ -166,6 +166,15 @@ impl Resolver<'_> {
                 let id = self.define_exported(name.symbol, span, DefKind::Var, exported);
                 self.record_def_attrs(id, item_attrs);
             }
+            TopLevelDecl::Mod { .. } => {}
+            TopLevelDecl::Reexport { .. } => {
+                if !exported {
+                    self.bag.push(
+                        self.current_module,
+                        ResolveError::ReexportRequiresPub { span },
+                    );
+                }
+            }
             _ => {}
         }
     }
@@ -521,6 +530,7 @@ impl Resolver<'_> {
             interner,
             import_types,
             bag: &mut self.bag,
+            submodules: env.submodules,
         };
         let bindings = crate::modules::import_resolve::resolve_import_directive(
             &imp.inner, imp.span, &mut ctx, &mut seen,

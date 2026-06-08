@@ -38,6 +38,8 @@ pub(crate) struct ProgramImportEnv<'a> {
     pub workspace_name: &'a str,
     /// Path-dependency package names.
     pub dep_names: &'a [&'a str],
+    /// Submodule visibility graph.
+    pub submodules: &'a crate::modules::SubmoduleRegistry,
 }
 
 /// Key for a name-use resolution entry (module + parse-time [`AstNodeId`], not span alone).

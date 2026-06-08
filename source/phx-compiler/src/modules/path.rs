@@ -33,6 +33,12 @@ impl ModulePath {
         self.segments.join("::")
     }
 
+    /// Returns the package name (first path segment).
+    #[must_use]
+    pub fn package_name(&self) -> &str {
+        self.segments.first().map_or("", String::as_str)
+    }
+
     /// Builds a logical path from a `.phx` file under `module_root` for `package_name`.
     ///
     /// Special files: `main.phx` / `lib.phx` at root → `{package}`; `dir/mod.phx` → `{package}::dir`.

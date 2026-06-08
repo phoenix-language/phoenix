@@ -66,6 +66,10 @@ pub enum Keyword {
     Trait,
     /// `impl`
     Impl,
+    /// `mod` (child module declaration)
+    Mod,
+    /// `reexport`
+    Reexport,
     /// `as`
     As,
     /// `in`
@@ -132,6 +136,8 @@ impl Keyword {
             "pub" => Self::Pub,
             "trait" => Self::Trait,
             "impl" => Self::Impl,
+            "mod" => Self::Mod,
+            "reexport" => Self::Reexport,
             "as" => Self::As,
             "in" => Self::In,
             "mut" => Self::Mut,

@@ -49,15 +49,44 @@ There is no `module_path` field in TOML or PXI (use `module_src` vs `logical_mod
 |------|--------------|--------------|----------------|
 | `main.phx` at `module_src` root | **Required** | — | `{name}` (not `{name}::main`) |
 | `lib.phx` at `module_src` root | — | **Required** | `{name}` (not `{name}::lib`) |
-| `dir/mod.phx` | Optional | Optional | `{name}::{dir…}` (parent dirs only; no `::mod` suffix) |
+| `dir/mod.phx` | **Required** when `dir/` contains other `.phx` files | **Required** when `dir/` contains other `.phx` files | `{name}::{dir…}` (parent dirs only; no `::mod` suffix) |
 
-All other `.phx` files map by relative path + stem under `module_src`, prefixed with `{name}::`. For example, with package `math`:
+**V0-061 (Rust-style module entries):** applies uniformly to workspace `bin`, workspace `lib`, path dependencies, and bundled `std`. The `module_src` root never uses `mod.phx` — only `main.phx` (`bin`) or `lib.phx` (`lib`).
+
+| Rule | Behavior |
+|------|----------|
+| Submodule entry | Nested module `pkg::seg` resolves to `seg.phx` **or** `seg/mod.phx` under the parent directory |
+| Flat vs dir | `seg.phx` and `seg/mod.phx` are **mutually exclusive** for the same logical module |
+| Child files | A `.phx` under a subdirectory is **not** loaded unless the parent entry declares `mod name;` |
+| `pub mod name` | Child is importable across package boundaries as `pkg::parent::name::…` |
+| Private child | `mod name` without `pub` — visible only inside the same package's module tree |
+| Discovery | Tree walk from package root (`main.phx` / `lib.phx`), following `mod` declarations; cross-package edges still follow `#import` |
+| Orphan files | Undeclared `.phx` files under a subdirectory (not at `module_src` root) are compile errors |
+
+### `mod` and barrel syntax
+
+Rust-style child module registration (distinct from `dir/mod.phx` entry files):
+
+```phoenix
+mod from_io;                // private child (loads from_io.phx)
+pub mod math;               // public child — importers may use `pkg::parent::math::…`
+
+pub reexport :: IoError;           // re-export pub item defined in this file
+pub reexport :: math::add;         // re-export from registered child module `math`
+```
+
+- `pub` on `mod` marks the whole child module public to other packages; private `mod` stays in-package only.
+- `pub reexport` without `pub` is a resolve error (`ReexportRequiresPub`).
+- External `#import pkg::dir::Item` resolves only through the **parent export map** (`pub` defs + `pub reexport`).
+- `#import pkg::dir::child::Item` requires `child` to be a **`pub mod`** when crossing package boundaries.
+
+Logical module mapping examples (package `math`):
 
 | File | Logical module |
 |------|----------------|
-| `common.phx` | `math::common` |
 | `utils/mod.phx` | `math::utils` |
-| `utils/index.phx` | `math::utils::index` (**not** aliased to `math::utils`) |
+| `utils/math.phx` (with `pub mod math` in `utils/mod.phx`) | `math::utils::math` |
+| `utils.phx` | `math::utils` (**mutually exclusive** with `utils/mod.phx`) |
 
 `index.phx` has no special meaning.
 

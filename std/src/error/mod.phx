@@ -1,1 +1,29 @@
 // std::error — shared failure vocabulary (Error sum, leaf types, From bridges).
+
+mod from_io;
+mod from_parse;
+mod from_thread;
+mod from_general;
+
+pub IoError :: struct {
+    code: s32,
+};
+
+pub ParseError :: struct {
+    code: s32,
+};
+
+pub ThreadError :: struct {
+    code: s32,
+};
+
+pub GeneralError :: struct {
+    code: s32,
+};
+
+pub Error :: enum {
+    Io(IoError),
+    Parse(ParseError),
+    Thread(ThreadError),
+    General(GeneralError),
+};

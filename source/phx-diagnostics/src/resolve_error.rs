@@ -161,6 +161,43 @@ pub enum ResolveError {
         /// What failed.
         message: String,
     },
+    /// `.phx` file on disk is not registered via `mod` in a parent module.
+    OrphanModuleFile {
+        /// Related span.
+        span: Span,
+        /// Filesystem path.
+        path: String,
+        /// How to fix.
+        hint: String,
+    },
+    /// Both `name.phx` and `name/mod.phx` exist for the same module.
+    AmbiguousModuleEntry {
+        /// Related span.
+        span: Span,
+        /// Flat file path.
+        flat: String,
+        /// Directory `mod.phx` path.
+        module_dir: String,
+    },
+    /// Directory contains `.phx` files but no `name.phx` / `name/mod.phx` entry.
+    MissingModuleEntry {
+        /// Related span.
+        span: Span,
+        /// Directory path.
+        dir: String,
+    },
+    /// Import targets a private submodule.
+    PrivateSubmodule {
+        /// Import span.
+        span: Span,
+        /// Submodule logical path.
+        path: String,
+    },
+    /// `reexport` without `pub`.
+    ReexportRequiresPub {
+        /// Declaration span.
+        span: Span,
+    },
 }
 
 impl ResolveError {
@@ -186,6 +223,11 @@ impl ResolveError {
             Self::GenericParamInValue { .. } => DiagnosticCode::new("E1016"),
             Self::DuplicateTraitImpl { .. } => DiagnosticCode::new("E1017"),
             Self::InvalidCfg { .. } => DiagnosticCode::new("E1018"),
+            Self::OrphanModuleFile { .. } => DiagnosticCode::new("E1019"),
+            Self::AmbiguousModuleEntry { .. } => DiagnosticCode::new("E1020"),
+            Self::MissingModuleEntry { .. } => DiagnosticCode::new("E1021"),
+            Self::PrivateSubmodule { .. } => DiagnosticCode::new("E1022"),
+            Self::ReexportRequiresPub { .. } => DiagnosticCode::new("E1023"),
         }
     }
 
@@ -210,7 +252,12 @@ impl ResolveError {
             | Self::MissingMain { span, .. }
             | Self::GenericParamInValue { span, .. }
             | Self::DuplicateTraitImpl { span, .. }
-            | Self::InvalidCfg { span, .. } => Some(*span),
+            | Self::InvalidCfg { span, .. }
+            | Self::OrphanModuleFile { span, .. }
+            | Self::AmbiguousModuleEntry { span, .. }
+            | Self::MissingModuleEntry { span, .. }
+            | Self::PrivateSubmodule { span, .. }
+            | Self::ReexportRequiresPub { span, .. } => Some(*span),
         }
     }
 }
@@ -275,6 +322,27 @@ impl fmt::Display for ResolveError {
                 f.write_str("duplicate trait implementation for the same type and trait")
             }
             Self::InvalidCfg { message, .. } => write!(f, "invalid `#[cfg]`: {message}"),
+            Self::OrphanModuleFile { path, hint, .. } => {
+                write!(f, "orphan module file `{path}`: {hint}")
+            }
+            Self::AmbiguousModuleEntry { flat, module_dir, .. } => {
+                write!(
+                    f,
+                    "ambiguous module entry: both `{flat}` and `{module_dir}` exist"
+                )
+            }
+            Self::MissingModuleEntry { dir, .. } => {
+                write!(
+                    f,
+                    "directory `{dir}` contains modules but has no `mod.phx` or sibling `.phx` entry"
+                )
+            }
+            Self::PrivateSubmodule { path, .. } => {
+                write!(f, "module `{path}` is private (use `pub mod` to export it)")
+            }
+            Self::ReexportRequiresPub { .. } => {
+                f.write_str("`reexport` requires `pub`")
+            }
         }
     }
 }

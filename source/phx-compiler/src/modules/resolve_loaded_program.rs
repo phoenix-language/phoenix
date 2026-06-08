@@ -10,6 +10,7 @@ use phx_syntax::{SourceFile, Symbol};
 use crate::resolver::scopes::ScopeStack;
 use crate::resolver::{DefId, ProgramImportEnv, ResolvedProgram, Resolver, SourceModule};
 
+use super::discover::SubmoduleRegistry;
 use super::import_resolve::{ImportResolveCtx, resolve_import_directive};
 use super::loader::{LoadedModule, LoadedProgram};
 use super::prelude::{PreludeCtx, prelude_bindings};
@@ -35,6 +36,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         dep_package_names,
         build_layout,
         prelude_enabled,
+        submodules,
     } = loaded;
     let layout = build_layout.as_ref();
     let dep_name_refs: Vec<&str> = dep_package_names.iter().map(String::as_str).collect();
@@ -130,6 +132,8 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         }
     }
 
+    apply_reexports(&modules, &submodules, &mut exports, &mut interner, &mut bag);
+
     // Phase 2: resolve bodies with import prefaces (skip modules that failed phase 1).
     let mut resolutions = HashMap::new();
     let mut closures = HashMap::new();
@@ -146,6 +150,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             layout,
             workspace_name: &package_name,
             dep_names: &dep_name_refs,
+            submodules: &submodules,
         };
         let bindings = build_import_bindings(
             module,
@@ -240,6 +245,74 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
     })
 }
 
+fn apply_reexports(
+    modules: &[LoadedModule],
+    submodules: &SubmoduleRegistry,
+    exports: &mut [ExportMap],
+    interner: &mut Interner,
+    bag: &mut DiagnosticBag,
+) {
+    let path_to_idx: HashMap<String, usize> = modules
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.logical_path.display(), i))
+        .collect();
+
+    for (idx, module) in modules.iter().enumerate() {
+        let parent_key = module.logical_path.display();
+        let Some(list) = submodules.reexports.get(&parent_key) else {
+            continue;
+        };
+        for re in list {
+            let Some(export_name) = re.segments.last() else {
+                continue;
+            };
+            let Ok(export_sym) = interner.intern(export_name) else {
+                continue;
+            };
+            let target_def = if re.segments.len() == 1 {
+                exports[idx].get(&export_sym).copied()
+            } else if re.segments.len() == 2 {
+                let child_key = format!("{}::{}", parent_key, re.segments[0]);
+                let Some(child_idx) = path_to_idx.get(&child_key).copied() else {
+                    bag.push(
+                        module.id.index(),
+                        ResolveError::ModuleNotFound {
+                            span: re.span,
+                            path: child_key,
+                        },
+                    );
+                    continue;
+                };
+                let Ok(item_sym) = interner.intern(&re.segments[1]) else {
+                    continue;
+                };
+                exports[child_idx].get(&item_sym).copied()
+            } else {
+                bag.push(
+                    module.id.index(),
+                    ResolveError::ModuleNotFound {
+                        span: re.span,
+                        path: re.segments.join("::"),
+                    },
+                );
+                continue;
+            };
+            if let Some(def_id) = target_def {
+                exports[idx].insert(export_sym, def_id);
+            } else {
+                bag.push(
+                    module.id.index(),
+                    ResolveError::ImportNotExported {
+                        span: re.span,
+                        name: export_name.clone(),
+                    },
+                );
+            }
+        }
+    }
+}
+
 fn build_import_bindings(
     module: &LoadedModule,
     env: &ProgramImportEnv<'_>,
@@ -265,6 +338,7 @@ fn build_import_bindings(
             interner,
             import_types,
             bag,
+            submodules: env.submodules,
         };
         bindings.extend(resolve_import_directive(
             &imp.inner, imp.span, &mut ctx, &mut seen,
