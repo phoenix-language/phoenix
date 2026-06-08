@@ -1,7 +1,7 @@
 #import std::core::convert::From;
 #import std::error::error::Error;
 #import std::error::error::Parse;
-#import std::error::parse::ParseError;
+#import std::error::error::ParseError;
 
 Error :: impl :: From<ParseError> {
     from :: (value: ParseError) => Error {

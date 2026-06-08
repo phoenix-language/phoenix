@@ -1,6 +1,0 @@
-pub ErrorKind :: enum {
-    Io,
-    Parse,
-    Thread,
-    General,
-};

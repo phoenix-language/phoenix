@@ -2,7 +2,7 @@
 #import std::core::result::Ok;
 #import std::core::result::Result;
 #import std::error::error::Error;
-#import std::error::io::IoError;
+#import std::error::error::IoError;
 
 Config :: struct {
     value: s32,

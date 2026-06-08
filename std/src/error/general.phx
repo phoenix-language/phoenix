@@ -1,3 +1,0 @@
-pub GeneralError :: struct {
-    code: s32,
-};

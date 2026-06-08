@@ -124,11 +124,8 @@ std/
     option.phx
   error/
     mod.phx
-    kind.phx        # ErrorKind (Io, Parse, Thread, General, …)
-    io.phx          # IoError
-    parse.phx
-    thread.phx
-    error.phx       # top-level Error sum type
+    error.phx       # leaf errors (IoError, …), top-level Error sum; ErrorKind TBD (same file when variant scopes land)
+    from_*.phx      # From<Leaf> for Error (one bridge per file)
 ```
 
 ### Pattern A — closed sum type (Std v0 default)

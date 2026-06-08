@@ -1,7 +1,7 @@
 #import std::core::convert::From;
 #import std::error::error::Error;
 #import std::error::error::General;
-#import std::error::general::GeneralError;
+#import std::error::error::GeneralError;
 
 Error :: impl :: From<GeneralError> {
     from :: (value: GeneralError) => Error {

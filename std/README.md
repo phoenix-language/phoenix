@@ -61,7 +61,7 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::core::fmt::Debug;
 #import std::core::fmt::Display;
 #import std::error::error::Error;
-#import std::error::io::IoError;
+#import std::error::error::IoError;
 ```
 
 With **`prelude = true`** (default when std is bundled), the items above plus `Option` / `Result` and their ctors are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). Error types are **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
@@ -85,13 +85,8 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::prelude` | `src/prelude.phx` | Compiler-injected re-exports when `prelude = true` |
 | `std::error` | `src/error/mod.phx` | Namespace anchor |
-| `std::error::kind` | `src/error/kind.phx` | `pub ErrorKind :: enum` |
-| `std::error::io` | `src/error/io.phx` | `pub IoError :: struct` |
-| `std::error::parse` | `src/error/parse.phx` | `pub ParseError :: struct` |
-| `std::error::thread` | `src/error/thread.phx` | `pub ThreadError :: struct` |
-| `std::error::general` | `src/error/general.phx` | `pub GeneralError :: struct` |
-| `std::error::error` | `src/error/error.phx` | `pub Error :: enum` (Pattern A sum) |
-| `std::error::from_*` | `src/error/from_*.phx` | `From<Leaf> for Error` (one leaf per file) |
+| `std::error::error` | `src/error/error.phx` | Leaf errors + `Error` sum (Pattern A); `ErrorKind` deferred (variant name clash in one module) |
+| `std::error::from_*` | `src/error/from_*.phx` | `From<Leaf> for Error` (one `from` per file) |
 
 Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
 

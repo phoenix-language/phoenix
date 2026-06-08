@@ -1,7 +1,18 @@
-#import std::error::general::GeneralError;
-#import std::error::io::IoError;
-#import std::error::parse::ParseError;
-#import std::error::thread::ThreadError;
+pub IoError :: struct {
+    code: s32,
+};
+
+pub ParseError :: struct {
+    code: s32,
+};
+
+pub ThreadError :: struct {
+    code: s32,
+};
+
+pub GeneralError :: struct {
+    code: s32,
+};
 
 pub Error :: enum {
     Io(IoError),

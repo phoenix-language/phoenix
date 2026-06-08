@@ -1,1 +1,1 @@
-// std::error — shared failure vocabulary (leaf errors + top-level Error sum).
+// std::error — shared failure vocabulary (Error sum, leaf types, From bridges).
