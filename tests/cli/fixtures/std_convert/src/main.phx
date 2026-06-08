@@ -1,9 +1,5 @@
-#import std::core::convert::From;
-#import std::core::convert::Into;
-#import std::core::convert::TryFrom;
-#import std::core::result::Result;
-#import std::core::result::Ok;
-#import std::core::result::Err;
+#import std::core::convert::{From, Into, TryFrom};
+#import std::core::result::{Result, Ok, Err};
 
 Wrap :: struct {
     n: s32,

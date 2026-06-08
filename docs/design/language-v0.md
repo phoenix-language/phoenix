@@ -417,7 +417,7 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 - Lower failure path: load `Err` payload → monomorphized `From::from` → `return Err(converted)`.
 - Diagnostic when `From` is missing: cite expected impl and link to [error-handling.md](features/error-handling.md).
 
-**Acceptance:** Function returning `Result<Config, Error>` may `?` a `Result<_, IoError>` call when `From<IoError> for Error` exists; fixture in `tests/cli/` or `tests/examples/errors`.
+**Acceptance:** Function returning `Result<Config, AppError>` may `?` a `Result<_, LeafError>` call when `From<LeafError> for AppError` exists; fixture in `tests/cli/fixtures/std_try_from/`.
 
 **Refs:** [error-handling.md](features/error-handling.md#the--operator-v0-042-error-conversion-v0-059)
 
@@ -427,11 +427,10 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 **Status: Done**
 
-- `std::error`: leaf types (`IoError`, `ParseError`, `ThreadError`, `GeneralError`) and top-level `Error` sum enum (Pattern A in [error-handling.md](features/error-handling.md)).
-- `From<LeafError> for Error` impls for each leaf type.
-- Minimal `Debug` / `Display` (or fmt trait stubs) sufficient for the `errors` demo.
+- `std::error`: single expandable `Error` enum (minimal `Unknown` variant in v0).
+- Layered `From` conversion demonstrated with crate-local types in fixtures.
 
-**Acceptance:** Layered `read_bytes` → `read_config` example type-checks with `?` across error types; builds with bundled std.
+**Acceptance:** `std::error::Error` imports and `Result` + `?` smoke (`std_errors`); layered `From` (`std_try_from`); `examples/errors` builds with bundled std.
 
 **Refs:** [error-handling.md](features/error-handling.md#std-error-vocabulary--v0-060)
 
@@ -445,7 +444,7 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 - `pub reexport :: Item` and `pub reexport :: child::Item` build parent export maps and `.pxi` surfaces.
 - Orphan / ambiguous / missing module entry diagnostics; cross-package deep imports require `pub mod`.
 
-**Acceptance:** `std::error::IoError` (not `std::error::error::IoError`); `modules/` and `mvp_acceptance/` fixtures build; negative fixtures for missing `mod.phx` and orphan files; `just pre-commit` green.
+**Acceptance:** `std::error::Error` (not `std::error::error::Error`); `modules/` and `mvp_acceptance/` fixtures build; negative fixtures for missing `mod.phx` and orphan files; `just pre-commit` green.
 
 **Refs:** [modules.md](features/modules.md#mod-and-barrel-syntax)
 
@@ -610,7 +609,7 @@ First std modules to author **in Phoenix** once the checklist is complete (order
 
 1. `**core::alloc`** — allocation/deallocation wrappers over VM intrinsics.
 2. `**core::option` / `core::result` / `core::convert**` — enums and conversion traits (if not already in std from V0-041 / V0-058).
-3. `**error**` — `Error`, `IoError`, and `From` impls (V0-060).
+3. `**error**` — `std::error::Error` enum (V0-060); layered `From` in user crates.
 4. `**core::clone` / `core::copyable` / `core::cmp` / `core::fmt**` — traits and minimal derive support.
 5. `**collections::vec**` — growable buffer over `alloc`.
 6. `**text::string**` — owned UTF-8 `String` over `alloc` + `Clone`.

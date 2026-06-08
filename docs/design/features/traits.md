@@ -77,8 +77,8 @@ pub TryInto :: <Target> trait {
 
 ### Error-type impl guidance
 
-- Leaf errors (`IoError`, `ParseError`, …) and the top-level `Error` enum live in `std::error` ([error-handling.md](error-handling.md#std-error-vocabulary--v0-060)).
-- Provide `From<LeafError> for Error` in the crate that defines both types (typically std root).
+- The base `Error` enum lives in `std::error`; leaf types are crate-local until std adds real variants ([error-handling.md](error-handling.md#std-error-vocabulary--v0-060)).
+- Provide `From<LeafError> for AppError` in the crate that defines both types.
 - Downstream crates must not add conflicting `From` impls for std types they do not own — orphan rule applies.
 
 ---

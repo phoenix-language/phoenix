@@ -41,7 +41,7 @@ impl Parser<'_> {
             if self.eat_kind(&TokenKind::Star) {
                 items.push(ImportItem::Glob);
             } else {
-                items.push(ImportItem::Ident(self.parse_ident()?));
+                items.push(ImportItem::Ident(self.parse_import_symbol()?));
             }
             if self.eat_kind(&TokenKind::RBrace) {
                 break;

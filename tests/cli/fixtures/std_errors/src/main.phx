@@ -1,14 +1,11 @@
-#import std::core::result::Err;
-#import std::core::result::Ok;
-#import std::core::result::Result;
+#import std::core::result::{Err, Ok, Result};
 #import std::error::Error;
-#import std::error::IoError;
 
 Config :: struct {
     value: s32,
 };
 
-read_bytes :: () => Result<Config, IoError> {
+read_bytes :: () => Result<Config, Error> {
     Ok(Config { value: 42 })
 };
 

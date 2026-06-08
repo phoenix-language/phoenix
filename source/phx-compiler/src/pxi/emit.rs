@@ -77,7 +77,7 @@ pub fn build_pxi_for_module(
     }
 
     // Trait/inherent impl methods are module-private but must appear in `.pxi` so
-    // dependents can link associated fns (e.g. `From::from` in `std::error::from_io`).
+    // dependents can link associated fns (e.g. user `From::from` impls).
     for (i, def) in defs.iter().enumerate() {
         if def.module != module_id || def.exported || def.kind != DefKind::Fn {
             continue;

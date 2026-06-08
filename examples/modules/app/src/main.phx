@@ -1,7 +1,6 @@
 // Demo: modules — multi-file bin + path library dependency (`math`).
 
-#import math::add;
-#import math::id;
+#import math::{add, id};
 
 main :: () => {
     const sum = add(10, 2);

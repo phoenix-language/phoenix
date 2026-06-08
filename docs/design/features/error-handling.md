@@ -48,17 +48,31 @@ Errors are values, not control-flow exceptions. Failure paths stay visible in ty
 
 **V0-042 (shipped):** identical `Result<T, E>` only. **V0-059 (shipped):** adds the second row (`From` conversion when `E_in ≠ E_out`).
 
-### Example
+### Example (same error type)
 
 ```
-read_bytes :: (path: [u8]) => Result<s32, IoError> { /* … */ };
+read_bytes :: (path: [u8]) => Result<s32, Error> { /* … */ };
 
 read_config :: (path: [u8]) => Result<Config, Error>
 {
-  const text = read_bytes(path)?;   // IoError → Error via From
+  const text = read_bytes(path)?;
   parse(text)?
 };
 ```
+
+### Example (layered types via `From`)
+
+```
+read_bytes :: (path: [u8]) => Result<s32, LeafError> { /* … */ };
+
+read_config :: (path: [u8]) => Result<Config, AppError>
+{
+  const text = read_bytes(path)?;   // LeafError → AppError via From
+  parse(text)?
+};
+```
+
+Leaf and app error types are **crate-defined**; std ships only the base `Error` enum (see [Std error vocabulary](#std-error-vocabulary--v0-060)).
 
 Inside `Option`-returning functions, `?` propagates `None` the same way.
 
@@ -87,7 +101,7 @@ Phoenix does **not** convert errors with `as` or implicit coercions. Conversions
 **Policy:**
 
 - **`as` never converts errors** — struct/enum punning is forbidden ([type-system.md](type-system.md#tier-c--forbidden-via-as)).
-- **`?` is the ergonomic boundary** — leaf functions return concrete errors (`IoError`); application layers return `Error`; `From` bridges at each `?` site.
+- **`?` is the ergonomic boundary** — leaf functions may return precise local error types; application layers return a wider enum; `From` bridges at each `?` site when `E_in ≠ E_out`.
 - **No compiler `Ty::Error` builtin** — all error types are ordinary std enums/structs, like `Option` and `Result`.
 - **Orphan rule applies** — `From` impls for std error types live in the crate that defines the source or target type ([traits.md](traits.md#trait-impl-scope-and-orphans)).
 
@@ -99,10 +113,10 @@ Enforcement is **documented only** for V0-058; the resolver does not yet reject 
 
 | Rule | Detail |
 |---|---|
-| Leaf error types | `IoError`, `ParseError`, `ThreadError`, and similar leaf enums/structs are defined in `std::error` (V0-060). |
-| Top-level `Error` | The closed sum `Error` enum lives in std; only std may define `From<LeafError> for Error` for std-owned leaf types. |
-| Downstream crates | Must not add `From` (or `TryFrom`) impls whose **source or target** is a std error type they do not own. Application crates convert at boundaries with explicit wrappers or local leaf types. |
-| User types | `From<UserLeaf> for UserError` in the same crate is fine; `From<IoError> for MyAppError` belongs in the crate that defines `MyAppError` only when `IoError` is also defined there (otherwise wait for std's `Error` + `?` bridging in V0-059). |
+| Std `Error` | Single expandable enum in `std::error` (V0-060); std adds variants when real subsystems ship — no placeholder leaf types. |
+| Leaf error types | Crate-local structs/enums for precise failure semantics; `From<Leaf> for AppError` in the owning crate. |
+| Downstream crates | Must not add `From` (or `TryFrom`) impls whose **source or target** is a std type they do not own (orphan rule). |
+| User types | `From<UserLeaf> for UserError` in the same crate is fine. |
 
 See also [traits.md](traits.md#trait-impl-scope-and-orphans).
 
@@ -110,11 +124,11 @@ See also [traits.md](traits.md#trait-impl-scope-and-orphans).
 
 ## Std error vocabulary — V0-060
 
-**Implemented** in `std/src/error/` (leaf modules, `Error` sum, `From` bridges in `from_*.phx`). Acceptance fixture: `tests/cli/fixtures/std_errors/`.
+**Implemented** in `std/src/error/mod.phx`. Acceptance fixtures: `tests/cli/fixtures/std_errors/` (`Result` + `?`), `std_try_from/` (layered `From`).
 
-Std owns the shared failure vocabulary. The compiler only recognizes std `Result`/`Option` for `?` sugar — error enums are not special-cased (same policy as [Phased: Option and Result](type-system.md#phased-option-and-result-language--std)).
+Std owns one **base** `Error` enum — expandable as I/O, parsing, and threading land. The compiler only recognizes std `Result`/`Option` for `?` sugar — error enums are not special-cased (same policy as [Phased: Option and Result](type-system.md#phased-option-and-result-language--std)).
 
-### Module layout (target)
+### Module layout
 
 ```
 std/
@@ -123,28 +137,18 @@ std/
     result.phx
     option.phx
   error/
-    mod.phx
-    error.phx       # leaf errors (IoError, …), top-level Error sum; ErrorKind TBD (same file when variant scopes land)
-    from_*.phx      # From<Leaf> for Error (one bridge per file)
+    mod.phx         # pub Error enum
 ```
 
-### Pattern A — closed sum type (Std v0 default)
-
-Use until opaque newtypes ship ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)):
+### Std v0 default — minimal expandable enum
 
 ```phoenix
 pub Error :: enum {
-  Io(IoError),
-  Parse(ParseError),
-  Thread(ThreadError),
-  General(GeneralError),
+  Unknown(s32),
 }
-
-// std provides `From<IoError> for Error` (and likewise for each leaf type)
-// so `read_bytes(path)?` works inside `Result<_, Error>`.
 ```
 
-Each leaf error implements `From<LeafError> for Error`. Application code returns `Result<T, Error>`; subsystem code returns `Result<T, IoError>` (etc.) and relies on `?` + `From`.
+Add variants (`Io(…)`, `Parse(…)`, …) when those subsystems exist. Crate-local leaf types and `From` bridges remain the pattern for application layering until std owns those domains.
 
 ### Pattern B — opaque newtypes (post–V0-057)
 
@@ -160,8 +164,8 @@ Language v0 uses concrete errors + `Debug` / `Display` traits only. Rust-style `
 
 | Layer | Return type | Role |
 |---|---|---|
-| Leaf (syscall wrapper, parser) | `Result<T, IoError>` / `ParseError` | Precise, local failure semantics |
-| Module / service | `Result<T, Error>` | Composes leaf errors via `From` |
+| Leaf (syscall wrapper, parser) | `Result<T, LeafError>` (crate-local) | Precise, local failure semantics |
+| Module / service | `Result<T, Error>` or app enum | Composes leaf errors via `From` when types differ |
 | `main` | `()` + `match` on `Result` | No `?` in zero-`Result` entry |
 
 Cross-cutting concerns (schedulable I/O, actor mailboxes) will surface failure in types at call sites when those runtimes land — same `Result` model, not exceptions. See [runtime-transparency.md](runtime-transparency.md).

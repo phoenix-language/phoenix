@@ -1,7 +1,5 @@
 #import std::core::convert::From;
-#import std::core::result::Result;
-#import std::core::result::Ok;
-#import std::core::result::Err;
+#import std::core::result::{Result, Ok, Err};
 
 Config :: struct {
     value: s32,

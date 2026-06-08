@@ -1,9 +1,5 @@
-#import std::core::option::Option;
-#import std::core::option::Some;
-#import std::core::option::None;
-#import std::core::result::Result;
-#import std::core::result::Ok;
-#import std::core::result::Err;
+#import std::core::option::{Option, Some, None};
+#import std::core::result::{Result, Ok, Err};
 
 read_bytes :: (path: [u8]) => Result<s32, s32> {
     const _ignore = path;

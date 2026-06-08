@@ -1,10 +1,6 @@
 #import std::version;
-#import std::core::option::Option;
-#import std::core::option::Some;
-#import std::core::option::None;
-#import std::core::result::Result;
-#import std::core::result::Ok;
-#import std::core::result::Err;
+#import std::core::option::{Option, Some, None};
+#import std::core::result::{Result, Ok, Err};
 
 wrap :: (n: s32) => Option<s32> { Some :: <s32> (n) };
 

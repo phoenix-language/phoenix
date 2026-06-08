@@ -1,5 +1,4 @@
-#import math::add;
-#import math::id;
+#import math::{add, id};
 
 main :: () => {
     const a = add(1, 2);

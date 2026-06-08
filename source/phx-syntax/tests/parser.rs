@@ -133,6 +133,11 @@ fn program_import_brace_multiple() {
 }
 
 #[test]
+fn program_import_brace_type_names() {
+    assert_ok("#import std::error::{ Error, IoError }; main :: () => { };");
+}
+
+#[test]
 fn program_import_brace_glob() {
     assert_ok("#import m::{ * }; main :: () => { };");
 }

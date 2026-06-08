@@ -347,6 +347,18 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Parses one symbol in a braced `#import` list (`foo` or `Error`).
+    pub(crate) fn parse_import_symbol(&mut self) -> Result<crate::ast::Ident, ParseError> {
+        match self.peek_kind() {
+            TokenKind::Ident(name) | TokenKind::TypeIdent(name) => {
+                let span = self.current_span();
+                self.bump();
+                self.intern_ident(name, span)
+            }
+            _ => Err(self.error_unexpected(ExpectedToken::Ident)),
+        }
+    }
+
     /// Parses a type alias name (`PascalCase` or lowercase C-style `c_int`).
     pub(crate) fn parse_type_alias_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
         match self.peek_kind() {

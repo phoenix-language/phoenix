@@ -1,5 +1,4 @@
-#import std::core::result::Result;
-#import std::core::result::Ok;
+#import std::core::result::{Result, Ok};
 
 read_a :: () => Result<s32, s32> {
     Ok(1)
