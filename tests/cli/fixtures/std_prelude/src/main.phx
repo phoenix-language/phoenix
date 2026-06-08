@@ -1,0 +1,11 @@
+wrap :: (n: s32) => Option<s32> {
+    Some :: <s32> (n)
+};
+
+main :: () => {
+    const v: Option<s32> = wrap(7);
+    const _ = match v {
+        None => 0;
+        Some(n) => n;
+    };
+};

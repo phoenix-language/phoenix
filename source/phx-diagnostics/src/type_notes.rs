@@ -194,6 +194,11 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "implement `{trait_name}` for `{type_name}` with `Type :: impl :: {trait_name} {{ ... }}`"
             ));
         }
+        TypeCheckError::UnknownTraitBound { trait_name, .. } => {
+            out.helps.push(format!(
+                "import the trait definition, e.g. `#import std::core::clone::{trait_name};`"
+            ));
+        }
         TypeCheckError::InferenceFailed { .. } => {
             out.helps.push(
                 "provide explicit type arguments at the call site, e.g. `name :: <Type> (...)`"

@@ -2,7 +2,10 @@
 
 use phx_syntax::token::Keyword;
 
+use super::layout::ProgramLayout;
+use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
+use crate::resolver::DefId;
 
 /// Returns the interned unit type.
 #[must_use]
@@ -48,30 +51,64 @@ pub fn str_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Str)
 }
 
-/// Returns whether `id` is Copyable in MVP (primitives, unit, tuples of Copyable, etc.).
+/// Returns whether `id` is Copyable (primitives, unit, str, tuples/arrays of Copyable, eligible structs).
 #[must_use]
-pub fn is_copyable(types: &TypeInterner, id: TypeId) -> bool {
-    is_copyable_inner(types, id, &mut Vec::new())
+pub fn is_copyable(
+    types: &TypeInterner,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+    id: TypeId,
+) -> bool {
+    is_copyable_inner(types, layout, std_traits, id, &mut Vec::new())
 }
 
-fn is_copyable_inner(types: &TypeInterner, id: TypeId, seen: &mut Vec<TypeId>) -> bool {
+fn is_copyable_inner(
+    types: &TypeInterner,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+    id: TypeId,
+    seen: &mut Vec<TypeId>,
+) -> bool {
     if seen.contains(&id) {
         return false;
     }
     seen.push(id);
     let ok = match types.get(id) {
         Ty::Primitive(_) | Ty::Unit => true,
-        Ty::Ref { .. }
-        | Ty::Ptr { .. }
-        | Ty::Fn { .. }
-        | Ty::Var(_)
-        | Ty::Named { .. }
-        | Ty::Error => false,
-        Ty::Slice(inner) => is_copyable_inner(types, *inner, seen),
+        Ty::Ref { .. } | Ty::Ptr { .. } | Ty::Fn { .. } | Ty::Var(_) | Ty::Error => false,
         Ty::Str => true,
-        Ty::Tuple(elems) => elems.iter().all(|e| is_copyable_inner(types, *e, seen)),
-        Ty::Array { elem, .. } => is_copyable_inner(types, *elem, seen),
+        Ty::Slice(inner) => is_copyable_inner(types, layout, std_traits, *inner, seen),
+        Ty::Tuple(elems) => elems
+            .iter()
+            .all(|e| is_copyable_inner(types, layout, std_traits, *e, seen)),
+        Ty::Array { elem, .. } => is_copyable_inner(types, layout, std_traits, *elem, seen),
+        Ty::Named { def, .. } => struct_is_copyable(types, layout, std_traits, *def),
     };
     seen.pop();
     ok
+}
+
+fn struct_is_copyable(
+    types: &TypeInterner,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+    struct_def: DefId,
+) -> bool {
+    let Some(sl) = layout.structs.get(&struct_def) else {
+        return false;
+    };
+    if !sl
+        .fields
+        .iter()
+        .all(|(_, fty)| is_copyable(types, layout, std_traits, *fty))
+    {
+        return false;
+    }
+    if let Some(copyable_trait) = std_traits.copyable_trait {
+        if layout.trait_impls.contains(&(struct_def, copyable_trait)) {
+            return true;
+        }
+    }
+    // Compiler-eligible: all fields Copyable (implicit derived Copyable before explicit impl).
+    true
 }

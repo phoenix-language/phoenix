@@ -54,7 +54,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | 8. `return;` only for `()` | **pass** | typeck tests |
 | 9. Operators on primitives / `bool` only | **pass** | User types rejected for ops |
 | 10. Generic inference local only | **partial** | Named types + args scaffold |
-| Option / Result via std `::core` (V0-041) | **pass** | `std_smoke`, generic enum fixtures; bare names still `*_unresolved_until_std` |
+| Option / Result via std `::core` (V0-041) | **pass** | `std_smoke`, `std_prelude`; bare names without prelude still `*_unresolved_until_std` |
 | Enum `match` exhaustiveness | **pass** | `NonExhaustiveMatch`; struct variants covered |
 | Type aliases | **pass** | `type_alias_*` tests in `typeck.rs` |
 
@@ -102,7 +102,8 @@ A credible MVP demo `.phx` should be able to:
 - [x] Run via `phx run file.phx` after bytecode verify (no panic on valid programs)
 - [x] *(V0-041)* `Option` / `Result` — generic enums in `std::core`, not compiler builtins
 - [x] *(V0-042)* `Some`/`None`/`Ok`/`Err` and `?` with explicit `#import std::core::…`
-- [ ] *(V0-044+)* `?` and ctor shorthand without explicit `#import`
+- [x] *(V0-044)* `?` and ctor shorthand without explicit `#import` when `prelude = true` (default)
+- [x] *(V0-043)* Core std traits (`Copyable`, `Clone`, `PartialEq`, `Eq`, `Debug`) with cross-module bounds
 
 **Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **`run.sh`:** 31 programs + `modules/main.phx`. **Acceptance project:** `mvp_acceptance/` via `build.sh`.
 
@@ -194,8 +195,10 @@ A credible MVP demo `.phx` should be able to:
 | `const` / `var` inference & assign         | done     | `typeck/check.rs`                 |                                                                               | assign tests                                           |
 | Index `[T; N]` / slice                     | done     | `typeck/check.rs` + VM `Index`    | Array and slice index at runtime                                              | `array_index.phx`, `slice_from_array.phx`              |
 | Struct literals + fields                   | done     | `typeck/check.rs`, `layout.rs`    | Missing/unknown field errors; layout tables                                   | Struct lit + field read in `struct_point.phx`          |
-| Std ctors `Some`/`None`/`Ok`/`Err`         | done     | `std::core::*`, `typeck/check.rs` | Via `#import std::core::…`; ctor inference without turbofish                    | `std_smoke`, `std_try`                                 |
-| `Option`/`Result` types                    | done     | `std::core::*`                    | Via `#import`; no `Ty::Option` / `Ty::Result`                                 | `std_smoke`, `std_try`                                 |
+| Std ctors `Some`/`None`/`Ok`/`Err`         | done     | `std::core::*`, `typeck/check.rs` | Via `#import` or prelude; ctor inference without turbofish                    | `std_smoke`, `std_try`, `std_prelude`                  |
+| `Option`/`Result` types                    | done     | `std::core::*`                    | Via `#import` or prelude; no `Ty::Option` / `Ty::Result`                      | `std_smoke`, `std_try`, `std_prelude`                  |
+| Std core traits (V0-043)                   | done     | `std::core::*`, `typeck/bounds.rs`, `std_trait_kernel.rs` | `Copyable`, `Clone`, `PartialEq`, `Eq`, `Debug`; primitive seed impls | `std_traits`, `build_std_traits.rs` |
+| Prelude injection (V0-044)                 | done     | `modules/prelude.rs`, `project/config.rs` | `prelude = true` default when std bundled; opt-out `prelude = false` | `std_prelude`, `std_prelude_off` |
 | `?`                                        | done     | `typeck/check.rs`, `lower/expr.rs` | Postfix `?` in matching `Result`/`Option` fn return; `MatchTag` lowering   | `question_mark_*`, `std_try`, `build_std_try`          |
 | `match` expr arm unification               | done     | `typeck/check.rs`                 |                                                                               | Arm type unify                                         |
 | `match` / `given` pattern checking         | done     | `typeck/check.rs`                 | Struct/tuple/unit enum patterns; enum exhaustiveness                      | `enum_match.phx`, `enum_match_non_exhaustive` test     |
@@ -206,7 +209,7 @@ A credible MVP demo `.phx` should be able to:
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
 | Raw pointers `*T`                          | partial  | `typeck/ops.rs`, VM `PtrLoad`/`PtrStore` | Deref on primitives; full pointer surface TBD                          | `deref_ptr.phx`                                        |
 | Generics on types                          | pass     | `typeck/mono.rs`, `typeck/check.rs` | V0-020/V0-021: explicit + inferred instantiation; dual-site mono in IR/bytecode; V0-022 generic enum match; V0-023 assoc types + `Self::Item` | `generic_fn.phx`, `generic_enum_infer.phx`, `generic_enum_match.phx`, `typeck.rs` dual-inst tests |
-| Copyable inference                         | partial  | `typeck/builtins.rs`              | Primitives, tuples, arrays of Copyable                                        | User struct Copyable only when all fields Copyable     |
+| Copyable inference                         | done     | `typeck/builtins.rs`, `bounds.rs` | Primitives, tuples, arrays; eligible structs; std `Copyable` bound | `std_traits`, typeck bound tests |
 | Use-after-move (MVP ownership)             | done     | `typeck/ownership.rs`, `check.rs` | Non-Copyable moves                                                            | `use_after_move_error`                                 |
 | Per-function layout / locals               | done     | `typeck/bindings.rs`              | For lowering                                                                  | `main_layout_slot_count`                               |
 
@@ -339,7 +342,7 @@ A credible MVP demo `.phx` should be able to:
 | -------------------------------------- | ------- | ----------------- | -------------------------- | ---------------------------- |
 | Std `Option`/`Result` as generic enums | done    | `std::core::*`    | Not compiler builtins      | `std_smoke`, `just build-std` |
 | Surface syntax (`Option<T>`, ctors)    | done    | `phx-syntax`      | Same as user `TypeIdent` / enum patterns — no reserved keywords | Parser tests                 |
-| Unknown until std prelude              | done    | `resolver/walk.rs`| `UnresolvedType` for undefined names | `*_unresolved_until_std` tests |
+| Unknown until std prelude              | done    | `resolver/walk.rs`| Without prelude/import: `UnresolvedType` | `std_prelude_off`, `*_unresolved_until_std` tests |
 | `?` lowering (identical `Result`)      | done    | typeck + lower    | Strict same `T` and `E`    | `tests/cli/fixtures/std_try` |
 | `?` + `From` error conversion          | missing | typeck + lower    | [V0-059](design/language-v0.md#v0-059--with-from-error-conversion) | `IoError` → `Error` at `?`   |
 | `From` / `Into` / `TryFrom` in std     | missing | `std::core::convert` | [V0-058](design/language-v0.md#v0-058--conversion-traits-from--into-in-std) | Generic `T: From<U>` |
@@ -543,7 +546,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **31
 1. ~~**Module graph (M1):**~~ load multiple files, `::` paths, `pub` visibility ([modules.md](design/features/modules.md)).
 2. ~~**M2 build pipeline:**~~ `phoenix.toml`, `build/`, `.pxi`, linker, incremental manifest.
 3. ~~**Std package layout (V0-040):**~~ repo-root `std/` lib package, path-dep workflow — see `std/README.md`.
-4. **Std + prelude (minimal):** `Option`/`Result` as generic enums in library (V0-041+); then `?` — not compiler builtins.
+4. ~~**Std + prelude (minimal):**~~ Option/Result in std (V0-041+); core traits (V0-043); prelude default ON (V0-044).
 
 ### Phase 6 — Memory model & lifetimes (after modules; before scheduler/std I/O)
 
@@ -566,7 +569,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **31
 Product order agreed for post-demo work (not all MVP-blocking):
 
 1. **Single-file polish** — parser/diagnostic gaps above.
-2. **`#import` + `pub`** — real modules; then minimal std prelude.
+2. ~~**`#import` + `pub`**~~ — real modules; minimal std prelude (V0-044).
 3. **Memory model** — scoped drop, heap ownership surface, borrow rules documented and enforced in typeck + codegen (no GC).
 4. **Std library breadth** — string struct, collections, I/O (schedulable-I/O types when runtime exists).
 5. **Runtime** — scheduler, actors, supervision ([runtime-transparency.md](design/features/runtime-transparency.md), [concurrency.md](design/features/concurrency.md)).

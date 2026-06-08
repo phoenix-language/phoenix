@@ -101,6 +101,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             &typed.resolved,
             &typed.layout,
             &typed.types,
+            &typed.std_trait_kernel,
             Some(&combined_generics),
             &param_defs,
             &inst.args,
@@ -128,6 +129,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             checker.set_expr_id_base(expr_base);
             checker.seed_layout_tables(&typed.layout);
             checker.seed_std_kernel(&typed.std_kernel);
+            checker.seed_std_trait_kernel(&typed.std_trait_kernel);
             checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
             let (
                 checker_types,
@@ -209,6 +211,7 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
             &typed.resolved,
             &typed.layout,
             &typed.types,
+            &typed.std_trait_kernel,
             generic_params.as_deref(),
             &param_defs,
             &inst.args,

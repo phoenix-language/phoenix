@@ -44,6 +44,8 @@ pub struct ProjectConfig {
     pub dependencies: HashMap<String, PathDependency>,
     /// When true (default), link the compiler-bundled `std` package unless declared in dependencies.
     pub bundle_std: bool,
+    /// When true (default), inject std prelude bindings when std is linked.
+    pub prelude: bool,
 }
 
 impl ProjectConfig {
@@ -220,6 +222,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut dep_key: Option<String> = None;
     let mut dependencies: HashMap<String, PathDependency> = HashMap::new();
     let mut bundle_std = true;
+    let mut prelude = true;
 
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -254,6 +257,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
                 }
                 "module_src" => module_src = PathBuf::from(value),
                 "bundle_std" => bundle_std = parse_bool(value)?,
+                "prelude" => prelude = parse_bool(value)?,
                 _ => {}
             },
             "build" if key == "dir" => build_dir = PathBuf::from(value),
@@ -304,6 +308,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         build_dir,
         dependencies,
         bundle_std,
+        prelude,
     })
 }
 

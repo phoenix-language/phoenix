@@ -15,8 +15,8 @@ use crate::lower::ctx::{
 };
 use crate::resolver::DefId;
 use crate::typeck::{
-    BindingKind, ExprId, LocalSlot, TrySiteMeta, Ty, TypeId, VariantKind, primitive_kind_for_type,
-    primitive_load_signed,
+    BindingKind, ExprId, LocalSlot, PrimitiveMethodSite, TrySiteMeta, Ty, TypeId, VariantKind,
+    primitive_kind_for_type, primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -641,6 +641,11 @@ fn lower_postfix_inner(
                 }
             }
             PostfixOp::Method { name, args, .. } => {
+                if let Some(site) = ctx.typed.primitive_method_sites.get(&postfix_expr_id) {
+                    lower_primitive_method(ctx, *site, receiver_ty, args, result_ty);
+                    receiver_ty = result_ty;
+                    continue;
+                }
                 let callee =
                     lookup_resolution(&ctx.typed.resolved, ctx.module, name.id).or_else(|| {
                         let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
@@ -777,6 +782,32 @@ fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
     });
 
     ctx.set_current(cont_block);
+}
+
+fn lower_primitive_method(
+    ctx: &mut LowerCtx<'_>,
+    site: PrimitiveMethodSite,
+    receiver_ty: TypeId,
+    args: &[ExprNode],
+    result_ty: TypeId,
+) {
+    let prim_kind = prim_kind_byte(ctx.typed, receiver_ty);
+    match site {
+        PrimitiveMethodSite::Eq => {
+            for arg in args {
+                lower_expr(ctx, arg);
+            }
+            ctx.emit(IrInst::BinOp {
+                op: IrBinOp::Eq,
+                result: result_ty,
+                prim_kind,
+            });
+        }
+        PrimitiveMethodSite::Clone => {
+            // Receiver value already on stack; clone is identity for Copyable primitives.
+            let _ = result_ty;
+        }
+    }
 }
 
 fn find_trait_method(ctx: &LowerCtx<'_>, type_def: DefId, method: Symbol) -> Option<DefId> {

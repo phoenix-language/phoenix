@@ -1,0 +1,10 @@
+[project]
+name = "std_prelude_off"
+version = "0.1.0"
+description = "V0-044 prelude disabled — requires explicit import"
+type = "bin"
+module_src = "src"
+prelude = false
+
+[build]
+dir = "build"

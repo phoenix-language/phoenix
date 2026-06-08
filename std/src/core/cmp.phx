@@ -1,0 +1,6 @@
+pub PartialEq :: trait {
+    eq :: (self: &Self, other: &Self) => bool;
+};
+
+pub Eq :: trait {
+};

@@ -6,6 +6,7 @@ use phx_syntax::ast::types::GenericParam;
 
 use super::builtins::is_copyable;
 use super::layout::ProgramLayout;
+use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
@@ -18,6 +19,7 @@ pub fn validate_instantiation_bounds(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,
     types: &TypeInterner,
+    std_traits: &StdTraitKernel,
     generics: Option<&[GenericParam]>,
     param_defs: &[DefId],
     concrete_args: &[TypeId],
@@ -38,8 +40,9 @@ pub fn validate_instantiation_bounds(
             continue;
         };
         for bound in bounds {
-            if is_copyable_trait_name(resolved, bound.symbol) {
-                if !is_copyable(types, concrete) {
+            let bound_name = resolved.interner.resolve(bound.symbol);
+            if is_copyable_bound_name(bound_name, std_traits, bound.symbol, resolved) {
+                if !type_satisfies_copyable(types, layout, std_traits, concrete) {
                     let type_name = format_type_name(resolved, types, concrete);
                     bag.push(
                         module,
@@ -53,10 +56,18 @@ pub fn validate_instantiation_bounds(
                 }
                 continue;
             }
-            let Some(trait_def) = resolve_trait_def(resolved, module, bound.symbol) else {
+            let Some(trait_def) = resolve_trait_def(resolved, std_traits, bound.symbol) else {
+                bag.push(
+                    module,
+                    TypeCheckError::UnknownTraitBound {
+                        trait_name: bound_name.to_owned(),
+                        span,
+                    },
+                );
+                ok = false;
                 continue;
             };
-            if !type_satisfies_trait(resolved, layout, types, concrete, trait_def, bound.symbol) {
+            if !type_satisfies_trait(layout, types, std_traits, concrete, trait_def) {
                 let type_name = format_type_name(resolved, types, concrete);
                 let trait_name = resolved.interner.resolve(bound.symbol).to_owned();
                 bag.push(
@@ -75,13 +86,34 @@ pub fn validate_instantiation_bounds(
     ok
 }
 
+fn is_copyable_bound_name(
+    name: &str,
+    std_traits: &StdTraitKernel,
+    symbol: phx_syntax::Symbol,
+    resolved: &ResolvedProgram,
+) -> bool {
+    if name == "Copyable" {
+        return true;
+    }
+    if let Some(trait_def) = std_traits.trait_def_for_name(&resolved.interner, "Copyable") {
+        if resolve_trait_def(resolved, std_traits, symbol) == Some(trait_def) {
+            return true;
+        }
+    }
+    false
+}
+
 fn resolve_trait_def(
     resolved: &ResolvedProgram,
-    module: u32,
+    std_traits: &StdTraitKernel,
     trait_symbol: phx_syntax::Symbol,
 ) -> Option<DefId> {
+    let name = resolved.interner.resolve(trait_symbol);
+    if let Some(def) = std_traits.trait_def_for_name(&resolved.interner, name) {
+        return Some(def);
+    }
     resolved.defs.iter().enumerate().find_map(|(i, d)| {
-        if d.kind == DefKind::Trait && d.name == trait_symbol && d.module == module {
+        if d.kind == DefKind::Trait && d.name == trait_symbol {
             Some(DefId::from_raw(u32::try_from(i).ok()?))
         } else {
             None
@@ -89,38 +121,48 @@ fn resolve_trait_def(
     })
 }
 
+fn type_satisfies_copyable(
+    types: &TypeInterner,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+    concrete: TypeId,
+) -> bool {
+    is_copyable(types, layout, std_traits, concrete)
+}
+
 fn type_satisfies_trait(
-    resolved: &ResolvedProgram,
     layout: &ProgramLayout,
     types: &TypeInterner,
+    std_traits: &StdTraitKernel,
     concrete: TypeId,
     trait_def: DefId,
-    trait_symbol: phx_syntax::Symbol,
 ) -> bool {
-    if is_copyable_trait_name(resolved, trait_symbol) {
-        return is_copyable(types, concrete);
+    if std_traits.is_copyable_trait(trait_def) {
+        return type_satisfies_copyable(types, layout, std_traits, concrete);
     }
-    let Some(concrete_def) = type_def_for_trait_check(types, concrete) else {
-        return false;
-    };
-    layout.trait_impls.contains(&(concrete_def, trait_def))
-        || layout
-            .trait_methods
-            .keys()
-            .any(|(type_def, bound_trait, _)| {
-                *type_def == concrete_def && *bound_trait == trait_def
-            })
-}
-
-fn is_copyable_trait_name(resolved: &ResolvedProgram, trait_symbol: phx_syntax::Symbol) -> bool {
-    resolved.interner.resolve(trait_symbol) == "Copyable"
-}
-
-fn type_def_for_trait_check(types: &TypeInterner, id: TypeId) -> Option<DefId> {
-    match types.get(id) {
-        Ty::Named { def, .. } => Some(*def),
-        Ty::Primitive(_) => None,
-        _ => None,
+    match types.get(concrete) {
+        Ty::Primitive(kw) => std_traits.primitive_satisfies(*kw, trait_def),
+        Ty::Unit => {
+            std_traits.copyable_trait == Some(trait_def)
+                || std_traits.clone_trait == Some(trait_def)
+                || std_traits.partial_eq_trait == Some(trait_def)
+                || std_traits.eq_trait == Some(trait_def)
+                || std_traits.debug_trait == Some(trait_def)
+        }
+        Ty::Named { def, .. } => {
+            layout.trait_impls.contains(&(*def, trait_def))
+                || layout
+                    .trait_methods
+                    .keys()
+                    .any(|(type_def, bound_trait, _)| {
+                        *type_def == *def && *bound_trait == trait_def
+                    })
+        }
+        Ty::Tuple(elems) => elems
+            .iter()
+            .all(|e| type_satisfies_trait(layout, types, std_traits, *e, trait_def)),
+        Ty::Array { elem, .. } => type_satisfies_trait(layout, types, std_traits, *elem, trait_def),
+        _ => false,
     }
 }
 

@@ -1,0 +1,3 @@
+main :: () => {
+    const _unused: Option<s32> = Option :: <s32> { };
+};

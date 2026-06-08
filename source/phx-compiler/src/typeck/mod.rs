@@ -23,6 +23,7 @@ mod ops;
 mod ownership;
 mod primitive;
 mod std_kernel;
+mod std_trait_kernel;
 mod subst;
 mod types;
 mod unify;
@@ -40,6 +41,7 @@ pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
 pub use std_kernel::{StdKernel, TrySiteMeta};
+pub use std_trait_kernel::StdTraitKernel;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::{DefId, ResolvedProgram};
@@ -70,6 +72,19 @@ pub struct TypedProgram {
     pub specialized_aliases: std::collections::HashMap<layout::TypeMonoKey, TypeId>,
     /// Std `Option` / `Result` kernel for `?` sugar (empty when std is not linked).
     pub std_kernel: StdKernel,
+    /// Std core trait definition ids (empty when std is not linked).
+    pub std_trait_kernel: StdTraitKernel,
     /// `expr?` lowering metadata keyed by postfix expression id.
     pub try_sites: std::collections::HashMap<ExprId, TrySiteMeta>,
+    /// Compiler builtin method sites on primitives (`eq`, `clone`).
+    pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
+}
+
+/// Lowering hint for trait method calls on primitive receivers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrimitiveMethodSite {
+    /// `PartialEq::eq` — emit `BinOp::Eq`.
+    Eq,
+    /// `Clone::clone` — identity (value already on stack).
+    Clone,
 }

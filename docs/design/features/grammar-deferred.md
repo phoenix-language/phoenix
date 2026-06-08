@@ -17,8 +17,8 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `lambda_expr` | `(params) => expr \| block` | Parse | Closure typing, capture, lowering TBD |
 | Trait default bodies | `Name :: trait { fn :: () => T { … }; }` | Parse | Inherit defaults in typeck/codegen |
 | `break expr` | `break` , [ expr ] | Parse | Loop-value / labeled break semantics TBD |
-| `Option` / `Result` types | Type expressions | **Implemented** with `#import std::core::…` ([V0-041](../language-v0.md#v0-041--core-std-types-as-ordinary-generic-enums)) | Prelude without import (V0-044) |
-| `Some` / `None` / `Ok` / `Err` | Expr / patterns | **Implemented** with `#import std::core::…` ([V0-042](../language-v0.md#v0-042--std-constructors-and--sugar)) | Prelude without import (V0-044) |
+| `Option` / `Result` types | Type expressions | **Implemented** with `#import std::core::…` or prelude ([V0-041](../language-v0.md#v0-041--core-std-types-as-ordinary-generic-enums), [V0-044](../language-v0.md#v0-044--prelude-minimal)) | — |
+| `Some` / `None` / `Ok` / `Err` | Expr / patterns | **Implemented** with `#import std::core::…` or prelude ([V0-042](../language-v0.md#v0-042--std-constructors-and--sugar), [V0-044](../language-v0.md#v0-044--prelude-minimal)) | — |
 | `expr?` | Postfix `?` | **Implemented** — identical `Result`/`Option` ([V0-042](../language-v0.md#v0-042--std-constructors-and--sugar)) | `From` error conversion ([V0-059](../language-v0.md#v0-059--with-from-error-conversion)) |
 | `From` / `Into` / `TryFrom` trait calls | Method / associated fn syntax | Not implemented | [V0-058](../language-v0.md#v0-058--conversion-traits-from--into-in-std) |
 | Block-scoped `#import` | `import_directive` in `block_item` | **Implemented** — scoped name intro per [modules.md](modules.md#scoped-imports-mvp) | — |

@@ -102,7 +102,9 @@ std = { path = "../std" }   # key MUST equal std's project.name
 #import std::core::result::Result;
 ```
 
-**Bundled std (V0-041):** `bundle_std = true` by default in `phoenix.toml` injects the repo `std` path dependency when `[dependencies] std` is absent. Set `bundle_std = false` for minimal projects or tests that must not link std. Override discovery with `PHOENIX_STD`. Prelude auto-import (V0-044) is separate from bundling.
+**Bundled std (V0-041):** `bundle_std = true` by default in `phoenix.toml` injects the repo `std` path dependency when `[dependencies] std` is absent. Set `bundle_std = false` for minimal projects or tests that must not link std. Override discovery with `PHOENIX_STD`.
+
+**Prelude (V0-044):** When std is bundled, `prelude = true` by default injects `std::prelude` exports (`Option`, `Result`, core traits) into workspace module scope. Set `prelude = false` to require explicit `#import`. Prelude is independent of bundling but only applies when std is linked. Smoke: `tests/cli/fixtures/std_prelude/` (on), `std_prelude_off/` (off).
 
 **`std::core` convention:** language-foundation types and traits live under `std::core::*` (e.g. `std::core::option::Option`), not at the `std` package root. The root module (`std`) stays thin (`version` only for now).
 

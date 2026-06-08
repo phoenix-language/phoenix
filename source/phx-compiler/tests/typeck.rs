@@ -157,7 +157,7 @@ fn question_mark_ok_with_std_imports() {
 
 #[test]
 fn use_after_move_error() {
-    let source = "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; var q: Point = p; const _ = p.x; };";
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var q: Point = p; const _ = p.r; };";
     let bag = typeck_err(source);
     let err = bag
         .errors()
@@ -180,7 +180,7 @@ fn str_assign_without_move() {
 
 #[test]
 fn use_after_move_fn_arg() {
-    let source = "Point :: struct { x: s32, y: s32, }; take :: (p: Point) => () { const _ = (); }; main :: () => { var p: Point = Point { x: 1, y: 2 }; take(p); const _ = p.x; };";
+    let source = "Point :: struct { r: &s32 }; take :: (p: Point) => () { const _ = (); }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; take(p); const _ = p.r; };";
     let bag = typeck_err(source);
     let err = bag
         .errors()
@@ -382,7 +382,7 @@ fn assign_type_mismatch() {
 #[test]
 fn assign_to_moved() {
     let bag = typeck_err(
-        "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; var q: Point = p; p = Point { x: 0, y: 0 }; };",
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var q: Point = p; p = Point { r: &n }; };",
     );
     assert!(
         bag.errors()
@@ -394,7 +394,7 @@ fn assign_to_moved() {
 #[test]
 fn assign_moves_non_copyable() {
     let bag = typeck_err(
-        "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; var q: Point = Point { x: 0, y: 0 }; var r: Point = p; const _ = p.x; };",
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var q: Point = Point { r: &n }; var r: Point = p; const _ = p.r; };",
     );
     assert!(
         bag.errors()
@@ -658,7 +658,7 @@ fn deferred_typeck_hash_derive() {
 #[test]
 fn shadowed_var_move_does_not_move_outer() {
     compile_ok(
-        "Point :: struct { x: s32, y: s32, }; main :: () => { var p: Point = Point { x: 1, y: 2 }; { var p: Point = Point { x: 3, y: 4 }; var q: Point = p; }; const _ = p.x; };",
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; { var m: s32 = 2; var p: Point = Point { r: &m }; var q: Point = p; }; const _ = p.r; };",
     );
 }
 
@@ -853,15 +853,70 @@ fn generic_fn_copyable_bound_compile_ok() {
 }
 
 #[test]
-fn generic_fn_copyable_bound_fails_for_non_copyable_struct() {
-    let bag = typeck_err(
+fn generic_fn_copyable_bound_ok_for_all_copyable_struct() {
+    compile_ok(
         "Pair :: struct { a: s32, b: s32 }; max :: <t: Copyable> (a: t, b: t) => t { a }; main :: () => { const _ = max(Pair { a: 1, b: 2 }, Pair { a: 3, b: 4 }); };",
+    );
+}
+
+#[test]
+fn generic_fn_clone_bound_fails_without_impl() {
+    let bag = typeck_err(
+        "Clone :: trait { clone :: (self: Pair) => Pair; }; Pair :: struct { a: s32, b: s32 }; dup :: <t: Clone> (x: t) => t { x.clone() }; main :: () => { const _ = dup(Pair { a: 1, b: 2 }); };",
     );
     assert!(
         bag.errors()
             .iter()
             .any(|e| matches!(&e.error, TypeCheckError::TraitNotSatisfied { .. }))
     );
+}
+
+#[test]
+fn unknown_trait_bound_errors() {
+    let bag = typeck_err(
+        "Pair :: struct { a: s32, b: s32 }; max :: <t: Pair> (a: t) => t { a }; main :: () => { const _ = max(1); };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::UnknownTraitBound { .. }))
+    );
+}
+
+#[test]
+fn float_does_not_satisfy_eq_trait_bound() {
+    let bag = typeck_err(
+        "Eq :: trait { }; max :: <t: Eq> (a: t) => t { a }; main :: () => { const _: f32 = max(1.0); };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::TraitNotSatisfied { .. }))
+    );
+}
+
+#[test]
+fn std_traits_fixture_typechecks() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_traits/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = check_file(&path).unwrap_or_else(|e| panic!("std_traits typeck: {e}"));
+    assert!(
+        !unit.typed.primitive_method_sites.is_empty(),
+        "expected primitive eq/clone method sites in std_traits"
+    );
+}
+
+#[test]
+fn std_prelude_fixture_typechecks_without_imports() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_prelude/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    check_file(&path).unwrap_or_else(|e| panic!("std_prelude typeck: {e}"));
 }
 
 #[test]
@@ -1032,7 +1087,7 @@ fn generic_dual_enum_instantiation_two_layouts() {
 
 #[test]
 fn generic_copyable_bound_fails_on_second_instantiation_site() {
-    let source = "Pair :: struct { a: s32, b: s32, }; max :: <t: Copyable> (a: t, b: t) => t { a }; main :: () => { const ok: s32 = max(1, 2); const bad = max(Pair { a: 1, b: 2 }, Pair { a: 3, b: 4 }); const _ = bad; };";
+    let source = "Holder :: struct { r: &s32 }; max :: <t: Copyable> (a: t, b: t) => t { a }; main :: () => { const ok: s32 = max(1, 2); var n: s32 = 1; const bad = max(Holder { r: &n }, Holder { r: &n }); const _ = bad; };";
     let bag = typeck_err(source);
     assert!(
         bag.errors()

@@ -1,10 +1,10 @@
 Point :: struct {
-    x: s32,
-    y: s32,
+    r: &s32,
 };
 
 main :: () => {
-    var p: Point = Point { x: 1, y: 2 };
+    var n: s32 = 1;
+    var p: Point = Point { r: &n };
     var q: Point = p;
-    const _ = p.x;
+    const _ = p.r;
 };

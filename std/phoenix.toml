@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "Phoenix standard library (layout bootstrap)"
 type = "lib"
 module_src = "src"
+bundle_std = false
 
 [build]
 dir = "build"

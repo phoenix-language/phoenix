@@ -66,6 +66,8 @@ pub struct LoadedProgram {
     pub dep_package_names: Vec<String>,
     /// Build artifact paths when loaded under a project layout (for `.pxi` import surface).
     pub build_layout: Option<BuildLayout>,
+    /// Inject std prelude bindings during resolve.
+    pub prelude_enabled: bool,
 }
 
 /// Loads the module graph starting at `entry_file` under `module_root` (single-package fallback).
@@ -87,6 +89,7 @@ pub fn load_program(
             package_type: PackageType::Bin,
         },
         dependencies: Vec::new(),
+        prelude: false,
     };
     load_program_with_context(entry_file, &ctx, None, bag)
 }
@@ -126,6 +129,19 @@ pub fn load_program_with_context(
         &mut pending,
         &mut loaded_paths,
     );
+    if ctx.prelude {
+        for dep in &ctx.dependencies {
+            if dep.name == "std" {
+                enqueue_all_lib_modules(
+                    &dep.module_src,
+                    &dep.name,
+                    dep.package_type,
+                    &mut pending,
+                    &mut loaded_paths,
+                );
+            }
+        }
+    }
 
     let mut modules_raw: Vec<(ModulePath, PathBuf, SourceText, Program)> = Vec::new();
 
@@ -327,6 +343,7 @@ pub fn load_program_with_context(
         package_type: workspace.package_type,
         dep_package_names: ctx.dependencies.iter().map(|d| d.name.clone()).collect(),
         build_layout: layout.cloned(),
+        prelude_enabled: ctx.prelude,
     })
 }
 

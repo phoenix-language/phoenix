@@ -12,6 +12,7 @@ use crate::resolver::{DefId, ProgramImportEnv, ResolvedProgram, Resolver, Source
 
 use super::import_resolve::{ImportResolveCtx, resolve_import_directive};
 use super::loader::{LoadedModule, LoadedProgram};
+use super::prelude::{PreludeCtx, prelude_bindings};
 use crate::project::PackageType;
 use crate::pxi::PxiType;
 
@@ -33,6 +34,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         package_name,
         dep_package_names,
         build_layout,
+        prelude_enabled,
     } = loaded;
     let layout = build_layout.as_ref();
     let dep_name_refs: Vec<&str> = dep_package_names.iter().map(String::as_str).collect();
@@ -80,20 +82,16 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             def_attrs: crate::attrs::DefAttrs::new(),
         };
         resolver.resolve_program();
-        if resolver.main_fn.is_some() {
-            if package_type == PackageType::Lib {
-                let span = main_function_span(&module.program, &interner)
-                    .unwrap_or_else(|| Span::new(0, 1));
-                bag.push(
-                    module.id.index(),
-                    ResolveError::MainForbiddenInLib {
-                        span,
-                        module: source_modules[idx].logical_path.clone(),
-                    },
-                );
-            } else if module.id == root {
-                main_fn = resolver.main_fn;
-            }
+        if resolver.main_fn.is_some() && package_type == PackageType::Lib {
+            let span =
+                main_function_span(&module.program, &interner).unwrap_or_else(|| Span::new(0, 1));
+            bag.push(
+                module.id.index(),
+                ResolveError::MainForbiddenInLib {
+                    span,
+                    module: source_modules[idx].logical_path.clone(),
+                },
+            );
         }
         if module.id == root && package_type == PackageType::Bin {
             resolver.check_main();
@@ -105,6 +103,15 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             bag.push_located(e);
         }
         let def_base = defs.len();
+        if module.id == root
+            && let Some(local_main) = resolver.main_fn
+        {
+            let global = def_base
+                .checked_add(local_main.index() as usize)
+                .and_then(|n| u32::try_from(n).ok())
+                .unwrap_or(u32::MAX);
+            main_fn = Some(DefId::from_raw(global));
+        }
         for def in resolver.defs {
             let id = DefId::from_raw(u32::try_from(defs.len()).unwrap_or(u32::MAX));
             if def.exported {
@@ -146,6 +153,8 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             &mut interner,
             &mut bag,
             &mut import_types,
+            prelude_enabled,
+            &package_name,
         );
         let sf = SourceFile::new(module.program.clone(), interner.clone());
         let mut resolver = Resolver {
@@ -237,6 +246,8 @@ fn build_import_bindings(
     interner: &mut Interner,
     bag: &mut DiagnosticBag,
     import_types: &mut HashMap<DefId, PxiType>,
+    prelude_enabled: bool,
+    workspace_name: &str,
 ) -> Vec<(Symbol, DefId, bool, Span)> {
     let mut bindings = Vec::new();
     let mut seen: HashSet<Symbol> = HashSet::new();
@@ -259,7 +270,21 @@ fn build_import_bindings(
             &imp.inner, imp.span, &mut ctx, &mut seen,
         ));
     }
+    if prelude_enabled && module_belongs_to_workspace(&module.logical_path, workspace_name) {
+        let prelude_ctx = PreludeCtx {
+            path_index: env.path_index,
+            exports: env.exports,
+            interner,
+            span: Span::new(0, 1),
+        };
+        bindings.extend(prelude_bindings(&prelude_ctx, &seen));
+    }
     bindings
+}
+
+fn module_belongs_to_workspace(path: &super::path::ModulePath, workspace_name: &str) -> bool {
+    let key = path.display();
+    key == workspace_name || key.starts_with(&format!("{workspace_name}::"))
 }
 
 fn main_function_span(program: &Program, interner: &Interner) -> Option<Span> {

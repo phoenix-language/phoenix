@@ -34,6 +34,8 @@ pub struct ProgramLoadContext {
     pub workspace: PackageRoot,
     /// Path dependencies (`project.name` order).
     pub dependencies: Vec<PackageRoot>,
+    /// When true (default), inject std prelude bindings into each module.
+    pub prelude: bool,
 }
 
 impl ProgramLoadContext {
@@ -41,15 +43,18 @@ impl ProgramLoadContext {
     #[must_use]
     pub fn from_config(config: &ProjectConfig) -> Self {
         let mut dependencies = Vec::new();
+        let has_std = config.bundle_std || config.dependencies.contains_key("std");
         for dep in config.dependencies.values() {
             let dep_root = config.root.join(&dep.path);
             if let Ok(dep_cfg) = ProjectConfig::load(&dep_root) {
                 dependencies.push(PackageRoot::from_config(&dep_cfg));
             }
         }
+        let prelude = config.prelude && has_std;
         Self {
             workspace: PackageRoot::from_config(config),
             dependencies,
+            prelude,
         }
     }
 
@@ -130,6 +135,7 @@ impl ProgramLoadContext {
         Ok(Self {
             workspace,
             dependencies,
+            prelude: false,
         })
     }
 }

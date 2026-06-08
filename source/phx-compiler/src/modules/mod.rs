@@ -8,6 +8,7 @@ mod interface_loader;
 mod load_context;
 mod loader;
 mod path;
+mod prelude;
 mod resolve_loaded_program;
 mod source_text;
 

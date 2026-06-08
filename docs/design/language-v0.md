@@ -374,6 +374,8 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 - Baseline traits stubbed or implemented: `Debug`, `PartialEq`, `Eq` (minimal fmt/compare sufficient for demos).
 - Conversion traits (`From`, `Into`, `TryFrom`, `TryInto`) are **[V0-058](#v0-058--conversion-traits-from--into-in-std)** — separate checklist item.
 
+**Status:** Done
+
 **Acceptance:** Generic function with `T: Copyable` and `T: Clone` bounds type-checks against std trait definitions.
 
 **Refs:** [ownership.md](features/ownership.md), [traits.md](features/traits.md)
@@ -384,6 +386,8 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 - Optional small prelude re-exports common std items (`Option`, `Result`, core traits) — not the entire library.
 - Prelude behavior documented; most std remains explicit `#import`.
+
+**Status:** Done
 
 **Acceptance:** Prelude-enabled module uses `Option` without explicit import; non-prelude modules still require `#import`.
 

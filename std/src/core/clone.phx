@@ -1,0 +1,3 @@
+pub Clone :: trait {
+    clone :: (self: &Self) => Self;
+};

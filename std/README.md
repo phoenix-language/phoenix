@@ -55,12 +55,17 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::core::option::None;
 #import std::core::result::Result;
 #import std::core::result::Ok;
-#import std::core::result::Err;
+#import std::core::copyable::Copyable;
+#import std::core::clone::Clone;
+#import std::core::cmp::PartialEq;
+#import std::core::fmt::Debug;
 ```
+
+With **`prelude = true`** (default when std is bundled), the items above plus `Option` / `Result` and their ctors are in scope without explicit `#import`. See [Prelude](#prelude-v0-044).
 
 Generic enum constructors need explicit type arguments today, e.g. `Some :: <s32> (n)`.
 
-See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer.
+See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bundled-std bin consumer; [`std_traits/`](../tests/cli/fixtures/std_traits/) and [`std_prelude/`](../tests/cli/fixtures/std_prelude/) for trait bounds and prelude smoke tests.
 
 ## Module layout (`std::core`)
 
@@ -70,15 +75,35 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core` | `src/core/mod.phx` | Namespace anchor (no re-exports yet) |
 | `std::core::option` | `src/core/option.phx` | `pub Option :: <t> enum` |
 | `std::core::result` | `src/core/result.phx` | `pub Result :: <ok, err> enum` |
-
-Future under `std::core` (V0-043+): `clone`, `copyable`, `cmp`, `fmt`, `alloc`.
+| `std::core::copyable` | `src/core/copyable.phx` | `pub Copyable :: trait` (empty marker) |
+| `std::core::clone` | `src/core/clone.phx` | `pub Clone :: trait` |
+| `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
+| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug :: trait` (fixed `[u8; 32]` buffer) |
+| `std::prelude` | `src/prelude.phx` | Compiler-injected re-exports when `prelude = true` |
 
 Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
 
+## Prelude (V0-044)
+
+When `bundle_std = true` (default), projects also get **`prelude = true`** by default. The compiler injects bindings from `std::prelude` into workspace modules (not into std internals):
+
+- `Option`, `Some`, `None`, `Result`, `Ok`, `Err`
+- `Copyable`, `Clone`, `PartialEq`, `Eq`, `Debug`
+
+Opt out per project:
+
+```toml
+[project]
+prelude = false   # require explicit #import (see tests/cli/fixtures/std_prelude_off/)
+```
+
+Single-file / in-process `compile_source(..., None)` does **not** inject prelude.
+
 ## Non-goals (current)
 
-- No implicit prelude — apps must `#import` (V0-044)
-- `?` sugar requires `#import std::core::option` / `result` (V0-042); prelude without import is V0-044
+- Per-file `#no_prelude`, glob prelude, or entire std surface in prelude
+- Rich formatting (`Debug` uses a small fixed buffer only)
+- `From` / `Into` conversion traits (V0-058)
 - No std I/O — requires scheduler (post Language v0)
 
 ## Test fixtures vs real std

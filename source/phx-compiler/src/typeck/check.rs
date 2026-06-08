@@ -18,6 +18,7 @@ use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
 use phx_syntax::{Symbol, impl_receiver_symbol};
 
+use super::PrimitiveMethodSite;
 use super::bindings::{BindingKind, FunctionLayout, FunctionLayoutBuilder};
 use super::builtins::{
     bool_type, float_literal_type, int_literal_type, is_copyable, str_type, u8_type, unit,
@@ -35,6 +36,7 @@ use super::ops::{check_binary, check_cast, check_unary};
 use super::ownership::OwnershipTracker;
 use super::primitive::is_int_keyword;
 use super::std_kernel::{StdKernel, TrySiteMeta};
+use super::std_trait_kernel::StdTraitKernel;
 use super::subst::Substitution;
 use super::types::is_error_type;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
@@ -95,8 +97,12 @@ pub struct TypeChecker<'a> {
     specialized_aliases: HashMap<TypeMonoKey, TypeId>,
     /// Std `Option` / `Result` ids for `?` sugar.
     std_kernel: StdKernel,
+    /// Std core trait ids for bound checking.
+    std_trait_kernel: StdTraitKernel,
     /// `expr?` sites for lowering.
     try_sites: HashMap<ExprId, TrySiteMeta>,
+    /// Primitive trait method sites for lowering.
+    primitive_method_sites: HashMap<ExprId, PrimitiveMethodSite>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -160,8 +166,19 @@ impl<'a> TypeChecker<'a> {
             type_mono_insts: Vec::new(),
             specialized_aliases: HashMap::new(),
             std_kernel: StdKernel::default(),
+            std_trait_kernel: StdTraitKernel::default(),
             try_sites: HashMap::new(),
+            primitive_method_sites: HashMap::new(),
         }
+    }
+
+    fn is_copyable_ty(&self, ty: TypeId) -> bool {
+        is_copyable(
+            &self.types,
+            &self.program_layout,
+            &self.std_trait_kernel,
+            ty,
+        )
     }
 
     pub(crate) fn take_mono_insts(&mut self) -> Vec<MonoInst> {
@@ -188,6 +205,11 @@ impl<'a> TypeChecker<'a> {
     /// Reuses std kernel metadata from the template type-check pass during monomorphization.
     pub(crate) fn seed_std_kernel(&mut self, kernel: &StdKernel) {
         self.std_kernel = kernel.clone();
+    }
+
+    /// Reuses std trait kernel from the template pass during monomorphization.
+    pub(crate) fn seed_std_trait_kernel(&mut self, kernel: &StdTraitKernel) {
+        self.std_trait_kernel = kernel.clone();
     }
 
     pub(crate) fn check_function_specialized(
@@ -561,6 +583,7 @@ impl<'a> TypeChecker<'a> {
     fn check_program(&mut self) {
         self.collect_decls();
         self.std_kernel = StdKernel::build(self.resolved, &self.program_layout);
+        self.std_trait_kernel = StdTraitKernel::build(self.resolved, &self.program_layout);
         self.validate_type_aliases();
         for module in &self.resolved.modules {
             self.current_module = module.id;
@@ -831,11 +854,14 @@ impl<'a> TypeChecker<'a> {
                 }
                 let saved_abstract =
                     std::mem::replace(&mut self.trait_assoc_abstract, abstract_assoc);
+                let saved_self = self.impl_self_type;
+                self.impl_self_type = Some(self.types.intern(&Ty::Var(u32::MAX)));
                 for item in items {
                     if let TraitItem::Method(sig) = item {
                         self.collect_fn_sig_only_with_defs(sig, &td);
                     }
                 }
+                self.impl_self_type = saved_self;
                 self.trait_assoc_abstract = saved_abstract;
             }
             TopLevelDecl::Const { name, ty, .. } => {
@@ -1223,7 +1249,7 @@ impl<'a> TypeChecker<'a> {
             self.error_mismatch(lhs, rhs, span, MismatchKind::Assign { name });
         }
         if let Expr::Ident(ident) = &value.inner {
-            if !is_copyable(&self.types, rhs) {
+            if !self.is_copyable_ty(rhs) {
                 self.ownership.move_binding(ident.symbol, value.span);
             }
         }
@@ -1279,7 +1305,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn move_if_non_copyable(&mut self, init: &ExprNode, ty: TypeId) {
-        if is_copyable(&self.types, ty) {
+        if self.is_copyable_ty(ty) {
             return;
         }
         if let Expr::Ident(ident) = &init.inner {
@@ -1474,7 +1500,7 @@ impl<'a> TypeChecker<'a> {
             self.lookup_resolution(ident.id)
                 .and_then(|def| self.value_types.get(&def).copied())
         }) {
-            if record_move && !is_copyable(&self.types, ty) {
+            if record_move && !self.is_copyable_ty(ty) {
                 self.ownership.move_binding(ident.symbol, span);
             }
             return ty;
@@ -1545,9 +1571,14 @@ impl<'a> TypeChecker<'a> {
                     generics,
                     args,
                     ..
-                } => {
-                    self.check_method_call_with_generics(ty, name, generics.as_deref(), args, span)
-                }
+                } => self.check_method_call_with_generics(
+                    ty,
+                    name,
+                    generics.as_deref(),
+                    args,
+                    span,
+                    expr_id,
+                ),
                 PostfixOp::Call { generics, args } => {
                     let callee_def = self.callee_def_from_expr(base);
                     self.check_call_with_generics(
@@ -2351,7 +2382,11 @@ impl<'a> TypeChecker<'a> {
         generics: Option<&[Node<Type>]>,
         args: &[ExprNode],
         span: Span,
+        site_id: ExprId,
     ) -> TypeId {
+        if let Ty::Primitive(kw) = self.types.get(receiver).clone() {
+            return self.check_primitive_method_call(kw, receiver, name, args, span, site_id);
+        }
         let Ty::Named { def, .. } = self.types.get(receiver) else {
             return self.emit_unresolved_method(receiver, name, span);
         };
@@ -2481,6 +2516,67 @@ impl<'a> TypeChecker<'a> {
             }
         }
         ret
+    }
+
+    fn check_primitive_method_call(
+        &mut self,
+        kw: Keyword,
+        receiver: TypeId,
+        name: &Ident,
+        args: &[ExprNode],
+        span: Span,
+        site_id: ExprId,
+    ) -> TypeId {
+        let method = self.resolved.interner.resolve(name.symbol);
+        if method == "eq" {
+            if let Some(eq_trait) = self.std_trait_kernel.partial_eq_trait {
+                if self.std_trait_kernel.primitive_satisfies(kw, eq_trait) {
+                    if args.len() == 1 {
+                        let got = self.check_expr_node(&args[0]);
+                        if !self.types_equal(got, receiver) {
+                            self.error_mismatch(
+                                receiver,
+                                got,
+                                args[0].span,
+                                MismatchKind::Argument { index: 0 },
+                            );
+                        }
+                    } else {
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::ArityMismatch {
+                                expected: 1,
+                                found: args.len(),
+                                span,
+                            },
+                        );
+                    }
+                    self.primitive_method_sites
+                        .insert(site_id, PrimitiveMethodSite::Eq);
+                    return self.bool_ty;
+                }
+            }
+        }
+        if method == "clone" {
+            if let Some(clone_trait) = self.std_trait_kernel.clone_trait {
+                if self.std_trait_kernel.primitive_satisfies(kw, clone_trait) {
+                    if !args.is_empty() {
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::ArityMismatch {
+                                expected: 0,
+                                found: args.len(),
+                                span,
+                            },
+                        );
+                    }
+                    self.primitive_method_sites
+                        .insert(site_id, PrimitiveMethodSite::Clone);
+                    return receiver;
+                }
+            }
+        }
+        self.emit_unresolved_method(receiver, name, span)
     }
 
     fn emit_unresolved_method(&mut self, receiver: TypeId, name: &Ident, span: Span) -> TypeId {
@@ -3186,7 +3282,9 @@ impl<'a> TypeChecker<'a> {
         ProgramLayout,
         HashMap<TypeMonoKey, TypeId>,
         StdKernel,
+        StdTraitKernel,
         HashMap<ExprId, TrySiteMeta>,
+        HashMap<ExprId, PrimitiveMethodSite>,
     ) {
         (
             self.types,
@@ -3196,7 +3294,9 @@ impl<'a> TypeChecker<'a> {
             self.program_layout,
             self.specialized_aliases,
             self.std_kernel,
+            self.std_trait_kernel,
             self.try_sites,
+            self.primitive_method_sites,
         )
     }
 
@@ -3373,8 +3473,18 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
     checker.check_program();
     let mono_insts = checker.take_mono_insts();
     let type_mono_insts = checker.take_type_mono_insts();
-    let (types, expr_types, bag, functions, layout, specialized_aliases, std_kernel, try_sites) =
-        checker.finish();
+    let (
+        types,
+        expr_types,
+        bag,
+        functions,
+        layout,
+        specialized_aliases,
+        std_kernel,
+        std_trait_kernel,
+        try_sites,
+        primitive_method_sites,
+    ) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
@@ -3389,7 +3499,9 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         mono_insts: Vec::new(),
         specialized_aliases,
         std_kernel,
+        std_trait_kernel,
         try_sites,
+        primitive_method_sites,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {

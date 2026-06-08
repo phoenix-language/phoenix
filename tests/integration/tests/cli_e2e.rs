@@ -262,6 +262,38 @@ fn build_app_dep() {
 }
 
 #[test]
+fn build_std_traits() {
+    e2e(|cli| {
+        rm_project_build_unlocked("std_traits");
+        let project = cli_project("std_traits");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/std_traits.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_std_prelude() {
+    e2e(|cli| {
+        rm_project_build_unlocked("std_prelude");
+        let project = cli_project("std_prelude");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/std_prelude.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_std_prelude_off_fails() {
+    e2e(|cli| {
+        let out = cli.build_fails(&cli_project("std_prelude_off"));
+        assert!(
+            out.combined.contains("unresolved") || out.combined.contains("Unknown type"),
+            "got:\n{}",
+            out.combined
+        );
+    });
+}
+
+#[test]
 fn build_bad_dep_key_fails() {
     e2e(|cli| {
         let out = cli.build_fails(&cli_project("bad_dep_key"));

@@ -1,0 +1,9 @@
+[project]
+name = "std_prelude"
+version = "0.1.0"
+description = "V0-044 prelude smoke test"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

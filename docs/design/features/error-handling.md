@@ -30,7 +30,7 @@ Errors are values, not control-flow exceptions. Failure paths stay visible in ty
 
 ## The `?` operator (V0-042, error conversion V0-059)
 
-`?` is postfix sugar over std `Option` / `Result` (requires `#import std::core::…` until prelude in V0-044). Every call site that can fail shows propagation explicitly. See [runtime-transparency.md](runtime-transparency.md).
+`?` is postfix sugar over std `Option` / `Result` (requires `#import std::core::…` or prelude when `prelude = true`). Every call site that can fail shows propagation explicitly. See [runtime-transparency.md](runtime-transparency.md).
 
 ### Rules
 

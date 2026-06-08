@@ -236,6 +236,13 @@ pub enum TypeCheckError {
         /// Instantiation site span.
         span: Span,
     },
+    /// Trait name in a generic bound does not resolve to a known trait definition.
+    UnknownTraitBound {
+        /// Unresolved trait name.
+        trait_name: String,
+        /// Bound site span.
+        span: Span,
+    },
     /// Could not infer generic type arguments from call-site arguments.
     InferenceFailed {
         /// Call site span.
@@ -312,6 +319,7 @@ impl TypeCheckError {
             Self::RecursiveTypeAlias { .. } => DiagnosticCode::new("E2021"),
             Self::ReturnEscapesLocal { .. } => DiagnosticCode::new("E2022"),
             Self::TraitNotSatisfied { .. } => DiagnosticCode::new("E2023"),
+            Self::UnknownTraitBound { .. } => DiagnosticCode::new("E2030"),
             Self::InferenceFailed { .. } => DiagnosticCode::new("E2024"),
             Self::InferenceAmbiguous { .. } => DiagnosticCode::new("E2025"),
             Self::MissingTraitMethod { .. } => DiagnosticCode::new("E2026"),
@@ -348,6 +356,7 @@ impl TypeCheckError {
             | Self::RecursiveTypeAlias { span, .. }
             | Self::ReturnEscapesLocal { span, .. }
             | Self::TraitNotSatisfied { span, .. }
+            | Self::UnknownTraitBound { span, .. }
             | Self::InferenceFailed { span, .. }
             | Self::InferenceAmbiguous { span, .. }
             | Self::MissingTraitMethod { span, .. }
@@ -446,6 +455,9 @@ impl fmt::Display for TypeCheckError {
                 f,
                 "type `{type_name}` does not satisfy trait bound `{trait_name}`"
             ),
+            Self::UnknownTraitBound { trait_name, .. } => {
+                write!(f, "unknown trait bound `{trait_name}`")
+            }
             Self::InferenceFailed { .. } => {
                 f.write_str("could not infer generic type arguments from call arguments")
             }
