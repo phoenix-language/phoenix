@@ -270,6 +270,38 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
 }
 
 #[test]
+fn lower_two_param_enum_match_emits_match_tag_with_specialized_type_id() {
+    let source = "Cfg :: struct { n: s32 }; AppE :: struct { c: s32 }; Pair :: <a, b> enum { Ok(a), Err(b), }; main :: () => { const r = Ok :: <Cfg, AppE> (Cfg { n: 1 }); const v: s32 = match r { Ok(c) => c.n; Err(e) => e.c; }; const _ = v; };";
+    let unit = compile_source(source, None).expect("compile two-param enum match");
+    let typed = &unit.typed;
+    let expected_type_id = typed
+        .layout
+        .specialized_type_ids
+        .values()
+        .next()
+        .copied()
+        .expect("monomorphized enum type_id");
+    let ir = lower(typed).expect("lower");
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.insts.iter().any(|i| {
+                    matches!(
+                        i,
+                        IrInst::MatchTag {
+                            type_id,
+                            variant_tag: 0,
+                            ..
+                        } if *type_id == expected_type_id
+                    )
+                })
+            })
+        }),
+        "expected MatchTag with specialized enum type_id {expected_type_id}"
+    );
+}
+
+#[test]
 fn lower_trait_default_emits_inherited_method() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/trait_default/src/main.phx");

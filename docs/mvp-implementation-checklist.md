@@ -2,7 +2,7 @@
 
 **Purpose:** Single reference for humans and coding agents: what the [MVP spec](design/mvp.md) requires, what is already implemented under `source/`, and what remains for a **credible demo** (working control flow, arithmetic, functions, types — not post-MVP runtime).
 
-**Language v0 completion:** Three partials (heap slices, trait default bodies, `Result` match) block the transition to a credible std platform — sequenced in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md).
+**Language v0 completion:** Result match (V0-064) is shipped; remaining partials before a credible std platform are sequenced in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md).
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
@@ -357,7 +357,7 @@ A credible MVP demo `.phx` should be able to:
 | `From` / `Into` / `TryFrom` in std     | done    | `std::core::convert` | [V0-058](design/language-v0.md#v0-058--conversion-traits-from--into-in-std) | `std_convert`, `build_std_convert`, parameterized bounds |
 | Std error trait                        | done    | `std::core::error` | [V0-060](design/language-v0.md#v0-060--std-error-trait) | `std_errors`, `std_traits`, `build_std_error` |
 | Rust-style `mod.phx` / `mod` decls     | done    | `modules/discover.rs`, loader, resolve | [V0-061](design/language-v0.md#v0-061--rust-style-modphx-module-entries) | `module_barrel`, `modules_*` fixtures |
-| `match` on std enums                   | partial | typeck + lower    | `Option` match in `std_smoke`; multi-param `Result` scrutinee TBD | `std_smoke`                  |
+| `match` on std enums                   | pass    | typeck + lower    | `Option` and multi-param `Result` match; scrutinee mono registration | `std_smoke`, `std_result_match` |
 
 
 ---

@@ -2966,6 +2966,28 @@ impl<'a> TypeChecker<'a> {
         });
     }
 
+    /// Ensures monomorphized layout exists when matching on a generic enum scrutinee.
+    fn record_scrutinee_type_mono(&mut self, scrutinee: TypeId) {
+        let Ty::Named { def, args } = self.types.get(scrutinee).clone() else {
+            return;
+        };
+        if args.is_empty() {
+            return;
+        }
+        let Some(kind) = self.type_mono_kind_for_def(def) else {
+            return;
+        };
+        match kind {
+            TypeMonoKind::Enum if self.program_layout.enums.contains_key(&def) => {
+                self.record_type_mono_inst(def, kind, args);
+            }
+            TypeMonoKind::Struct if self.program_layout.structs.contains_key(&def) => {
+                self.record_type_mono_inst(def, kind, args);
+            }
+            _ => {}
+        }
+    }
+
     fn type_mono_kind_for_def(&self, def: DefId) -> Option<TypeMonoKind> {
         let record = self.resolved.defs.get(def.index() as usize)?;
         match record.kind {
@@ -4256,6 +4278,7 @@ impl<'a> TypeChecker<'a> {
                 scrutinee,
             } => {
                 let s = self.check_expr_node(scrutinee);
+                self.record_scrutinee_type_mono(s);
                 if let Some(layout) = &mut self.layout {
                     let _ = layout.alloc_match_scrutinee_temp(s);
                 }
@@ -4277,6 +4300,7 @@ impl<'a> TypeChecker<'a> {
         span: Span,
     ) -> TypeId {
         let s = self.check_expr_node(scrutinee);
+        self.record_scrutinee_type_mono(s);
         if let Some(layout) = &mut self.layout {
             let _ = layout.alloc_match_scrutinee_temp(s);
         }

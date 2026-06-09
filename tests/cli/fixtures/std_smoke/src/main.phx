@@ -18,6 +18,10 @@ main :: () => {
         None => 0;
         Some(v) => v;
     };
+    const m: s32 = match r {
+        Ok(v) => v;
+        Err(e) => e;
+    };
     const _ignore = n;
-    const _discard = r;
+    const _discard = m;
 };

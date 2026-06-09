@@ -1279,6 +1279,51 @@ fn generic_enum_match_dual_instantiation_compile_ok() {
 }
 
 #[test]
+fn generic_two_param_enum_match_compile_ok() {
+    compile_ok(
+        "Pair :: <a, b> enum { Ok(a), Err(b), }; main :: () => { const r = Ok :: <s32, bool> (1); const n: s32 = match r { Ok(v) => v; Err(_) => 0; }; const _ = n; };",
+    );
+}
+
+#[test]
+fn result_match_struct_payloads_typecheck() {
+    compile_ok(
+        "Cfg :: struct { n: s32 }; AppE :: struct { c: s32 }; Pair :: <a, b> enum { Ok(a), Err(b), }; main :: () => { const r = Ok :: <Cfg, AppE> (Cfg { n: 42 }); const v: s32 = match r { Ok(c) => c.n; Err(e) => e.c; }; const _ = v; };",
+    );
+}
+
+#[test]
+fn result_match_non_exhaustive_rejected() {
+    let bag = typeck_err(
+        "Pair :: <a, b> enum { Ok(a), Err(b), }; main :: () => { const r = Ok :: <s32, s32> (1); const _ = match r { Ok(v) => v; }; };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. })),
+        "expected NonExhaustiveMatch: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn result_if_const_ok_binds_struct() {
+    compile_ok(
+        "Cfg :: struct { n: s32 }; AppE :: struct { c: s32 }; Pair :: <a, b> enum { Ok(a), Err(b), }; main :: () => { const r = Ok :: <Cfg, AppE> (Cfg { n: 7 }); if const Ok(c) = r { const v: s32 = c.n; const _ = v; }; };",
+    );
+}
+
+#[test]
+fn match_scrutinee_registers_generic_enum_mono() {
+    let source = "Cfg :: struct { n: s32 }; AppE :: struct { c: s32 }; Pair :: <a, b> enum { Ok(a), Err(b), }; handle :: (r: Pair<Cfg, AppE>) => s32 { match r { Ok(c) => c.n; Err(e) => e.c; } }; main :: () => { };";
+    let typed = typed_program(source);
+    assert!(
+        !typed.layout.specialized_enums.is_empty(),
+        "expected specialized_enums from match scrutinee on generic enum parameter"
+    );
+}
+
+#[test]
 fn trait_assoc_type_impl_compile_ok() {
     compile_ok(
         "Iterator :: trait { type Item; peek :: () => Self::Item; }; Counter :: struct { n: s32 }; Counter :: impl :: Iterator { type Item = s32; peek :: () => s32 { self.n }; }; main :: () => { const c = Counter { n: 42 }; const _: s32 = c.peek(); };",

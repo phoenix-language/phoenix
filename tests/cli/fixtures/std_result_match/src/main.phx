@@ -1,0 +1,20 @@
+#import std::core::result::{Result, Ok, Err};
+
+Config :: struct {
+    value: s32,
+};
+
+AppError :: struct {
+    code: s32,
+};
+
+make_ok :: () => Result<Config, AppError> {
+    Ok(Config { value: 42 })
+};
+
+main :: () => {
+    match make_ok() {
+        Ok(c) => { const n: s32 = c.value; const _ = n; };
+        Err(e) => { const _ = e; };
+    };
+};

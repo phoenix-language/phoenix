@@ -282,6 +282,25 @@ fn build_std_prelude() {
 }
 
 #[test]
+fn build_std_result_match() {
+    e2e(|cli| {
+        rm_project_build_unlocked("std_result_match");
+        let project = cli_project("std_result_match");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/std_result_match.phx0").is_file());
+    });
+}
+
+#[test]
+fn check_std_result_match_non_exhaustive_fails() {
+    e2e(|cli| {
+        let project = cli_project("std_result_match_non_exhaustive");
+        cli.check_fails(&project.join("src/main.phx"))
+            .assert_contains("non-exhaustive");
+    });
+}
+
+#[test]
 fn build_heap_alloc() {
     e2e(|cli| {
         rm_project_build_unlocked("heap_alloc");

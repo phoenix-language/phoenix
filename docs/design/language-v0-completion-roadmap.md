@@ -261,6 +261,8 @@ pub Result :: <ok, err> enum {
 
 **Refs:** [error-handling.md](features/error-handling.md), [language-v0.md](language-v0.md) V0-042, V0-059, [traits.md](features/traits.md)
 
+Status: **Done** (implemented)
+
 ---
 
 ### V0-067 — Cross-pillar integration (Phase 7 capstone)
