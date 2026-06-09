@@ -2,6 +2,8 @@
 
 Status: Active checklist
 
+**Completion partials:** Phases 1–6 are largely shipped, but three high-leverage compiler partials (heap slices, trait default bodies, multi-param `Result` match) remain before Language v0 is credible for std authoring. See [language-v0-completion-roadmap.md](language-v0-completion-roadmap.md).
+
 This document is **the list** — the ordered checklist that marks the end of MVP, what is required to **show Phoenix to contributors**, and what must land before **writing the standard library in Phoenix source**.
 
 When every item in **Phases 1-6** is checked, the project reaches **Language v0**: a demonstrable, contributor-ready compiler that can host an in-language std bootstrap.
@@ -623,6 +625,7 @@ Std I/O (`fs`, `net`, …) waits for scheduler + schedulable-I/O runtime per [mo
 
 | Document                                            | Role                                   |
 | --------------------------------------------------- | -------------------------------------- |
+| [language-v0-completion-roadmap.md](language-v0-completion-roadmap.md) | Phase 7 partials blocking std platform |
 | [mvp.md](mvp.md)                                    | Canonical MVP in/out scope             |
 | [modules.md](features/modules.md)                   | Packages, `.pxi`, linker, CLI          |
 | [type-system.md](features/type-system.md)           | Generics, core vs std, callable layers |

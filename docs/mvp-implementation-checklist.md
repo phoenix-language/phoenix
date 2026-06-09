@@ -2,6 +2,8 @@
 
 **Purpose:** Single reference for humans and coding agents: what the [MVP spec](design/mvp.md) requires, what is already implemented under `source/`, and what remains for a **credible demo** (working control flow, arithmetic, functions, types — not post-MVP runtime).
 
+**Language v0 completion:** Three partials (heap slices, trait default bodies, `Result` match) block the transition to a credible std platform — sequenced in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md).
+
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
 **Last surveyed:** MVP partials (`if const` / `if var` pattern bindings). **`cargo test --workspace`:** all crates green. **`cargo clippy --workspace --all-targets -- -D warnings`:** green. **`tests/cli/run.sh`:** 34 single-file fixtures + `modules/main.phx`. **MVP acceptance:** [tests/cli/fixtures/mvp_acceptance/](../tests/cli/fixtures/mvp_acceptance/). **CI:** `.github/workflows/ci.yml` `rust` (fmt, clippy, tests) + `cli` (check, run, build, compile, help).
