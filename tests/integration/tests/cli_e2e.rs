@@ -301,6 +301,16 @@ fn check_heap_alloc_unsafe_fails() {
 }
 
 #[test]
+fn build_trait_default() {
+    e2e(|cli| {
+        rm_project_build_unlocked("trait_default");
+        let project = cli_project("trait_default");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/trait_default.phx0").is_file());
+    });
+}
+
+#[test]
 fn build_heap_slice() {
     e2e(|cli| {
         rm_project_build_unlocked("heap_slice");

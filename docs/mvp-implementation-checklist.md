@@ -162,7 +162,7 @@ A credible MVP demo `.phx` should be able to:
 | `for x in y`                                               | done             | `parser/stmt.rs`, `typeck/check.rs`, `lower/stmt.rs` | `IntoIter` + `Iterator` desugaring (V0-055) | `for_in.phx`, `std_iter/` fixtures              |
 | `0..n` / `0..=n`                                           | done (reject)    | `parser/expr.rs`                                 |                                        | Range tests                                     |
 | Lambda `(…) => …`                                          | done (reject)    | `parser/expr.rs`                                 |                                        | Lambda tests                                    |
-| Trait default bodies in trait decl                         | partial          | `parser/decl.rs`                                 | Parsed; no default body codegen        | Parse trait with method body (AST exists)       |
+| Trait default bodies in trait decl                         | pass             | `typeck/trait_defaults.rs`, `parser/decl.rs`     | Empty impl inherits defaults; override wins | `trait_default`, `trait_into_from_default` fixtures |
 
 
 ---

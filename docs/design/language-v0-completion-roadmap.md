@@ -211,6 +211,7 @@ Status: **Done** (implemented)
 
 **Refs:** [traits.md](features/traits.md#default-trait-bodies), [grammar-deferred.md](features/grammar-deferred.md)
 
+Status: **Done** (implemented)
 ---
 
 ### V0-064 — Match on multi-payload `Result`

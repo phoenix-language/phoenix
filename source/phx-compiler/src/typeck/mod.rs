@@ -26,6 +26,7 @@ mod primitive;
 mod std_kernel;
 mod std_trait_kernel;
 mod subst;
+mod trait_defaults;
 mod types;
 mod unify;
 
@@ -44,6 +45,7 @@ pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
 pub use std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
 pub use std_trait_kernel::StdTraitKernel;
+pub use trait_defaults::lookup_function;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::{DefId, ResolvedProgram};
@@ -90,6 +92,8 @@ pub struct TypedProgram {
     pub associated_fn_sites: std::collections::HashMap<ExprId, DefId>,
     /// Value types for defs (functions, types, consts) from the template pass; used when re-checking mono bodies.
     pub value_types: std::collections::HashMap<crate::resolver::DefId, TypeId>,
+    /// Trait default methods synthesized for empty/partial impl blocks.
+    pub inherited_trait_methods: trait_defaults::InheritedTraitMethods,
 }
 
 /// Lowering hint for indirect function pointer calls (`CallIndirect`).

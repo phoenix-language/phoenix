@@ -16,7 +16,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `for x in y` | Statement | **Implemented** — `IntoIter` + `Iterator` desugaring ([V0-055](../language-v0.md#v0-055--iterator-protocol-and-for-lowering)) | — |
 | `0..n` / `0..=n` | Expression (`range_expr`) | Parse; reject at typeck | Std range literal syntax; use `Range { start, end }` until then |
 | `lambda_expr` | `(params) => expr \| block` | Parse | Closure typing, capture, lowering TBD |
-| Trait default bodies | `Name :: trait { fn :: () => T { … }; }` | Parse | Inherit defaults in typeck/codegen |
+| Trait default bodies | `Name :: trait { fn :: () => T { … }; }` | **Implemented** — inherit defaults in typeck/codegen ([V0-063](../language-v0-completion-roadmap.md#v0-063--trait-default-bodies)) | — |
 | `break expr` | `break` , [ expr ] | Parse | Loop-value / labeled break semantics TBD |
 | `Option` / `Result` types | Type expressions | **Implemented** with `#import std::core::…` or prelude ([V0-041](../language-v0.md#v0-041--core-std-types-as-ordinary-generic-enums), [V0-044](../language-v0.md#v0-044--prelude-minimal)) | — |
 | `Some` / `None` / `Ok` / `Err` | Expr / patterns | **Implemented** with `#import std::core::…` or prelude ([V0-042](../language-v0.md#v0-042--std-constructors-and--sugar), [V0-044](../language-v0.md#v0-044--prelude-minimal)) | — |

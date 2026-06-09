@@ -270,6 +270,30 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
 }
 
 #[test]
+fn lower_trait_default_emits_inherited_method() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/trait_default/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck trait_default");
+    assert!(
+        !unit.typed.inherited_trait_methods.is_empty(),
+        "expected inherited trait default methods"
+    );
+    let ir = lower(&unit.typed).expect("lower trait_default");
+    let has_call = ir.functions.iter().any(|f| {
+        f.blocks
+            .iter()
+            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Call { .. })))
+    });
+    assert!(
+        has_call,
+        "expected Call to inherited Counter::zero in lowered IR"
+    );
+}
+
+#[test]
 fn lower_heap_slice_emits_make_slice_from_ptr_not_call() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/heap_slice/src/main.phx");

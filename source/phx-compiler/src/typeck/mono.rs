@@ -93,7 +93,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             );
             continue;
         }
-        let Some(f) = find_function(&typed.resolved, inst.base_fn).cloned() else {
+        let Some(f) = super::trait_defaults::lookup_function(typed, inst.base_fn).cloned() else {
             continue;
         };
         let combined_generics = combined_generic_params(&typed.resolved, inst.base_fn, &f);

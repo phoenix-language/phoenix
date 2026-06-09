@@ -1,0 +1,21 @@
+Zero :: trait {
+    zero :: () => Self {
+        0
+    };
+};
+
+Counter :: struct {
+    n: s32,
+};
+
+Counter :: impl :: Zero {
+    zero :: () => Counter {
+        Counter { n: 99 }
+    };
+};
+
+main :: () => {
+    const c: Counter = Counter::zero();
+    const n: s32 = c.n;
+    const _ = n;
+};

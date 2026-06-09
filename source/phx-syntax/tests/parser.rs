@@ -304,6 +304,11 @@ fn decl_type_alias_generics() {
 }
 
 #[test]
+fn decl_trait_default_body() {
+    assert_ok("Zero :: trait { zero :: () => Self { 0 }; }; main :: () => { };");
+}
+
+#[test]
 fn decl_trait_method_sig() {
     assert_ok("Eq :: trait { eq :: (self, other: &Self) => bool; }; main :: () => { };");
 }

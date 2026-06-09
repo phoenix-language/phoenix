@@ -74,7 +74,7 @@ pub TryInto :: <Target> trait {
 | vs `as` | `as` is for primitives and views ([type-system.md](type-system.md#explicit-cast-tiers)); **`as` never converts errors or user structs/enums** |
 | vs `?` | When `E_in ≠ E_out`, `?` desugars to `From::from` on the `Err` payload ([error-handling.md](error-handling.md#the--operator-v0-042-error-conversion-v0-059)) |
 | Fallible | `TryFrom` / `TryInto` return `Result`; use for parsing, bounds checks, runtime UTF-8 validation |
-| Default bodies | Blanket `Into` from `From` (Rust-style) waits on [default trait bodies](grammar-deferred.md) — until then, impl both or call `From::from` explicitly |
+| Default bodies | Blanket `Into` from `From` is implemented in `std::core::convert` (V0-063); impl both or call `From::from` explicitly when overriding |
 
 ### Error-type impl guidance
 
@@ -198,7 +198,7 @@ Zero :: trait
 s32 :: impl :: Zero { };
 ```
 
-Default trait body codegen is deferred in MVP — see [grammar-deferred.md](grammar-deferred.md).
+Default trait bodies use static dispatch — empty `Type :: impl :: Trait { }` inherits methods that have defaults; explicit impl methods override them entirely (no `super` in Language v0).
 
 ---
 

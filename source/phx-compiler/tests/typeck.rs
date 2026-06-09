@@ -1093,6 +1093,27 @@ fn generic_impl_method_with_type_params_compile_ok() {
 }
 
 #[test]
+fn trait_default_empty_impl_typechecks() {
+    compile_ok(
+        "Counter :: struct { n: s32 }; Zero :: trait { zero :: () => Self { Counter { n: 0 } }; }; Counter :: impl :: Zero { }; main :: () => { const c: Counter = Counter::zero(); const _ = c.n; };",
+    );
+}
+
+#[test]
+fn trait_default_with_default_body_exhaustive() {
+    compile_ok(
+        "Greet :: trait { msg :: () => [u8; 4] { [72 as u8, 73 as u8, 0 as u8, 0 as u8]; }; }; Point :: struct { x: s32 }; Point :: impl :: Greet { }; main :: () => { const p = Point { x: 1 }; const _ = p.msg(); };",
+    );
+}
+
+#[test]
+fn trait_default_override_wins() {
+    compile_ok(
+        "Zero :: trait { zero :: () => Self { 0 }; }; Counter :: struct { n: s32 }; Counter :: impl :: Zero { zero :: () => Counter { Counter { n: 99 } }; }; main :: () => { const c: Counter = Counter::zero(); const _ = c.n; };",
+    );
+}
+
+#[test]
 fn trait_impl_missing_method_rejected() {
     let source = "PartialEq :: trait { eq :: (self: Point, other: Point) => bool; }; Point :: struct { x: s32 }; Point :: impl :: PartialEq { }; main :: () => { };";
     let bag = typeck_err(source);

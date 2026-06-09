@@ -5,7 +5,9 @@ pub From :: <source> trait {
 };
 
 pub Into :: <target> trait {
-    into :: (self) => target;
+    into :: (self) => target {
+        target::from(self)
+    };
 };
 
 pub TryFrom :: <source> trait {

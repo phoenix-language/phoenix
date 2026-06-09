@@ -1,12 +1,12 @@
 //! Lower function definitions to [`IrFunction`](crate::ir::IrFunction).
 
-use phx_syntax::ast::decl::{Function, ImplMember, TopLevelDecl};
-
 use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
-use crate::resolver::{DefId, DefKind};
-use crate::typeck::{BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template};
+use crate::resolver::DefId;
+use crate::typeck::{
+    BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template, lookup_function,
+};
 use phx_diagnostics::LowerBag;
 
 /// Lowers all functions in `typed`.
@@ -47,7 +47,7 @@ pub(crate) fn lower_one_function(
     constants: &mut Vec<IrConst>,
     bag: &mut LowerBag,
 ) -> Option<IrFunction> {
-    let source = find_function_in_crate(typed, layout.def)?;
+    let source = lookup_function(typed, layout.def)?;
     let module = typed
         .resolved
         .defs
@@ -79,40 +79,6 @@ pub(crate) fn lower_one_function(
         local_count: layout.local_count(),
         blocks,
     })
-}
-
-fn find_function_in_crate(typed: &TypedProgram, def: DefId) -> Option<&Function> {
-    let def_record = typed.resolved.defs.get(def.index() as usize)?;
-    let module = typed
-        .resolved
-        .modules
-        .iter()
-        .find(|m| m.id == def_record.module)?;
-    for item in &module.program.items {
-        match &item.inner.decl {
-            TopLevelDecl::Function(f) if def_matches(typed, f, def) => return Some(f),
-            TopLevelDecl::Impl { members, .. } => {
-                for m in members {
-                    if let ImplMember::Method(f) = m {
-                        if def_matches(typed, f, def) {
-                            return Some(f);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
-    let lookup = typed.specialized_from.get(&def).copied().unwrap_or(def);
-    typed
-        .resolved
-        .defs
-        .get(lookup.index() as usize)
-        .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
 }
 
 /// Returns true when `def` is a generic function template replaced by monomorphization.

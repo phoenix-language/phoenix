@@ -1,0 +1,24 @@
+#import std::core::convert::{From, Into};
+
+Wrap :: struct {
+    n: s32,
+};
+
+Out :: struct {
+    v: s32,
+};
+
+Out :: impl :: From<Wrap> {
+    from :: (value: Wrap) => Out {
+        Out { v: value.n }
+    };
+};
+
+Wrap :: impl :: Into<Out> { };
+
+main :: () => {
+    const w: Wrap = Wrap { n: 42 };
+    const o: Out = w.into();
+    const v: s32 = o.v;
+    const _ = v;
+};

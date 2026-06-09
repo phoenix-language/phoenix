@@ -3,7 +3,7 @@
 // AST enums are `#[non_exhaustive]`; wildcard arms reserve future variants.
 #![allow(unreachable_patterns)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
@@ -46,6 +46,7 @@ use super::primitive::{is_int_keyword, primitive_kind_for_type};
 use super::std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
 use super::std_trait_kernel::StdTraitKernel;
 use super::subst::Substitution;
+use super::trait_defaults;
 use super::types::is_error_type;
 use super::types::{ExprId, Ty, TypeId, TypeInterner};
 use super::unify::AliasEnv;
@@ -124,6 +125,12 @@ pub struct TypeChecker<'a> {
     intrinsic_kernel: IntrinsicKernel,
     /// Nesting depth of `unsafe` blocks and `unsafe fn` bodies.
     unsafe_depth: u32,
+    /// Pending synthetic fn defs for inherited trait defaults (merged into resolved at finish).
+    pending_inherited_defs: Vec<crate::resolver::Def>,
+    /// Inherited trait default bodies keyed by synthetic `DefId`.
+    inherited_trait_methods: trait_defaults::InheritedTraitMethods,
+    /// Inherited methods grouped by trait impl key (for body type checking).
+    inherited_by_inst: trait_defaults::InheritedByInst,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -196,6 +203,9 @@ impl<'a> TypeChecker<'a> {
             intrinsic_call_sites: HashMap::new(),
             intrinsic_kernel: IntrinsicKernel::default(),
             unsafe_depth: 0,
+            pending_inherited_defs: Vec::new(),
+            inherited_trait_methods: HashMap::new(),
+            inherited_by_inst: HashMap::new(),
         }
     }
 
@@ -1299,7 +1309,42 @@ impl<'a> TypeChecker<'a> {
                                     );
                                 }
                             }
-                            self.program_layout.trait_impls.insert(inst_key);
+                            self.program_layout.trait_impls.insert(inst_key.clone());
+                            let impl_method_names: HashSet<Symbol> = members
+                                .iter()
+                                .filter_map(|m| match m {
+                                    ImplMember::Method(f) => Some(f.name.symbol),
+                                    _ => None,
+                                })
+                                .collect();
+                            if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
+                                if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
+                                    if let Some(trait_items) =
+                                        self.find_trait_items(trait_def).map(<[TraitItem]>::to_vec)
+                                    {
+                                        let registered =
+                                            trait_defaults::synthesize_inherited_methods(
+                                                &mut trait_defaults::InheritedSynthesisCtx {
+                                                    resolved: self.resolved,
+                                                    trait_items: &trait_items,
+                                                    impl_method_names: &impl_method_names,
+                                                    module: self.current_module,
+                                                    pending_inherited_defs: &mut self
+                                                        .pending_inherited_defs,
+                                                    inherited_trait_methods: &mut self
+                                                        .inherited_trait_methods,
+                                                    inst_key: &inst_key,
+                                                    inherited_by_inst: &mut self.inherited_by_inst,
+                                                },
+                                            );
+                                        self.register_inherited_trait_method_types(
+                                            trait_def,
+                                            &inst_key,
+                                            &registered,
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                     for member in members {
@@ -1476,6 +1521,82 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn trait_subst_for_inst(
+        &mut self,
+        trait_def: DefId,
+        inst_key: &super::layout::TraitInstKey,
+    ) -> Substitution {
+        let mut trait_subst = Substitution::new();
+        let Some(generics) = self.find_trait_generics(trait_def) else {
+            return trait_subst;
+        };
+        let trait_module = self
+            .resolved
+            .defs
+            .get(trait_def.index() as usize)
+            .map_or(self.current_module, |d| d.module);
+        push_generics(
+            &mut self.type_defs,
+            &self.resolved.defs,
+            trait_module,
+            Some(&generics),
+        );
+        let param_defs = self.generic_param_defs_from_ast(trait_module, &generics);
+        for (param, arg) in param_defs.iter().zip(&inst_key.trait_args) {
+            trait_subst.insert(*param, *arg);
+        }
+        trait_subst
+    }
+
+    fn register_inherited_trait_method_types(
+        &mut self,
+        trait_def: DefId,
+        inst_key: &super::layout::TraitInstKey,
+        registered: &[(Symbol, DefId)],
+    ) {
+        for (method_sym, fn_def) in registered {
+            self.program_layout
+                .trait_methods
+                .insert((inst_key.clone(), *method_sym), *fn_def);
+            let Some(f) = self.inherited_trait_methods.get(fn_def).cloned() else {
+                continue;
+            };
+            let saved_td = self.type_defs.clone();
+            let trait_subst = self.trait_subst_for_inst(trait_def, inst_key);
+            let mut fn_ty = self.fn_type_for_function(&f);
+            if let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() {
+                let params: Vec<_> = params
+                    .iter()
+                    .map(|p| Substitution::apply(&mut self.types, *p, &trait_subst))
+                    .collect();
+                let ret = Substitution::apply(&mut self.types, ret, &trait_subst);
+                fn_ty = self.types.intern(&Ty::Fn { params, ret });
+            }
+            self.value_types.insert(*fn_def, fn_ty);
+            self.type_defs = saved_td;
+        }
+    }
+
+    fn check_inherited_trait_methods(
+        &mut self,
+        inst_key: &super::layout::TraitInstKey,
+        inherited: Vec<(DefId, Function)>,
+    ) {
+        let saved_subst = self.subst.take();
+        let saved_type_defs = self.type_defs.clone();
+        if let Some((_, trait_def)) = self.active_trait_impl {
+            if !inst_key.trait_args.is_empty() {
+                let trait_subst = self.trait_subst_for_inst(trait_def, inst_key);
+                self.subst = Some(trait_subst);
+            }
+        }
+        for (def, f) in inherited {
+            self.check_function_body(&f, def, true);
+        }
+        self.subst = saved_subst;
+        self.type_defs = saved_type_defs;
+    }
+
     fn check_top_level(&mut self, item: &TopLevelItem, span: Span) {
         match &item.decl {
             TopLevelDecl::Function(f) => self.check_function(f),
@@ -1520,56 +1641,76 @@ impl<'a> TypeChecker<'a> {
                 generics,
                 members,
                 ..
-            } => {
-                let saved_defs = self.type_defs.clone();
-                push_generics(
-                    &mut self.type_defs,
-                    &self.resolved.defs,
-                    self.current_module,
-                    generics.as_deref(),
-                );
-                let saved_trait_impl = self.active_trait_impl;
-                let saved_impl_assoc = std::mem::take(&mut self.impl_assoc_types);
-                let type_defs_snapshot = self.type_defs.clone();
-                if let (Some(trait_ty), Some(&type_def)) =
-                    (trait_, self.type_defs.get(&type_name.symbol))
-                {
-                    if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
-                        if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
-                            self.active_trait_impl = Some((type_def, trait_def));
-                            for member in members {
-                                if let ImplMember::AssociatedType { name, ty } = member {
-                                    let concrete =
-                                        self.lower_ast_type_with_defs(ty, &type_defs_snapshot);
-                                    self.impl_assoc_types.insert(name.symbol, concrete);
-                                }
-                            }
-                        }
-                    }
-                    self.check_trait_impl_exhaustiveness(type_name, trait_ty, members, span);
-                }
-                if let Some(&type_def) = self.type_defs.get(&type_name.symbol) {
-                    let self_ty = self.impl_self_type_id(type_def, generics.as_deref());
-                    self.impl_self_type = Some(self_ty);
-                    for member in members {
-                        if let ImplMember::Method(m) = member {
-                            self.check_function(m);
-                        }
-                    }
-                    self.impl_self_type = None;
-                } else {
-                    for member in members {
-                        if let ImplMember::Method(m) = member {
-                            self.check_function(m);
-                        }
-                    }
-                }
-                self.active_trait_impl = saved_trait_impl;
-                self.impl_assoc_types = saved_impl_assoc;
-                self.type_defs = saved_defs;
-            }
+            } => self.check_impl_decl(type_name, trait_, generics.as_deref(), members, span),
             _ => {}
         }
+    }
+
+    fn check_impl_decl(
+        &mut self,
+        type_name: &TypeName,
+        trait_: &Option<Node<Type>>,
+        generics: Option<&[phx_syntax::ast::types::GenericParam]>,
+        members: &[ImplMember],
+        span: Span,
+    ) {
+        let saved_defs = self.type_defs.clone();
+        push_generics(
+            &mut self.type_defs,
+            &self.resolved.defs,
+            self.current_module,
+            generics,
+        );
+        let saved_trait_impl = self.active_trait_impl;
+        let saved_impl_assoc = std::mem::take(&mut self.impl_assoc_types);
+        let type_defs_snapshot = self.type_defs.clone();
+        if let (Some(trait_ty), Some(&type_def)) =
+            (trait_.as_ref(), self.type_defs.get(&type_name.symbol))
+        {
+            if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
+                if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
+                    self.active_trait_impl = Some((type_def, trait_def));
+                    for member in members {
+                        if let ImplMember::AssociatedType { name, ty } = member {
+                            let concrete = self.lower_ast_type_with_defs(ty, &type_defs_snapshot);
+                            self.impl_assoc_types.insert(name.symbol, concrete);
+                        }
+                    }
+                }
+            }
+            self.check_trait_impl_exhaustiveness(type_name, trait_ty, members, span);
+        }
+        if let Some(&type_def) = self.type_defs.get(&type_name.symbol) {
+            let self_ty = self.impl_self_type_id(type_def, generics);
+            self.impl_self_type = Some(self_ty);
+            for member in members {
+                if let ImplMember::Method(m) = member {
+                    self.check_function(m);
+                }
+            }
+            if let Some(trait_ty) = trait_.as_ref() {
+                if let Some(inst_key) = self.build_trait_inst_key(
+                    type_def,
+                    vec![],
+                    &trait_ty.inner,
+                    &type_defs_snapshot,
+                ) {
+                    if let Some(inherited) = self.inherited_by_inst.get(&inst_key).cloned() {
+                        self.check_inherited_trait_methods(&inst_key, inherited);
+                    }
+                }
+            }
+            self.impl_self_type = None;
+        } else {
+            for member in members {
+                if let ImplMember::Method(m) = member {
+                    self.check_function(m);
+                }
+            }
+        }
+        self.active_trait_impl = saved_trait_impl;
+        self.impl_assoc_types = saved_impl_assoc;
+        self.type_defs = saved_defs;
     }
 
     fn check_function(&mut self, f: &Function) {
@@ -3099,6 +3240,28 @@ impl<'a> TypeChecker<'a> {
         None
     }
 
+    fn find_trait_generics(
+        &self,
+        trait_def: DefId,
+    ) -> Option<Vec<phx_syntax::ast::types::GenericParam>> {
+        let def = self.resolved.defs.get(trait_def.index() as usize)?;
+        for module in &self.resolved.modules {
+            if module.id != def.module {
+                continue;
+            }
+            for item in &module.program.items {
+                if let TopLevelDecl::Trait { name, generics, .. } = &item.inner.decl {
+                    if let Some(found) = self.find_def(module.id, name.symbol, DefKind::Trait) {
+                        if found == trait_def {
+                            return generics.clone();
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn build_trait_inst_key(
         &mut self,
         type_def: DefId,
@@ -3289,6 +3452,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn find_function_decl(&self, def: DefId) -> Option<&Function> {
+        if let Some(f) = self.inherited_trait_methods.get(&def) {
+            return Some(f);
+        }
         for module in &self.resolved.modules {
             for item in &module.program.items {
                 match &item.inner.decl {
@@ -4719,6 +4885,8 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
         IntrinsicKernel,
+        Vec<crate::resolver::Def>,
+        trait_defaults::InheritedTraitMethods,
     ) {
         (
             self.types,
@@ -4736,6 +4904,8 @@ impl<'a> TypeChecker<'a> {
             self.indirect_call_sites,
             self.intrinsic_call_sites,
             self.intrinsic_kernel,
+            self.pending_inherited_defs,
+            self.inherited_trait_methods,
         )
     }
 
@@ -5053,16 +5223,21 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         indirect_call_sites,
         intrinsic_call_sites,
         intrinsic_kernel,
+        pending_inherited_defs,
+        inherited_trait_methods,
     ) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
     }
+    let mut resolved = resolved.clone();
+    trait_defaults::merge_pending_inherited_defs(&mut resolved, pending_inherited_defs);
+    let entry = resolved.main_fn;
     let mut program = super::TypedProgram {
-        resolved: resolved.clone(),
+        resolved,
         types,
         expr_types,
         functions,
-        entry: resolved.main_fn,
+        entry,
         layout,
         specialized_from: HashMap::new(),
         mono_insts: Vec::new(),
@@ -5076,6 +5251,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         indirect_call_sites,
         intrinsic_call_sites,
         intrinsic_kernel,
+        inherited_trait_methods,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {
