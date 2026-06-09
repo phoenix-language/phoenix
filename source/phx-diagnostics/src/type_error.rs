@@ -305,6 +305,13 @@ pub enum TypeCheckError {
         /// Call site span.
         span: Span,
     },
+    /// VM intrinsic call requires an `unsafe` block or `unsafe fn`.
+    IntrinsicRequiresUnsafe {
+        /// Intrinsic name.
+        name: String,
+        /// Call site span.
+        span: Span,
+    },
     /// Type implements both `Drop` and `Copyable`, which conflict.
     CopyableDropConflict {
         /// Type name for diagnostics.
@@ -351,6 +358,7 @@ impl TypeCheckError {
             Self::InvalidTryOperand { .. } => DiagnosticCode::new("E2029"),
             Self::TryErrorFromMissing { .. } => DiagnosticCode::new("E2031"),
             Self::ExternCallRequiresUnsafe { .. } => DiagnosticCode::new("E2032"),
+            Self::IntrinsicRequiresUnsafe { .. } => DiagnosticCode::new("E2034"),
             Self::CopyableDropConflict { .. } => DiagnosticCode::new("E2033"),
         }
     }
@@ -391,6 +399,7 @@ impl TypeCheckError {
             | Self::InvalidTryOperand { span, .. }
             | Self::TryErrorFromMissing { span, .. }
             | Self::ExternCallRequiresUnsafe { span, .. }
+            | Self::IntrinsicRequiresUnsafe { span, .. }
             | Self::CopyableDropConflict { span, .. } => Some(*span),
         }
     }
@@ -530,6 +539,9 @@ impl fmt::Display for TypeCheckError {
             ),
             Self::ExternCallRequiresUnsafe { name, .. } => {
                 write!(f, "call to foreign function `{name}` requires `unsafe`")
+            }
+            Self::IntrinsicRequiresUnsafe { name, .. } => {
+                write!(f, "call to intrinsic `{name}` requires `unsafe`")
             }
             Self::CopyableDropConflict { type_name, .. } => write!(
                 f,

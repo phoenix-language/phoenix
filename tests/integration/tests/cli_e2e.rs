@@ -282,6 +282,25 @@ fn build_std_prelude() {
 }
 
 #[test]
+fn build_heap_alloc() {
+    e2e(|cli| {
+        rm_project_build_unlocked("heap_alloc");
+        let project = cli_project("heap_alloc");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/heap_alloc.phx0").is_file());
+    });
+}
+
+#[test]
+fn check_heap_alloc_unsafe_fails() {
+    e2e(|cli| {
+        let project = cli_project("heap_alloc_unsafe");
+        cli.check_fails(&project.join("src/main.phx"))
+            .assert_contains("unsafe");
+    });
+}
+
+#[test]
 fn build_std_prelude_off_fails() {
     e2e(|cli| {
         let out = cli.build_fails(&cli_project("std_prelude_off"));

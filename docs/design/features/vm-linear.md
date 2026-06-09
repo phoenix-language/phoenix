@@ -87,7 +87,7 @@ Section kinds (MVP):
 **Compiler-only notes (MVP):**
 
 - **`POP` (opcode 3)** — defined for the verifier/VM; Phoenix codegen does not emit it (void results are handled via control flow and `STORE_LOCAL` to `_`).
-- **`ALLOC` (38) / `PTR_STORE` (40)** — implemented in the VM for future heap/alloc intrinsics; not emitted until the intrinsic kernel spelling is fixed in design (`grammar-deferred.md`).
+- **`ALLOC` (38) / `PTR_STORE` (40)** — VM heap intrinsics; compiler emits when lowering `std::core::alloc::alloc_bytes` and `*ptr = …` on raw pointers ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic)). **`alloc_bytes` requires `unsafe`** (same boundary as `extern "C"` calls).
 
 ---
 
@@ -241,7 +241,8 @@ Several opcodes carry a **`prim_kind` wire byte** (`0`–`12`, see `PrimitiveKin
 | `LOAD_LOCAL`, `STORE_LOCAL` | `prim_kind` or `0xFF` | Typed scalar load/store vs aggregate slot |
 | Arithmetic, bitwise, compare | `prim_kind` | Require matching stack cell widths |
 | `NEG`, `NOT`, `BIT_NOT` | `prim_kind` | Unary primitive width |
-| `PTR_LOAD`, `PTR_STORE` | `size`, `signed`, `prim_kind` | Memory access width |
+| `PTR_LOAD`, `PTR_STORE` | `prim_kind`, `signed` | Memory access width |
+| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address |
 | `MAKE_SLICE` | `elem_prim_kind` | Element type of source array |
 
 ---

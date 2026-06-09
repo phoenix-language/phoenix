@@ -1,0 +1,5 @@
+// std::core::alloc — VM heap allocation intrinsic (compiler-lowering).
+
+pub alloc_bytes :: (size: u32) => *mut u8 {
+    const _ = size;
+};

@@ -259,7 +259,14 @@ Drop :: trait
 
 ### Heap allocation (V0-030)
 
-Heap blocks obtained via the VM `ALLOC` intrinsic (future `core::alloc::alloc_bytes`) are owned by wrapper types. Wrappers **must** implement `Drop` to release resources. Canonical deallocation (`core::alloc::dealloc_bytes` / `FREE` opcode) is deferred — until it ships, std authors document ownership and avoid leaking in tests that allocate.
+**Surface:** `#import std::core::alloc::alloc_bytes` — `(size: u32) => *mut u8`, callable only inside `unsafe`. Compiler lowers calls to the VM `ALLOC` opcode (pops runtime `size` from stack, pushes heap offset as `*mut u8`).
+
+**Ownership:**
+
+- `alloc_bytes` returns an **owned raw address**; there is no GC.
+- Raw pointers (`*T`, `*mut T`) are **Copyable** (bitwise copy of the address).
+- Wrapper types around heap blocks **must** implement `Drop` when deallocation lands.
+- **`dealloc_bytes` / `FREE` opcode deferred** — short tests may leak; std authors document ownership until dealloc ships.
 
 ### Flow-insensitive limitation (MVP)
 

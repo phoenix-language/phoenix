@@ -1,7 +1,9 @@
 //! Lower expressions to IR instructions (stack-oriented).
 
 use phx_syntax::Symbol;
-use phx_syntax::ast::expr::{BinOp, Expr, ExprNode, IfCondition, PostfixOp, StructFieldInit};
+use phx_syntax::ast::expr::{
+    BinOp, Expr, ExprNode, IfCondition, PostfixOp, StructFieldInit, UnaryOp,
+};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
@@ -16,8 +18,9 @@ use crate::lower::ctx::{
 };
 use crate::resolver::{DefId, DefKind};
 use crate::typeck::{
-    BindingKind, ExprId, FunctionLayout, LocalSlot, PrimitiveMethodSite, TryFailureMode,
-    TrySiteMeta, Ty, TypeId, VariantKind, primitive_kind_for_type, primitive_load_signed,
+    BindingKind, ExprId, FunctionLayout, IntrinsicSite, LocalSlot, PrimitiveMethodSite,
+    TryFailureMode, TrySiteMeta, Ty, TypeId, VariantKind, primitive_kind_for_type,
+    primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 use phx_syntax::token::IntegerSuffix;
@@ -111,7 +114,7 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
             lower_binary(ctx, *op, left, right, result_ty);
         }
         Expr::Assign { target, value, .. } => {
-            lower_assign_expr(ctx, target, value);
+            lower_assign_expr(ctx, target, value, result_ty);
         }
         Expr::Cast { expr, .. } => {
             let from_id = crate::typeck::ExprId::from_raw(ctx.next_expr);
@@ -577,9 +580,14 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
 }
 
 /// Lowers assignment (`=`, `+=`, …) into store or compound-op IR.
-pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value: &ExprNode) {
+pub(crate) fn lower_assign_expr(
+    ctx: &mut LowerCtx<'_>,
+    target: &ExprNode,
+    value: &ExprNode,
+    _result_ty: TypeId,
+) {
     lower_assign_target(ctx, &target.inner);
-    lower_expr(ctx, value);
+    let value_ty = lower_expr_typed(ctx, value);
     match &target.inner {
         Expr::Ident(ident) => {
             if let Some(binding) = ctx.layout.binding(ident.symbol) {
@@ -587,6 +595,16 @@ pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value
                     slot: binding.slot,
                     ty: binding.ty,
                     prim_kind: prim_kind_byte(ctx.typed, binding.ty),
+                });
+            }
+        }
+        Expr::Unary {
+            op: UnaryOp::Deref, ..
+        } => {
+            if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, value_ty) {
+                ctx.emit(IrInst::PtrStore {
+                    prim_kind: kind.as_u8(),
+                    signed: primitive_load_signed(kind),
                 });
             }
         }
@@ -623,6 +641,13 @@ pub(crate) fn lower_assign_expr(ctx: &mut LowerCtx<'_>, target: &ExprNode, value
 fn lower_assign_target(ctx: &mut LowerCtx<'_>, target: &Expr) {
     match target {
         Expr::Ident(_) => {}
+        Expr::Unary {
+            op: UnaryOp::Deref,
+            operand,
+            ..
+        } => {
+            lower_expr(ctx, operand);
+        }
         Expr::Postfix { base, ops } if ops.len() == 1 => {
             if let PostfixOp::Field(_) = &ops[0] {
                 emit_load_struct_base(ctx, base);
@@ -723,10 +748,14 @@ fn lower_postfix_inner(
             for arg in args {
                 lower_expr(ctx, arg);
             }
-            ctx.emit(IrInst::Call {
-                callee,
-                ret: result_ty,
-            });
+            if ctx.typed.intrinsic_call_sites.contains(&postfix_expr_id) {
+                lower_intrinsic_call(ctx, IntrinsicSite::AllocBytes, result_ty);
+            } else {
+                ctx.emit(IrInst::Call {
+                    callee,
+                    ret: result_ty,
+                });
+            }
         }
         return;
     }
@@ -839,6 +868,12 @@ fn lower_postfix_inner(
                         });
                         receiver_ty = result_ty;
                     }
+                } else if ctx.typed.intrinsic_call_sites.contains(&postfix_expr_id) {
+                    for arg in args {
+                        lower_expr(ctx, arg);
+                    }
+                    lower_intrinsic_call(ctx, IntrinsicSite::AllocBytes, result_ty);
+                    receiver_ty = result_ty;
                 } else if let Some(meta) = ctx.typed.indirect_call_sites.get(&postfix_expr_id) {
                     for arg in args {
                         lower_expr(ctx, arg);
@@ -1025,6 +1060,14 @@ fn lower_try_convert_err(
     ctx.emit(IrInst::Return {
         ty: ctx.layout.return_type,
     });
+}
+
+fn lower_intrinsic_call(ctx: &mut LowerCtx<'_>, site: IntrinsicSite, result_ty: TypeId) {
+    match site {
+        IntrinsicSite::AllocBytes => {
+            ctx.emit(IrInst::Alloc { result: result_ty });
+        }
+    }
 }
 
 fn lower_primitive_method(

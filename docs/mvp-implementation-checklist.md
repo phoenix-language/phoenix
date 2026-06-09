@@ -67,7 +67,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | `#import` via in-process `compile_source` | Single-buffer API has **no** module root → `ImportNotSupported`. Use `check_file` / `check_file_with_module_path`, `compile_to_module*`, or `build_project`. |
 | `#import` via CLI on one file | `phx check` / `phx run <file>` use **parent directory** as module root (same as `check_file`). Multi-file trees need `--module-src` or `phoenix.toml` (M2). |
 | Explicit drop / scopes | V0-054: compiler drop glue via static `Call` to `Drop::drop`; no dedicated drop opcode |
-| Heap user surface | `ALLOC` opcode + VM heap exist; no language syntax for heap boxes yet |
+| Heap user surface | V0-030: `#import std::core::alloc::alloc_bytes` inside `unsafe`; `dealloc_bytes` / `FREE` deferred |
 | Generics | V0-020/V0-021: generic decls, local inference, monomorphization (`id$s32`-style mangling); V0-022/V0-023: generic enum match, trait associated types; V0-024: cross-crate `.pxi` mangled fn exports |
 | Parser ergonomics | Bounded fixes (e.g. unclosed `(`); broader grammar ambiguities may remain |
 
@@ -79,7 +79,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Locals / stack | Typed slots; `prim_kind` operands on const, load/store, and arithmetic |
 | Aggregates | Arena handles: struct, enum, tuple, fixed array, **slice** `(ptr, len)` |
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
-| Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (internal) |
+| Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (V0-030: runtime-size heap alloc) |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
 | Lifetime / drop | V0-054: scope-end drop glue for `Drop` types; flow-insensitive; see [traits.md](design/features/traits.md#drop-resource-cleanup) |
 | Text | Core **`str`** view (`"…"` literals, rodata); **`[u8; N]`** / `b"…"` for binary; std **`String`** (owned) post-std |
@@ -208,7 +208,8 @@ A credible MVP demo `.phx` should be able to:
 | Method calls `x.foo()`                     | done     | `typeck/check.rs`, `lower/expr.rs` | Inherent + trait impl dispatch                                          | `struct_method.phx`, `trait_eq.phx`                    |
 | Trait / impl static resolution             | done     | `typeck/check.rs`                  | `Type :: impl :: Trait`; ambiguous impls diagnosed                      | `trait_eq.phx`                                         |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
-| Raw pointers `*T`                          | partial  | `typeck/ops.rs`, VM `PtrLoad`/`PtrStore` | Deref on primitives; full pointer surface TBD                          | `deref_ptr.phx`                                        |
+| Raw pointers `*T`                          | pass     | `typeck/intrinsic_kernel.rs`, VM `Alloc`/`PtrLoad`/`PtrStore` | V0-030: `std::core::alloc::alloc_bytes` in `unsafe`; raw ptrs Copyable | `heap_alloc/`, `deref_ptr.phx`                         |
+| Heap allocation (V0-030)                   | done     | `std::core::alloc`, `intrinsic_kernel.rs`, `IrInst::Alloc` | Runtime-size `ALLOC`; `dealloc_bytes` deferred | `heap_alloc/`, `heap_alloc_unsafe/` |
 | Generics on types                          | pass     | `typeck/mono.rs`, `typeck/check.rs` | V0-020/V0-021: explicit + inferred instantiation; dual-site mono in IR/bytecode; V0-022 generic enum match; V0-023 assoc types + `Self::Item` | `generic_fn.phx`, `generic_enum_infer.phx`, `generic_enum_match.phx`, `typeck.rs` dual-inst tests |
 | Copyable inference                         | done     | `typeck/builtins.rs`, `bounds.rs` | Primitives, tuples, arrays; eligible structs; std `Copyable` bound | `std_traits`, typeck bound tests |
 | Use-after-move (MVP ownership)             | done     | `typeck/ownership.rs`, `check.rs` | Non-Copyable moves                                                            | `use_after_move_error`                                 |
@@ -561,7 +562,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **34
 
 | Topic | Direction (design TBD) |
 |-------|-------------------------|
-| Stack vs heap | Most locals/aggregates in frame + arena today; heap via intrinsics/`Alloc` only internally until surface syntax is designed |
+| Stack vs heap | Locals/aggregates in frame + arena; heap via `std::core::alloc::alloc_bytes` (V0-030); no GC |
 | Scope end | Block `{ … }` should imply drop of owned non-`Copyable` values (Rust-like); compiler inserts drop/dealloc opcodes at scope exit |
 | Heap ownership | Likely explicit owning types (e.g. box/alloc handle) rather than implicit GC; syntax and `Copyable`/`Clone` interaction TBD |
 | Borrow checker | Full `&` / `&mut` exclusivity and lifetimes — builds on address-of + `PtrLoad` already in MVP |

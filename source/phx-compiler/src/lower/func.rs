@@ -24,6 +24,9 @@ pub fn lower_functions(
         if is_generic_template(typed, layout.def) {
             continue;
         }
+        if typed.intrinsic_kernel.is_intrinsic_fn(layout.def) {
+            continue;
+        }
         if let Some(f) = lower_one_function(typed, layout, functions.len(), constants, bag) {
             functions.push(f);
         }

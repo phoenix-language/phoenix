@@ -130,6 +130,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             checker.seed_layout_tables(&typed.layout);
             checker.seed_std_kernel(&typed.std_kernel);
             checker.seed_std_trait_kernel(&typed.std_trait_kernel);
+            checker.seed_intrinsic_kernel(&typed.intrinsic_kernel);
             checker.seed_value_types(&typed.value_types);
             checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
             let (

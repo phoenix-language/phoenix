@@ -295,16 +295,7 @@ Std collections and owned text need heap allocation — not a GC, not a primitiv
 
 **Refs:** [grammar-deferred.md](features/grammar-deferred.md) (Heap `ALLOC`), [mvp.md](mvp.md), [vm-linear.md](features/vm-linear.md)
 
----
-
-### V0-031 — No primitive owned `string`
-
-- Confirm no language builtin growable `string` type exists.
-- `str` remains the only core text type; owned growable text is reserved for std `String`.
-
-**Acceptance:** Type checker has no owned-string primitive; design docs and implementation agree.
-
-**Refs:** [mvp.md](mvp.md), [type-system.md](features/type-system.md)
+**Status:** Done
 
 ---
 

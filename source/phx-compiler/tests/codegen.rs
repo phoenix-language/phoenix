@@ -312,3 +312,38 @@ fn codegen_fn_pointer_indirect_call_verifies() {
     );
     verify(&module).expect("verify fn pointer indirect call module");
 }
+
+#[test]
+fn codegen_heap_alloc_emits_alloc_opcode() {
+    use phx_test::{cli_project, fixture_fs_lock};
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_alloc");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let path = root.join("src/main.phx");
+    let unit = phx_compiler::check_file(&path).expect("check heap_alloc");
+    let ir = lower(&unit.typed).expect("lower heap_alloc");
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks
+                .iter()
+                .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Alloc { .. })))
+        }),
+        "expected IrInst::Alloc in heap_alloc"
+    );
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks
+                .iter()
+                .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::PtrStore { .. })))
+        }),
+        "expected IrInst::PtrStore in heap_alloc"
+    );
+    let module = codegen(&ir, &unit.typed).expect("codegen heap_alloc");
+    assert!(
+        module.code.contains(&Opcode::Alloc.as_u8()),
+        "expected ALLOC opcode in heap_alloc bytecode"
+    );
+    verify(&module).expect("verify heap_alloc");
+}

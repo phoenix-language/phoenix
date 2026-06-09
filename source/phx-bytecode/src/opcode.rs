@@ -82,15 +82,13 @@ pub enum Opcode {
     Index = 36,
     /// Abort execution. Stack: `[] → []` (terminator)
     Trap = 37,
-    /// Allocate `size` bytes on the VM heap. Stack: `[] → [addr]` — operand: byte size.
+    /// Allocate bytes on the VM heap. Stack: `[size: u32] → [addr: ptr]` — no operands.
     ///
-    /// VM-ready; MVP compiler does not emit until alloc intrinsic spelling is defined in design.
+    /// Pops runtime size from stack; pushes untagged heap offset as `ScalarValue::Ptr`.
     Alloc = 38,
-    /// Load primitive at address. Stack: `[addr] → [value]` — operands: `size`, `signed` (0/1).
+    /// Load primitive at address. Stack: `[addr] → [value]` — operands: `prim_kind`, `signed` (0/1).
     PtrLoad = 39,
-    /// Store primitive at address. Stack: `[addr, value] → []` — operands: `size`, `signed`.
-    ///
-    /// VM-ready; not emitted by MVP codegen (see `Alloc`).
+    /// Store primitive at address. Stack: `[addr, value] → []` — operands: `prim_kind`, `signed`.
     PtrStore = 40,
     /// Build slice from array aggregate. Stack: `[array] → [slice]` — operand: element `prim_kind`.
     MakeSlice = 41,

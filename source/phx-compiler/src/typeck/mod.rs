@@ -15,6 +15,7 @@ mod builtins;
 mod check;
 mod display;
 mod infer;
+mod intrinsic_kernel;
 mod layout;
 mod lower_ty;
 mod mangle;
@@ -37,6 +38,7 @@ pub use mono::{
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use display::format_type;
+pub use intrinsic_kernel::{IntrinsicKernel, IntrinsicSite};
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
@@ -78,6 +80,10 @@ pub struct TypedProgram {
     pub try_sites: std::collections::HashMap<ExprId, TrySiteMeta>,
     /// Indirect fn pointer call sites keyed by postfix `Call` expression id.
     pub indirect_call_sites: std::collections::HashMap<ExprId, IndirectCallMeta>,
+    /// VM intrinsic call sites keyed by postfix `Call` expression id.
+    pub intrinsic_call_sites: std::collections::HashSet<ExprId>,
+    /// Std / VM intrinsic definition ids.
+    pub intrinsic_kernel: IntrinsicKernel,
     /// Compiler builtin method sites on primitives (`eq`, `clone`).
     pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → callee fn def.

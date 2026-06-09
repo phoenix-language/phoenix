@@ -718,7 +718,6 @@ fn verify_operands(
         | Opcode::MakeTuple
         | Opcode::MakeArray
         | Opcode::Trap
-        | Opcode::Alloc
         | Opcode::MakeSlice => {
             if inst.operands.len() != 1 {
                 return Err(VerifyError::MalformedInstruction {
@@ -743,7 +742,8 @@ fn verify_operands(
         | Opcode::Index
         | Opcode::Pop
         | Opcode::Return
-        | Opcode::LoadAggViaLocalPtr => {
+        | Opcode::LoadAggViaLocalPtr
+        | Opcode::Alloc => {
             if !inst.operands.is_empty() {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

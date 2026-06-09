@@ -38,9 +38,9 @@ A type is Copyable only when:
 - The type has no owning heap payload requiring custom drop behavior
 - The type has no interior mutability that would make a bitwise copy unsafe
 
-**Typically Copyable:** integer and float scalars, `bool`, `()`, tuples of Copyable fields, **tuple structs** whose fields are all Copyable ([V0-057](language-v0.md#v0-057--opaque--newtype-wrappers)), and enums with only Copyable payloads.
+**Typically Copyable:** integer and float scalars, `bool`, `()`, tuples of Copyable fields, **tuple structs** whose fields are all Copyable ([V0-057](language-v0.md#v0-057--opaque--newtype-wrappers)), enums with only Copyable payloads, **raw pointers** (`*T`, `*mut T` — bitwise copy of the address), and function pointer values.
 
-**Not Copyable:** owning heap handles, mutable shared handles, and resource wrappers with cleanup requirements.
+**Not Copyable:** borrow references (`&T`, `&mut T`), owning heap handles (wrapper types with `Drop`), mutable shared handles, and resource wrappers with cleanup requirements.
 
 Copyability can be compiler-known for primitives and inferred/derived for eligible user types.
 

@@ -3,7 +3,7 @@
 // AST enums are `#[non_exhaustive]`; wildcard arms reserve future variants.
 #![allow(unreachable_patterns)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
@@ -31,6 +31,7 @@ use super::builtins::{
 };
 use super::display::{format_type, format_type_diagnostic};
 use super::infer::InferenceCtx;
+use super::intrinsic_kernel::{IntrinsicKernel, IntrinsicSite};
 use super::layout::{
     EnumLayout, ProgramLayout, StructLayout, TraitInstKey, TypeMonoKey, VariantKind, VariantLayout,
     VariantMeta,
@@ -117,6 +118,10 @@ pub struct TypeChecker<'a> {
     associated_fn_sites: HashMap<ExprId, DefId>,
     /// Indirect fn pointer call sites for lowering.
     indirect_call_sites: HashMap<ExprId, IndirectCallMeta>,
+    /// VM intrinsic call sites (`alloc_bytes`, …).
+    intrinsic_call_sites: HashSet<ExprId>,
+    /// Kernel of std intrinsic definition ids.
+    intrinsic_kernel: IntrinsicKernel,
     /// Nesting depth of `unsafe` blocks and `unsafe fn` bodies.
     unsafe_depth: u32,
 }
@@ -188,6 +193,8 @@ impl<'a> TypeChecker<'a> {
             primitive_method_sites: HashMap::new(),
             associated_fn_sites: HashMap::new(),
             indirect_call_sites: HashMap::new(),
+            intrinsic_call_sites: HashSet::new(),
+            intrinsic_kernel: IntrinsicKernel::default(),
             unsafe_depth: 0,
         }
     }
@@ -237,6 +244,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Reuses std trait kernel from the template pass during monomorphization.
+    pub(crate) fn seed_intrinsic_kernel(&mut self, kernel: &IntrinsicKernel) {
+        self.intrinsic_kernel = kernel.clone();
+    }
+
     pub(crate) fn seed_std_trait_kernel(&mut self, kernel: &StdTraitKernel) {
         self.std_trait_kernel = kernel.clone();
     }
@@ -611,6 +622,60 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
+    fn check_intrinsic_call(
+        &mut self,
+        site: IntrinsicSite,
+        def: DefId,
+        args: &[ExprNode],
+        span: Span,
+        expr_id: ExprId,
+    ) -> TypeId {
+        if self.unsafe_depth == 0 {
+            let name = self
+                .resolved
+                .defs
+                .get(def.index() as usize)
+                .map(|d| self.symbol_name(d.name))
+                .unwrap_or_else(|| "intrinsic".to_owned());
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::IntrinsicRequiresUnsafe { name, span },
+            );
+        }
+        match site {
+            IntrinsicSite::AllocBytes => {
+                let u32_ty = super::builtins::int_literal_type(&mut self.types, true);
+                let u8_ty = super::builtins::u8_type(&mut self.types);
+                let ret = self.types.intern(&Ty::Ptr {
+                    mut_: true,
+                    inner: u8_ty,
+                });
+                if args.len() == 1 {
+                    let got = self.check_expr_node(&args[0]);
+                    if !self.types_equal(got, u32_ty) {
+                        self.error_mismatch(
+                            u32_ty,
+                            got,
+                            args[0].span,
+                            MismatchKind::Argument { index: 0 },
+                        );
+                    }
+                } else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: 1,
+                            found: args.len(),
+                            span,
+                        },
+                    );
+                }
+                self.intrinsic_call_sites.insert(expr_id);
+                ret
+            }
+        }
+    }
+
     fn record_indirect_call(
         &mut self,
         callee_ty: TypeId,
@@ -943,6 +1008,7 @@ impl<'a> TypeChecker<'a> {
         self.collect_decls();
         self.std_kernel = StdKernel::build(self.resolved, &self.program_layout);
         self.std_trait_kernel = StdTraitKernel::build(self.resolved, &self.program_layout);
+        self.intrinsic_kernel = IntrinsicKernel::build(self.resolved);
         self.validate_type_aliases();
         for module in &self.resolved.modules {
             self.current_module = module.id;
@@ -1466,6 +1532,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_function_body(&mut self, f: &Function, def: DefId, emit_layout: bool) {
+        if self.intrinsic_kernel.is_intrinsic_fn(def) {
+            return;
+        }
         let module = self.def_module(def);
         let mut td = self.type_defs.clone();
         push_generics(&mut td, &self.resolved.defs, module, f.generics.as_deref());
@@ -1582,11 +1651,12 @@ impl<'a> TypeChecker<'a> {
     fn check_block_stmt_value(&mut self, stmt: &Stmt) -> TypeId {
         match stmt {
             Stmt::Expr(expr) => {
-                if let Expr::Assign { target, value, .. } = &expr.inner {
-                    let _ = self.check_assign_expr(target, value, expr.span);
-                    return self.unit;
+                if matches!(expr.inner, Expr::Assign { .. }) {
+                    let _ = self.check_expr_node(expr);
+                    self.unit
+                } else {
+                    self.check_expr_node(expr)
                 }
-                self.check_expr_node(expr)
             }
             Stmt::Return(expr) => self.check_return(expr.as_ref()),
             other => {
@@ -1668,16 +1738,10 @@ impl<'a> TypeChecker<'a> {
                 self.define_local(name.symbol, expected, BindingKind::Var, Some(&init.inner));
             }
             Stmt::Assign { expr } => {
-                if let Expr::Assign { target, value, .. } = &expr.inner {
-                    let _ = self.check_assign_expr(target, value, expr.span);
-                }
+                let _ = self.check_expr_node(expr);
             }
             Stmt::Expr(expr) => {
-                if let Expr::Assign { target, value, .. } = &expr.inner {
-                    let _ = self.check_assign_expr(target, value, expr.span);
-                } else {
-                    let _ = self.check_expr_node(expr);
-                }
+                let _ = self.check_expr_node(expr);
             }
             Stmt::Return(expr) => {
                 let _ = self.check_return(expr.as_ref());
@@ -2077,6 +2141,25 @@ impl<'a> TypeChecker<'a> {
                         self.current_module,
                         TypeCheckError::InvalidOperator {
                             op: "assign target",
+                            span: target.span,
+                        },
+                    );
+                    self.unit
+                }
+            }
+            Expr::Unary {
+                op: phx_syntax::ast::expr::UnaryOp::Deref,
+                operand,
+                ..
+            } => {
+                let ptr_ty = self.check_expr_node_read(operand);
+                if let Ty::Ptr { inner, .. } = self.types.get(ptr_ty) {
+                    *inner
+                } else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::InvalidOperator {
+                            op: "assign through deref",
                             span: target.span,
                         },
                     );
@@ -2563,35 +2646,51 @@ impl<'a> TypeChecker<'a> {
                 PostfixOp::Call { generics, args } => {
                     let callee_ty = ty;
                     let callee_def = self.callee_def_from_expr(base);
-                    let foreign = callee_def.is_some_and(|d| {
-                        self.resolved
-                            .defs
-                            .get(d.index() as usize)
-                            .is_some_and(|rec| rec.kind == DefKind::ExternFn)
-                    });
-                    if let Some(def) = callee_def {
-                        self.check_extern_call(def, span);
-                    }
-                    ty = if let Some((target_ty, method)) = self.associated_fn_target(base) {
-                        self.check_associated_fn_call(
-                            target_ty,
-                            method,
-                            generics.as_deref(),
-                            args,
-                            span,
-                            expr_id,
-                        )
+                    if let (Some(def), Some(site)) = (
+                        callee_def,
+                        callee_def.and_then(|d| self.intrinsic_kernel.site_for_call(d)),
+                    ) {
+                        if generics.is_some() {
+                            self.bag.push(
+                                self.current_module,
+                                TypeCheckError::UnsupportedFeature {
+                                    feature: "generic intrinsic call",
+                                    span,
+                                },
+                            );
+                        }
+                        ty = self.check_intrinsic_call(site, def, args, span, expr_id);
                     } else {
-                        self.check_call_with_generics(
-                            callee_ty,
-                            callee_def,
-                            base,
-                            generics.as_deref(),
-                            args,
-                            span,
-                        )
-                    };
-                    self.record_indirect_call(callee_ty, callee_def, expr_id, foreign);
+                        let foreign = callee_def.is_some_and(|d| {
+                            self.resolved
+                                .defs
+                                .get(d.index() as usize)
+                                .is_some_and(|rec| rec.kind == DefKind::ExternFn)
+                        });
+                        if let Some(def) = callee_def {
+                            self.check_extern_call(def, span);
+                        }
+                        ty = if let Some((target_ty, method)) = self.associated_fn_target(base) {
+                            self.check_associated_fn_call(
+                                target_ty,
+                                method,
+                                generics.as_deref(),
+                                args,
+                                span,
+                                expr_id,
+                            )
+                        } else {
+                            self.check_call_with_generics(
+                                callee_ty,
+                                callee_def,
+                                base,
+                                generics.as_deref(),
+                                args,
+                                span,
+                            )
+                        };
+                        self.record_indirect_call(callee_ty, callee_def, expr_id, foreign);
+                    }
                     ty
                 }
                 PostfixOp::Index(idx) => {
@@ -4565,6 +4664,8 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, DefId>,
         HashMap<DefId, TypeId>,
         HashMap<ExprId, IndirectCallMeta>,
+        HashSet<ExprId>,
+        IntrinsicKernel,
     ) {
         (
             self.types,
@@ -4580,6 +4681,8 @@ impl<'a> TypeChecker<'a> {
             self.associated_fn_sites,
             self.value_types,
             self.indirect_call_sites,
+            self.intrinsic_call_sites,
+            self.intrinsic_kernel,
         )
     }
 
@@ -4895,6 +4998,8 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         associated_fn_sites,
         value_types,
         indirect_call_sites,
+        intrinsic_call_sites,
+        intrinsic_kernel,
     ) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
@@ -4916,6 +5021,8 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         associated_fn_sites,
         value_types,
         indirect_call_sites,
+        intrinsic_call_sites,
+        intrinsic_kernel,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {

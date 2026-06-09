@@ -308,6 +308,8 @@ pub fn fn_ptr_target(typed: &TypedProgram, def: DefId) -> Option<(u32, u32)> {
 pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
     if matches!(typed.types.get(ty), Ty::Fn { .. }) {
         SLOT_KIND_FN_PTR
+    } else if matches!(typed.types.get(ty), Ty::Ptr { .. } | Ty::Ref { .. }) {
+        phx_bytecode::PrimitiveKind::U64.as_u8()
     } else {
         primitive_kind_for_type(&typed.types, ty)
             .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8)

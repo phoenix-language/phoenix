@@ -1,0 +1,9 @@
+[project]
+name = "heap_alloc"
+version = "0.1.0"
+description = "V0-030 heap alloc intrinsic smoke test"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

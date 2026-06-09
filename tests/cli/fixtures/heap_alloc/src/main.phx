@@ -1,0 +1,11 @@
+#import std::core::alloc::alloc_bytes;
+
+main :: () => {
+    unsafe {
+        const buf: *mut u8 = alloc_bytes(4u);
+        const byte: u8 = 77 as u8;
+        *buf = byte;
+        const v: u8 = *buf;
+        const _ = v;
+    };
+};

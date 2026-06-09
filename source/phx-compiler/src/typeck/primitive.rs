@@ -72,6 +72,8 @@ pub fn primitive_load_signed(kind: PrimitiveKind) -> u8 {
 pub fn slot_kind_for_binding(types: &TypeInterner, ty: TypeId) -> LocalSlotKind {
     if matches!(types.get(ty), Ty::Fn { .. }) {
         LocalSlotKind::fn_ptr()
+    } else if matches!(types.get(ty), Ty::Ptr { .. } | Ty::Ref { .. }) {
+        LocalSlotKind::primitive(PrimitiveKind::U64)
     } else if let Some(kind) = primitive_kind_for_type(types, ty) {
         LocalSlotKind::primitive(kind)
     } else {

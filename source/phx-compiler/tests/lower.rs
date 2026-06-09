@@ -270,6 +270,38 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
 }
 
 #[test]
+fn lower_heap_alloc_emits_alloc_not_call() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_alloc/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck heap_alloc");
+    let ir = lower(&unit.typed).expect("lower heap_alloc");
+    let has_alloc = ir.functions.iter().any(|f| {
+        f.blocks
+            .iter()
+            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Alloc { .. })))
+    });
+    let has_alloc_call = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts.iter().any(|i| {
+                if let IrInst::Call { callee, .. } = i {
+                    unit.typed.intrinsic_kernel.alloc_bytes == Some(*callee)
+                } else {
+                    false
+                }
+            })
+        })
+    });
+    assert!(has_alloc, "expected Alloc IR for alloc_bytes");
+    assert!(
+        !has_alloc_call,
+        "alloc_bytes must not lower to IrInst::Call"
+    );
+}
+
+#[test]
 fn lower_std_try_emits_question_mark_unwrap() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/std_try/src/main.phx");

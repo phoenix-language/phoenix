@@ -249,6 +249,18 @@ pub enum IrInst {
     },
     /// Convert `str` to `[u8]` slice view. Stack: `[str] → [slice]`
     StrAsSlice,
+    /// Pop runtime `size: u32`, push heap address. Stack: `[size] → [ptr]`
+    Alloc {
+        /// Result pointer type.
+        result: TypeId,
+    },
+    /// Store primitive through raw address. Stack: `[addr, value] → []`
+    PtrStore {
+        /// Stored value primitive wire kind.
+        prim_kind: u8,
+        /// `1` = signed integer store, `0` = unsigned/float.
+        signed: u8,
+    },
 }
 
 /// Binary operators mirrored from type-checked expressions.

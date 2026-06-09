@@ -32,7 +32,6 @@ pub fn apply_stack_effect(
         Opcode::Const
         | Opcode::LoadLocal
         | Opcode::AddressOfLocal
-        | Opcode::Alloc
         | Opcode::MakeStr
         | Opcode::MakeFnPtr => {
             *depth = depth.saturating_add(1);
@@ -98,7 +97,8 @@ pub fn apply_stack_effect(
         | Opcode::MakeSlice
         | Opcode::StrAsSlice
         | Opcode::PtrLoad
-        | Opcode::LoadAggViaLocalPtr => {
+        | Opcode::LoadAggViaLocalPtr
+        | Opcode::Alloc => {
             if *depth == 0 {
                 return Err(StackEffectError::Underflow);
             }

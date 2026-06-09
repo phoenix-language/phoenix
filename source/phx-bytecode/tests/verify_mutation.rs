@@ -150,6 +150,24 @@ fn mutate_stack_underflow_rejected() {
 }
 
 #[test]
+fn heap_alloc_ptr_store_load_roundtrip() {
+    use phx_bytecode::ScalarValue;
+    use phx_vm::{Value, run_captured};
+
+    let module = support::heap_alloc_roundtrip_module();
+    verify(&module).expect("verify heap alloc roundtrip");
+    let capture = run_captured(&module).expect("run heap alloc roundtrip");
+    let loaded = capture
+        .main_local(1)
+        .and_then(|v| match v {
+            Value::Scalar(ScalarValue::U8(n)) => Some(n),
+            _ => None,
+        })
+        .expect("slot 1 should hold loaded u8");
+    assert_eq!(loaded, 77);
+}
+
+#[test]
 fn mutate_truncated_file_bytes_rejected_at_decode() {
     let module = valid_const_return_module();
     let bytes = module.encode().expect("encode");

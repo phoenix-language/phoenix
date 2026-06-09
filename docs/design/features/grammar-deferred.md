@@ -27,6 +27,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `#[deprecated(...)]` | `attribute` on items | **Implemented** — warning at use sites | Cross-crate via `.pxi` |
 | `#[allow(...)]` / `#[must_use]` | `attribute` on items | **Implemented** — lint suppression / discard warning | `#[deny]` / `#[forbid]` |
 | `#[stable(...)]` / `#[since(...)]` | — | Not in grammar v1 | API versioning metadata |
+| Heap `alloc_bytes` | `#import std::core::alloc::alloc_bytes` | **Implemented** — compiler lowers to `ALLOC` opcode inside `unsafe` ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic)) | `dealloc_bytes` / `FREE` opcode deferred |
 
 ---
 
@@ -36,7 +37,6 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 |---------|--------------|-------|
 | Module namespace import value | Needs module ref type + fn pointers | `const math = #import utils::math;` then `math.add` — Tier 2 in [modules.md](modules.md#import-evolution-phased); after [V0-053](../language-v0.md#v0-053--function-pointers-and-indirect-calls) |
 | Qualified paths without `#import` | Path resolution in expr/type position | e.g. `utils::math::add(1, 2)` — Tier 3 in [modules.md](modules.md#import-evolution-phased) |
-| Heap `ALLOC` surface syntax | MVP lists a runtime intrinsic; no canonical spelling | Candidate when std exists: `core::alloc::alloc_bytes(size: u32) => *mut u8` lowering to `ALLOC` opcode |
 | Owned growable `String` | Core ships **`str`** view only; no primitive owned string | Post-`str` milestone: std `String` struct over `Alloc` + `Clone`; see [type-system.md](type-system.md) |
 | Associated types with bounds/defaults | Needs richer grammar than `type Item;` | Example target: `type IntoIter: Iterator<Item = Self::Item>;` |
 | Schedulable I/O types | Call-site syntax not locked | See [runtime-transparency.md](runtime-transparency.md); no `File.read` in MVP |

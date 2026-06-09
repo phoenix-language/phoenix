@@ -65,9 +65,12 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::Cast { .. }
         | IrInst::PtrLoad { .. } => with_operands(2),
         IrInst::MakeEnum { .. } => with_operands(3),
-        IrInst::Return { .. } | IrInst::Index { .. } | IrInst::LoadAggViaLocalPtr | IrInst::Pop => {
-            2
-        }
+        IrInst::Return { .. }
+        | IrInst::Index { .. }
+        | IrInst::LoadAggViaLocalPtr
+        | IrInst::Pop
+        | IrInst::Alloc { .. }
+        | IrInst::PtrStore { .. } => 2,
         IrInst::DropLocal { .. } => with_operands(2).saturating_add(with_operands(1)),
     }
 }
@@ -85,6 +88,7 @@ fn compute_block_starts(func: &IrFunction) -> Vec<u32> {
     starts
 }
 
+#[allow(clippy::too_many_lines)]
 fn apply_ir_stack_effect(
     inst: &IrInst,
     stack: &mut u32,
@@ -180,6 +184,12 @@ fn apply_ir_stack_effect(
         }
         IrInst::LoadAggViaLocalPtr => {
             let _ = apply_stack_effect(Opcode::LoadAggViaLocalPtr, stack, None, none);
+        }
+        IrInst::Alloc { .. } => {
+            let _ = apply_stack_effect(Opcode::Alloc, stack, None, none);
+        }
+        IrInst::PtrStore { .. } => {
+            let _ = apply_stack_effect(Opcode::PtrStore, stack, None, none);
         }
         IrInst::Pop => {
             let _ = apply_stack_effect(Opcode::Pop, stack, None, none);
@@ -457,6 +467,17 @@ fn emit_inst(
         }
         IrInst::LoadAggViaLocalPtr => {
             out.extend(encode(Opcode::LoadAggViaLocalPtr, &[]));
+        }
+        IrInst::Alloc { .. } => {
+            out.extend(encode(Opcode::Alloc, &[]));
+        }
+        IrInst::PtrStore {
+            prim_kind, signed, ..
+        } => {
+            out.extend(encode(
+                Opcode::PtrStore,
+                &[u32::from(*prim_kind), u32::from(*signed)],
+            ));
         }
         IrInst::Pop => {
             out.extend(encode(Opcode::Pop, &[]));

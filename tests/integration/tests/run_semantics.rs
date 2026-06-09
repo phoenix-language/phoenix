@@ -132,6 +132,17 @@ fn deref_ptr_reads_seventy_seven() {
 }
 
 #[test]
+fn heap_alloc_reads_seventy_seven_from_heap() {
+    let _lock = phx_test::fixture_fs_lock();
+    let root = phx_test::cli_project("heap_alloc");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let built = phx_test::force_build_project("heap_alloc");
+    assert_main_locals(&built.module, &[(2, ExpectedLocal::U8(77))]);
+}
+
+#[test]
 fn byte_string_index_is_capital_b() {
     assert_main_locals(
         &compile_fixture("byte_string.phx"),

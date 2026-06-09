@@ -1348,10 +1348,46 @@ fn extern_call_requires_unsafe() {
     assert!(
         bag.errors()
             .iter()
-            .any(|e| { matches!(&e.error, TypeCheckError::ExternCallRequiresUnsafe { .. }) }),
-        "expected ExternCallRequiresUnsafe: {:?}",
+            .any(|e| matches!(&e.error, TypeCheckError::ExternCallRequiresUnsafe { .. })),
+        "expected ExternRequiresUnsafe: {:?}",
         bag.errors()
     );
+}
+
+#[test]
+fn alloc_bytes_requires_unsafe() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_alloc_unsafe/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let err = check_file(&path).expect_err("expected alloc_bytes outside unsafe to fail");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::IntrinsicRequiresUnsafe { .. })),
+        "expected IntrinsicRequiresUnsafe: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn heap_alloc_fixture_typechecks() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_alloc/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = check_file(&path).expect("heap_alloc typecheck");
+    assert!(
+        !unit.typed.intrinsic_call_sites.is_empty(),
+        "expected intrinsic_call_sites for alloc_bytes"
+    );
+    // Reuses `buf` after `*buf = …` — would fail use-after-move if *mut u8 were non-Copyable.
 }
 
 #[test]
