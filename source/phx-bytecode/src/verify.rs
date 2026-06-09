@@ -718,7 +718,8 @@ fn verify_operands(
         | Opcode::MakeTuple
         | Opcode::MakeArray
         | Opcode::Trap
-        | Opcode::MakeSlice => {
+        | Opcode::MakeSlice
+        | Opcode::MakeSliceFromPtr => {
             if inst.operands.len() != 1 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

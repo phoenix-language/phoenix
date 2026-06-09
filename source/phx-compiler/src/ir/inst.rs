@@ -242,6 +242,11 @@ pub enum IrInst {
         /// Element primitive wire kind (or `0xFF` for aggregates).
         elem_kind: u8,
     },
+    /// Build slice from heap pointer + length. Stack: `[ptr, len: u32] → [slice]`
+    MakeSliceFromPtr {
+        /// Element primitive wire kind.
+        elem_kind: u8,
+    },
     /// Build UTF-8 `str` view from constant pool. Stack: `[] → [str]`
     MakeStr {
         /// Constant pool index (`ConstTag::Bytes`).

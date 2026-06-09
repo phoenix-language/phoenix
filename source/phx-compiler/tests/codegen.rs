@@ -314,6 +314,35 @@ fn codegen_fn_pointer_indirect_call_verifies() {
 }
 
 #[test]
+fn codegen_heap_slice_emits_make_slice_from_ptr_opcode() {
+    use phx_test::{cli_project, fixture_fs_lock};
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_slice");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let path = root.join("src/main.phx");
+    let unit = phx_compiler::check_file(&path).expect("check heap_slice");
+    let ir = lower(&unit.typed).expect("lower heap_slice");
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.insts
+                    .iter()
+                    .any(|i| matches!(i, IrInst::MakeSliceFromPtr { .. }))
+            })
+        }),
+        "expected IrInst::MakeSliceFromPtr in heap_slice"
+    );
+    let module = codegen(&ir, &unit.typed).expect("codegen heap_slice");
+    assert!(
+        module.code.contains(&Opcode::MakeSliceFromPtr.as_u8()),
+        "expected MAKE_SLICE_FROM_PTR opcode in heap_slice bytecode"
+    );
+    verify(&module).expect("verify heap_slice");
+}
+
+#[test]
 fn codegen_heap_alloc_emits_alloc_opcode() {
     use phx_test::{cli_project, fixture_fs_lock};
     let _lock = fixture_fs_lock();

@@ -3,7 +3,7 @@
 // AST enums are `#[non_exhaustive]`; wildcard arms reserve future variants.
 #![allow(unreachable_patterns)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{
@@ -119,7 +119,7 @@ pub struct TypeChecker<'a> {
     /// Indirect fn pointer call sites for lowering.
     indirect_call_sites: HashMap<ExprId, IndirectCallMeta>,
     /// VM intrinsic call sites (`alloc_bytes`, …).
-    intrinsic_call_sites: HashSet<ExprId>,
+    intrinsic_call_sites: HashMap<ExprId, IntrinsicSite>,
     /// Kernel of std intrinsic definition ids.
     intrinsic_kernel: IntrinsicKernel,
     /// Nesting depth of `unsafe` blocks and `unsafe fn` bodies.
@@ -193,7 +193,7 @@ impl<'a> TypeChecker<'a> {
             primitive_method_sites: HashMap::new(),
             associated_fn_sites: HashMap::new(),
             indirect_call_sites: HashMap::new(),
-            intrinsic_call_sites: HashSet::new(),
+            intrinsic_call_sites: HashMap::new(),
             intrinsic_kernel: IntrinsicKernel::default(),
             unsafe_depth: 0,
         }
@@ -670,7 +670,60 @@ impl<'a> TypeChecker<'a> {
                         },
                     );
                 }
-                self.intrinsic_call_sites.insert(expr_id);
+                self.intrinsic_call_sites.insert(expr_id, site);
+                ret
+            }
+            IntrinsicSite::SliceFromRawParts => {
+                let u32_ty = super::builtins::int_literal_type(&mut self.types, true);
+                let unit_ret = self.unit;
+                if args.len() != 2 {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: 2,
+                            found: args.len(),
+                            span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return unit_ret;
+                }
+                let ptr_ty = self.check_expr_node(&args[0]);
+                let len_ty = self.check_expr_node(&args[1]);
+                if !self.types_equal(len_ty, u32_ty) {
+                    self.error_mismatch(
+                        u32_ty,
+                        len_ty,
+                        args[1].span,
+                        MismatchKind::Argument { index: 1 },
+                    );
+                }
+                let Ty::Ptr { inner, .. } = self.types.get(ptr_ty).clone() else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::Mismatch {
+                            expected: "*mut T".to_owned(),
+                            found: self.format_ty_diagnostic(ptr_ty),
+                            span: args[0].span,
+                            kind: MismatchKind::Argument { index: 0 },
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return unit_ret;
+                };
+                if super::primitive_kind_for_type(&self.types, inner).is_none() {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "heap slice over non-primitive element type",
+                            span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return unit_ret;
+                }
+                let ret = self.types.intern(&Ty::Slice(inner));
+                self.intrinsic_call_sites.insert(expr_id, site);
                 ret
             }
         }
@@ -4664,7 +4717,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, DefId>,
         HashMap<DefId, TypeId>,
         HashMap<ExprId, IndirectCallMeta>,
-        HashSet<ExprId>,
+        HashMap<ExprId, IntrinsicSite>,
         IntrinsicKernel,
     ) {
         (

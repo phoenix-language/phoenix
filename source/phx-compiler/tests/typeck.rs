@@ -1376,6 +1376,42 @@ fn alloc_bytes_requires_unsafe() {
 }
 
 #[test]
+fn slice_from_raw_parts_requires_unsafe() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_slice_unsafe/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let err = check_file(&path).expect_err("expected slice_from_raw_parts outside unsafe to fail");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::IntrinsicRequiresUnsafe { .. })),
+        "expected IntrinsicRequiresUnsafe: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn heap_slice_fixture_typechecks() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_slice/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = check_file(&path).expect("heap_slice typecheck");
+    assert_eq!(
+        unit.typed.intrinsic_call_sites.len(),
+        2,
+        "expected alloc_bytes + slice_from_raw_parts intrinsic sites"
+    );
+}
+
+#[test]
 fn heap_alloc_fixture_typechecks() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/heap_alloc/src/main.phx");

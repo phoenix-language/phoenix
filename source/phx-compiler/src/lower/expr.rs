@@ -748,8 +748,8 @@ fn lower_postfix_inner(
             for arg in args {
                 lower_expr(ctx, arg);
             }
-            if ctx.typed.intrinsic_call_sites.contains(&postfix_expr_id) {
-                lower_intrinsic_call(ctx, IntrinsicSite::AllocBytes, result_ty);
+            if let Some(site) = ctx.typed.intrinsic_call_sites.get(&postfix_expr_id) {
+                lower_intrinsic_call(ctx, *site, result_ty);
             } else {
                 ctx.emit(IrInst::Call {
                     callee,
@@ -868,11 +868,11 @@ fn lower_postfix_inner(
                         });
                         receiver_ty = result_ty;
                     }
-                } else if ctx.typed.intrinsic_call_sites.contains(&postfix_expr_id) {
+                } else if let Some(site) = ctx.typed.intrinsic_call_sites.get(&postfix_expr_id) {
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    lower_intrinsic_call(ctx, IntrinsicSite::AllocBytes, result_ty);
+                    lower_intrinsic_call(ctx, *site, result_ty);
                     receiver_ty = result_ty;
                 } else if let Some(meta) = ctx.typed.indirect_call_sites.get(&postfix_expr_id) {
                     for arg in args {
@@ -1066,6 +1066,16 @@ fn lower_intrinsic_call(ctx: &mut LowerCtx<'_>, site: IntrinsicSite, result_ty: 
     match site {
         IntrinsicSite::AllocBytes => {
             ctx.emit(IrInst::Alloc { result: result_ty });
+        }
+        IntrinsicSite::SliceFromRawParts => {
+            let elem_kind = match ctx.typed.types.get(result_ty) {
+                Ty::Slice(elem) => primitive_kind_for_type(&ctx.typed.types, *elem).map_or(
+                    phx_bytecode::SLOT_KIND_AGG,
+                    phx_bytecode::PrimitiveKind::as_u8,
+                ),
+                _ => phx_bytecode::SLOT_KIND_AGG,
+            };
+            ctx.emit(IrInst::MakeSliceFromPtr { elem_kind });
         }
     }
 }

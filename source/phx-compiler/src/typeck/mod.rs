@@ -81,7 +81,7 @@ pub struct TypedProgram {
     /// Indirect fn pointer call sites keyed by postfix `Call` expression id.
     pub indirect_call_sites: std::collections::HashMap<ExprId, IndirectCallMeta>,
     /// VM intrinsic call sites keyed by postfix `Call` expression id.
-    pub intrinsic_call_sites: std::collections::HashSet<ExprId>,
+    pub intrinsic_call_sites: std::collections::HashMap<ExprId, IntrinsicSite>,
     /// Std / VM intrinsic definition ids.
     pub intrinsic_kernel: IntrinsicKernel,
     /// Compiler builtin method sites on primitives (`eq`, `clone`).

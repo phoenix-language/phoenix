@@ -1,0 +1,9 @@
+[project]
+name = "heap_slice_unsafe"
+version = "0.1.0"
+description = "V0-062 heap slice requires unsafe"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

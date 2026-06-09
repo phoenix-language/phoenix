@@ -146,7 +146,12 @@ Raw pointers (`*T`, `&T`, `&mut T`) are **`u64` addresses** with tagged high bit
 
 `PTR_LOAD` / `PTR_STORE` dispatch on the tag and use the element **`prim_kind`** operand for width.
 
-Slice values are fat pointers `(data_ptr, len)` stored as an aggregate variant; `MAKE_SLICE` constructs a slice view over an existing **Array** (no heap allocation).
+Slice values are fat pointers `(data_ptr, len)` stored as an aggregate variant:
+
+- `MAKE_SLICE` (41) — slice over an existing **Array** aggregate (`data_ptr = PTR_AGG_TAG | handle`).
+- `MAKE_SLICE_FROM_PTR` (48) — slice over heap or other untagged pointer (`data_ptr` is runtime `ptr`; `len` is runtime `u32`). Stack: `[ptr, len] → [slice]`; operand: element `prim_kind`.
+
+Slice `data_ptr` may be `PTR_CONST_TAG` (rodata), `PTR_AGG_TAG` (array arena), or an **untagged heap offset** (same range as `ALLOC` results). `PTR_LOCAL_TAG` slice data pointers are rejected at runtime in V0-062.
 
 ---
 

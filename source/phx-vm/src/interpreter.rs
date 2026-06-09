@@ -411,6 +411,23 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 });
                 machine.stack.push(slice);
             }
+            Opcode::MakeSliceFromPtr => {
+                let elem_kind = inst.operands.first().copied().unwrap_or(0) as u8;
+                let len_val = pop_scalar(&mut machine.stack)?;
+                let ScalarValue::U32(len) = len_val else {
+                    return Err(VmError::ExpectedScalar);
+                };
+                let ptr_val = pop_scalar(&mut machine.stack)?;
+                let ScalarValue::Ptr(ptr) = ptr_val else {
+                    return Err(VmError::ExpectedScalar);
+                };
+                let slice = machine.push_aggregate(Aggregate::Slice {
+                    elem_kind,
+                    ptr,
+                    len: u64::from(len),
+                });
+                machine.stack.push(slice);
+            }
             Opcode::AddressOfLocal => {
                 let slot = inst.operands.first().copied().unwrap_or(0);
                 machine
@@ -741,7 +758,27 @@ fn slice_elem_load(
         let scalar = slice_elem_scalar(machine, handle, index, kind)?;
         return Ok(Value::Scalar(scalar));
     }
-    Err(VmError::InvalidAggregate)
+    if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
+        return Err(VmError::InvalidAggregate);
+    }
+    if elem_kind == phx_bytecode::SLOT_KIND_AGG {
+        return Err(VmError::InvalidAggregate);
+    }
+    let kind = PrimitiveKind::from_u8(elem_kind).ok_or(VmError::InvalidConstPayload)?;
+    let elem_size = usize::from(kind.byte_size());
+    let addr = usize::try_from(ptr).map_err(|_| VmError::HeapOutOfBounds)?;
+    let byte_offset = index
+        .checked_mul(elem_size)
+        .ok_or(VmError::HeapOutOfBounds)?;
+    let scalar = read_heap_scalar(
+        &machine.heap,
+        addr.checked_add(byte_offset)
+            .ok_or(VmError::HeapOutOfBounds)?,
+        kind.byte_size(),
+        0,
+        kind,
+    )?;
+    Ok(Value::Scalar(scalar))
 }
 
 fn const_pool_bytes(module: &BytecodeModule, index: u32) -> Result<&[u8], VmError> {

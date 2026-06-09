@@ -103,7 +103,7 @@ pub fn apply_stack_effect(
                 return Err(StackEffectError::Underflow);
             }
         }
-        Opcode::SetField => {
+        Opcode::SetField | Opcode::MakeSliceFromPtr => {
             if *depth < 2 {
                 return Err(StackEffectError::Underflow);
             }

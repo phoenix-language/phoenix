@@ -301,6 +301,25 @@ fn check_heap_alloc_unsafe_fails() {
 }
 
 #[test]
+fn build_heap_slice() {
+    e2e(|cli| {
+        rm_project_build_unlocked("heap_slice");
+        let project = cli_project("heap_slice");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/heap_slice.phx0").is_file());
+    });
+}
+
+#[test]
+fn check_heap_slice_unsafe_fails() {
+    e2e(|cli| {
+        let project = cli_project("heap_slice_unsafe");
+        cli.check_fails(&project.join("src/main.phx"))
+            .assert_contains("unsafe");
+    });
+}
+
+#[test]
 fn build_std_prelude_off_fails() {
     e2e(|cli| {
         let out = cli.build_fails(&cli_project("std_prelude_off"));

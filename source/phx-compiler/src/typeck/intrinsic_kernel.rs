@@ -1,4 +1,4 @@
-//! VM intrinsic definitions in std (`alloc_bytes`, …).
+//! VM intrinsic definitions in std (`alloc_bytes`, `slice_from_raw_parts`, …).
 //!
 //! Records [`DefId`]s for compiler-known intrinsics lowered to dedicated opcodes — not ordinary
 //! [`IrInst::Call`] targets.
@@ -9,12 +9,16 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Logical module path for std heap allocation.
 const STD_ALLOC_MODULE: &str = "std::core::alloc";
+/// Logical module path for std slice construction.
+const STD_SLICE_MODULE: &str = "std::core::slice";
 
 /// Canonical intrinsic function ids discovered in linked std modules.
 #[derive(Debug, Clone, Default)]
 pub struct IntrinsicKernel {
     /// `std::core::alloc::alloc_bytes`
     pub alloc_bytes: Option<DefId>,
+    /// `std::core::slice::slice_from_raw_parts`
+    pub slice_from_raw_parts: Option<DefId>,
 }
 
 /// Lowering hint for a call to a compiler intrinsic.
@@ -22,6 +26,8 @@ pub struct IntrinsicKernel {
 pub enum IntrinsicSite {
     /// `alloc_bytes(size)` → `ALLOC` opcode.
     AllocBytes,
+    /// `slice_from_raw_parts(ptr, len)` → `MAKE_SLICE_FROM_PTR` opcode.
+    SliceFromRawParts,
 }
 
 impl IntrinsicKernel {
@@ -29,16 +35,24 @@ impl IntrinsicKernel {
     #[must_use]
     pub fn build(resolved: &ResolvedProgram) -> Self {
         let mut kernel = Self::default();
-        let Some(mod_id) = module_id(resolved, STD_ALLOC_MODULE) else {
-            return kernel;
-        };
-        kernel.alloc_bytes = find_def(
-            resolved,
-            &resolved.interner,
-            mod_id,
-            "alloc_bytes",
-            DefKind::Fn,
-        );
+        if let Some(mod_id) = module_id(resolved, STD_ALLOC_MODULE) {
+            kernel.alloc_bytes = find_def(
+                resolved,
+                &resolved.interner,
+                mod_id,
+                "alloc_bytes",
+                DefKind::Fn,
+            );
+        }
+        if let Some(mod_id) = module_id(resolved, STD_SLICE_MODULE) {
+            kernel.slice_from_raw_parts = find_def(
+                resolved,
+                &resolved.interner,
+                mod_id,
+                "slice_from_raw_parts",
+                DefKind::Fn,
+            );
+        }
         kernel
     }
 
@@ -47,6 +61,8 @@ impl IntrinsicKernel {
     pub fn site_for_call(&self, def: DefId) -> Option<IntrinsicSite> {
         if self.alloc_bytes == Some(def) {
             Some(IntrinsicSite::AllocBytes)
+        } else if self.slice_from_raw_parts == Some(def) {
+            Some(IntrinsicSite::SliceFromRawParts)
         } else {
             None
         }
@@ -55,7 +71,7 @@ impl IntrinsicKernel {
     /// Returns `true` when `def` is an intrinsic template whose body must not be lowered.
     #[must_use]
     pub fn is_intrinsic_fn(&self, def: DefId) -> bool {
-        self.alloc_bytes == Some(def)
+        self.alloc_bytes == Some(def) || self.slice_from_raw_parts == Some(def)
     }
 }
 

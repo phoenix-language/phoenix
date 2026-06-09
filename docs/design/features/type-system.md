@@ -67,6 +67,8 @@ Byte string literals `b"…"` have type `[u8; N]` and lower to an **Array** of `
 
 **Arrays** `[T; N]` may be explicitly cast to slices `[T]`; slice values are `(ptr, len)` views over existing Array storage (no heap allocation in MVP).
 
+**Heap slices (V0-062):** Slices may also view VM heap bytes when constructed inside `unsafe` via `#import std::core::slice::slice_from_raw_parts`. Signature: `slice_from_raw_parts :: <T>(ptr: *mut T, len: u32) => [T]`. Element type `T` must be a numeric primitive or `bool` in V0-062. Caller contract: `ptr` must address at least `len * size_of(T)` valid bytes (typically from `alloc_bytes`); the compiler does not track allocation extent. There is no Tier A cast `*mut T as [T]` — length is not expressible in a unary cast.
+
 ### Sequence naming (language vs std)
 
 | Name | Form | Role |

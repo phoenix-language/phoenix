@@ -23,7 +23,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Declarations (`const`, `var`, functions) | **pass** | CLI + unit tests |
 | Numeric primitives, `bool`, `()`, tuples | **pass** | Width-faithful VM; `primitives_*.phx` fixtures |
 | Raw pointers, `&T` / `&mut T` in signatures | **partial** | Address-of + deref; no borrow checker |
-| Arrays `[T; N]`, slices | **partial** | Arrays + stack-backed slice views; no heap slices |
+| Arrays `[T; N]`, slices | **pass** | Array cast + heap slices via `slice_from_raw_parts` (V0-062) |
 | User `struct` / `enum` / type aliases | **pass** | Type aliases resolve + unify (`typeck.rs` tests) |
 | Traits: parse + `Type :: impl :: Trait` | **pass** | Static dispatch; `trait_eq.phx` |
 | Control flow (`if`, `if const` / `if var`, `match`, loops, `return`) | **pass** | `if const` / `if var` pattern dispatch (`if let` semantics) |
@@ -81,7 +81,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Locals / stack | Typed slots; `prim_kind` operands on const, load/store, and arithmetic |
 | Aggregates | Arena handles: struct, enum, tuple, **Array**, **slice** `(ptr, len)` |
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
-| Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (V0-030: runtime-size heap alloc) |
+| Opcodes | **49** wired (`0`–`48`), including `MakeSlice`, `MakeSliceFromPtr` (V0-062), `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (V0-030) |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
 | Lifetime / drop | V0-054: scope-end drop glue for `Drop` types; flow-insensitive; see [traits.md](design/features/traits.md#drop-resource-cleanup) |
 | Text | Core **`str`** view (`"…"` literals, rodata); **`[u8; N]`** / `b"…"` for binary; std **`String`** (owned) post-std |
@@ -316,7 +316,7 @@ A credible MVP demo `.phx` should be able to:
 | `()` unit                         | done    | typeck                       |                                     | `main :: () =>`           |
 | Tuples                            | done    | parse + typeck + VM          | `MakeTuple`                         | `tuple_lit.phx`           |
 | Arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
-| Slices `[T]`                      | partial | typeck + VM                  | Explicit cast from array; stack-backed only (no heap slice) | `slice_from_array.phx` |
+| Slices `[T]`                      | done    | typeck + VM                  | Array cast + `slice_from_raw_parts` heap intrinsic (V0-062) | `slice_from_array.phx`, `heap_slice` |
 | Type aliases                      | done    | resolver + typeck + unify  | Transparent `type Alias = T`; expand in unify | `type_alias_*` in `typeck.rs` |
 | Tuple struct opaque wrappers      | done    | typeck + lower + derive      | `Name :: struct(T)` nominal wrap; ctor `.N` access; see [V0-057](design/language-v0.md#v0-057--opaque--newtype-wrappers) | `millimeters.phx`, `newtype_bad.phx` |
 | `struct` decl + literal           | done    | parse, typeck, lower, VM     | Arena struct aggregates             | `struct_point.phx`        |

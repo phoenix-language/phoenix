@@ -45,6 +45,7 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::Not { .. }
         | IrInst::BitNot { .. }
         | IrInst::MakeSlice { .. }
+        | IrInst::MakeSliceFromPtr { .. }
         | IrInst::MakeStr { .. }
         | IrInst::StrAsSlice
         | IrInst::Call { .. }
@@ -172,6 +173,9 @@ fn apply_ir_stack_effect(
         }
         IrInst::MakeSlice { .. } => {
             let _ = apply_stack_effect(Opcode::MakeSlice, stack, None, none);
+        }
+        IrInst::MakeSliceFromPtr { .. } => {
+            let _ = apply_stack_effect(Opcode::MakeSliceFromPtr, stack, None, none);
         }
         IrInst::MakeStr { .. } => {
             let _ = apply_stack_effect(Opcode::MakeStr, stack, None, none);
@@ -484,6 +488,9 @@ fn emit_inst(
         }
         IrInst::MakeSlice { elem_kind } => {
             out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)]));
+        }
+        IrInst::MakeSliceFromPtr { elem_kind } => {
+            out.extend(encode(Opcode::MakeSliceFromPtr, &[u32::from(*elem_kind)]));
         }
         IrInst::MakeStr { pool_index } => {
             let pool_idx = pool.pool_index_for_literal(*pool_index);

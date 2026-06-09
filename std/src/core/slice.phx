@@ -1,0 +1,4 @@
+// std::core::slice — heap slice intrinsic (compiler-lowering).
+
+pub slice_from_raw_parts :: <t>(ptr: *mut t, len: u32) => [t] {
+};

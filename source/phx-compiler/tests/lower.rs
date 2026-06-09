@@ -270,6 +270,44 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
 }
 
 #[test]
+fn lower_heap_slice_emits_make_slice_from_ptr_not_call() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_slice/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck heap_slice");
+    let ir = lower(&unit.typed).expect("lower heap_slice");
+    let has_make = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|i| matches!(i, IrInst::MakeSliceFromPtr { .. }))
+        })
+    });
+    let slice_def = unit.typed.intrinsic_kernel.slice_from_raw_parts;
+    let has_call = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts.iter().any(|i| {
+                if let IrInst::Call { callee, .. } = i {
+                    slice_def == Some(*callee)
+                } else {
+                    false
+                }
+            })
+        })
+    });
+    assert!(
+        has_make,
+        "expected MakeSliceFromPtr IR for slice_from_raw_parts"
+    );
+    assert!(
+        !has_call,
+        "slice_from_raw_parts must not lower to IrInst::Call"
+    );
+}
+
+#[test]
 fn lower_heap_alloc_emits_alloc_not_call() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/heap_alloc/src/main.phx");

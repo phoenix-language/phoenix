@@ -166,6 +166,7 @@ flowchart TD
 
 **Refs:** [type-system.md](features/type-system.md), [vm-linear.md](features/vm-linear.md), [ownership.md](features/ownership.md), V0-030
 
+Status: **Done** (implemented)
 ---
 
 ### V0-063 — Trait default bodies

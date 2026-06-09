@@ -104,6 +104,8 @@ pub enum Opcode {
     CallIndirect = 46,
     /// Load aggregate from caller local slot via local pointer. Stack: `[local_ptr] → [agg]`
     LoadAggViaLocalPtr = 47,
+    /// Build slice from heap pointer + length. Stack: `[ptr, len: u32] → [slice]` — operand: `elem_kind`.
+    MakeSliceFromPtr = 48,
 }
 
 impl Opcode {
@@ -162,6 +164,7 @@ impl Opcode {
             45 => Ok(Self::MakeFnPtr),
             46 => Ok(Self::CallIndirect),
             47 => Ok(Self::LoadAggViaLocalPtr),
+            48 => Ok(Self::MakeSliceFromPtr),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }
