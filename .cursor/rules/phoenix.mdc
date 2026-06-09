@@ -71,7 +71,7 @@ Compilation fails if `main` is missing. MVP runs `main` on a plain stack interpr
 | Pipeline | lex → parse → resolve → typeck → lower → bytecode |
 | Runtime | single-process stack VM + verifier |
 | Declarations | `const`, `var`, functions |
-| Types | numeric primitives, `bool`, tuples, `()`, raw pointers, `&T` / `&mut T` in signatures, fixed arrays, slices |
+| Types | numeric primitives, `bool`, tuples, `()`, raw pointers, `&T` / `&mut T` in signatures, **Arrays** `[T; N]`, slices |
 | User types | `Name :: struct`, `Name :: enum`, type aliases |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution per spec) |
 | Control flow | `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return` |
@@ -172,7 +172,7 @@ Do not implement in the compiler/VM until MVP checklist passes:
 - The compiler needs a **small intrinsic kernel** (primitives, operators, alloc) known at compile time before a full std exists.
 - **Language core:** `struct`, `enum`, `trait`, `impl`, generics, control flow, `Copyable`, primitives — not rich std APIs.
 - **`Option` / `Result`:** **Post-MVP std** — generic `enum` types in the library, not compiler builtins. MVP type-check rejects `Option`/`Result` types, `Some`/`None`/`Ok`/`Err` ctors, and `?`. See `type-system.md` (Phased: Option and Result). Do not add `Ty::Option` / `Ty::Result` or bootstrap tables in the compiler.
-- Higher-level APIs (text, collections, I/O, `Clone`) are std/post-MVP unless listed as MVP bootstrap.
+- Higher-level APIs (text, **`DynamicArray`**, I/O, `Clone`) are std/post-MVP unless listed as MVP bootstrap. Use **`Array`** `[T; N]` for fixed-size sequences and **`DynamicArray<T>`** for growable — not `Vec` or `vector`.
 - Packaging/modules: follow `modules.md`; Odin-style “file = module” and package layout may evolve — do not invent a second module system in code without updating docs.
 
 ---

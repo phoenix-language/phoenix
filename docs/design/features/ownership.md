@@ -177,7 +177,7 @@ Post-MVP ownership analysis will use path-sensitive last-use and move-through-ca
 
 ### MVP: returning borrows of locals
 
-The MVP compiler rejects **returning** a `&T`, `&mut T`, slice view (`[T]`), or **`str`** view whose value is formed from a function-local binding (`var`, `const`, or `match` scrutinee temp). Examples that fail type-check: `return &x` when `x` is a local, `return arr as [u8]` when `arr` is a local array, or `return arr as str` when `arr` is a local byte array. Storing a borrow into another local (`const p = &x;`) or using it only inside the function body remains allowed. Full borrow checking (lifetime parameters, borrow exclusivity across branches) is post-MVP.
+The MVP compiler rejects **returning** a `&T`, `&mut T`, slice view (`[T]`), or **`str`** view whose value is formed from a function-local binding (`var`, `const`, or `match` scrutinee temp). Examples that fail type-check: `return &x` when `x` is a local, `return arr as [u8]` when `arr` is a local **Array**, or `return arr as str` when `arr` is a local byte Array. Storing a borrow into another local (`const p = &x;`) or using it only inside the function body remains allowed. Full borrow checking (lifetime parameters, borrow exclusivity across branches) is post-MVP.
 
 Large owned values should use borrow for read, move for transfer, and `.clone()` only when duplication is required.
 

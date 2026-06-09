@@ -34,7 +34,7 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Core compilation | lexer, parser, AST, type checker, bytecode lowering |
 | Runtime model | single-process stack VM interpreter |
 | Declarations | `const`, `var`, function declarations |
-| Types | numeric primitives, `bool`, tuples, unit `()`, raw pointers, borrow types (`&T`, `&mut T`), fixed arrays, slices/views, **`str` UTF-8 text view** |
+| Types | numeric primitives, `bool`, tuples, unit `()`, raw pointers, borrow types (`&T`, `&mut T`), **Arrays** `[T; N]`, slices/views, **`str` UTF-8 text view** |
 | User types | `Name :: struct` (record `{ … }`, tuple `(T, …)`, or unit), `Name :: enum`, type aliases (transparent); tuple struct nominal semantics — [V0-057](language-v0.md#v0-057--opaque--newtype-wrappers) |
 | Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution) |
 | Control flow | `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return` |
@@ -65,7 +65,7 @@ MVP does not include a primitive **owned** `string` type (no GC string, no growa
 The core language provides:
 
 - **`str`** — UTF-8 text view `(ptr, len)`; `"…"` literals; Copyable fat pointer; rodata-backed for literals
-- **`u8`**, fixed arrays `[T; N]`, byte slices `[T]`, and `b"…"` for binary data
+- **`u8`**, **Arrays** `[T; N]`, byte slices `[T]`, and `b"…"` for binary data
 - raw pointer types and borrow types (`&T`, `&mut T`)
 - explicit heap allocation primitive (runtime intrinsic; surface syntax deferred)
 - unsafe pointer operations at VM-level boundaries

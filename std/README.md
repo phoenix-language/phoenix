@@ -86,7 +86,7 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 
 Future subsystem modules (e.g. `std::io`) will ship **concrete** error types that implement `std::core::error::Error` — std does not define a central error enum.
 
-Future top-level siblings (post-core): `std::collections::*`, `std::text::*`.
+Future top-level siblings (post-core): `std::collections::*` (including **`DynamicArray<T>`**), `std::text::*`.
 
 ## Prelude (V0-044)
 

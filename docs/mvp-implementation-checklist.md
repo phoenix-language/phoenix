@@ -23,7 +23,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Declarations (`const`, `var`, functions) | **pass** | CLI + unit tests |
 | Numeric primitives, `bool`, `()`, tuples | **pass** | Width-faithful VM; `primitives_*.phx` fixtures |
 | Raw pointers, `&T` / `&mut T` in signatures | **partial** | Address-of + deref; no borrow checker |
-| Fixed arrays, slices | **partial** | Arrays + stack-backed slice views; no heap slices |
+| Arrays `[T; N]`, slices | **partial** | Arrays + stack-backed slice views; no heap slices |
 | User `struct` / `enum` / type aliases | **pass** | Type aliases resolve + unify (`typeck.rs` tests) |
 | Traits: parse + `Type :: impl :: Trait` | **pass** | Static dispatch; `trait_eq.phx` |
 | Control flow (`if`, `if const` / `if var`, `match`, loops, `return`) | **pass** | `if const` / `if var` pattern dispatch (`if let` semantics) |
@@ -79,7 +79,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 |------|--------|
 | Scalars | Width-faithful `ScalarValue` (`Bool`, `I8`…`I128`, `U8`…`U128`, `F32`, `F64`, `Ptr`) — not a shared integer lane |
 | Locals / stack | Typed slots; `prim_kind` operands on const, load/store, and arithmetic |
-| Aggregates | Arena handles: struct, enum, tuple, fixed array, **slice** `(ptr, len)` |
+| Aggregates | Arena handles: struct, enum, tuple, **Array**, **slice** `(ptr, len)` |
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
 | Opcodes | **43** wired (`0`–`42`), including `MakeSlice`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (V0-030: runtime-size heap alloc) |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
@@ -315,7 +315,7 @@ A credible MVP demo `.phx` should be able to:
 | `bool`                            | done    | typeck + VM                  | 1-byte `Bool` cell, not integer alias | `match_bool.phx`          |
 | `()` unit                         | done    | typeck                       |                                     | `main :: () =>`           |
 | Tuples                            | done    | parse + typeck + VM          | `MakeTuple`                         | `tuple_lit.phx`           |
-| Fixed arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
+| Arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
 | Slices `[T]`                      | partial | typeck + VM                  | Explicit cast from array; stack-backed only (no heap slice) | `slice_from_array.phx` |
 | Type aliases                      | done    | resolver + typeck + unify  | Transparent `type Alias = T`; expand in unify | `type_alias_*` in `typeck.rs` |
 | Tuple struct opaque wrappers      | done    | typeck + lower + derive      | `Name :: struct(T)` nominal wrap; ctor `.N` access; see [V0-057](design/language-v0.md#v0-057--opaque--newtype-wrappers) | `millimeters.phx`, `newtype_bad.phx` |
@@ -568,7 +568,7 @@ Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **34
 | Scope end | Block `{ … }` should imply drop of owned non-`Copyable` values (Rust-like); compiler inserts drop/dealloc opcodes at scope exit |
 | Heap ownership | Likely explicit owning types (e.g. box/alloc handle) rather than implicit GC; syntax and `Copyable`/`Clone` interaction TBD |
 | Borrow checker | Full `&` / `&mut` exclusivity and lifetimes — builds on address-of + `PtrLoad` already in MVP |
-| Strings | Core **`str`** UTF-8 view; binary via `[u8]` / `b"…"`; std provides owned **`String`** |
+| Strings | Core **`str`** UTF-8 view; binary via **Arrays** `[u8; N]` / `b"…"`; std provides owned **`String`** (backed by **`DynamicArray<u8>`**) |
 
 **Deferred (post memory model + MVP acceptance):** M:N scheduler, actors (`@spawn`), mailboxes, std I/O, networking, extended `#derive`, JIT.
 
@@ -581,7 +581,7 @@ Product order agreed for post-demo work (not all MVP-blocking):
 1. **Single-file polish** — parser/diagnostic gaps above.
 2. ~~**`#import` + `pub`**~~ — real modules; minimal std prelude (V0-044).
 3. **Memory model** — scoped drop, heap ownership surface, borrow rules documented and enforced in typeck + codegen (no GC).
-4. **Std library breadth** — string struct, collections, I/O (schedulable-I/O types when runtime exists).
+4. **Std library breadth** — owned `String`, `DynamicArray`, I/O (schedulable-I/O types when runtime exists).
 5. **Runtime** — scheduler, actors, supervision ([runtime-transparency.md](design/features/runtime-transparency.md), [concurrency.md](design/features/concurrency.md)).
 
 Do not implement scheduler/actors/std I/O until the memory model and module story are credible.

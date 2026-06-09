@@ -136,7 +136,7 @@ The verifier uses this table to validate local slot indices and optional stack-k
 Stack cells and local slots hold either:
 
 - **Width-faithful scalars** — each Phoenix primitive maps to a distinct storage width on the operand stack and in typed local slots (`s32` is 4 bytes, `s128` is 16 bytes, `bool` is 1 byte, `f32`/`f64` are 4/8 bytes). Binary arithmetic/compare opcodes carry a **`prim_kind` operand**; mixed-width stacks are rejected at runtime.
-- **Aggregate handles** — indices into the VM aggregate arena (struct, enum, tuple, fixed array, slice).
+- **Aggregate handles** — indices into the VM aggregate arena (struct, enum, tuple, **Array**, slice).
 
 Raw pointers (`*T`, `&T`, `&mut T`) are **`u64` addresses** with tagged high bits:
 
@@ -146,7 +146,7 @@ Raw pointers (`*T`, `&T`, `&mut T`) are **`u64` addresses** with tagged high bit
 
 `PTR_LOAD` / `PTR_STORE` dispatch on the tag and use the element **`prim_kind`** operand for width.
 
-Slice values are fat pointers `(data_ptr, len)` stored as an aggregate variant; `MAKE_SLICE` constructs a slice view over an existing fixed array (no heap allocation).
+Slice values are fat pointers `(data_ptr, len)` stored as an aggregate variant; `MAKE_SLICE` constructs a slice view over an existing **Array** (no heap allocation).
 
 ---
 

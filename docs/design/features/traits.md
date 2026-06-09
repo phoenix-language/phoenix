@@ -372,6 +372,7 @@ Suggested baseline (design target, not MVP implementation guarantee):
 | Pointers | `Copyable`, `Clone`, `Debug`, `PartialEq`, `Eq` |
 | Arrays `[T; N]` | trait impls when `T` satisfies corresponding bounds |
 | Slices `[T]` | comparison/iteration traits via borrowed views |
+| `DynamicArray<T>` (std) | growable buffer; `Clone`/`Drop` when element type and allocator support it |
 | `Option<T>` / `Result<T, E>` | lifted impls when inner types satisfy bounds |
 
 ---

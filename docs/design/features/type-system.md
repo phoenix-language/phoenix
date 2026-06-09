@@ -8,11 +8,11 @@ How Phoenix divides compiler-known types from library-defined behavior, and the 
 
 | Layer | Purpose | Examples |
 |---|---|---|
-| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, arrays, slices, tuples, `()`, `Name :: struct`, `Name :: enum` (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
+| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, **Arrays** `[T; N]`, slices, tuples, `()`, `Name :: struct`, `Name :: enum` (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
 | VM runtime primitives | Scheduler-owned execution machinery (not user-declared types) | execution context, schedulable-I/O markers in std signatures, mailbox registration (post-MVP) |
 | Compile-time directives | Compiler behavior controls | `#import`, `#inline`, `#cold`, `#unsafe` |
 | Runtime directives | Opt-in explicit actor/message operations | `@spawn`, `@send`, `@receive`, `@reply` (post-MVP) |
-| Standard library | APIs built on language + runtime primitives | `File.read`, collections, formatting, traits |
+| Standard library | APIs built on language + runtime primitives | `File.read`, **DynamicArray**, formatting, traits |
 | Sugar | Surface syntax lowered by compiler | `if const` / `if var`, ranges, `for`; `?` when std `Option`/`Result` exist (post-MVP) |
 
 Notes:
@@ -49,8 +49,8 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 - `bool`
 - Raw pointers: `*T`, `*mut T`
 - Borrow types: `&T`, `&mut T`
-- Fixed arrays: `[T; N]`
-- Slices/views: `[T]`
+- **Arrays** (fixed-size contiguous sequences): `[T; N]` — user-facing name **Array**; syntax unchanged
+- Slices/views: `[T]` — `(ptr, len)` over Array storage or (post–V0-062) heap blocks
 - Text view: `str` (UTF-8 `(ptr, len)`; Copyable fat pointer, same convention as `[T]` slices)
 - Tuples: `(T1, T2, ...)`
 - Unit: `()`
@@ -63,9 +63,19 @@ Each numeric primitive occupies **its declared width** in constants, local slots
 
 UTF-8 string literals `"…"` have type `str` and lower to a `(ptr, len)` view over module constant-pool rodata (no heap allocation).
 
-Byte string literals `b"…"` have type `[u8; N]` and lower to a fixed array of `u8` elements.
+Byte string literals `b"…"` have type `[u8; N]` and lower to an **Array** of `u8` elements.
 
-Fixed arrays `[T; N]` may be explicitly cast to slices `[T]`; slice values are `(ptr, len)` views over existing array storage (no heap allocation in MVP).
+**Arrays** `[T; N]` may be explicitly cast to slices `[T]`; slice values are `(ptr, len)` views over existing Array storage (no heap allocation in MVP).
+
+### Sequence naming (language vs std)
+
+| Name | Form | Role |
+|---|---|---|
+| **Array** | `[T; N]` | Language primitive — fixed-size contiguous sequence |
+| **Slice** | `[T]` | View `(ptr, len)` over Array, rodata, or heap storage |
+| **DynamicArray** | `std::collections::DynamicArray<T>` (Std v0) | Growable contiguous sequence over heap allocation — **not** called `Vec` or `vector` in Phoenix |
+
+Do not use Rust’s `Vec` naming in user-facing docs or std APIs. Implementation may still use growable buffers internally; the public std type is **`DynamicArray`**.
 
 **Text vs binary casts (MVP):**
 
@@ -85,7 +95,7 @@ Phoenix uses a single conversion operator: postfix **`expr as Type`**. Casts are
 | Conversion | Semantics |
 |---|---|
 | Numeric primitive ↔ numeric primitive (ints, uints, floats; cross-width and signed/unsigned) | Truncating/wrapping; **`bool` excluded** |
-| `[T; N] as [T]` | Slice view over array storage (no copy) |
+| `[T; N] as [T]` | Slice view over Array storage (no copy) |
 | `str as [u8]` | Byte slice view over the same rodata / storage |
 | `[u8; N] as str` | Allowed when UTF-8 is provable at compile time: inline `b"…"` literal **or** a **`const`** binding initialized directly from such a literal; lowers to rodata (`MakeStr`) |
 | Single-field tuple struct ↔ inner field type | **V0-057** — repr-identical no-op: `500 as Millimeters`, `m as s32` when `Millimeters :: struct(s32)` ([opaque newtypes](#type-aliases-vs-opaque-newtypes-phased)) |
@@ -228,7 +238,7 @@ Importers keep using unmangled template names in `#import`; explicit `:: <T>` at
 
 Runtime trait objects need fat-pointer layout, vtables, object-safety rules, and `IndirectCall` through vtable slots — a large VM + typeck surface. Phoenix prioritizes **static mono** + **fn pointers for C FFI** ([Callable values: four layers](#callable-values-four-layers)); `dyn Trait` is in-language dynamism, not FFI.
 
-**Trigger to implement:** plugin registries, `Vec<dyn Draw>`, or trait-returning factories without monomorphization explosion.
+**Trigger to implement:** plugin registries, `DynamicArray<dyn Draw>`, or trait-returning factories without monomorphization explosion.
 
 When a generic function accepts a comparator or callback, monomorphization specializes the callee (`sort :: <s32> (…)`) at compile time; the callback argument is a **concrete function pointer type** (`:: (s32, s32) => bool`), not an erased generic fn value. See [Callable values: four layers](#callable-values-four-layers).
 

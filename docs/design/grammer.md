@@ -30,7 +30,7 @@ Phoenix MVP does **not** include a primitive `string` type.
 - `bool`
 - Raw pointers: `*T`, `*mut T`
 - Borrow types: `&T`, `&mut T`
-- Fixed arrays: `[T; N]`
+- **Arrays** (fixed-size contiguous sequences): `[T; N]`
 - Slices/views: `[T]`
 - Unit: `()`
 - Post-MVP std enums: `Option` and `Result` are library generic enums (see [type-system.md](../design/features/type-system.md)), not built-in generic syntax sugar here

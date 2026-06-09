@@ -88,7 +88,7 @@ Finish the minimal pipeline defined in [mvp.md](mvp.md). Nothing in later phases
 
 - Numeric primitives (`s32`, `u32`, `f32`, etc.), `bool`, unit `()`, tuples.
 - Raw pointers and borrow types `&T`, `&mut T` in signatures (full borrow checking is **not** required).
-- Fixed arrays `[T; N]` and slices `[T]`.
+- **Arrays** `[T; N]` and slices `[T]`.
 - `**str`** UTF-8 text view: `"…"` literals, `(ptr, len)` representation, Copyable fat pointer over rodata.
 - Literal rules: `s32` default integers, `u` suffix → `u32`, `f32` default floats; **no implicit numeric widening**.
 
@@ -572,7 +572,7 @@ When **all** items in Phases 1-6 are checked:
 | Fn pointers, `Drop`, iterators, basic derive            | Shipped |
 
 
-**You may start Std v0 authoring in earnest** — growable `String`, `Vec`, formatting, collections — using the lib package model.
+**You may start Std v0 authoring in earnest** — growable `String`, `DynamicArray`, formatting, collections — using the lib package model.
 
 Announce **Language v0** when the demonstration programs in V0-052 run and `just pre-commit` is green on `main`.
 
@@ -612,8 +612,8 @@ First std modules to author **in Phoenix** once the checklist is complete (order
 2. `**core::option` / `core::result` / `core::convert**` — enums and conversion traits (if not already in std from V0-041 / V0-058).
 3. `**error**` — `std::core::error::Error` trait (V0-060); concrete types + layered `From` in user crates.
 4. `**core::clone` / `core::copyable` / `core::cmp` / `core::fmt**` — traits and minimal derive support.
-5. `**collections::vec**` — growable buffer over `alloc`.
-6. `**text::string**` — owned UTF-8 `String` over `alloc` + `Clone`.
+5. `**collections::dynamic_array**` — growable buffer (`DynamicArray<T>`) over `alloc`.
+6. `**text::string**` — owned UTF-8 `String` over `DynamicArray<u8>` + `Clone`.
 7. `**text::fmt**` — basic formatting builders (no OS I/O required).
 
 Std I/O (`fs`, `net`, …) waits for scheduler + schedulable-I/O runtime per [modules.md](features/modules.md) and [mvp.md](mvp.md).

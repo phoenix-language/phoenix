@@ -41,7 +41,7 @@ Each export may include a `"type"` object. Kinds:
 | `unit` | — | `()` |
 | `named` | `path` (string), `args` (array) | User types; `path` is `logical_module::TypeName` for cross-module refs |
 | `tuple` | `elems` | Tuple types |
-| `array` | `elem`, `len` | `[T; N]` |
+| `array` | `elem`, `len` | **Array** `[T; N]` |
 | `slice` | `elem` | `[T]` |
 | `ref` | `mut`, `inner` | `&T` / `&mut T` |
 | `ptr` | `mut`, `inner` | `*T` / `*mut T` |
