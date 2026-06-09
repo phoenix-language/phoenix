@@ -280,6 +280,8 @@ Status: **Done** (implemented)
 
 **Refs:** [language-v0.md](language-v0.md) V0-052
 
+Status: **Done** (implemented)
+
 ---
 
 ## Phase 8 — Memory model bridge (first Std v0 compiler work)

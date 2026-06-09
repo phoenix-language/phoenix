@@ -2,7 +2,7 @@
 
 **Purpose:** Single reference for humans and coding agents: what the [MVP spec](design/mvp.md) requires, what is already implemented under `source/`, and what remains for a **credible demo** (working control flow, arithmetic, functions, types — not post-MVP runtime).
 
-**Language v0 completion:** Result match (V0-064) is shipped; remaining partials before a credible std platform are sequenced in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md).
+**Language v0 completion:** Phase 7 capstone (`std_platform_smoke`) integrates Result match, trait defaults, and heap slices. See [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md).
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
@@ -162,7 +162,7 @@ A credible MVP demo `.phx` should be able to:
 | `for x in y`                                               | done             | `parser/stmt.rs`, `typeck/check.rs`, `lower/stmt.rs` | `IntoIter` + `Iterator` desugaring (V0-055) | `for_in.phx`, `std_iter/` fixtures              |
 | `0..n` / `0..=n`                                           | done (reject)    | `parser/expr.rs`                                 |                                        | Range tests                                     |
 | Lambda `(…) => …`                                          | done (reject)    | `parser/expr.rs`                                 |                                        | Lambda tests                                    |
-| Trait default bodies in trait decl                         | pass             | `typeck/trait_defaults.rs`, `parser/decl.rs`     | Empty impl inherits defaults; override wins | `trait_default`, `trait_into_from_default` fixtures |
+| Trait default bodies in trait decl                         | pass             | `typeck/trait_defaults.rs`, `parser/decl.rs`     | Empty impl inherits defaults; override wins | `trait_default`, `std_platform_smoke` fixtures |
 
 
 ---
@@ -316,7 +316,7 @@ A credible MVP demo `.phx` should be able to:
 | `()` unit                         | done    | typeck                       |                                     | `main :: () =>`           |
 | Tuples                            | done    | parse + typeck + VM          | `MakeTuple`                         | `tuple_lit.phx`           |
 | Arrays `[T; N]`             | done    | typeck + VM                  | `MakeArray`, index; `b"…"` lowers to `[u8; N]` | `array_index.phx`, `byte_string.phx` |
-| Slices `[T]`                      | done    | typeck + VM                  | Array cast + `slice_from_raw_parts` heap intrinsic (V0-062) | `slice_from_array.phx`, `heap_slice` |
+| Slices `[T]`                      | done    | typeck + VM                  | Array cast + `slice_from_raw_parts` heap intrinsic (V0-062) | `slice_from_array.phx`, `heap_slice`, `std_platform_smoke` |
 | Type aliases                      | done    | resolver + typeck + unify  | Transparent `type Alias = T`; expand in unify | `type_alias_*` in `typeck.rs` |
 | Tuple struct opaque wrappers      | done    | typeck + lower + derive      | `Name :: struct(T)` nominal wrap; ctor `.N` access; see [V0-057](design/language-v0.md#v0-057--opaque--newtype-wrappers) | `millimeters.phx`, `newtype_bad.phx` |
 | `struct` decl + literal           | done    | parse, typeck, lower, VM     | Arena struct aggregates             | `struct_point.phx`        |
@@ -357,7 +357,7 @@ A credible MVP demo `.phx` should be able to:
 | `From` / `Into` / `TryFrom` in std     | done    | `std::core::convert` | [V0-058](design/language-v0.md#v0-058--conversion-traits-from--into-in-std) | `std_convert`, `build_std_convert`, parameterized bounds |
 | Std error trait                        | done    | `std::core::error` | [V0-060](design/language-v0.md#v0-060--std-error-trait) | `std_errors`, `std_traits`, `build_std_error` |
 | Rust-style `mod.phx` / `mod` decls     | done    | `modules/discover.rs`, loader, resolve | [V0-061](design/language-v0.md#v0-061--rust-style-modphx-module-entries) | `module_barrel`, `modules_*` fixtures |
-| `match` on std enums                   | pass    | typeck + lower    | `Option` and multi-param `Result` match; scrutinee mono registration | `std_smoke`, `std_result_match` |
+| `match` on std enums                   | pass    | typeck + lower    | `Option` and multi-param `Result` match; scrutinee mono registration | `std_smoke`, `std_result_match`, `std_platform_smoke` |
 
 
 ---

@@ -292,6 +292,16 @@ fn build_std_result_match() {
 }
 
 #[test]
+fn build_std_platform_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("std_platform_smoke");
+        let project = cli_project("std_platform_smoke");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/std_platform_smoke.phx0").is_file());
+    });
+}
+
+#[test]
 fn check_std_result_match_non_exhaustive_fails() {
     e2e(|cli| {
         let project = cli_project("std_result_match_non_exhaustive");
