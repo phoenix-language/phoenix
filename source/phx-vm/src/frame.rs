@@ -1,6 +1,13 @@
-//! Call frames, operand stack, and aggregate storage.
+//! Operand stack, call stack, aggregate arena, and linear heap for pointers.
 
-use phx_bytecode::{LocalLayoutTable, PrimitiveKind, ScalarValue};
+use std::collections::BTreeMap;
+
+use phx_bytecode::{
+    LocalLayoutTable, PTR_AGG_TAG, PTR_CONST_TAG, PTR_FN_TAG, PTR_LOCAL_TAG, PrimitiveKind,
+    ScalarValue,
+};
+
+use crate::VmError;
 
 /// Runtime value: scalar primitive or handle into the aggregate arena.
 ///
@@ -103,6 +110,8 @@ pub struct Machine {
     pub aggregates: Vec<Aggregate>,
     /// Byte heap for `Alloc` / pointer loads (MVP; not GC).
     pub heap: Vec<u8>,
+    /// Live `(ptr, size)` blocks registered by `Alloc` and removed by `Free`.
+    pub live_heap_blocks: BTreeMap<u64, u32>,
 }
 
 impl Machine {
@@ -160,7 +169,46 @@ impl Machine {
     pub fn alloc_bytes(&mut self, size: usize) -> u64 {
         let start = self.heap.len();
         self.heap.resize(start.saturating_add(size), 0);
-        u64::try_from(start).unwrap_or(u64::MAX)
+        let ptr = u64::try_from(start).unwrap_or(u64::MAX);
+        if let Ok(reg_size) = u32::try_from(size) {
+            let _ = self.live_heap_blocks.insert(ptr, reg_size);
+        }
+        ptr
+    }
+
+    /// Returns the number of live heap blocks tracked by the allocation ledger.
+    #[must_use]
+    pub fn live_heap_block_count(&self) -> usize {
+        self.live_heap_blocks.len()
+    }
+
+    /// Frees a heap block previously returned by [`Self::alloc_bytes`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VmError::DoubleFree`] when `(ptr, size)` is not in the ledger.
+    /// Returns [`VmError::InvalidFree`] for tagged pointers, out-of-bounds ranges, or size mismatch.
+    pub fn free_bytes(&mut self, ptr: u64, size: u32) -> Result<(), VmError> {
+        if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG
+            || ptr & PTR_AGG_TAG == PTR_AGG_TAG
+            || ptr & PTR_CONST_TAG == PTR_CONST_TAG
+            || ptr & PTR_FN_TAG == PTR_FN_TAG
+        {
+            return Err(VmError::InvalidFree);
+        }
+        let addr = usize::try_from(ptr).map_err(|_| VmError::InvalidFree)?;
+        let byte_len = usize::try_from(size).map_err(|_| VmError::InvalidFree)?;
+        let end = addr.checked_add(byte_len).ok_or(VmError::InvalidFree)?;
+        if end > self.heap.len() {
+            return Err(VmError::InvalidFree);
+        }
+        match self.live_heap_blocks.remove(&ptr) {
+            Some(registered) if registered == size => {}
+            Some(_) => return Err(VmError::InvalidFree),
+            None => return Err(VmError::DoubleFree),
+        }
+        self.heap[addr..end].fill(0);
+        Ok(())
     }
 }
 
@@ -199,4 +247,36 @@ pub fn store_local_scalar_bytes(
         ScalarValue::from_le_bytes(kind, bytes).ok_or(crate::VmError::InvalidConstPayload)?;
     *local = Value::Scalar(decoded);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Machine;
+    use crate::VmError;
+
+    #[test]
+    fn alloc_then_free_clears_ledger() {
+        let mut machine = Machine::default();
+        let ptr = machine.alloc_bytes(8);
+        assert_eq!(machine.live_heap_block_count(), 1);
+        assert!(machine.free_bytes(ptr, 8).is_ok());
+        assert_eq!(machine.live_heap_block_count(), 0);
+    }
+
+    #[test]
+    fn double_free_returns_error() {
+        let mut machine = Machine::default();
+        let ptr = machine.alloc_bytes(4);
+        assert!(machine.free_bytes(ptr, 4).is_ok());
+        let err = machine.free_bytes(ptr, 4);
+        assert_eq!(err, Err(VmError::DoubleFree));
+    }
+
+    #[test]
+    fn wrong_size_free_returns_invalid_free() {
+        let mut machine = Machine::default();
+        let ptr = machine.alloc_bytes(4);
+        let err = machine.free_bytes(ptr, 8);
+        assert_eq!(err, Err(VmError::InvalidFree));
+    }
 }

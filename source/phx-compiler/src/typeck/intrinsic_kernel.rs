@@ -17,6 +17,8 @@ const STD_SLICE_MODULE: &str = "std::core::slice";
 pub struct IntrinsicKernel {
     /// `std::core::alloc::alloc_bytes`
     pub alloc_bytes: Option<DefId>,
+    /// `std::core::alloc::dealloc_bytes`
+    pub dealloc_bytes: Option<DefId>,
     /// `std::core::slice::slice_from_raw_parts`
     pub slice_from_raw_parts: Option<DefId>,
 }
@@ -26,6 +28,8 @@ pub struct IntrinsicKernel {
 pub enum IntrinsicSite {
     /// `alloc_bytes(size)` → `ALLOC` opcode.
     AllocBytes,
+    /// `dealloc_bytes(ptr, size)` → `FREE` opcode.
+    DeallocBytes,
     /// `slice_from_raw_parts(ptr, len)` → `MAKE_SLICE_FROM_PTR` opcode.
     SliceFromRawParts,
 }
@@ -41,6 +45,13 @@ impl IntrinsicKernel {
                 &resolved.interner,
                 mod_id,
                 "alloc_bytes",
+                DefKind::Fn,
+            );
+            kernel.dealloc_bytes = find_def(
+                resolved,
+                &resolved.interner,
+                mod_id,
+                "dealloc_bytes",
                 DefKind::Fn,
             );
         }
@@ -61,6 +72,8 @@ impl IntrinsicKernel {
     pub fn site_for_call(&self, def: DefId) -> Option<IntrinsicSite> {
         if self.alloc_bytes == Some(def) {
             Some(IntrinsicSite::AllocBytes)
+        } else if self.dealloc_bytes == Some(def) {
+            Some(IntrinsicSite::DeallocBytes)
         } else if self.slice_from_raw_parts == Some(def) {
             Some(IntrinsicSite::SliceFromRawParts)
         } else {
@@ -71,7 +84,9 @@ impl IntrinsicKernel {
     /// Returns `true` when `def` is an intrinsic template whose body must not be lowered.
     #[must_use]
     pub fn is_intrinsic_fn(&self, def: DefId) -> bool {
-        self.alloc_bytes == Some(def) || self.slice_from_raw_parts == Some(def)
+        self.alloc_bytes == Some(def)
+            || self.dealloc_bytes == Some(def)
+            || self.slice_from_raw_parts == Some(def)
     }
 }
 

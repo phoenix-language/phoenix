@@ -71,7 +71,8 @@ fn encoded_size(inst: &IrInst) -> u32 {
         | IrInst::LoadAggViaLocalPtr
         | IrInst::Pop
         | IrInst::Alloc { .. }
-        | IrInst::PtrStore { .. } => 2,
+        | IrInst::PtrStore { .. }
+        | IrInst::Free => 2,
         IrInst::DropLocal { .. } => with_operands(2).saturating_add(with_operands(1)),
     }
 }
@@ -194,6 +195,9 @@ fn apply_ir_stack_effect(
         }
         IrInst::PtrStore { .. } => {
             let _ = apply_stack_effect(Opcode::PtrStore, stack, None, none);
+        }
+        IrInst::Free => {
+            let _ = apply_stack_effect(Opcode::Free, stack, None, none);
         }
         IrInst::Pop => {
             let _ = apply_stack_effect(Opcode::Pop, stack, None, none);
@@ -482,6 +486,9 @@ fn emit_inst(
                 Opcode::PtrStore,
                 &[u32::from(*prim_kind), u32::from(*signed)],
             ));
+        }
+        IrInst::Free => {
+            out.extend(encode(Opcode::Free, &[]));
         }
         IrInst::Pop => {
             out.extend(encode(Opcode::Pop, &[]));

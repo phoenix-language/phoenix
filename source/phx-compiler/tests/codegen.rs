@@ -343,6 +343,33 @@ fn codegen_heap_slice_emits_make_slice_from_ptr_opcode() {
 }
 
 #[test]
+fn codegen_heap_dealloc_emits_free_opcode() {
+    use phx_test::{cli_project, fixture_fs_lock};
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_dealloc");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let path = root.join("src/main.phx");
+    let unit = phx_compiler::check_file(&path).expect("check heap_dealloc");
+    let ir = lower(&unit.typed).expect("lower heap_dealloc");
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks
+                .iter()
+                .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Free)))
+        }),
+        "expected IrInst::Free in heap_dealloc"
+    );
+    let module = codegen(&ir, &unit.typed).expect("codegen heap_dealloc");
+    assert!(
+        module.code.contains(&Opcode::Free.as_u8()),
+        "expected FREE opcode in heap_dealloc bytecode"
+    );
+    verify(&module).expect("verify heap_dealloc");
+}
+
+#[test]
 fn codegen_heap_alloc_emits_alloc_opcode() {
     use phx_test::{cli_project, fixture_fs_lock};
     let _lock = fixture_fs_lock();

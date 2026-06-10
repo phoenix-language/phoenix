@@ -116,7 +116,7 @@ pub fn apply_stack_effect(
         | Opcode::Jump
         | Opcode::Return
         | Opcode::Trap => {}
-        Opcode::PtrStore => {
+        Opcode::PtrStore | Opcode::Free => {
             if *depth < 2 {
                 return Err(StackEffectError::Underflow);
             }

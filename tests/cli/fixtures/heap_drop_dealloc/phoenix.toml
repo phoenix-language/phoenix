@@ -1,0 +1,9 @@
+[project]
+name = "heap_drop_dealloc"
+version = "0.1.0"
+description = "V0-065 Drop glue calls dealloc_bytes"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

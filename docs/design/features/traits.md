@@ -257,16 +257,20 @@ Drop :: trait
 | vs Copyable | Types with a `Drop` impl are **not Copyable**; explicit `Copyable` + `Drop` on the same type is a compile error |
 | Dispatch | Static `Call` to the resolved `Drop::drop` impl at each drop site |
 
-### Heap allocation (V0-030)
+### Heap allocation (V0-030 / V0-065)
 
-**Surface:** `#import std::core::alloc::alloc_bytes` — `(size: u32) => *mut u8`, callable only inside `unsafe`. Compiler lowers calls to the VM `ALLOC` opcode (pops runtime `size` from stack, pushes heap offset as `*mut u8`).
+**Surface:**
+
+- `#import std::core::alloc::alloc_bytes` — `(size: u32) => *mut u8`, callable only inside `unsafe`. Compiler lowers to VM `ALLOC` (pops runtime `size`, pushes heap offset as `*mut u8`).
+- `#import std::core::alloc::dealloc_bytes` — `(ptr: *mut u8, size: u32) => ()`, callable only inside `unsafe`. Compiler lowers to VM `FREE` (pops `ptr` and `size`; VM verifies exact `(ptr, size)` ledger entry).
 
 **Ownership:**
 
 - `alloc_bytes` returns an **owned raw address**; there is no GC.
-- Raw pointers (`*T`, `*mut T`) are **Copyable** (bitwise copy of the address).
-- Wrapper types around heap blocks **must** implement `Drop` when deallocation lands.
-- **`dealloc_bytes` / `FREE` opcode deferred** — short tests may leak; std authors document ownership until dealloc ships.
+- Every `alloc_bytes(n)` must be paired with exactly one `dealloc_bytes(ptr, n)` on all paths (or the block leaks).
+- Raw pointers (`*T`, `*mut T`) are **Copyable** (bitwise copy of the address); only one owner should call `dealloc_bytes`.
+- Wrapper types around heap blocks **must** implement `Drop` that calls `dealloc_bytes` with the same `size` passed to `alloc_bytes`.
+- VM rejects double-free and size mismatch at runtime; the compiler does not prove alloc/dealloc pairing.
 
 ### Flow-insensitive limitation (MVP)
 

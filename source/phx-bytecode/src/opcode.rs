@@ -106,6 +106,10 @@ pub enum Opcode {
     LoadAggViaLocalPtr = 47,
     /// Build slice from heap pointer + length. Stack: `[ptr, len: u32] → [slice]` — operand: `elem_kind`.
     MakeSliceFromPtr = 48,
+    /// Deallocate bytes on the VM heap. Stack: `[ptr: ptr, size: u32] → []` — no operands.
+    ///
+    /// Pops runtime `size`, then `ptr`; removes exact ledger entry and zeroes freed bytes.
+    Free = 49,
 }
 
 impl Opcode {
@@ -165,6 +169,7 @@ impl Opcode {
             46 => Ok(Self::CallIndirect),
             47 => Ok(Self::LoadAggViaLocalPtr),
             48 => Ok(Self::MakeSliceFromPtr),
+            49 => Ok(Self::Free),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

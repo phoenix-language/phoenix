@@ -1421,6 +1421,42 @@ fn extern_call_requires_unsafe() {
 }
 
 #[test]
+fn dealloc_bytes_requires_unsafe() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_dealloc_unsafe/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let err = check_file(&path).expect_err("expected dealloc_bytes outside unsafe to fail");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::IntrinsicRequiresUnsafe { .. })),
+        "expected IntrinsicRequiresUnsafe: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn heap_dealloc_fixture_typechecks() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_dealloc/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = check_file(&path).expect("heap_dealloc typecheck");
+    assert_eq!(
+        unit.typed.intrinsic_call_sites.len(),
+        2,
+        "expected alloc_bytes + dealloc_bytes intrinsic sites"
+    );
+}
+
+#[test]
 fn alloc_bytes_requires_unsafe() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/heap_alloc_unsafe/src/main.phx");

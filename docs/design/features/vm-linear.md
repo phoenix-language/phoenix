@@ -87,7 +87,7 @@ Section kinds (MVP):
 **Compiler-only notes (MVP):**
 
 - **`POP` (opcode 3)** — defined for the verifier/VM; Phoenix codegen does not emit it (void results are handled via control flow and `STORE_LOCAL` to `_`).
-- **`ALLOC` (38) / `PTR_STORE` (40)** — VM heap intrinsics; compiler emits when lowering `std::core::alloc::alloc_bytes` and `*ptr = …` on raw pointers ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic)). **`alloc_bytes` requires `unsafe`** (same boundary as `extern "C"` calls).
+- **`ALLOC` (38) / `FREE` (49) / `PTR_STORE` (40)** — VM heap intrinsics; compiler emits when lowering `std::core::alloc::alloc_bytes`, `std::core::alloc::dealloc_bytes`, and `*ptr = …` on raw pointers ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic), [V0-065](../language-v0-completion-roadmap.md#v0-065--heap-deallocation-dealloc_bytes--free)). **`alloc_bytes` and `dealloc_bytes` require `unsafe`** (same boundary as `extern "C"` calls).
 
 ---
 
@@ -220,7 +220,7 @@ This fixed-width operand unit simplifies MVP decoding.
 | Addressing | `ADDRESS_OF_LOCAL` |
 | Pattern helpers | `MATCH_TAG`, `MATCH_INT_RANGE` |
 | Std Option/Result helpers (post-MVP) | `MAKE_SOME`, `MAKE_NONE`, `MAKE_OK`, `MAKE_ERR`, `TRY` — only if lowering needs dedicated opcodes after std enums exist |
-| Memory intrinsics | `ALLOC`, `PTR_LOAD`, `PTR_STORE` (unsafe boundary) |
+| Memory intrinsics | `ALLOC`, `FREE`, `PTR_LOAD`, `PTR_STORE` (unsafe boundary) |
 
 Exact opcode numeric assignments are VM-implementation-defined but must remain stable per file format version.
 
@@ -247,7 +247,8 @@ Several opcodes carry a **`prim_kind` wire byte** (`0`–`12`, see `PrimitiveKin
 | Arithmetic, bitwise, compare | `prim_kind` | Require matching stack cell widths |
 | `NEG`, `NOT`, `BIT_NOT` | `prim_kind` | Unary primitive width |
 | `PTR_LOAD`, `PTR_STORE` | `prim_kind`, `signed` | Memory access width |
-| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address |
+| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address; registers `(ptr, size)` in VM allocation ledger |
+| `FREE` | *(none)* | Pops runtime `size: u32`, then `ptr`; removes exact ledger entry; zeros freed bytes (no heap compaction) |
 | `MAKE_SLICE` | `elem_prim_kind` | Element type of source array |
 
 ---

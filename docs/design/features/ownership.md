@@ -263,6 +263,22 @@ Unsafe is for intra-context low-level work — not for bypassing explicit actor 
 
 ---
 
+## Heap ownership (V0-065)
+
+Phoenix has no GC. Heap bytes come from `#import std::core::alloc::alloc_bytes` (VM `ALLOC`) and are reclaimed with `dealloc_bytes` (VM `FREE`).
+
+| Rule | Behavior |
+|---|---|
+| Pairing | Every `alloc_bytes(n)` must have exactly one matching `dealloc_bytes(ptr, n)` on all paths, or the block leaks until the VM run ends |
+| `Drop` | Std owning wrappers (`Box`, buffers, growable collections) implement `Drop` to call `dealloc_bytes` inside `unsafe` |
+| Raw pointers | Copyable address values; copying the pointer does not transfer deallocation responsibility |
+| Compiler | No proof of pairing in V0-065; VM ledger catches double-free and size mismatch at runtime |
+| Compaction | `FREE` marks bytes dead (zeroed) but does not shrink the bump heap |
+
+Future std layering: an `Allocator` trait (V0-066) wraps these intrinsics; only the default VM heap allocator calls `alloc_bytes` / `dealloc_bytes` directly. See [language-v0-completion-roadmap.md](language-v0-completion-roadmap.md).
+
+---
+
 ## Related documents
 
 | Topic | Document |

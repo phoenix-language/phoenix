@@ -340,6 +340,25 @@ fn build_trait_default() {
 }
 
 #[test]
+fn build_heap_dealloc() {
+    e2e(|cli| {
+        rm_project_build_unlocked("heap_dealloc");
+        let project = cli_project("heap_dealloc");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/heap_dealloc.phx0").is_file());
+    });
+}
+
+#[test]
+fn check_heap_dealloc_unsafe_fails() {
+    e2e(|cli| {
+        let project = cli_project("heap_dealloc_unsafe");
+        cli.check_fails(&project.join("src/main.phx"))
+            .assert_contains("unsafe");
+    });
+}
+
+#[test]
 fn build_heap_slice() {
     e2e(|cli| {
         rm_project_build_unlocked("heap_slice");

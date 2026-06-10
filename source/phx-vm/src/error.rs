@@ -33,6 +33,10 @@ pub enum VmError {
     GivenMismatch,
     /// Pointer access outside the VM heap.
     HeapOutOfBounds,
+    /// `Free` on an address that is not a live heap allocation.
+    DoubleFree,
+    /// `Free` with invalid pointer, size mismatch, or out-of-bounds range.
+    InvalidFree,
     /// `ConstTag::Bytes` is not loadable in MVP (use `MakeArray` lowering).
     UnsupportedConst,
     /// Header `entry_function_id` is `ENTRY_NONE` (library object).
@@ -61,6 +65,8 @@ impl std::fmt::Display for VmError {
             Self::FieldOutOfRange => write!(f, "field index out of range"),
             Self::GivenMismatch => write!(f, "match pattern did not match"),
             Self::HeapOutOfBounds => write!(f, "heap access out of bounds"),
+            Self::DoubleFree => write!(f, "double free of heap block"),
+            Self::InvalidFree => write!(f, "invalid heap deallocation"),
             Self::UnsupportedConst => {
                 write!(f, "byte constant pool entries are not loadable in MVP")
             }

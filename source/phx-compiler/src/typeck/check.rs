@@ -632,6 +632,68 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
+    fn check_alloc_bytes_args(&mut self, args: &[ExprNode], span: Span) {
+        let u32_ty = super::builtins::int_literal_type(&mut self.types, true);
+        if args.len() == 1 {
+            let got = self.check_expr_node(&args[0]);
+            if !self.types_equal(got, u32_ty) {
+                self.error_mismatch(
+                    u32_ty,
+                    got,
+                    args[0].span,
+                    MismatchKind::Argument { index: 0 },
+                );
+            }
+        } else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: 1,
+                    found: args.len(),
+                    span,
+                },
+            );
+        }
+    }
+
+    fn check_dealloc_bytes_args(&mut self, args: &[ExprNode], span: Span) {
+        let u32_ty = super::builtins::int_literal_type(&mut self.types, true);
+        let u8_ty = super::builtins::u8_type(&mut self.types);
+        let ptr_ty = self.types.intern(&Ty::Ptr {
+            mut_: true,
+            inner: u8_ty,
+        });
+        if args.len() == 2 {
+            let got_ptr = self.check_expr_node(&args[0]);
+            if !self.types_equal(got_ptr, ptr_ty) {
+                self.error_mismatch(
+                    ptr_ty,
+                    got_ptr,
+                    args[0].span,
+                    MismatchKind::Argument { index: 0 },
+                );
+            }
+            let got_size = self.check_expr_node(&args[1]);
+            if !self.types_equal(got_size, u32_ty) {
+                self.error_mismatch(
+                    u32_ty,
+                    got_size,
+                    args[1].span,
+                    MismatchKind::Argument { index: 1 },
+                );
+            }
+        } else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: 2,
+                    found: args.len(),
+                    span,
+                },
+            );
+        }
+    }
+
     fn check_intrinsic_call(
         &mut self,
         site: IntrinsicSite,
@@ -654,34 +716,19 @@ impl<'a> TypeChecker<'a> {
         }
         match site {
             IntrinsicSite::AllocBytes => {
-                let u32_ty = super::builtins::int_literal_type(&mut self.types, true);
                 let u8_ty = super::builtins::u8_type(&mut self.types);
                 let ret = self.types.intern(&Ty::Ptr {
                     mut_: true,
                     inner: u8_ty,
                 });
-                if args.len() == 1 {
-                    let got = self.check_expr_node(&args[0]);
-                    if !self.types_equal(got, u32_ty) {
-                        self.error_mismatch(
-                            u32_ty,
-                            got,
-                            args[0].span,
-                            MismatchKind::Argument { index: 0 },
-                        );
-                    }
-                } else {
-                    self.bag.push(
-                        self.current_module,
-                        TypeCheckError::ArityMismatch {
-                            expected: 1,
-                            found: args.len(),
-                            span,
-                        },
-                    );
-                }
+                self.check_alloc_bytes_args(args, span);
                 self.intrinsic_call_sites.insert(expr_id, site);
                 ret
+            }
+            IntrinsicSite::DeallocBytes => {
+                self.check_dealloc_bytes_args(args, span);
+                self.intrinsic_call_sites.insert(expr_id, site);
+                self.unit
             }
             IntrinsicSite::SliceFromRawParts => {
                 let u32_ty = super::builtins::int_literal_type(&mut self.types, true);

@@ -1,0 +1,26 @@
+#import std::core::alloc::{alloc_bytes, dealloc_bytes};
+#import std::core::drop::Drop;
+
+HeapBuf :: struct {
+    ptr: *mut u8,
+    size: u32,
+};
+
+free_heap :: (ptr: *mut u8, size: u32) => {
+    unsafe {
+        dealloc_bytes(ptr, size);
+    };
+};
+
+HeapBuf :: impl :: Drop {
+    drop :: (self) => {
+        free_heap(self.ptr, self.size);
+    };
+};
+
+main :: () => {
+    unsafe {
+        const p: *mut u8 = alloc_bytes(8u);
+        const buf: HeapBuf = HeapBuf { ptr: p, size: 8u };
+    };
+};

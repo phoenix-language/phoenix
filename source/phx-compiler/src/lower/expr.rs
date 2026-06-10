@@ -1067,6 +1067,9 @@ fn lower_intrinsic_call(ctx: &mut LowerCtx<'_>, site: IntrinsicSite, result_ty: 
         IntrinsicSite::AllocBytes => {
             ctx.emit(IrInst::Alloc { result: result_ty });
         }
+        IntrinsicSite::DeallocBytes => {
+            ctx.emit(IrInst::Free);
+        }
         IntrinsicSite::SliceFromRawParts => {
             let elem_kind = match ctx.typed.types.get(result_ty) {
                 Ty::Slice(elem) => primitive_kind_for_type(&ctx.typed.types, *elem).map_or(

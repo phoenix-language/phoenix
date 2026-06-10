@@ -259,6 +259,8 @@ pub enum IrInst {
         /// Result pointer type.
         result: TypeId,
     },
+    /// Pop runtime `size: u32`, then `ptr`; free heap block. Stack: `[ptr, size] → []`
+    Free,
     /// Store primitive through raw address. Stack: `[addr, value] → []`
     PtrStore {
         /// Stored value primitive wire kind.

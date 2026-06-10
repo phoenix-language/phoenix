@@ -1,5 +1,10 @@
-// std::core::alloc — VM heap allocation intrinsic (compiler-lowering).
+// std::core::alloc — VM heap allocation intrinsics (compiler-lowering).
+
+pub type Bytes = u8;
 
 pub alloc_bytes :: (size: u32) => *mut u8 {
     const _ = size;
+};
+
+pub dealloc_bytes :: (ptr: *mut u8, size: u32) => () {
 };

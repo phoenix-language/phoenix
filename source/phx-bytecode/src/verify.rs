@@ -744,7 +744,8 @@ fn verify_operands(
         | Opcode::Pop
         | Opcode::Return
         | Opcode::LoadAggViaLocalPtr
-        | Opcode::Alloc => {
+        | Opcode::Alloc
+        | Opcode::Free => {
             if !inst.operands.is_empty() {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

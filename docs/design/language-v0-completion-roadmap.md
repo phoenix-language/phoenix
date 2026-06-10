@@ -56,7 +56,7 @@ flowchart LR
 | **Trait default bodies**            | Documented in [traits.md](features/traits.md); grammar parses them                  | Parsed into AST; **no inheritance in typeck/codegen**                             | — (partial in audit)     |
 | **Match on multi-payload `Result`** | [error-handling.md](features/error-handling.md) requires `match` / `if const` / `?` | `Option` match solid; `Result<ok, err>` with **two generic parameters** partial   | — (partial in audit)     |
 | Heap `ALLOC` intrinsic              | Done (V0-030)                                                                       | Done                                                                              | V0-030                   |
-| `dealloc_bytes` / `FREE`            | Deferred in design                                                                  | Not implemented                                                                   | — (Phase 8)              |
+| `dealloc_bytes` / `FREE`            | Documented in design (V0-065)                                                       | Done                                                                              | V0-065                   |
 | Pluggable `Allocator` trait         | Not yet designed                                                                    | Not implemented                                                                   | Std v0 (post-completion) |
 
 
@@ -305,6 +305,8 @@ Phase 8 is **not** a Language v0 announcement blocker if Phase 7 is complete, bu
 
 
 **Acceptance:** Program allocates, deallocates in `Drop`, scope exit runs cleanup without leak in test harness; double-free rejected.
+
+Status: **Done** (implemented)
 
 ---
 

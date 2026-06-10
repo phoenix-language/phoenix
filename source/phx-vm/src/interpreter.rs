@@ -375,6 +375,17 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 let addr = machine.alloc_bytes(size as usize);
                 machine.stack.push(Value::Scalar(ScalarValue::Ptr(addr)));
             }
+            Opcode::Free => {
+                let size_val = pop_scalar(&mut machine.stack)?;
+                let ScalarValue::U32(size) = size_val else {
+                    return Err(VmError::ExpectedScalar);
+                };
+                let ptr_val = pop_scalar(&mut machine.stack)?;
+                let ScalarValue::Ptr(ptr) = ptr_val else {
+                    return Err(VmError::ExpectedScalar);
+                };
+                machine.free_bytes(ptr, size)?;
+            }
             Opcode::PtrLoad => {
                 let kind = operand_prim_kind(&inst, 0)?;
                 let signed = inst.operands.get(1).copied().unwrap_or(0) as u8;

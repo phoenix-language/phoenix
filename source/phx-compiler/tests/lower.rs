@@ -364,6 +364,38 @@ fn lower_heap_slice_emits_make_slice_from_ptr_not_call() {
 }
 
 #[test]
+fn lower_heap_dealloc_emits_free_not_call() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_dealloc/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck heap_dealloc");
+    let ir = lower(&unit.typed).expect("lower heap_dealloc");
+    let has_free = ir.functions.iter().any(|f| {
+        f.blocks
+            .iter()
+            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Free)))
+    });
+    let has_dealloc_call = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts.iter().any(|i| {
+                if let IrInst::Call { callee, .. } = i {
+                    unit.typed.intrinsic_kernel.dealloc_bytes == Some(*callee)
+                } else {
+                    false
+                }
+            })
+        })
+    });
+    assert!(has_free, "expected Free IR for dealloc_bytes");
+    assert!(
+        !has_dealloc_call,
+        "dealloc_bytes must not lower to IrInst::Call"
+    );
+}
+
+#[test]
 fn lower_heap_alloc_emits_alloc_not_call() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/heap_alloc/src/main.phx");

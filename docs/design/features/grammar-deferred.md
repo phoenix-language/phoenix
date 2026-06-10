@@ -27,7 +27,7 @@ Use this when implementing the compiler: parse vs type-check vs codegen boundari
 | `#[deprecated(...)]` | `attribute` on items | **Implemented** — warning at use sites | Cross-crate via `.pxi` |
 | `#[allow(...)]` / `#[must_use]` | `attribute` on items | **Implemented** — lint suppression / discard warning | `#[deny]` / `#[forbid]` |
 | `#[stable(...)]` / `#[since(...)]` | — | Not in grammar v1 | API versioning metadata |
-| Heap `alloc_bytes` | `#import std::core::alloc::alloc_bytes` | **Implemented** — compiler lowers to `ALLOC` opcode inside `unsafe` ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic)) | `dealloc_bytes` / `FREE` opcode deferred |
+| Heap `alloc_bytes` / `dealloc_bytes` | `#import std::core::alloc::{alloc_bytes, dealloc_bytes}` | **Implemented** — compiler lowers to `ALLOC` / `FREE` opcodes inside `unsafe` ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic), [V0-065](../language-v0-completion-roadmap.md#v0-065--heap-deallocation-dealloc_bytes--free)) | — |
 
 ---
 

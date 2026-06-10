@@ -69,7 +69,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | `#import` via in-process `compile_source` | Single-buffer API has **no** module root → `ImportNotSupported`. Use `check_file` / `check_file_with_module_path`, `compile_to_module*`, or `build_project`. |
 | `#import` via CLI on one file | `phx check` / `phx run <file>` use **parent directory** as module root (same as `check_file`). Multi-file trees need `--module-src` or `phoenix.toml` (M2). |
 | Explicit drop / scopes | V0-054: compiler drop glue via static `Call` to `Drop::drop`; no dedicated drop opcode |
-| Heap user surface | V0-030: `#import std::core::alloc::alloc_bytes` inside `unsafe`; `dealloc_bytes` / `FREE` deferred |
+| Heap user surface | V0-030/V0-065: `#import std::core::alloc::{alloc_bytes, dealloc_bytes}` inside `unsafe` |
 | Generics | V0-020/V0-021: generic decls, local inference, monomorphization (`id$s32`-style mangling); V0-022/V0-023: generic enum match, trait associated types; V0-024: cross-crate `.pxi` mangled fn exports |
 | Parser ergonomics | Bounded fixes (e.g. unclosed `(`); broader grammar ambiguities may remain |
 
@@ -81,7 +81,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Locals / stack | Typed slots; `prim_kind` operands on const, load/store, and arithmetic |
 | Aggregates | Arena handles: struct, enum, tuple, **Array**, **slice** `(ptr, len)` |
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
-| Opcodes | **49** wired (`0`–`48`), including `MakeSlice`, `MakeSliceFromPtr` (V0-062), `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc` (V0-030) |
+| Opcodes | **50** wired (`0`–`49`), including `MakeSlice`, `MakeSliceFromPtr` (V0-062), `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc`/`Free` (V0-030/V0-065) |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
 | Lifetime / drop | V0-054: scope-end drop glue for `Drop` types; flow-insensitive; see [traits.md](design/features/traits.md#drop-resource-cleanup) |
 | Text | Core **`str`** view (`"…"` literals, rodata); **`[u8; N]`** / `b"…"` for binary; std **`String`** (owned) post-std |
@@ -211,7 +211,7 @@ A credible MVP demo `.phx` should be able to:
 | Trait / impl static resolution             | done     | `typeck/check.rs`                  | `Type :: impl :: Trait`; ambiguous impls diagnosed                      | `trait_eq.phx`                                         |
 | Borrow `&T` / `&mut T` in types            | partial  | `typeck/ops.rs`, `lower/expr.rs`  | Address-of locals + deref via `PtrLoad`; no borrow checker                    | `ref_local.phx`, `deref_ptr.phx`                       |
 | Raw pointers `*T`                          | pass     | `typeck/intrinsic_kernel.rs`, VM `Alloc`/`PtrLoad`/`PtrStore` | V0-030: `std::core::alloc::alloc_bytes` in `unsafe`; raw ptrs Copyable | `heap_alloc/`, `deref_ptr.phx`                         |
-| Heap allocation (V0-030)                   | done     | `std::core::alloc`, `intrinsic_kernel.rs`, `IrInst::Alloc` | Runtime-size `ALLOC`; `dealloc_bytes` deferred | `heap_alloc/`, `heap_alloc_unsafe/` |
+| Heap allocation (V0-030/V0-065)              | done     | `std::core::alloc`, `intrinsic_kernel.rs`, `IrInst::Alloc`/`Free` | Runtime-size `ALLOC`/`FREE`; VM allocation ledger | `heap_alloc/`, `heap_dealloc/`, `heap_drop_dealloc/` |
 | Generics on types                          | pass     | `typeck/mono.rs`, `typeck/check.rs` | V0-020/V0-021: explicit + inferred instantiation; dual-site mono in IR/bytecode; V0-022 generic enum match; V0-023 assoc types + `Self::Item` | `generic_fn.phx`, `generic_enum_infer.phx`, `generic_enum_match.phx`, `typeck.rs` dual-inst tests |
 | Copyable inference                         | done     | `typeck/builtins.rs`, `bounds.rs` | Primitives, tuples, arrays; eligible structs; std `Copyable` bound | `std_traits`, typeck bound tests |
 | Use-after-move (MVP ownership)             | done     | `typeck/ownership.rs`, `check.rs` | Non-Copyable moves                                                            | `use_after_move_error`                                 |
