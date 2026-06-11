@@ -369,7 +369,7 @@ Do not expand scope while Phase 7 is open:
 | V0-064 | Match on multi-payload `Result`  | 7          | **Yes**                         |
 | V0-067 | Cross-pillar integration fixture | 7          | **Yes**                         |
 | V0-065 | `dealloc_bytes` / `FREE`         | 8          | No (blocks Std v0 collections)  |
-| V0-066 | `Allocator` trait design + std   | 8 / Std v0 | No                              |
+| V0-066 | `Allocator` trait design + std   | 8 / Std v0 | No — **Done**                   |
 
 
 ---
