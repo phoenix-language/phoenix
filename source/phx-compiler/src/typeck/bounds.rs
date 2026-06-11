@@ -54,6 +54,15 @@ pub fn validate_instantiation_bounds(
     let mut ok = true;
     for ((param, &param_def), &concrete) in generic_params.iter().zip(param_defs).zip(concrete_args)
     {
+        if let Ty::Named {
+            def: concrete_def,
+            args,
+        } = types.get(concrete)
+            && *concrete_def == param_def
+            && args.is_empty()
+        {
+            continue;
+        }
         let Some(bounds) = param.bounds.as_ref() else {
             continue;
         };

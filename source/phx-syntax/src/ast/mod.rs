@@ -32,7 +32,7 @@ pub use decl::{
     Variant,
 };
 pub use expr::{AssignOp, BinOp, Expr, ExprNode, IfCondition, PostfixOp, StructFieldInit, UnaryOp};
-pub use ident::{Ident, Path, PathSegment, TypeName};
+pub use ident::{Ident, Path, PathSegment, TypeName, TypePathSegment};
 pub use lit::{FloatLit, IntLit, Literal};
 pub use node::Node;
 pub use node_id::AstNodeId;

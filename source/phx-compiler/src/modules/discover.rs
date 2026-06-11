@@ -71,7 +71,7 @@ impl SubmoduleRegistry {
                         .map(|seg| match seg {
                             PathSegment::Ident(id) => interner.resolve(id.symbol).to_owned(),
                             PathSegment::Type(type_name) => {
-                                interner.resolve(type_name.symbol).to_owned()
+                                interner.resolve(type_name.name.symbol).to_owned()
                             }
                         })
                         .collect();

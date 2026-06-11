@@ -1371,6 +1371,20 @@ fn associated_from_call_compile_ok() {
 }
 
 #[test]
+fn generic_default_fills_trailing_type_arg() {
+    compile_ok(
+        "Pair :: <t, u = s32> struct { a: t, b: u }; main :: () => { var x: Pair<bool> = Pair :: <bool> { a: true, b: 1 }; const _ = x; };",
+    );
+}
+
+#[test]
+fn associated_fn_type_generics_path_compile_ok() {
+    compile_ok(
+        "Box :: <t> struct { n: t }; Box :: <t> impl { new :: (n: t) => Box<t> { Box :: <t> { n: n } }; }; main :: () => { const b = Box :: <s32> :: new(1); const _ = b.n; };",
+    );
+}
+
+#[test]
 fn generic_from_bound_at_mono_site_compile_ok() {
     compile_ok(
         "FromLocal :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: FromLocal<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; convert :: <t: FromLocal<s32>> (x: s32) => t { t::from(x) }; main :: () => { const w: Wrap = convert :: <Wrap>(42); const _ = w.n; };",

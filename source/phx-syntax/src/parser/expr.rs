@@ -11,7 +11,7 @@ use crate::ast::expr::{
     AssignOp, BinOp, Expr, ExprNode, LambdaBody, PostfixOp, RuntimeDirectiveKind, StructFieldInit,
     UnaryOp,
 };
-use crate::ast::ident::Ident;
+use crate::ast::ident::{Ident, TypePathSegment};
 use crate::ast::lit::{FloatLit, IntLit, Literal};
 use crate::intern::impl_receiver_symbol;
 use crate::parser::Parser;
@@ -466,7 +466,11 @@ impl Parser<'_> {
                 let span = self.current_span();
                 self.bump();
                 let tn = self.intern_type_name(n, span)?;
-                (tn, crate::ast::PathSegment::Type(tn), true)
+                (
+                    tn,
+                    crate::ast::PathSegment::Type(TypePathSegment::new(tn)),
+                    true,
+                )
             }
             TokenKind::Ident(n) => {
                 let id = self.bump_ident(n)?;
@@ -555,15 +559,22 @@ impl Parser<'_> {
             ));
         }
         if self.eat_kind(&TokenKind::ColonColon) {
-            let mut segments = vec![first_segment];
+            let head = match (generics, first_segment) {
+                (Some(type_args), crate::ast::PathSegment::Type(mut seg)) => {
+                    seg.generics = Some(type_args);
+                    crate::ast::PathSegment::Type(seg)
+                }
+                (_, seg) => seg,
+            };
+            let mut segments = vec![head];
             loop {
                 match self.peek_kind() {
                     TokenKind::TypeIdent(seg) => {
                         let span = self.current_span();
                         self.bump();
-                        segments.push(crate::ast::PathSegment::Type(
+                        segments.push(crate::ast::PathSegment::Type(TypePathSegment::new(
                             self.intern_type_name(seg, span)?,
-                        ));
+                        )));
                     }
                     TokenKind::Ident(seg) => {
                         segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));

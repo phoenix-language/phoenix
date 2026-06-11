@@ -276,7 +276,7 @@ slice_type         = "[" , type_expr , "]" ;
 type_list          = type_expr , { "," , type_expr } ;
 
 generic_params     = "<" , generic_param , { "," , generic_param } , ">" ;
-generic_param      = identifier , [ ":" , trait_bounds ] ;
+generic_param      = identifier , [ ":" , trait_bounds ] , [ "=" , type_expr ] ;
 generic_args       = "<" , type_expr , { "," , type_expr } , ">" ;
 trait_bounds       = trait_bound , { "+" , trait_bound } ;
 trait_bound        = type_identifier , [ generic_args ] ;

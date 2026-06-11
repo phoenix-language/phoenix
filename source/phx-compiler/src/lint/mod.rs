@@ -377,7 +377,7 @@ impl LintWalker<'_> {
         let seg = path.segments.last()?;
         let node_id = match seg {
             PathSegment::Ident(i) => i.id,
-            PathSegment::Type(t) => t.id,
+            PathSegment::Type(t) => t.name.id,
         };
         self.resolve_node(node_id)
     }

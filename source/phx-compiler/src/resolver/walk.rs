@@ -456,6 +456,9 @@ impl Resolver<'_> {
                         self.resolve_trait_bound(bound);
                     }
                 }
+                if let Some(default) = &param.default {
+                    self.resolve_type_node(default);
+                }
             }
         }
     }
@@ -985,28 +988,54 @@ impl Resolver<'_> {
         }
         if path.segments.len() >= 2 && matches!(path.segments[1], PathSegment::Ident(_)) {
             match &path.segments[0] {
-                PathSegment::Type(name) => self.resolve_type_or_value_name(name, span),
+                PathSegment::Type(seg) => {
+                    self.resolve_type_or_value_name(&seg.name, span);
+                    if let Some(generics) = &seg.generics {
+                        for ty in generics {
+                            self.resolve_type_node(ty);
+                        }
+                    }
+                }
                 PathSegment::Ident(ident) => self.resolve_type_param_in_assoc_path(ident),
             }
             for seg in path.segments.iter().skip(2) {
                 match seg {
                     PathSegment::Ident(ident) => self.resolve_ident(ident),
-                    PathSegment::Type(name) => self.resolve_type_name(name),
+                    PathSegment::Type(seg) => {
+                        self.resolve_type_name(&seg.name);
+                        if let Some(generics) = &seg.generics {
+                            for ty in generics {
+                                self.resolve_type_node(ty);
+                            }
+                        }
+                    }
                 }
             }
             return;
         }
         match &path.segments[0] {
             PathSegment::Ident(ident) => self.resolve_ident(ident),
-            PathSegment::Type(name) => {
-                self.resolve_type_or_value_name(name, span);
+            PathSegment::Type(seg) => {
+                self.resolve_type_or_value_name(&seg.name, span);
+                if let Some(generics) = &seg.generics {
+                    for ty in generics {
+                        self.resolve_type_node(ty);
+                    }
+                }
             }
         }
         if path.segments.len() > 1 {
             for seg in &path.segments[1..] {
                 match seg {
                     PathSegment::Ident(ident) => self.resolve_ident(ident),
-                    PathSegment::Type(name) => self.resolve_type_name(name),
+                    PathSegment::Type(seg) => {
+                        self.resolve_type_name(&seg.name);
+                        if let Some(generics) = &seg.generics {
+                            for ty in generics {
+                                self.resolve_type_node(ty);
+                            }
+                        }
+                    }
                 }
             }
         } else {

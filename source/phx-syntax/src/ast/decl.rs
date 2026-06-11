@@ -49,7 +49,7 @@ pub enum FnDirective {
 }
 
 /// `#import` directive.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportDirective {
     /// Module path.
     pub path: Path,

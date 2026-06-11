@@ -14,6 +14,7 @@ use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
+use phx_syntax::ast::types::GenericParam;
 use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
 use phx_syntax::{Symbol, impl_receiver_symbol};
@@ -23,7 +24,10 @@ use super::PrimitiveMethodSite;
 use super::bindings::{
     BindingKind, DropEvent, ForInPlan, FunctionLayout, FunctionLayoutBuilder, for_in_iter_symbol,
 };
-use super::bounds::{resolve_from_fn_for_error, trait_bound_head, type_satisfies_trait_inst};
+use super::bounds::{
+    resolve_from_fn_for_error, trait_bound_head, type_satisfies_trait_inst,
+    validate_instantiation_bounds,
+};
 use super::builtins::{
     bool_type, float_literal_type, implements_drop, implements_drop_for_def, int_literal_type,
     is_copyable, is_copyable_trait_def, is_drop_trait_def, resolve_drop_fn, str_type, u8_type,
@@ -436,7 +440,7 @@ impl<'a> TypeChecker<'a> {
                 self.impl_self_type = Some(self_ty);
             }
         }
-        self.check_function_body(f, spec_def, true);
+        self.check_function_body(f, spec_def, true, true);
         self.impl_self_type = saved_impl_self;
         self.current_module = saved_module;
         self.fn_ret = None;
@@ -1850,7 +1854,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         for (def, f) in inherited {
-            self.check_function_body(&f, def, true);
+            self.check_function_body(&f, def, true, true);
         }
         self.subst = saved_subst;
         self.type_defs = saved_type_defs;
@@ -1999,12 +2003,19 @@ impl<'a> TypeChecker<'a> {
             super::mono::generic_param_defs_for_type(self.resolved, type_def)
                 .is_some_and(|params| !params.is_empty())
         }) {
+            self.check_function_body(f, def, true, false);
             return;
         }
-        self.check_function_body(f, def, true);
+        self.check_function_body(f, def, true, true);
     }
 
-    fn check_function_body(&mut self, f: &Function, def: DefId, emit_layout: bool) {
+    fn check_function_body(
+        &mut self,
+        f: &Function,
+        def: DefId,
+        emit_layout: bool,
+        check_body: bool,
+    ) {
         if self.intrinsic_kernel.is_intrinsic_fn(def) {
             return;
         }
@@ -2073,21 +2084,23 @@ impl<'a> TypeChecker<'a> {
                 }
             }
         }
-        let check_body = |this: &mut Self| {
-            let body_ty = this.check_block_value(&f.body.inner);
-            if !this.types_equal(body_ty, ret) {
-                this.error_mismatch(ret, body_ty, f.body.span, MismatchKind::FunctionBody);
-            }
-            if this.is_borrow_type(body_ty) {
-                if let Some(expr) = trailing_value_expr(&f.body.inner) {
-                    this.check_expr_escapes_local(expr);
+        if check_body {
+            let check_body = |this: &mut Self| {
+                let body_ty = this.check_block_value(&f.body.inner);
+                if !this.types_equal(body_ty, ret) {
+                    this.error_mismatch(ret, body_ty, f.body.span, MismatchKind::FunctionBody);
                 }
+                if this.is_borrow_type(body_ty) {
+                    if let Some(expr) = trailing_value_expr(&f.body.inner) {
+                        this.check_expr_escapes_local(expr);
+                    }
+                }
+            };
+            if self.is_effective_unsafe(def) {
+                self.with_unsafe(|this| check_body(this));
+            } else {
+                check_body(self);
             }
-        };
-        if self.is_effective_unsafe(def) {
-            self.with_unsafe(|this| check_body(this));
-        } else {
-            check_body(self);
         }
         if emit_layout {
             self.plan_drops_at_scope_depth(0);
@@ -2881,15 +2894,15 @@ impl<'a> TypeChecker<'a> {
         if path.segments.len() == 1 {
             match &path.segments[0] {
                 PathSegment::Ident(ident) => return self.check_ident(ident, span),
-                PathSegment::Type(name) => {
-                    if let Some(def) = self.lookup_resolution(name.id) {
+                PathSegment::Type(seg) => {
+                    if let Some(def) = self.lookup_resolution(seg.name.id) {
                         if let Some(&fn_ty) = self.value_types.get(&def) {
                             if matches!(self.types.get(fn_ty), Ty::Fn { .. }) {
                                 return fn_ty;
                             }
                         }
                     }
-                    if let Some(def) = self.type_defs.get(&name.symbol).copied() {
+                    if let Some(def) = self.type_defs.get(&seg.name.symbol).copied() {
                         return self.value_types.get(&def).copied().unwrap_or_else(|| {
                             self.types.intern(&Ty::Named { def, args: vec![] })
                         });
@@ -2917,8 +2930,8 @@ impl<'a> TypeChecker<'a> {
 
     fn resolve_type_segment_for_assoc_fn(&mut self, segment: &PathSegment) -> Option<TypeId> {
         match segment {
-            PathSegment::Type(name) => {
-                if let Some(def) = self.lookup_resolution(name.id) {
+            PathSegment::Type(seg) => {
+                let def = if let Some(def) = self.lookup_resolution(seg.name.id) {
                     if self
                         .resolved
                         .defs
@@ -2927,10 +2940,26 @@ impl<'a> TypeChecker<'a> {
                             matches!(d.kind, DefKind::Struct | DefKind::Enum | DefKind::TypeAlias)
                         })
                     {
-                        return Some(self.types.intern(&Ty::Named { def, args: vec![] }));
+                        def
+                    } else {
+                        self.type_defs.get(&seg.name.symbol).copied()?
                     }
+                } else {
+                    self.type_defs.get(&seg.name.symbol).copied()?
+                };
+                let span = seg.name.span;
+                if let Some(generic_nodes) = &seg.generics {
+                    let mut provided: Vec<TypeId> = generic_nodes
+                        .iter()
+                        .map(|n| self.lower_ast_type(n))
+                        .collect();
+                    if let Some(completed) = self.complete_generic_args(def, provided, span) {
+                        provided = completed;
+                    } else {
+                        return Some(self.poison_type());
+                    }
+                    return Some(self.resolve_instantiated_named(def, provided, span));
                 }
-                let def = self.type_defs.get(&name.symbol).copied()?;
                 Some(self.types.intern(&Ty::Named { def, args: vec![] }))
             }
             PathSegment::Ident(ident) => {
@@ -3011,12 +3040,76 @@ impl<'a> TypeChecker<'a> {
         let Some(f) = self.find_function_decl(fn_def).cloned() else {
             return self.check_call(fn_ty, args, span);
         };
-        let param_defs = self.generic_param_defs_for_fn(&f, fn_def);
+        let impl_param_defs = self.impl_generic_param_defs(def);
+        let method_param_defs = self.generic_param_defs_for_fn(&f, fn_def);
         let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() else {
             return self.unit;
         };
-        if param_defs.is_empty() {
-            if generics.is_some() {
+        let mut impl_args = implementer_args.clone();
+        if impl_args.len() < impl_param_defs.len() {
+            if let Some(call_generics) = generics {
+                if let Some(filled) = self.complete_generic_args_from_ast(
+                    generic_params_for_def(self.resolved, def).as_deref(),
+                    &impl_param_defs,
+                    call_generics,
+                    self.def_module(def),
+                    span,
+                ) {
+                    impl_args = filled;
+                } else {
+                    return self.unit;
+                }
+            } else if let Some(filled) = self.complete_generic_args(def, impl_args, span) {
+                impl_args = filled;
+            } else {
+                return self.unit;
+            }
+        }
+        if impl_param_defs.len() != impl_args.len() && !impl_param_defs.is_empty() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::Mismatch {
+                    expected: "fully instantiated type".to_owned(),
+                    found: self.format_ty(target_ty),
+                    span,
+                    kind: MismatchKind::default(),
+                },
+            );
+            return self.unit;
+        }
+        let needs_mono = !impl_param_defs.is_empty() || !method_param_defs.is_empty();
+        if needs_mono {
+            let mut subst = Substitution::new();
+            for (param_def, concrete) in impl_param_defs.iter().zip(&impl_args) {
+                subst.insert(*param_def, *concrete);
+            }
+            let infer_params: Vec<_> = params
+                .iter()
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .collect();
+            let call_generics_for_method = if method_param_defs.is_empty() {
+                None
+            } else {
+                generics
+            };
+            let method_args = if method_param_defs.is_empty() {
+                Vec::new()
+            } else {
+                let Some(concrete) = self.resolve_concrete_generic_args(
+                    call_generics_for_method,
+                    f.generics.as_deref(),
+                    &method_param_defs,
+                    &infer_params,
+                    args,
+                    span,
+                    None,
+                    self.def_module(fn_def),
+                ) else {
+                    return self.unit;
+                };
+                concrete
+            };
+            if generics.is_some() && method_param_defs.is_empty() && impl_param_defs.is_empty() {
                 self.bag.push(
                     self.current_module,
                     TypeCheckError::UnsupportedFeature {
@@ -3025,45 +3118,43 @@ impl<'a> TypeChecker<'a> {
                     },
                 );
             }
-            if params.len() != args.len() {
+            for (param_def, concrete) in method_param_defs.iter().zip(&method_args) {
+                subst.insert(*param_def, *concrete);
+            }
+            let applied_params: Vec<_> = params
+                .iter()
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .collect();
+            if applied_params.len() != args.len() {
                 self.bag.push(
                     self.current_module,
                     TypeCheckError::ArityMismatch {
-                        expected: params.len(),
+                        expected: applied_params.len(),
                         found: args.len(),
                         span,
                     },
                 );
             }
-            for (index, (p, arg)) in params.iter().zip(args).enumerate() {
+            for (index, (p, arg)) in applied_params.iter().zip(args).enumerate() {
                 let got = self.check_expr_node(arg);
                 if !self.types_equal(got, *p) {
                     self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
                 }
             }
-            return ret;
+            let mut mono_args = impl_args;
+            mono_args.extend(method_args);
+            self.record_mono_inst(fn_def, mono_args, method.id);
+            return Substitution::apply(&mut self.types, ret, &subst);
         }
-        let Some(concrete_args) = self.resolve_concrete_generic_args(
-            generics,
-            f.generics.as_deref(),
-            &param_defs,
-            &params,
-            args,
-            span,
-            None,
-            self.def_module(fn_def),
-        ) else {
-            return self.unit;
-        };
-        let mut subst = Substitution::new();
-        for (param_def, concrete) in param_defs.iter().zip(&concrete_args) {
-            subst.insert(*param_def, *concrete);
+        if generics.is_some() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsupportedFeature {
+                    feature: "type arguments on non-generic call",
+                    span,
+                },
+            );
         }
-        let params: Vec<_> = params
-            .iter()
-            .map(|p| Substitution::apply(&mut self.types, *p, &subst))
-            .collect();
-        let ret = Substitution::apply(&mut self.types, ret, &subst);
         if params.len() != args.len() {
             self.bag.push(
                 self.current_module,
@@ -3080,7 +3171,6 @@ impl<'a> TypeChecker<'a> {
                 self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
             }
         }
-        self.record_mono_inst(fn_def, concrete_args, method.id);
         ret
     }
 
@@ -3224,7 +3314,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Ident(ident) => self.lookup_resolution(ident.id),
             Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
                 PathSegment::Ident(ident) => self.lookup_resolution(ident.id),
-                PathSegment::Type(name) => self.lookup_resolution(name.id),
+                PathSegment::Type(seg) => self.lookup_resolution(seg.name.id),
             },
             _ => None,
         }
@@ -3278,6 +3368,12 @@ impl<'a> TypeChecker<'a> {
         fns.dedup();
         for base_fn in fns {
             if self
+                .find_function_decl(base_fn)
+                .is_some_and(|f| f.generics.as_ref().is_some_and(|g| !g.is_empty()))
+            {
+                continue;
+            }
+            if self
                 .mono_insts
                 .iter()
                 .any(|i| i.base_fn == base_fn && i.args == args)
@@ -3324,6 +3420,147 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn complete_generic_args(
+        &mut self,
+        base_def: DefId,
+        mut provided: Vec<TypeId>,
+        span: Span,
+    ) -> Option<Vec<TypeId>> {
+        let param_defs = generic_param_defs_for_type(self.resolved, base_def).unwrap_or_default();
+        if param_defs.is_empty() {
+            if provided.is_empty() {
+                return Some(provided);
+            }
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: 0,
+                    found: provided.len(),
+                    span,
+                },
+            );
+            return None;
+        }
+        if provided.len() > param_defs.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: provided.len(),
+                    span,
+                },
+            );
+            return None;
+        }
+        if provided.len() < param_defs.len() {
+            let generic_params = generic_params_for_def(self.resolved, base_def)?;
+            let module = self.def_module(base_def);
+            let mut type_defs = self.type_defs.clone();
+            push_generics(
+                &mut type_defs,
+                &self.resolved.defs,
+                module,
+                Some(&generic_params),
+            );
+            let mut subst = Substitution::new();
+            for (i, param_def) in param_defs.iter().enumerate() {
+                if i < provided.len() {
+                    subst.insert(*param_def, provided[i]);
+                }
+            }
+            for i in provided.len()..param_defs.len() {
+                let param = generic_params.get(i)?;
+                let Some(default) = param.default.as_ref() else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: param_defs.len(),
+                            found: provided.len(),
+                            span,
+                        },
+                    );
+                    return None;
+                };
+                let lowered = self.lower_ast_type_with_defs(default, &type_defs);
+                let concrete = Substitution::apply(&mut self.types, lowered, &subst);
+                subst.insert(param_defs[i], concrete);
+                provided.push(concrete);
+            }
+        }
+        if !validate_instantiation_bounds(
+            self.resolved,
+            &self.program_layout,
+            &self.types,
+            &self.std_trait_kernel,
+            &self.value_types,
+            generic_params_for_def(self.resolved, base_def).as_deref(),
+            &param_defs,
+            &provided,
+            self.def_module(base_def),
+            span,
+            &mut self.bag,
+        ) {
+            return None;
+        }
+        Some(provided)
+    }
+
+    fn complete_generic_args_from_ast(
+        &mut self,
+        generic_params: Option<&[GenericParam]>,
+        param_defs: &[DefId],
+        provided_nodes: &[Node<Type>],
+        module: u32,
+        span: Span,
+    ) -> Option<Vec<TypeId>> {
+        if provided_nodes.len() > param_defs.len() {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: provided_nodes.len(),
+                    span,
+                },
+            );
+            return None;
+        }
+        let mut type_defs = self.type_defs.clone();
+        push_generics(&mut type_defs, &self.resolved.defs, module, generic_params);
+        let mut provided: Vec<TypeId> = provided_nodes
+            .iter()
+            .map(|n| self.lower_ast_type_with_defs(n, &type_defs))
+            .collect();
+        if provided.len() == param_defs.len() {
+            return Some(provided);
+        }
+        let generic_params = generic_params?;
+        let mut subst = Substitution::new();
+        for (i, param_def) in param_defs.iter().enumerate() {
+            if i < provided.len() {
+                subst.insert(*param_def, provided[i]);
+            }
+        }
+        for i in provided.len()..param_defs.len() {
+            let param = generic_params.get(i)?;
+            let Some(default) = param.default.as_ref() else {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::ArityMismatch {
+                        expected: param_defs.len(),
+                        found: provided.len(),
+                        span,
+                    },
+                );
+                return None;
+            };
+            let lowered = self.lower_ast_type_with_defs(default, &type_defs);
+            let concrete = Substitution::apply(&mut self.types, lowered, &subst);
+            subst.insert(param_defs[i], concrete);
+            provided.push(concrete);
+        }
+        Some(provided)
+    }
+
     fn resolve_instantiated_named(&mut self, base: DefId, args: Vec<TypeId>, span: Span) -> TypeId {
         let Some(kind) = self.type_mono_kind_for_def(base) else {
             return self.types.intern(&Ty::Named { def: base, args });
@@ -3339,17 +3576,9 @@ impl<'a> TypeChecker<'a> {
             );
             return self.poison_type();
         }
-        if param_defs.len() != args.len() {
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::ArityMismatch {
-                    expected: param_defs.len(),
-                    found: args.len(),
-                    span,
-                },
-            );
+        let Some(args) = self.complete_generic_args(base, args, span) else {
             return self.poison_type();
-        }
+        };
         self.record_type_mono_inst(base, kind, args.clone());
         if kind == TypeMonoKind::Alias {
             let mut subst = Substitution::new();
@@ -3567,6 +3796,47 @@ impl<'a> TypeChecker<'a> {
             .iter()
             .filter_map(|param| self.find_def(module, param.name.symbol, DefKind::GenericParam))
             .collect()
+    }
+
+    fn generic_param_bounds_for_def(&self, param_def: DefId) -> Option<Vec<Node<Type>>> {
+        let record = self.resolved.defs.get(param_def.index() as usize)?;
+        let module = record.module;
+        let name = record.name;
+        for mod_item in &self.resolved.modules {
+            if mod_item.id != module {
+                continue;
+            }
+            for item in &mod_item.program.items {
+                if let Some(bounds) = generic_bounds_in_decl(&item.inner.decl, name) {
+                    return Some(bounds);
+                }
+            }
+        }
+        None
+    }
+
+    fn find_trait_method_for_bounded_generic_param(
+        &self,
+        param_def: DefId,
+        method: Symbol,
+    ) -> Option<DefId> {
+        let bounds = self.generic_param_bounds_for_def(param_def)?;
+        for bound in bounds {
+            let Some((trait_symbol, _)) = trait_bound_head(&bound.inner) else {
+                continue;
+            };
+            let trait_def = self.type_defs.get(&trait_symbol).copied()?;
+            let items = self.find_trait_items(trait_def)?;
+            for item in items {
+                if let TraitItem::Method(sig) = item {
+                    if sig.name.symbol == method {
+                        let trait_module = self.resolved.defs[trait_def.index() as usize].module;
+                        return self.find_def(trait_module, method, DefKind::Fn);
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn find_trait_items(&self, trait_def: DefId) -> Option<&[TraitItem]> {
@@ -4013,7 +4283,7 @@ impl<'a> TypeChecker<'a> {
         let mut td = self.type_defs.clone();
         push_generics(&mut td, &self.resolved.defs, fn_module, fn_generics);
         if let Some(nodes) = generic_nodes {
-            if nodes.len() != param_defs.len() {
+            if nodes.len() > param_defs.len() {
                 self.bag.push(
                     self.current_module,
                     TypeCheckError::ArityMismatch {
@@ -4024,11 +4294,18 @@ impl<'a> TypeChecker<'a> {
                 );
                 return None;
             }
+            if nodes.len() < param_defs.len() {
+                return self.complete_generic_args_from_ast(
+                    fn_generics,
+                    param_defs,
+                    nodes,
+                    fn_module,
+                    span,
+                );
+            }
             let mut concrete_args = Vec::new();
-            for (param_def, ty_node) in param_defs.iter().zip(nodes) {
-                let concrete = self.lower_ast_type_with_defs(ty_node, &td);
-                concrete_args.push(concrete);
-                let _ = param_def;
+            for ty_node in nodes {
+                concrete_args.push(self.lower_ast_type_with_defs(ty_node, &td));
             }
             return Some(concrete_args);
         }
@@ -4326,6 +4603,18 @@ impl<'a> TypeChecker<'a> {
                     &implementer_args,
                     name.symbol,
                 )
+            })
+            .or_else(|| {
+                if self
+                    .resolved
+                    .defs
+                    .get(type_def.index() as usize)
+                    .is_some_and(|d| d.kind == DefKind::GenericParam)
+                {
+                    self.find_trait_method_for_bounded_generic_param(type_def, name.symbol)
+                } else {
+                    None
+                }
             });
         let Some(fn_def) = fn_def else {
             return self.emit_ambiguous_or_unresolved_method(receiver, type_def, name, span);
@@ -5039,7 +5328,7 @@ impl<'a> TypeChecker<'a> {
             );
             return vec![];
         };
-        if generic_nodes.len() != param_defs.len() {
+        if generic_nodes.len() > param_defs.len() {
             self.bag.push(
                 self.current_module,
                 TypeCheckError::ArityMismatch {
@@ -5048,6 +5337,18 @@ impl<'a> TypeChecker<'a> {
                     span,
                 },
             );
+            return vec![];
+        }
+        if generic_nodes.len() < param_defs.len() {
+            return self
+                .complete_generic_args_from_ast(
+                    generic_params_for_def(self.resolved, def).as_deref(),
+                    &param_defs,
+                    generic_nodes,
+                    self.def_module(def),
+                    span,
+                )
+                .unwrap_or_default();
         }
         generic_nodes
             .iter()
@@ -5395,7 +5696,7 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
         Expr::Ident(ident) => Some(ident.id),
         Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
             PathSegment::Ident(ident) => Some(ident.id),
-            PathSegment::Type(name) => Some(name.id),
+            PathSegment::Type(seg) => Some(seg.name.id),
         },
         _ => None,
     }
@@ -5528,6 +5829,33 @@ fn find_trait_method_def(
     } else {
         None
     }
+}
+
+fn generic_bounds_in_decl(decl: &TopLevelDecl, name: Symbol) -> Option<Vec<Node<Type>>> {
+    match decl {
+        TopLevelDecl::Struct { generics, .. }
+        | TopLevelDecl::Enum { generics, .. }
+        | TopLevelDecl::TypeAlias { generics, .. }
+        | TopLevelDecl::Trait { generics, .. }
+        | TopLevelDecl::Impl { generics, .. } => {
+            generic_bounds_in_params(generics.as_deref(), name)
+        }
+        TopLevelDecl::Function(f) => generic_bounds_in_params(f.generics.as_deref(), name),
+        _ => None,
+    }
+}
+
+fn generic_bounds_in_params(
+    generics: Option<&[GenericParam]>,
+    name: Symbol,
+) -> Option<Vec<Node<Type>>> {
+    let params = generics?;
+    for param in params {
+        if param.name.symbol == name {
+            return param.bounds.clone();
+        }
+    }
+    None
 }
 
 fn trailing_value_expr(block: &Block) -> Option<&ExprNode> {

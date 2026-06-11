@@ -60,7 +60,7 @@ impl Parser<'_> {
                     let span = self.current_span();
                     self.bump();
                     segments.push(crate::ast::PathSegment::Type(
-                        self.intern_type_name(seg, span)?,
+                        crate::ast::TypePathSegment::new(self.intern_type_name(seg, span)?),
                     ));
                 }
                 TokenKind::Ident(seg) => {
@@ -92,7 +92,7 @@ impl Parser<'_> {
                     let span = self.current_span();
                     self.bump();
                     segments.push(crate::ast::PathSegment::Type(
-                        self.intern_type_name(seg, span)?,
+                        crate::ast::TypePathSegment::new(self.intern_type_name(seg, span)?),
                     ));
                 }
                 TokenKind::Ident(seg) => {

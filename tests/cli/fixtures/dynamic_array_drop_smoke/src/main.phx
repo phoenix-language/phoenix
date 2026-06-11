@@ -1,14 +1,9 @@
 #import std::collections::dynamic_array::DynamicArray;
-#import std::core::memory::allocator::{Layout, VmHeapAllocator};
+#import std::core::memory::allocator::VmHeapAllocator;
 
 main :: () => {
     {
-        var arr: DynamicArray<s32> = unsafe {
-            var g: VmHeapAllocator = VmHeapAllocator {};
-            const layout: Layout = Layout { size: 16u, align: 1u };
-            const ptr: *mut u8 = g.alloc(layout);
-            DynamicArray :: <s32> { ptr: ptr, len: 0u, cap: 4u, alloc: g }
-        };
+        var arr: DynamicArray<s32> = DynamicArray :: <s32>::empty(VmHeapAllocator {});
         arr.push(1);
         const _ = arr.len();
     };

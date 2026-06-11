@@ -403,6 +403,13 @@ fn decl_generic_param_from_bound() {
 }
 
 #[test]
+fn decl_generic_param_default_type() {
+    assert_ok(
+        "Allocator :: trait { }; Global :: struct {}; Container :: <t, a: Allocator = Global> struct { alloc: a }; main :: () => { };",
+    );
+}
+
+#[test]
 fn decl_impl_parameterized_trait() {
     assert_ok(
         "From :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: From<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; main :: () => { };",
@@ -1093,6 +1100,31 @@ fn expr_path_type_only() {
 #[test]
 fn expr_path_qualified() {
     assert_ok(&in_main_expr("core::mem::size"));
+}
+
+#[test]
+fn expr_assoc_path_preserves_type_generics() {
+    use phx_syntax::ast::ident::PathSegment;
+
+    let src = &format!(
+        "Foo :: struct {{ n: s32 }}; bar :: () => s32 {{ 0 }}; {}",
+        in_main_expr("Foo :: <s32> :: bar")
+    );
+    let program = parse_ok(src);
+    let expr = support::first_stmt_expr(&main_fn(&program).body);
+    match expr {
+        Expr::Path(path) => {
+            assert_eq!(path.segments.len(), 2);
+            match &path.segments[0] {
+                PathSegment::Type(seg) => assert!(
+                    seg.generics.as_ref().is_some_and(|g| !g.is_empty()),
+                    "expected type generics on first path segment"
+                ),
+                PathSegment::Ident(_) => panic!("expected type segment, got ident"),
+            }
+        }
+        other => panic!("expected Path, got {other:?}"),
+    }
 }
 
 #[test]

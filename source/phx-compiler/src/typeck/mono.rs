@@ -234,6 +234,11 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 );
             }
         }
+        for def in typed.associated_fn_sites.values_mut() {
+            if *def == inst.base_fn {
+                *def = spec_def;
+            }
+        }
     }
     for (key, spec) in resolution_patches {
         typed.resolved.resolutions.insert(key, spec);

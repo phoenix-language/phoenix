@@ -168,7 +168,7 @@ impl ModulePath {
 fn segment_to_string(seg: &PathSegment, interner: &Interner) -> String {
     let sym = match seg {
         PathSegment::Ident(i) => i.symbol,
-        PathSegment::Type(t) => t.symbol,
+        PathSegment::Type(t) => t.name.symbol,
     };
     interner.resolve(sym).to_owned()
 }

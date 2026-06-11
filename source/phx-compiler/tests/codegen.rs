@@ -403,3 +403,36 @@ fn codegen_heap_alloc_emits_alloc_opcode() {
     );
     verify(&module).expect("verify heap_alloc");
 }
+
+#[test]
+fn codegen_generic_impl_method_calls_specialized_get_not_main() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/generic_impl_method.phx");
+    let unit = phx_compiler::check_file(&path).expect("check_file");
+    let ir = lower(&unit.typed).expect("lower");
+    assert!(
+        ir.functions.len() >= 2,
+        "expected specialized get plus main, got {}",
+        ir.functions.len()
+    );
+    let call_targets: Vec<_> = ir
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.insts)
+        .filter_map(|i| match i {
+            IrInst::Call { callee, .. } => Some(*callee),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(call_targets.len(), 1, "expected one Call in program IR");
+    let callee = call_targets[0];
+    let callee_is_main = ir
+        .functions
+        .iter()
+        .any(|f| f.def == callee && f.params.is_empty());
+    assert!(
+        !callee_is_main,
+        "method call must not target main (infinite recursion)"
+    );
+}

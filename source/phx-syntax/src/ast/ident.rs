@@ -4,6 +4,7 @@
 
 use crate::ast::Node;
 use crate::ast::node_id::AstNodeId;
+use crate::ast::types::Type;
 use crate::intern::Symbol;
 use phx_diagnostics::Span;
 
@@ -29,17 +30,37 @@ pub struct TypeName {
     pub id: AstNodeId,
 }
 
+/// A type name in a path, optionally with generic arguments (`Foo :: <T> :: bar`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypePathSegment {
+    /// Type name.
+    pub name: TypeName,
+    /// Generic arguments on expression paths (`Foo :: <T> :: bar`).
+    pub generics: Option<Vec<Node<Type>>>,
+}
+
+impl TypePathSegment {
+    /// Type path segment without generic arguments.
+    #[must_use]
+    pub fn new(name: TypeName) -> Self {
+        Self {
+            name,
+            generics: None,
+        }
+    }
+}
+
 /// A path segment in a module path.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PathSegment {
     /// Value/module segment (`snake_case`).
     Ident(Ident),
     /// Type segment (`PascalCase`).
-    Type(TypeName),
+    Type(TypePathSegment),
 }
 
 /// A `::`-separated module path.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Path {
     /// Path segments in order.
     pub segments: Vec<PathSegment>,

@@ -4,13 +4,7 @@
 main :: () => {
     const layout: Layout = Layout { size: 4u, align: 1u };
     {
-        const ptr: UniquePtr<s32> = unsafe {
-            var g: VmHeapAllocator = VmHeapAllocator {};
-            const raw: *mut u8 = g.alloc(layout);
-            const p: *mut s32 = raw as *mut s32;
-            *p = 99;
-            UniquePtr :: <s32> { ptr: p, layout: layout, alloc: g }
-        };
+        const ptr: UniquePtr<s32> = UniquePtr :: <s32>::new(99, layout, VmHeapAllocator {});
         const v: s32 = ptr.get();
         const _ = v;
     };

@@ -201,7 +201,16 @@ impl Parser<'_> {
         } else {
             None
         };
-        Ok(GenericParam { name, bounds })
+        let default = if self.eat_kind(&TokenKind::Eq) {
+            Some(Box::new(self.parse_type()?))
+        } else {
+            None
+        };
+        Ok(GenericParam {
+            name,
+            bounds,
+            default,
+        })
     }
 
     fn parse_trait_bounds(&mut self) -> Result<Vec<Node<Type>>, ParseError> {

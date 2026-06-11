@@ -142,8 +142,8 @@ The compiler does not enforce orphans in V0 beyond name resolution and duplicate
 |------|----------|
 | `std::core::alloc` | Intrinsic stubs `alloc_bytes`, `dealloc_bytes` (V0-065) |
 | `std::core::memory::allocator` | `Layout`, `Allocator`, `VmHeapAllocator`, `Global` (alias) (V0-066) |
-| `std::core::memory::unique_ptr` | `UniquePtr<T>` over `VmHeapAllocator` (Std v0; generic `A: Allocator` follow-up) |
-| `std::collections::dynamic_array` | `DynamicArray<T>` over `VmHeapAllocator` (Std v0; generic `A` follow-up) |
+| `std::core::memory::unique_ptr` | `UniquePtr<T, A: Allocator = Global>`; `new(value, layout, alloc)` |
+| `std::collections::dynamic_array` | `DynamicArray<T, A: Allocator = Global>`; `empty(alloc)` |
 
 ---
 
@@ -152,4 +152,4 @@ The compiler does not enforce orphans in V0 beyond name resolution and duplicate
 - [x] Design doc: trait shape, `Layout`, orphan rules, layering to `UniquePtr` / `Drop`
 - [x] Std implementation: `Allocator`, `Global`, `VmHeapAllocator` in Phoenix source
 - [x] No `Ty::Allocator` or compiler builtin for allocation policy
-- [x] `UniquePtr<T>` and `DynamicArray<T>` — Std v0 (`std::core::memory::unique_ptr`, `std::collections::dynamic_array`); pluggable `A: Allocator` generic param is a follow-up
+- [x] `UniquePtr<T, A: Allocator = Global>` and `DynamicArray<T, A: Allocator = Global>` with `new` / `empty` factories (`std::core::memory::unique_ptr`, `std::collections::dynamic_array`)

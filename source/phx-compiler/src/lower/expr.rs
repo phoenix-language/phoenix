@@ -4,7 +4,7 @@ use phx_syntax::Symbol;
 use phx_syntax::ast::expr::{
     BinOp, Expr, ExprNode, IfCondition, PostfixOp, StructFieldInit, UnaryOp,
 };
-use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
+use phx_syntax::ast::ident::{Ident, Path, PathSegment};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::BlockNode;
@@ -685,6 +685,9 @@ fn method_ref_receiver_ty(ctx: &LowerCtx<'_>, callee: DefId) -> Option<TypeId> {
 }
 
 fn resolve_method_callee(ctx: &LowerCtx<'_>, base: &ExprNode, name: &Ident) -> Option<DefId> {
+    if let Some(def) = lookup_resolution(&ctx.typed.resolved, ctx.module, name.id) {
+        return Some(def);
+    }
     let receiver_ty = match &base.inner {
         Expr::Ident(ident) => ctx.layout.binding(ident.symbol).map(|b| b.ty)?,
         _ => return None,
@@ -1254,9 +1257,9 @@ fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
 fn path_or_ident_node_id(expr: &Expr) -> Option<phx_syntax::AstNodeId> {
     match expr {
         Expr::Ident(ident) => Some(ident.id),
-        Expr::Path(path) if path.segments.len() == 1 => match path.segments[0] {
+        Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
             PathSegment::Ident(ident) => Some(ident.id),
-            PathSegment::Type(TypeName { id, .. }) => Some(id),
+            PathSegment::Type(seg) => Some(seg.name.id),
             _ => None,
         },
         _ => None,
