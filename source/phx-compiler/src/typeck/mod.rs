@@ -34,7 +34,8 @@ mod unify;
 #[allow(unused_imports)]
 pub use mono::{
     CrossCrateMonoReq, MonoInst, TypeMonoInst, TypeMonoKind, apply_mono_worklist,
-    collect_cross_crate_mono_reqs, is_generic_fn_template, monomorphize,
+    collect_cross_crate_mono_reqs, is_generic_fn_template, is_generic_impl_method_template,
+    monomorphize, specialized_fn_for_inst,
 };
 
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};
@@ -94,6 +95,8 @@ pub struct TypedProgram {
     pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → callee fn def.
     pub associated_fn_sites: std::collections::HashMap<ExprId, DefId>,
+    /// Method call sites (`recv.method`) → callee fn def (template or monomorphized).
+    pub method_call_sites: std::collections::HashMap<ExprId, DefId>,
     /// Value types for defs (functions, types, consts) from the template pass; used when re-checking mono bodies.
     pub value_types: std::collections::HashMap<crate::resolver::DefId, TypeId>,
     /// Trait default methods synthesized for empty/partial impl blocks.
@@ -120,4 +123,12 @@ pub enum PrimitiveMethodSite {
     Eq,
     /// `Clone::clone` — identity (value already on stack).
     Clone,
+}
+
+/// Generic parameter defs for a function template (impl or fn generics).
+pub(crate) fn generic_param_defs_for_fn_base(
+    resolved: &crate::resolver::ResolvedProgram,
+    base: crate::resolver::DefId,
+) -> Option<Vec<crate::resolver::DefId>> {
+    mono::generic_param_defs_for_fn_base(resolved, base)
 }

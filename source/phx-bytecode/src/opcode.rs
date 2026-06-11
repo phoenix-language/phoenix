@@ -110,6 +110,9 @@ pub enum Opcode {
     ///
     /// Pops runtime `size`, then `ptr`; removes exact ledger entry and zeroes freed bytes.
     Free = 49,
+    /// Store primitive into indexed aggregate or heap slice. Stack: `[agg, index, value] → []`
+    /// — operands: `prim_kind`, `signed` (0/1).
+    IndexStore = 50,
 }
 
 impl Opcode {
@@ -170,6 +173,7 @@ impl Opcode {
             47 => Ok(Self::LoadAggViaLocalPtr),
             48 => Ok(Self::MakeSliceFromPtr),
             49 => Ok(Self::Free),
+            50 => Ok(Self::IndexStore),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

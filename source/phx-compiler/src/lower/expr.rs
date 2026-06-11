@@ -13,8 +13,8 @@ use crate::TypedProgram;
 use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
-    LowerCtx, bool_ty, fn_ptr_target, lookup_resolution, named_def_for_ty, prim_kind_byte,
-    slot_for_symbol, struct_def_by_name, unit_ty,
+    LowerCtx, bool_ty, fn_ptr_target, lookup_resolution, prim_kind_byte, slot_for_symbol,
+    struct_def_by_name, unit_ty,
 };
 use crate::resolver::{DefId, DefKind};
 use crate::typeck::{
@@ -28,6 +28,13 @@ use phx_syntax::token::IntegerSuffix;
 /// Lowers `expr` so its value is on the implicit stack.
 pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
     let ty = ctx.expr_ty();
+    let expr_id = ExprId::from_raw(ctx.next_expr - 1);
+    lower_expr_inner(ctx, &expr.inner, ty, expr_id);
+}
+
+/// Lowers `expr` with an explicit type (generic impl templates without body `expr_types`).
+pub fn lower_expr_with_type(ctx: &mut LowerCtx<'_>, expr: &ExprNode, ty: TypeId) {
+    let _ = ctx.expr_ty();
     let expr_id = ExprId::from_raw(ctx.next_expr - 1);
     lower_expr_inner(ctx, &expr.inner, ty, expr_id);
 }
@@ -189,10 +196,22 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
                         .layout
                         .type_id_for_named(type_def, &args)
                         .unwrap_or(0);
+                    let struct_fields = ctx
+                        .typed
+                        .layout
+                        .struct_layout(type_def, &args)
+                        .map(|s| s.fields.as_slice());
                     let mut field_count = 0u32;
                     for field in fields {
-                        if let StructFieldInit::Field { value, .. } = field {
-                            lower_expr(ctx, value);
+                        if let StructFieldInit::Field { name, value, .. } = field {
+                            let fty = struct_fields
+                                .and_then(|fs| {
+                                    fs.iter()
+                                        .find(|(sym, _)| *sym == name.symbol)
+                                        .map(|(_, ty)| *ty)
+                                })
+                                .unwrap_or(result_ty);
+                            lower_expr_with_type(ctx, value, fty);
                             field_count = field_count.saturating_add(1);
                         }
                     }
@@ -260,12 +279,12 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
 fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u32> {
     match lit {
         Literal::Int(i) => {
-            let to = primitive_kind_for_type(&ctx.typed.types, ty)?;
             let from = if i.suffix == IntegerSuffix::Unsigned {
                 PrimitiveKind::U32
             } else {
                 PrimitiveKind::S32
             };
+            let to = primitive_kind_for_type(&ctx.typed.types, ty).unwrap_or(from);
             let raw = i.value;
             #[allow(clippy::cast_possible_truncation)]
             let stored = PrimitiveKind::apply_cast(ScalarValue::I32(raw as i32), from, to);
@@ -339,7 +358,13 @@ fn literal_prim_kind(ctx: &LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u8 {
         return k.as_u8();
     }
     match lit {
-        Literal::Int(_) => PrimitiveKind::S32.as_u8(),
+        Literal::Int(i) => {
+            if i.suffix == IntegerSuffix::Unsigned {
+                PrimitiveKind::U32.as_u8()
+            } else {
+                PrimitiveKind::S32.as_u8()
+            }
+        }
         Literal::Float(_) => PrimitiveKind::F64.as_u8(),
         Literal::Bool(_) => PrimitiveKind::Bool.as_u8(),
         Literal::ByteChar(_) => PrimitiveKind::U8.as_u8(),
@@ -579,6 +604,43 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
     }
 }
 
+/// Type of the slice/base for `base[index] = …` (when `target` is a single index postfix).
+fn slice_ty_for_index_assign_target(ctx: &LowerCtx<'_>, target: &Expr) -> Option<TypeId> {
+    let Expr::Postfix { base, ops, .. } = target else {
+        return None;
+    };
+    if ops.len() != 1 || !matches!(ops[0], PostfixOp::Index(_)) {
+        return None;
+    }
+    type_id_for_index_base(ctx, base)
+}
+
+fn type_id_for_index_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<TypeId> {
+    match &base.inner {
+        Expr::Ident(ident) => ctx.layout.binding(ident.symbol).map(|b| b.ty),
+        _ => None,
+    }
+}
+
+fn slice_element_ty(ctx: &LowerCtx<'_>, slice_ty: TypeId) -> Option<TypeId> {
+    match ctx.typed.types.get(slice_ty) {
+        Ty::Slice(elem) => Some(*elem),
+        _ => None,
+    }
+}
+
+fn prim_kind_for_index_store(
+    ctx: &LowerCtx<'_>,
+    value_ty: TypeId,
+    target: &Expr,
+) -> Option<PrimitiveKind> {
+    primitive_kind_for_type(&ctx.typed.types, value_ty).or_else(|| {
+        slice_ty_for_index_assign_target(ctx, target)
+            .and_then(|slice_ty| slice_element_ty(ctx, slice_ty))
+            .and_then(|elem| primitive_kind_for_type(&ctx.typed.types, elem))
+    })
+}
+
 /// Lowers assignment (`=`, `+=`, …) into store or compound-op IR.
 pub(crate) fn lower_assign_expr(
     ctx: &mut LowerCtx<'_>,
@@ -587,7 +649,14 @@ pub(crate) fn lower_assign_expr(
     _result_ty: TypeId,
 ) {
     lower_assign_target(ctx, &target.inner);
-    let value_ty = lower_expr_typed(ctx, value);
+    let value_ty = if let Some(elem_ty) = slice_ty_for_index_assign_target(ctx, &target.inner)
+        .and_then(|slice_ty| slice_element_ty(ctx, slice_ty))
+    {
+        lower_expr_with_type(ctx, value, elem_ty);
+        elem_ty
+    } else {
+        lower_expr_typed(ctx, value)
+    };
     match &target.inner {
         Expr::Ident(ident) => {
             if let Some(binding) = ctx.layout.binding(ident.symbol) {
@@ -632,6 +701,13 @@ pub(crate) fn lower_assign_expr(
                         store_base_local(ctx, base);
                     }
                 }
+            } else if matches!(ops[0], PostfixOp::Index(_)) {
+                if let Some(kind) = prim_kind_for_index_store(ctx, value_ty, &target.inner) {
+                    ctx.emit(IrInst::IndexStore {
+                        prim_kind: kind.as_u8(),
+                        signed: primitive_load_signed(kind),
+                    });
+                }
             }
         }
         _ => {}
@@ -648,11 +724,14 @@ fn lower_assign_target(ctx: &mut LowerCtx<'_>, target: &Expr) {
         } => {
             lower_expr(ctx, operand);
         }
-        Expr::Postfix { base, ops } if ops.len() == 1 => {
-            if let PostfixOp::Field(_) = &ops[0] {
-                emit_load_struct_base(ctx, base);
+        Expr::Postfix { base, ops } if ops.len() == 1 => match &ops[0] {
+            PostfixOp::Field(_) => emit_load_struct_base(ctx, base),
+            PostfixOp::Index(idx) => {
+                lower_expr(ctx, base);
+                lower_expr(ctx, idx);
             }
-        }
+            _ => {}
+        },
         Expr::Literal(_) | Expr::Path(_) => {}
         _ => {}
     }
@@ -685,24 +764,70 @@ fn method_ref_receiver_ty(ctx: &LowerCtx<'_>, callee: DefId) -> Option<TypeId> {
 }
 
 fn resolve_method_callee(ctx: &LowerCtx<'_>, base: &ExprNode, name: &Ident) -> Option<DefId> {
-    if let Some(def) = lookup_resolution(&ctx.typed.resolved, ctx.module, name.id) {
-        return Some(def);
-    }
     let receiver_ty = match &base.inner {
         Expr::Ident(ident) => ctx.layout.binding(ident.symbol).map(|b| b.ty)?,
         _ => return None,
     };
-    let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
-    let implementer_args = match ctx.typed.types.get(receiver_ty) {
-        Ty::Named { args, .. } => args.as_slice(),
-        _ => &[],
-    };
-    ctx.typed
+    resolve_method_callee_for_ty(ctx, receiver_ty, name.symbol)
+}
+
+fn resolve_method_callee_for_ty(
+    ctx: &LowerCtx<'_>,
+    receiver_ty: TypeId,
+    method: Symbol,
+) -> Option<DefId> {
+    let receiver_ty = concrete_method_receiver_ty(ctx, receiver_ty);
+    let (type_def, implementer_args) = named_type_parts(ctx.typed, receiver_ty)?;
+    let template = ctx
+        .typed
         .layout
         .inherent_methods
-        .get(&(type_def, name.symbol))
+        .get(&(type_def, method))
         .copied()
-        .or_else(|| find_trait_method(ctx, type_def, implementer_args, name.symbol))
+        .or_else(|| find_trait_method(ctx, type_def, &implementer_args, method))?;
+    let mono_args = mono_args_for_current_fn(ctx).unwrap_or(implementer_args);
+    Some(
+        crate::typeck::specialized_fn_for_inst(ctx.typed, template, &mono_args).unwrap_or(template),
+    )
+}
+
+fn concrete_method_receiver_ty(ctx: &LowerCtx<'_>, receiver_ty: TypeId) -> TypeId {
+    let Ty::Named { def, .. } = ctx.typed.types.get(receiver_ty).clone() else {
+        return receiver_ty;
+    };
+    if !ctx
+        .typed
+        .resolved
+        .defs
+        .get(def.index() as usize)
+        .is_some_and(|d| d.kind == DefKind::GenericParam)
+    {
+        return receiver_ty;
+    }
+    concrete_type_for_generic_param(ctx, def).unwrap_or(receiver_ty)
+}
+
+fn concrete_type_for_generic_param(ctx: &LowerCtx<'_>, param_def: DefId) -> Option<TypeId> {
+    let base_fn = ctx.typed.specialized_from.get(&ctx.layout.def)?;
+    let inst = ctx
+        .typed
+        .mono_insts
+        .iter()
+        .find(|i| i.base_fn == *base_fn)?;
+    let param_defs = crate::typeck::generic_param_defs_for_fn_base(&ctx.typed.resolved, *base_fn)?;
+    param_defs
+        .iter()
+        .zip(inst.args.iter())
+        .find_map(|(p, ty)| (*p == param_def).then_some(*ty))
+}
+
+fn mono_args_for_current_fn(ctx: &LowerCtx<'_>) -> Option<Vec<TypeId>> {
+    let base_fn = ctx.typed.specialized_from.get(&ctx.layout.def)?;
+    ctx.typed
+        .mono_insts
+        .iter()
+        .find(|i| i.base_fn == *base_fn)
+        .map(|i| i.args.clone())
 }
 
 fn emit_ref_method_receiver(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
@@ -711,6 +836,20 @@ fn emit_ref_method_receiver(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
     {
         ctx.emit(IrInst::AddressOfLocal { slot });
     }
+}
+
+/// Stores the evaluated receiver value and passes `&mut` / `&` for method calls after field chains.
+fn emit_ref_receiver_from_stack_value(ctx: &mut LowerCtx<'_>, callee: DefId, value_ty: TypeId) {
+    if method_ref_receiver_ty(ctx, callee).is_none() {
+        return;
+    }
+    let slot = ctx.next_match_temp();
+    ctx.emit(IrInst::StoreLocal {
+        slot,
+        ty: value_ty,
+        prim_kind: prim_kind_byte(ctx.typed, value_ty),
+    });
+    ctx.emit(IrInst::AddressOfLocal { slot });
 }
 
 fn single_method_with_ref_receiver(
@@ -751,14 +890,7 @@ fn lower_postfix_inner(
             for arg in args {
                 lower_expr(ctx, arg);
             }
-            if let Some(site) = ctx.typed.intrinsic_call_sites.get(&postfix_expr_id) {
-                lower_intrinsic_call(ctx, *site, result_ty, postfix_expr_id);
-            } else {
-                ctx.emit(IrInst::Call {
-                    callee,
-                    ret: result_ty,
-                });
-            }
+            emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
         }
         return;
     }
@@ -768,6 +900,13 @@ fn lower_postfix_inner(
         let _ = ctx.expr_ty();
         emit_ref_method_receiver(ctx, base);
         ref_ty
+    } else if let Expr::Ident(ident) = &base.inner
+        && let Some(binding) = ctx.layout.binding(ident.symbol)
+    {
+        // Generic impl templates may omit body typeck (`expr_types` empty); use the layout slot type.
+        let _ = ctx.expr_ty();
+        lower_ident(ctx, *ident, binding.ty);
+        binding.ty
     } else {
         lower_expr_typed(ctx, base)
     };
@@ -788,11 +927,19 @@ fn lower_postfix_inner(
                         .layout
                         .struct_field_index(def, field.symbol, &args)
                         .unwrap_or(0);
+                    let field_ty = ctx
+                        .typed
+                        .layout
+                        .struct_layout(def, &args)
+                        .and_then(|s| s.fields.get(field_index as usize))
+                        .map(|(_, ty)| *ty)
+                        .unwrap_or(result_ty);
                     ctx.emit(IrInst::GetField {
                         type_id,
                         field_index,
-                        result: result_ty,
+                        result: field_ty,
                     });
+                    receiver_ty = field_ty;
                 }
             }
             PostfixOp::Method { name, args, .. } => {
@@ -801,31 +948,20 @@ fn lower_postfix_inner(
                     receiver_ty = result_ty;
                     continue;
                 }
-                let callee = ref_method.as_ref().map(|(c, _)| *c).or_else(|| {
-                    lookup_resolution(&ctx.typed.resolved, ctx.module, name.id).or_else(|| {
-                        let type_def = named_def_for_ty(ctx.typed, receiver_ty)?;
-                        let implementer_args = match ctx.typed.types.get(receiver_ty) {
-                            Ty::Named { args, .. } => args.as_slice(),
-                            _ => &[],
-                        };
-                        ctx.typed
-                            .layout
-                            .inherent_methods
-                            .get(&(type_def, name.symbol))
-                            .copied()
-                            .or_else(|| {
-                                find_trait_method(ctx, type_def, implementer_args, name.symbol)
-                            })
-                    })
-                });
+                let callee = ref_method
+                    .as_ref()
+                    .map(|(c, _)| *c)
+                    .or_else(|| ctx.typed.method_call_sites.get(&postfix_expr_id).copied())
+                    .or_else(|| resolve_method_callee_for_ty(ctx, receiver_ty, name.symbol))
+                    .or_else(|| resolve_method_callee(ctx, base, name));
                 if let Some(callee) = callee {
+                    if ref_method.is_none() {
+                        emit_ref_receiver_from_stack_value(ctx, callee, receiver_ty);
+                    }
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    ctx.emit(IrInst::Call {
-                        callee,
-                        ret: result_ty,
-                    });
+                    emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
                 }
             }
             PostfixOp::Call { args, .. } => {
@@ -833,10 +969,7 @@ fn lower_postfix_inner(
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    ctx.emit(IrInst::Call {
-                        callee,
-                        ret: result_ty,
-                    });
+                    emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
                     receiver_ty = result_ty;
                 } else if let Some(struct_def) = resolve_tuple_struct_ctor(ctx, base) {
                     for arg in args {
@@ -871,11 +1004,11 @@ fn lower_postfix_inner(
                         });
                         receiver_ty = result_ty;
                     }
-                } else if let Some(site) = ctx.typed.intrinsic_call_sites.get(&postfix_expr_id) {
+                } else if let Some(site) = ctx.intrinsic_site_for_expr(postfix_expr_id) {
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    lower_intrinsic_call(ctx, *site, result_ty, postfix_expr_id);
+                    lower_intrinsic_call(ctx, site, result_ty, postfix_expr_id);
                     receiver_ty = result_ty;
                 } else if let Some(meta) = ctx.typed.indirect_call_sites.get(&postfix_expr_id) {
                     for arg in args {
@@ -896,10 +1029,7 @@ fn lower_postfix_inner(
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    ctx.emit(IrInst::Call {
-                        callee,
-                        ret: result_ty,
-                    });
+                    emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
                 }
             }
             PostfixOp::Index(idx) => {
@@ -1077,6 +1207,43 @@ fn size_of_bytes_for_specialized_fn(ctx: &LowerCtx<'_>) -> Option<u32> {
     )
 }
 
+fn emit_call_or_intrinsic(
+    ctx: &mut LowerCtx<'_>,
+    callee: DefId,
+    result_ty: TypeId,
+    expr_id: ExprId,
+) {
+    if let Some(site) = ctx.intrinsic_site_for_expr(expr_id) {
+        lower_intrinsic_call(ctx, site, result_ty, expr_id);
+        return;
+    }
+    if let Some(site) = ctx.typed.intrinsic_kernel.site_for_call(callee) {
+        lower_intrinsic_call(ctx, site, result_ty, expr_id);
+        return;
+    }
+    ctx.emit(IrInst::Call {
+        callee,
+        ret: result_ty,
+    });
+    if callee_returns_unit(ctx, callee, result_ty) {
+        ctx.emit(IrInst::Pop);
+    }
+}
+
+fn callee_returns_unit(ctx: &LowerCtx<'_>, callee: DefId, fallback: TypeId) -> bool {
+    if let Some(layout) = ctx.typed.functions.iter().find(|f| f.def == callee) {
+        if matches!(ctx.typed.types.get(layout.return_type), Ty::Unit) {
+            return true;
+        }
+    }
+    if let Some(&fn_ty) = ctx.typed.value_types.get(&callee) {
+        if let Ty::Fn { ret, .. } = ctx.typed.types.get(fn_ty).clone() {
+            return matches!(ctx.typed.types.get(ret), Ty::Unit);
+        }
+    }
+    matches!(ctx.typed.types.get(fallback), Ty::Unit)
+}
+
 fn lower_intrinsic_call(
     ctx: &mut LowerCtx<'_>,
     site: IntrinsicSite,
@@ -1175,8 +1342,32 @@ fn find_trait_method(
 }
 
 fn named_type_parts(typed: &TypedProgram, ty: TypeId) -> Option<(DefId, Vec<TypeId>)> {
-    match typed.types.get(ty) {
-        Ty::Named { def, args } => Some((*def, args.clone())),
+    let mut seen = std::collections::HashSet::new();
+    named_type_parts_inner(typed, ty, &mut seen)
+}
+
+fn named_type_parts_inner(
+    typed: &TypedProgram,
+    ty: TypeId,
+    seen: &mut std::collections::HashSet<DefId>,
+) -> Option<(DefId, Vec<TypeId>)> {
+    match typed.types.get(ty).clone() {
+        Ty::Named { def, args } => {
+            if seen.insert(def) {
+                if typed
+                    .resolved
+                    .defs
+                    .get(def.index() as usize)
+                    .is_some_and(|d| d.kind == DefKind::TypeAlias)
+                    && let Some(&alias_ty) = typed.value_types.get(&def)
+                    && let Some(peeled) = named_type_parts_inner(typed, alias_ty, seen)
+                {
+                    return Some(peeled);
+                }
+            }
+            Some((def, args))
+        }
+        Ty::Ref { inner, .. } => named_type_parts_inner(typed, inner, seen),
         _ => None,
     }
 }

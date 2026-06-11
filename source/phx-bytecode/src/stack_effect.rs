@@ -55,41 +55,24 @@ pub fn apply_stack_effect(
         | Opcode::Shr
         | Opcode::JumpIfTrue
         | Opcode::JumpIfFalse
-        | Opcode::Pop => {
-            if *depth == 0 {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= 1;
-        }
+        | Opcode::Pop => pop(depth, 1)?,
         Opcode::Index => {
-            if *depth < 2 {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= 2;
+            pop(depth, 2)?;
             *depth += 1;
         }
         Opcode::Call => {
             let arity = u32::from(call_arity.ok_or(StackEffectError::MissingCallArity)?);
-            if *depth < arity {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= arity;
+            pop(depth, arity)?;
             *depth += 1;
         }
         Opcode::CallIndirect => {
             let arity = u32::from(call_arity.ok_or(StackEffectError::MissingCallArity)?);
-            if *depth < arity.saturating_add(1) {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= arity.saturating_add(1);
+            pop(depth, arity.saturating_add(1))?;
             *depth += 1;
         }
         Opcode::MakeStruct | Opcode::MakeEnum | Opcode::MakeTuple | Opcode::MakeArray => {
             let n = field_count.ok_or(StackEffectError::MissingFieldCount)?;
-            if *depth < n {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= n;
+            pop(depth, n)?;
             *depth += 1;
         }
         Opcode::GetField
@@ -98,17 +81,8 @@ pub fn apply_stack_effect(
         | Opcode::StrAsSlice
         | Opcode::PtrLoad
         | Opcode::LoadAggViaLocalPtr
-        | Opcode::Alloc => {
-            if *depth == 0 {
-                return Err(StackEffectError::Underflow);
-            }
-        }
-        Opcode::SetField | Opcode::MakeSliceFromPtr => {
-            if *depth < 2 {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= 1;
-        }
+        | Opcode::Alloc => require_depth(*depth, 1)?,
+        Opcode::SetField | Opcode::MakeSliceFromPtr => pop_if_at_least(depth, 2, 1)?,
         Opcode::Cast
         | Opcode::Neg
         | Opcode::Not
@@ -116,12 +90,32 @@ pub fn apply_stack_effect(
         | Opcode::Jump
         | Opcode::Return
         | Opcode::Trap => {}
-        Opcode::PtrStore | Opcode::Free => {
-            if *depth < 2 {
-                return Err(StackEffectError::Underflow);
-            }
-            *depth -= 2;
-        }
+        Opcode::PtrStore | Opcode::Free => pop(depth, 2)?,
+        Opcode::IndexStore => pop(depth, 3)?,
     }
+    Ok(())
+}
+
+fn require_depth(depth: u32, needed: u32) -> Result<(), StackEffectError> {
+    if depth < needed {
+        Err(StackEffectError::Underflow)
+    } else {
+        Ok(())
+    }
+}
+
+fn pop(depth: &mut u32, count: u32) -> Result<(), StackEffectError> {
+    require_depth(*depth, count)?;
+    *depth -= count;
+    Ok(())
+}
+
+fn pop_if_at_least(
+    depth: &mut u32,
+    min_depth: u32,
+    pop_count: u32,
+) -> Result<(), StackEffectError> {
+    require_depth(*depth, min_depth)?;
+    *depth -= pop_count;
     Ok(())
 }

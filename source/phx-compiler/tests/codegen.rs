@@ -5,7 +5,7 @@ use std::path::Path;
 
 use phx_bytecode::verify;
 use phx_bytecode::{BytecodeModule, ConstTag, Opcode};
-use phx_compiler::{IrBinOp, IrInst, codegen, compile_source, lower};
+use phx_compiler::{IrBinOp, IrInst, IrModule, codegen, compile_source, lower};
 
 #[test]
 fn codegen_generic_fn_inline_verifies() {
@@ -402,6 +402,34 @@ fn codegen_heap_alloc_emits_alloc_opcode() {
         "expected ALLOC opcode in heap_alloc bytecode"
     );
     verify(&module).expect("verify heap_alloc");
+}
+
+#[test]
+fn codegen_while_loop_stack_analysis_completes() {
+    let source = "loop_fn :: () => () { var i: u32 = 0u; while i < 4u { i = i + 1u; }; }; main :: () => { loop_fn(); };";
+    let unit = compile_source(source, None).expect("compile");
+    let ir = lower(&unit.typed).expect("lower");
+    let loop_fn = ir
+        .functions
+        .iter()
+        .find(|f| {
+            unit.typed
+                .resolved
+                .defs
+                .get(f.def.index() as usize)
+                .is_some_and(|d| unit.typed.resolved.interner.resolve(d.name) == "loop_fn")
+        })
+        .expect("loop_fn IR");
+    let module = codegen(
+        &IrModule {
+            functions: vec![loop_fn.clone()],
+            constants: ir.constants.clone(),
+            entry: ir.entry,
+        },
+        &unit.typed,
+    )
+    .expect("codegen while-loop CFG must not hang");
+    assert!(module.code.len() > 4, "expected loop_fn bytecode");
 }
 
 #[test]

@@ -16,7 +16,7 @@ use crate::pxi::{
 use crate::resolver::{Def, DefId, DefKind};
 use crate::typeck::BindingKind;
 use crate::typeck::TypedProgram;
-use crate::typeck::{is_generic_fn_template, mangle_export_id};
+use crate::typeck::{is_generic_fn_template, is_generic_impl_method_template, mangle_export_id};
 
 /// Builds a [`PxiFile`] (format v2) for one module in a typed crate.
 #[must_use]
@@ -126,7 +126,7 @@ fn push_export(
     let ty = export_structured_type(def, def_id, typed, logical_path);
     let signature = export_signature_fallback(def, def_id, typed, interner);
     let function_id = if kind == "fn" {
-        if is_generic_fn_template(typed, def_id) {
+        if is_generic_fn_template(typed, def_id) || is_generic_impl_method_template(typed, def_id) {
             None
         } else {
             global_fn.and_then(|map| map.get(&def_id).copied())

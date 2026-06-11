@@ -8,6 +8,7 @@ use phx_syntax::ast::types::GenericParam;
 
 use super::bounds::validate_instantiation_bounds;
 use super::check::TypeChecker;
+use super::bindings::FunctionLayout;
 use super::layout::{EnumLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout};
 use super::mangle;
 use super::subst::Substitution;
@@ -24,6 +25,8 @@ pub struct MonoInst {
     pub args: Vec<TypeId>,
     /// Name-use ids at call sites to retarget to the specialized function.
     pub call_sites: Vec<phx_syntax::AstNodeId>,
+    /// Module that owns emitted bytecode for this specialization (usually the call-site crate).
+    pub owner_module: u32,
 }
 
 /// Kind of generic user type being monomorphized.
@@ -61,7 +64,53 @@ pub fn monomorphize(
     monomorphize_functions(typed, fn_insts, &mut bag);
     monomorphize_types(typed, type_insts, &mut bag);
     patch_specialized_drop_fns(typed);
+    patch_associated_fn_sites(typed);
+    patch_method_call_sites(typed);
     bag
+}
+
+fn patch_method_call_sites(typed: &mut TypedProgram) {
+    let sites: Vec<_> = typed.method_call_sites.keys().copied().collect();
+    for site in sites {
+        let template = match typed.method_call_sites.get(&site) {
+            Some(def) => *def,
+            None => continue,
+        };
+        if typed.specialized_from.contains_key(&template) {
+            continue;
+        }
+        for inst in &typed.mono_insts {
+            if inst.base_fn != template {
+                continue;
+            }
+            if let Some(spec) = specialized_fn_for_inst(typed, template, &inst.args) {
+                typed.method_call_sites.insert(site, spec);
+                break;
+            }
+        }
+    }
+}
+
+fn patch_associated_fn_sites(typed: &mut TypedProgram) {
+    let sites: Vec<_> = typed.associated_fn_sites.keys().copied().collect();
+    for site in sites {
+        let template = match typed.associated_fn_sites.get(&site) {
+            Some(def) => *def,
+            None => continue,
+        };
+        if typed.specialized_from.contains_key(&template) {
+            continue;
+        }
+        for inst in &typed.mono_insts {
+            if inst.base_fn != template {
+                continue;
+            }
+            if let Some(spec) = specialized_fn_for_inst(typed, template, &inst.args) {
+                typed.associated_fn_sites.insert(site, spec);
+                break;
+            }
+        }
+    }
 }
 
 fn patch_specialized_drop_fns(typed: &mut TypedProgram) {
@@ -93,7 +142,9 @@ fn patch_specialized_drop_fns(typed: &mut TypedProgram) {
     }
 }
 
-fn specialized_fn_for_inst(
+/// Resolves the monomorphized `DefId` for `base_fn` instantiated at `args`, if any.
+#[must_use]
+pub fn specialized_fn_for_inst(
     typed: &TypedProgram,
     base_fn: DefId,
     args: &[super::types::TypeId],
@@ -165,8 +216,13 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         for (param, arg) in param_defs.iter().zip(&inst.args) {
             subst.insert(*param, *arg);
         }
-        let spec_def =
-            alloc_specialized_def(&mut typed.resolved, inst.base_fn, &inst.args, &typed.types);
+        let spec_def = alloc_specialized_def(
+            &mut typed.resolved,
+            inst.base_fn,
+            &inst.args,
+            &typed.types,
+            inst.owner_module,
+        );
         typed.specialized_from.insert(spec_def, inst.base_fn);
         if typed
             .fn_effective_unsafe
@@ -202,6 +258,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 spec_aliases,
                 try_sites,
                 associated_fn_sites,
+                method_call_sites,
                 indirect_call_sites,
                 intrinsic_call_sites,
                 size_of_literals,
@@ -218,6 +275,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             typed.specialized_aliases.extend(spec_aliases);
             typed.try_sites.extend(try_sites);
             typed.associated_fn_sites.extend(associated_fn_sites);
+            typed.method_call_sites.extend(method_call_sites);
             typed.indirect_call_sites.extend(indirect_call_sites);
             typed.intrinsic_call_sites.extend(intrinsic_call_sites);
             typed.size_of_literals.extend(size_of_literals);
@@ -235,6 +293,11 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             }
         }
         for def in typed.associated_fn_sites.values_mut() {
+            if *def == inst.base_fn {
+                *def = spec_def;
+            }
+        }
+        for def in typed.method_call_sites.values_mut() {
             if *def == inst.base_fn {
                 *def = spec_def;
             }
@@ -430,7 +493,10 @@ fn fn_def_id(resolved: &ResolvedProgram, module: u32, name: phx_syntax::Symbol) 
         .map(|(i, _)| DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
 }
 
-fn generic_param_defs_for_fn_base(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<DefId>> {
+pub(crate) fn generic_param_defs_for_fn_base(
+    resolved: &ResolvedProgram,
+    base: DefId,
+) -> Option<Vec<DefId>> {
     let f = find_function(resolved, base)?;
     let params = combined_generic_params(resolved, base, f);
     if params.is_empty() {
@@ -466,7 +532,35 @@ fn clone_specialized_function_layout(
     for binding in &mut layout.bindings {
         binding.ty = Substitution::apply(&mut typed.types, binding.ty, subst);
     }
+    reserve_impl_method_scratch_temps(typed, &mut layout);
     typed.functions.push(layout);
+}
+
+/// Scratch locals for `emit_ref_receiver_from_stack_value` when body typeck omitted match temps.
+const IMPL_METHOD_SCRATCH_TEMPS: u32 = 4;
+
+fn reserve_impl_method_scratch_temps(typed: &mut TypedProgram, layout: &mut FunctionLayout) {
+    use phx_syntax::Symbol;
+
+    use super::bindings::{Binding, BindingKind, LocalSlot};
+    use super::builtins::unit;
+
+    let scratch_ty = unit(&mut typed.types);
+    for _ in 0..IMPL_METHOD_SCRATCH_TEMPS {
+        let symbol = Symbol::from_raw(0x9000_0000 | layout.match_temp_slots.len() as u32);
+        let slot = LocalSlot::from_raw(
+            u32::try_from(layout.bindings.len()).unwrap_or(u32::MAX),
+        );
+        layout.bindings.push(Binding {
+            symbol,
+            slot,
+            ty: scratch_ty,
+            kind: BindingKind::MatchTemp,
+            scope_depth: 0,
+            utf8_rodata: None,
+        });
+        layout.match_temp_slots.push(slot);
+    }
 }
 
 fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<GenericParam>> {
@@ -568,6 +662,7 @@ fn alloc_specialized_def(
     base: DefId,
     args: &[TypeId],
     types: &super::types::TypeInterner,
+    owner_module: u32,
 ) -> DefId {
     let base_def = &resolved.defs[base.index() as usize];
     let mangled = mangle::mangle_symbol_for_specialization(resolved, base, args, types);
@@ -579,7 +674,7 @@ fn alloc_specialized_def(
         DefKind::Fn,
         sym,
         base_def.span,
-        base_def.module,
+        owner_module,
         base_def.exported,
         base_def.scope_depth,
     );
@@ -694,10 +789,18 @@ pub fn apply_mono_worklist(
         if !ok {
             continue;
         }
+        let owner_module = typed
+            .resolved
+            .modules
+            .iter()
+            .find(|m| m.logical_path == req.logical_module)
+            .map(|m| m.id)
+            .unwrap_or_else(|| typed.resolved.defs[base_fn.index() as usize].module);
         insts.push(MonoInst {
             base_fn,
             args,
             call_sites: Vec::new(),
+            owner_module,
         });
     }
     monomorphize(typed, &insts, &[])
@@ -713,6 +816,60 @@ fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {
         .defs
         .iter()
         .any(|d| d.kind == DefKind::Fn && typed.resolved.interner.resolve(d.name) == mangled_name)
+}
+
+/// Returns true when `def_id` is an impl method on a generic type (not a monomorphized specialization).
+#[must_use]
+pub fn is_generic_impl_method_template(typed: &TypedProgram, def_id: DefId) -> bool {
+    if typed.specialized_from.contains_key(&def_id) {
+        return false;
+    }
+    let Some(type_def) = impl_type_def_for_method(typed, def_id) else {
+        return false;
+    };
+    generic_param_defs_for_type(&typed.resolved, type_def).is_some_and(|params| !params.is_empty())
+}
+
+fn impl_type_def_for_method(typed: &TypedProgram, fn_def: DefId) -> Option<DefId> {
+    let base_def = typed.resolved.defs.get(fn_def.index() as usize)?;
+    let interner = &typed.resolved.interner;
+    for module in &typed.resolved.modules {
+        if module.id != base_def.module {
+            continue;
+        }
+        for item in &module.program.items {
+            let TopLevelDecl::Impl {
+                type_name, members, ..
+            } = &item.inner.decl
+            else {
+                continue;
+            };
+            if !members
+                .iter()
+                .any(|m| matches!(m, ImplMember::Method(f) if fn_def_matches(typed, f, fn_def)))
+            {
+                continue;
+            }
+            let name = interner.resolve(type_name.symbol);
+            return find_type_def_in_module(&typed.resolved, module.id, name);
+        }
+    }
+    None
+}
+
+fn find_type_def_in_module(resolved: &ResolvedProgram, module: u32, name: &str) -> Option<DefId> {
+    for (i, def) in resolved.defs.iter().enumerate() {
+        if def.module != module {
+            continue;
+        }
+        if !matches!(def.kind, DefKind::Struct | DefKind::Enum) {
+            continue;
+        }
+        if resolved.interner.resolve(def.name) == name {
+            return Some(DefId::from_raw(u32::try_from(i).ok()?));
+        }
+    }
+    None
 }
 
 /// Returns true when `def_id` is a generic function template (not a monomorphized specialization).

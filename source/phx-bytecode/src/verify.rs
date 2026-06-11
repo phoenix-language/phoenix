@@ -759,7 +759,8 @@ fn verify_operands(
         | Opcode::SetField
         | Opcode::MatchTag
         | Opcode::PtrLoad
-        | Opcode::PtrStore => {
+        | Opcode::PtrStore
+        | Opcode::IndexStore => {
             if inst.operands.len() != 2 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

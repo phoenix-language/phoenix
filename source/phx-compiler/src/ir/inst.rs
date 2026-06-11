@@ -219,6 +219,13 @@ pub enum IrInst {
         /// Element result type.
         result: TypeId,
     },
+    /// Store primitive into indexed array or heap slice. Stack: `[agg, index, value] → []`
+    IndexStore {
+        /// Stored value primitive wire kind.
+        prim_kind: u8,
+        /// `1` = signed integer store, `0` = unsigned/float.
+        signed: u8,
+    },
     /// Runtime trap for non-exhaustive `match` failure.
     TrapGivenMismatch,
     /// Load primitive through raw address. Stack: `[addr] → [value]`

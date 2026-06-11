@@ -203,6 +203,21 @@ impl<'a> LowerCtx<'a> {
             .unwrap_or_else(|| unit_ty(self.typed))
     }
 
+    /// Returns a compiler intrinsic site only when `expr_id` belongs to this function's typeck range.
+    ///
+    /// Generic impl templates may omit body typeck (`expr_start == expr_end`); without this guard,
+    /// lowering would mis-apply intrinsic sites from other functions that reuse the same expr ids.
+    pub fn intrinsic_site_for_expr(
+        &self,
+        expr_id: crate::typeck::ExprId,
+    ) -> Option<crate::typeck::IntrinsicSite> {
+        let raw = expr_id.index();
+        if raw < self.layout.expr_start || raw >= self.layout.expr_end {
+            return None;
+        }
+        self.typed.intrinsic_call_sites.get(&expr_id).copied()
+    }
+
     /// Appends a non-terminator or terminator to the current block.
     pub fn emit(&mut self, inst: IrInst) {
         let block = match usize::try_from(self.current) {
@@ -320,16 +335,6 @@ pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
 #[must_use]
 pub fn slot_for_symbol(layout: &FunctionLayout, symbol: Symbol) -> Option<LocalSlot> {
     layout.binding(symbol).map(|b| b.slot)
-}
-
-/// Returns the named type `def` for a struct/enum value type, if any.
-#[must_use]
-pub fn named_def_for_ty(typed: &TypedProgram, ty: TypeId) -> Option<DefId> {
-    if let Ty::Named { def, .. } = typed.types.get(ty) {
-        Some(*def)
-    } else {
-        None
-    }
 }
 
 /// Finds a struct definition by type name symbol.

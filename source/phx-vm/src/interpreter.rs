@@ -529,6 +529,32 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 };
                 machine.stack.push(value);
             }
+            Opcode::IndexStore => {
+                let kind = operand_prim_kind(&inst, 0)?;
+                let signed = inst.operands.get(1).copied().unwrap_or(0) as u8;
+                let value = pop_scalar(&mut machine.stack)?;
+                let index = pop_scalar(&mut machine.stack)?;
+                let idx = scalar_to_usize(index)?;
+                let agg = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+                let handle = agg.as_agg().ok_or(VmError::InvalidAggregate)?;
+                let is_array = matches!(machine.aggregate(handle), Some(Aggregate::Array { .. }));
+                if is_array {
+                    slice_elem_store(&mut machine, handle, idx, value)?;
+                } else {
+                    let (elem_kind, ptr, len) = match machine.aggregate(handle) {
+                        Some(Aggregate::Slice {
+                            elem_kind,
+                            ptr,
+                            len,
+                        }) => (*elem_kind, *ptr, *len),
+                        _ => return Err(VmError::InvalidAggregate),
+                    };
+                    if idx >= usize::try_from(len).unwrap_or(0) {
+                        return Err(VmError::FieldOutOfRange);
+                    }
+                    slice_elem_store_heap(&mut machine, elem_kind, ptr, idx, kind, signed, value)?;
+                }
+            }
             Opcode::Trap => {
                 let kind = inst.operands.first().copied().unwrap_or(0);
                 if kind == 0 {
@@ -844,6 +870,47 @@ fn slice_elem_store(
     };
     *slot = Value::Scalar(value);
     Ok(())
+}
+
+fn slice_elem_store_heap(
+    machine: &mut Machine,
+    elem_kind: u8,
+    ptr: u64,
+    index: usize,
+    kind: PrimitiveKind,
+    signed: u8,
+    value: ScalarValue,
+) -> Result<(), VmError> {
+    if ptr & PTR_CONST_TAG == PTR_CONST_TAG {
+        return Err(VmError::InvalidAggregate);
+    }
+    if ptr & PTR_AGG_TAG == PTR_AGG_TAG {
+        let handle = (ptr & !PTR_AGG_TAG) as u32;
+        return slice_elem_store(machine, handle, index, value);
+    }
+    if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
+        return Err(VmError::InvalidAggregate);
+    }
+    if elem_kind == phx_bytecode::SLOT_KIND_AGG {
+        return Err(VmError::InvalidAggregate);
+    }
+    let wire_kind = PrimitiveKind::from_u8(elem_kind).ok_or(VmError::InvalidConstPayload)?;
+    if wire_kind != kind {
+        return Err(VmError::InvalidConstPayload);
+    }
+    let elem_size = usize::from(kind.byte_size());
+    let addr = usize::try_from(ptr).map_err(|_| VmError::HeapOutOfBounds)?;
+    let byte_offset = index
+        .checked_mul(elem_size)
+        .ok_or(VmError::HeapOutOfBounds)?;
+    let bytes = scalar_store_bytes(kind, signed, value)?;
+    write_heap_scalar(
+        &mut machine.heap,
+        addr.checked_add(byte_offset)
+            .ok_or(VmError::HeapOutOfBounds)?,
+        kind.byte_size(),
+        &bytes,
+    )
 }
 
 fn read_heap_scalar(

@@ -29,62 +29,34 @@ pub fn emit_function(
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
 ) -> EmittedFunction {
-    let block_starts = compute_block_starts(func);
+    let block_starts = compute_block_starts(func, pool, def_to_fn);
     let (code, stack_max) = emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts);
     EmittedFunction { code, stack_max }
 }
 
-fn encoded_size(inst: &IrInst) -> u32 {
-    fn with_operands(count: u32) -> u32 {
-        2 + count.saturating_mul(4)
-    }
-    match inst {
-        IrInst::JumpIf { .. } => with_operands(1).saturating_add(with_operands(1)),
-        IrInst::BinOp { .. }
-        | IrInst::Neg { .. }
-        | IrInst::Not { .. }
-        | IrInst::BitNot { .. }
-        | IrInst::MakeSlice { .. }
-        | IrInst::MakeSliceFromPtr { .. }
-        | IrInst::MakeStr { .. }
-        | IrInst::StrAsSlice
-        | IrInst::Call { .. }
-        | IrInst::Jump { .. }
-        | IrInst::AddressOfLocal { .. }
-        | IrInst::MakeTuple { .. }
-        | IrInst::MakeArray { .. }
-        | IrInst::TrapGivenMismatch => with_operands(1),
-        IrInst::MakeFnPtr { .. }
-        | IrInst::CallIndirect { .. }
-        | IrInst::Const { .. }
-        | IrInst::LoadLocal { .. }
-        | IrInst::StoreLocal { .. }
-        | IrInst::MakeStruct { .. }
-        | IrInst::GetField { .. }
-        | IrInst::SetField { .. }
-        | IrInst::MatchTag { .. }
-        | IrInst::Cast { .. }
-        | IrInst::PtrLoad { .. } => with_operands(2),
-        IrInst::MakeEnum { .. } => with_operands(3),
-        IrInst::Return { .. }
-        | IrInst::Index { .. }
-        | IrInst::LoadAggViaLocalPtr
-        | IrInst::Pop
-        | IrInst::Alloc { .. }
-        | IrInst::PtrStore { .. }
-        | IrInst::Free => 2,
-        IrInst::DropLocal { .. } => with_operands(2).saturating_add(with_operands(1)),
-    }
-}
-
-fn compute_block_starts(func: &IrFunction) -> Vec<u32> {
+fn compute_block_starts(
+    func: &IrFunction,
+    pool: &ConstPoolBuilder,
+    def_to_fn: &std::collections::HashMap<DefId, u32>,
+) -> Vec<u32> {
     let n = func.blocks.len();
     let mut starts = vec![0u32; n];
+    let mut scratch = Vec::new();
     let mut offset = 0u32;
     for (block_id, block) in func.blocks.iter().enumerate() {
         starts[block_id] = offset;
         for inst in &block.insts {
-            offset = offset.saturating_add(encoded_size(inst));
+            scratch.clear();
+            emit_inst(
+                &mut scratch,
+                inst,
+                pool,
+                def_to_fn,
+                &starts,
+            );
+            offset = offset.saturating_add(
+                u32::try_from(scratch.len()).unwrap_or(u32::MAX),
+            );
         }
     }
     starts
@@ -168,6 +140,9 @@ fn apply_ir_stack_effect(
         }
         IrInst::Index { .. } => {
             let _ = apply_stack_effect(Opcode::Index, stack, None, none);
+        }
+        IrInst::IndexStore { .. } => {
+            let _ = apply_stack_effect(Opcode::IndexStore, stack, None, none);
         }
         IrInst::PtrLoad { .. } => {
             let _ = apply_stack_effect(Opcode::PtrLoad, stack, None, none);
@@ -264,8 +239,17 @@ fn compute_ir_stack_max(
     let mut max_stack = 0u32;
     let mut worklist = VecDeque::from([0u32]);
     entry_depth.insert(0, 0);
+    let visit_limit = u32::try_from(func.blocks.len())
+        .unwrap_or(u32::MAX)
+        .saturating_mul(64)
+        .max(64);
+    let mut visits = 0u32;
 
     while let Some(block_id) = worklist.pop_front() {
+        visits = visits.saturating_add(1);
+        if visits > visit_limit {
+            break;
+        }
         let Some(block) = func.blocks.get(block_id as usize) else {
             continue;
         };
@@ -279,15 +263,36 @@ fn compute_ir_stack_max(
 
             match inst {
                 IrInst::Jump { target } => {
-                    try_enqueue_ir_block(*target, depth, &mut entry_depth, &mut worklist);
+                    enqueue_ir_edge(
+                        block_id,
+                        *target,
+                        depth,
+                        &mut entry_depth,
+                        &mut worklist,
+                        &mut max_stack,
+                    );
                     block_terminates = true;
                 }
                 IrInst::JumpIf {
                     then_block,
                     else_block,
                 } => {
-                    try_enqueue_ir_block(*then_block, depth, &mut entry_depth, &mut worklist);
-                    try_enqueue_ir_block(*else_block, depth, &mut entry_depth, &mut worklist);
+                    enqueue_ir_edge(
+                        block_id,
+                        *then_block,
+                        depth,
+                        &mut entry_depth,
+                        &mut worklist,
+                        &mut max_stack,
+                    );
+                    enqueue_ir_edge(
+                        block_id,
+                        *else_block,
+                        depth,
+                        &mut entry_depth,
+                        &mut worklist,
+                        &mut max_stack,
+                    );
                     block_terminates = true;
                 }
                 IrInst::Return { .. } | IrInst::TrapGivenMismatch => {
@@ -301,12 +306,42 @@ fn compute_ir_stack_max(
         if block.insts.is_empty() || !block_terminates {
             let next = block_id.saturating_add(1);
             if (next as usize) < func.blocks.len() {
-                try_enqueue_ir_block(next, depth, &mut entry_depth, &mut worklist);
+                enqueue_ir_edge(
+                    block_id,
+                    next,
+                    depth,
+                    &mut entry_depth,
+                    &mut worklist,
+                    &mut max_stack,
+                );
             }
         }
     }
 
-    max_stack
+    let conservative_floor = u32::try_from(func.params.len())
+        .unwrap_or(0)
+        .saturating_add(func.local_count)
+        .saturating_add(16);
+    max_stack.max(conservative_floor)
+}
+
+/// Enqueues a CFG edge for stack-depth fixpoint. Back-edges merge depth without re-walking
+/// the header (prevents infinite re-simulation on `while` loops).
+fn enqueue_ir_edge(
+    from: u32,
+    target: u32,
+    depth: u32,
+    entry_depth: &mut std::collections::HashMap<u32, u32>,
+    worklist: &mut std::collections::VecDeque<u32>,
+    max_stack: &mut u32,
+) {
+    *max_stack = (*max_stack).max(depth);
+    if target <= from {
+        let merged = entry_depth.get(&target).copied().unwrap_or(0).max(depth);
+        entry_depth.insert(target, merged);
+        return;
+    }
+    try_enqueue_ir_block(target, depth, entry_depth, worklist);
 }
 
 fn try_enqueue_ir_block(
@@ -461,6 +496,14 @@ fn emit_inst(
         }
         IrInst::Index { .. } => {
             out.extend(encode(Opcode::Index, &[]));
+        }
+        IrInst::IndexStore {
+            prim_kind, signed, ..
+        } => {
+            out.extend(encode(
+                Opcode::IndexStore,
+                &[u32::from(*prim_kind), u32::from(*signed)],
+            ));
         }
         IrInst::PtrLoad {
             prim_kind, signed, ..

@@ -121,6 +121,8 @@ pub struct TypeChecker<'a> {
     primitive_method_sites: HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → monomorphized or template fn def.
     associated_fn_sites: HashMap<ExprId, DefId>,
+    /// Method call sites (`recv.method`) → monomorphized or template fn def.
+    method_call_sites: HashMap<ExprId, DefId>,
     /// Indirect fn pointer call sites for lowering.
     indirect_call_sites: HashMap<ExprId, IndirectCallMeta>,
     /// VM intrinsic call sites (`alloc_bytes`, …).
@@ -209,6 +211,7 @@ impl<'a> TypeChecker<'a> {
             try_sites: HashMap::new(),
             primitive_method_sites: HashMap::new(),
             associated_fn_sites: HashMap::new(),
+            method_call_sites: HashMap::new(),
             indirect_call_sites: HashMap::new(),
             intrinsic_call_sites: HashMap::new(),
             size_of_literals: HashMap::new(),
@@ -421,9 +424,7 @@ impl<'a> TypeChecker<'a> {
             self.fn_ret = Some(ret);
         }
         let saved_module = self.current_module;
-        if let Some(def) = self.resolved.defs.get(spec_def.index() as usize) {
-            self.current_module = def.module;
-        } else if let Some(def) = self.resolved.defs.get(base_fn.index() as usize) {
+        if let Some(def) = self.resolved.defs.get(base_fn.index() as usize) {
             self.current_module = def.module;
         }
         let saved_impl_self = self.impl_self_type;
@@ -2076,13 +2077,15 @@ impl<'a> TypeChecker<'a> {
             }
         }
         if self.impl_self_type.is_some() && !has_receiver {
-            let needs_implicit_self =
-                self.active_trait_impl.is_none() || function_body_uses_impl_receiver(&f.body.inner);
+            let needs_implicit_self = function_body_uses_impl_receiver(&f.body.inner);
             if needs_implicit_self {
                 if let Some(self_ty) = self.impl_self_type {
                     self.define_local(impl_receiver_symbol(), self_ty, BindingKind::Param, None);
                 }
             }
+        }
+        if emit_layout && !check_body {
+            self.collect_layout_bindings_block(&f.body.inner, &td);
         }
         if check_body {
             let check_body = |this: &mut Self| {
@@ -2624,6 +2627,8 @@ impl<'a> TypeChecker<'a> {
                 };
                 if let PostfixOp::Field(field) = &ops[0] {
                     self.check_field(base_ty, field, target.span)
+                } else if matches!(ops[0], PostfixOp::Index(_)) {
+                    self.check_index(base_ty, target.span)
                 } else {
                     self.bag.push(
                         self.current_module,
@@ -3333,6 +3338,7 @@ impl<'a> TypeChecker<'a> {
             base_fn,
             args,
             call_sites: vec![site],
+            owner_module: self.current_module,
         });
     }
 
@@ -3384,6 +3390,7 @@ impl<'a> TypeChecker<'a> {
                 base_fn,
                 args: args.to_vec(),
                 call_sites: Vec::new(),
+                owner_module: self.current_module,
             });
         }
     }
@@ -4619,6 +4626,7 @@ impl<'a> TypeChecker<'a> {
         let Some(fn_def) = fn_def else {
             return self.emit_ambiguous_or_unresolved_method(receiver, type_def, name, span);
         };
+        self.method_call_sites.insert(site_id, fn_def);
         self.check_unsafe_fn_call(fn_def, span);
         let Some(&fn_ty) = self.value_types.get(&fn_def) else {
             return self.emit_unresolved_method(receiver, name, span);
@@ -5534,6 +5542,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, PrimitiveMethodSite>,
         HashMap<ExprId, DefId>,
+        HashMap<ExprId, DefId>,
         HashMap<DefId, TypeId>,
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
@@ -5555,6 +5564,7 @@ impl<'a> TypeChecker<'a> {
             self.try_sites,
             self.primitive_method_sites,
             self.associated_fn_sites,
+            self.method_call_sites,
             self.value_types,
             self.indirect_call_sites,
             self.intrinsic_call_sites,
@@ -5579,6 +5589,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<TypeMonoKey, TypeId>,
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, DefId>,
+        HashMap<ExprId, DefId>,
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
         HashMap<ExprId, u32>,
@@ -5593,6 +5604,7 @@ impl<'a> TypeChecker<'a> {
             self.specialized_aliases,
             self.try_sites,
             self.associated_fn_sites,
+            self.method_call_sites,
             self.indirect_call_sites,
             self.intrinsic_call_sites,
             self.size_of_literals,
@@ -5699,6 +5711,69 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
             PathSegment::Type(seg) => Some(seg.name.id),
         },
         _ => None,
+    }
+}
+
+impl TypeChecker<'_> {
+    /// Registers `const` / `var` slots for layout emission without type-checking bodies.
+    ///
+    /// Generic impl method templates defer body checking to monomorphization; lowering still
+    /// needs local slots for annotated bindings in the template AST.
+    fn collect_layout_bindings_block(&mut self, block: &Block, type_defs: &TypeDefMap) {
+        self.enter_scope();
+        for item in &block.items {
+            match item {
+                BlockItem::Stmt(Stmt::Const { name, ty, .. }) => {
+                    let pty = ty
+                        .as_ref()
+                        .map(|t| self.lower_ast_type_with_defs(t, type_defs))
+                        .unwrap_or(self.unit);
+                    self.define_local(name.symbol, pty, BindingKind::Const, None);
+                }
+                BlockItem::Stmt(Stmt::Var { name, ty, .. }) => {
+                    let pty = self.lower_ast_type_with_defs(ty, type_defs);
+                    self.define_local(name.symbol, pty, BindingKind::Var, None);
+                }
+                BlockItem::Stmt(Stmt::Unsafe(body) | Stmt::Loop(body)) => {
+                    self.collect_layout_bindings_block(&body.inner, type_defs);
+                }
+                BlockItem::Stmt(Stmt::While { body, .. }) => {
+                    self.collect_layout_bindings_block(&body.inner, type_defs);
+                }
+                BlockItem::Stmt(Stmt::Expr(expr)) => {
+                    self.collect_layout_bindings_from_expr(expr, type_defs);
+                }
+                BlockItem::Expr(expr) => {
+                    self.collect_layout_bindings_from_expr(expr, type_defs);
+                }
+                BlockItem::Stmt(_) | BlockItem::Import(_) => {}
+                _ => {}
+            }
+        }
+        self.exit_scope();
+    }
+
+    fn collect_layout_bindings_from_expr(&mut self, expr: &ExprNode, type_defs: &TypeDefMap) {
+        match &expr.inner {
+            Expr::Block(block) | Expr::Unsafe(block) => {
+                self.collect_layout_bindings_block(&block.inner, type_defs);
+            }
+            Expr::If {
+                then_block,
+                else_ifs,
+                else_block,
+                ..
+            } => {
+                self.collect_layout_bindings_block(&then_block.inner, type_defs);
+                for (_, block) in else_ifs {
+                    self.collect_layout_bindings_block(&block.inner, type_defs);
+                }
+                if let Some(else_b) = else_block {
+                    self.collect_layout_bindings_block(&else_b.inner, type_defs);
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -5906,6 +5981,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         try_sites,
         primitive_method_sites,
         associated_fn_sites,
+        method_call_sites,
         value_types,
         indirect_call_sites,
         intrinsic_call_sites,
@@ -5936,6 +6012,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         try_sites,
         primitive_method_sites,
         associated_fn_sites,
+        method_call_sites,
         value_types,
         indirect_call_sites,
         intrinsic_call_sites,

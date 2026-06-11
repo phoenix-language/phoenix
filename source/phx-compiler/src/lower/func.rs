@@ -5,7 +5,8 @@ use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
 use crate::resolver::DefId;
 use crate::typeck::{
-    BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template, lookup_function,
+    BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template,
+    is_generic_impl_method_template, lookup_function,
 };
 use phx_diagnostics::LowerBag;
 
@@ -48,11 +49,13 @@ pub(crate) fn lower_one_function(
     bag: &mut LowerBag,
 ) -> Option<IrFunction> {
     let source = lookup_function(typed, layout.def)?;
+    let def_record = typed.resolved.defs.get(layout.def.index() as usize)?;
+    // Specialized clones keep the template AST and resolution keys on the template module.
     let module = typed
-        .resolved
-        .defs
-        .get(layout.def.index() as usize)
-        .map_or(0, |d| d.module);
+        .specialized_from
+        .get(&layout.def)
+        .and_then(|base| typed.resolved.defs.get(base.index() as usize))
+        .map_or(def_record.module, |base| base.module);
     let mut ctx = LowerCtx::new(typed, module, layout, constants, bag);
     lower_block_value(&mut ctx, &source.body.inner);
     lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
@@ -81,7 +84,7 @@ pub(crate) fn lower_one_function(
     })
 }
 
-/// Returns true when `def` is a generic function template replaced by monomorphization.
+/// Returns true when `def` is a generic template replaced by monomorphization.
 fn is_generic_template(typed: &TypedProgram, def: DefId) -> bool {
-    is_generic_fn_template(typed, def)
+    is_generic_fn_template(typed, def) || is_generic_impl_method_template(typed, def)
 }

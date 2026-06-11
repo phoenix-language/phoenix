@@ -12,6 +12,7 @@ use crate::lower::ctx::{LoopLabels, LowerCtx, prim_kind_byte, unit_ty};
 use crate::lower::drop_glue::{emit_scope_drops, loop_body_scope_depth};
 use crate::lower::expr::{
     bind_match_pattern, block_ends_with_unconditional_jump, emit_arm_condition, lower_expr,
+    lower_expr_with_type,
 };
 use crate::typeck::{ForInPlan, TypeId};
 
@@ -32,7 +33,11 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
 fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
     match stmt {
         Stmt::Const { name, init, .. } | Stmt::Var { name, init, .. } => {
-            lower_expr(ctx, init);
+            if let Some(binding) = ctx.layout.binding(name.symbol) {
+                lower_expr_with_type(ctx, init, binding.ty);
+            } else {
+                lower_expr(ctx, init);
+            }
             if let Some(binding) = ctx.layout.binding(name.symbol) {
                 ctx.emit(IrInst::StoreLocal {
                     slot: binding.slot,
