@@ -18,13 +18,13 @@ pub type InheritedByInst = HashMap<TraitInstKey, Vec<(DefId, Function)>>;
 
 /// Builds a [`Function`] from a trait method signature that carries a default body.
 #[must_use]
-pub fn sig_to_function(sig: &FunctionSig) -> Option<Function> {
+pub fn sig_to_function(sig: &FunctionSig, trait_unsafe: bool) -> Option<Function> {
     let body = sig.body.clone()?;
     Some(Function {
         attrs: Vec::new(),
         derives: Vec::new(),
         directives: Vec::new(),
-        unsafe_: false,
+        unsafe_: trait_unsafe || sig.unsafe_,
         name: sig.name,
         generics: sig.generics.clone(),
         params: sig.params.clone(),
@@ -90,6 +90,8 @@ pub struct InheritedSynthesisCtx<'a> {
     pub impl_method_names: &'a std::collections::HashSet<Symbol>,
     /// Module id owning the impl.
     pub module: u32,
+    /// Whether the trait being implemented is `unsafe trait`.
+    pub trait_unsafe: bool,
     /// Pending synthetic fn defs (merged into resolved at typeck finish).
     pub pending_inherited_defs: &'a mut Vec<Def>,
     /// Inherited bodies keyed by synthetic `DefId`.
@@ -110,7 +112,7 @@ pub fn synthesize_inherited_methods(ctx: &mut InheritedSynthesisCtx<'_>) -> Vec<
         if sig.body.is_none() || ctx.impl_method_names.contains(&sig.name.symbol) {
             continue;
         }
-        let Some(function) = sig_to_function(sig) else {
+        let Some(function) = sig_to_function(sig, ctx.trait_unsafe) else {
             continue;
         };
         let def = alloc_pending_inherited_fn_def(ctx.resolved, ctx.pending_inherited_defs.len());

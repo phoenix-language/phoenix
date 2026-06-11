@@ -368,6 +368,7 @@ impl AstGen {
             decl: TopLevelDecl::Impl {
                 type_name: type_copy,
                 generics: None,
+                unsafe_: false,
                 trait_: Some(trait_ty),
                 members,
             },

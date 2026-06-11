@@ -122,6 +122,50 @@ The compiler treats a trait as a **constraint**: "`T` must provide these functio
 
 ---
 
+## `unsafe trait` and `unsafe impl`
+
+Some traits describe operations that are only sound inside an `unsafe` context (heap allocation, raw memory). Mark the trait and its impls explicitly:
+
+```phoenix
+Allocator :: unsafe trait {
+    alloc :: (self: &mut Self, layout: Layout) => *mut u8;
+    dealloc :: (self: &mut Self, ptr: *mut u8, layout: Layout) => ();
+};
+
+VmHeapAllocator :: unsafe impl :: Allocator {
+    alloc :: (self: &mut Self, layout: Layout) => *mut u8 {
+        alloc_bytes(layout.size)
+    };
+    dealloc :: (self: &mut Self, ptr: *mut u8, layout: Layout) => () {
+        dealloc_bytes(ptr, layout.size)
+    };
+};
+```
+
+**Option B (method inheritance):** every method in an `unsafe trait` is an effectively-unsafe function. Do **not** repeat `unsafe` on each trait or impl method — the parser rejects redundant `unsafe` on trait methods.
+
+| Context | Method `unsafe` keyword | Impl block |
+|---------|-------------------------|------------|
+| `unsafe trait` | Forbidden (redundant) | Must use `unsafe impl` |
+| `trait` (safe) | Optional per method | Normal `impl` |
+| `unsafe impl` of `unsafe trait` | Forbidden (redundant) | Required |
+| `impl` of safe trait with `unsafe` method | Must match trait signature | Normal `impl` |
+
+**Call sites:** any effectively-unsafe function — top-level `unsafe fn`, trait method of an `unsafe trait`, or explicit `unsafe fn` on a safe trait — requires `unsafe { … }` or an enclosing `unsafe fn` body (same rule as VM intrinsics and `extern "C"`).
+
+Safe trait with a selectively unsafe method:
+
+```phoenix
+LowLevel :: trait {
+    safe_fn :: (self) => ();
+    unsafe raw :: (self) => *mut u8;
+};
+```
+
+See [allocator.md](allocator.md) for the std `Allocator` trait.
+
+---
+
 ## What `impl` does
 
 An `impl` block attaches behavior to a concrete type. There are two forms.

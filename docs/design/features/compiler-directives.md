@@ -64,6 +64,8 @@ copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 
 **`extern "C"` calls require `unsafe`.** See [ffi.md](ffi.md).
 
+**Effectively-unsafe functions require `unsafe` at the call site:** top-level `unsafe fn`, methods of an `unsafe trait`, and explicit `unsafe fn` methods on safe traits. Same rule as intrinsics — wrap the call in `unsafe { … }` or declare the enclosing function `unsafe`. See [traits.md](traits.md#unsafe-trait-and-unsafe-impl-option-b).
+
 ### `#derive(...)` (V0-056)
 
 Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and **enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)). Also accepted as `#[derive(...)]` (see Item attributes below).

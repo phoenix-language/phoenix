@@ -131,6 +131,10 @@ pub struct TypeChecker<'a> {
     inherited_trait_methods: trait_defaults::InheritedTraitMethods,
     /// Inherited methods grouped by trait impl key (for body type checking).
     inherited_by_inst: trait_defaults::InheritedByInst,
+    /// Trait defs marked `unsafe trait`.
+    trait_unsafe: HashMap<DefId, bool>,
+    /// Fn defs that require `unsafe` at call sites.
+    fn_effective_unsafe: HashMap<DefId, bool>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -206,6 +210,120 @@ impl<'a> TypeChecker<'a> {
             pending_inherited_defs: Vec::new(),
             inherited_trait_methods: HashMap::new(),
             inherited_by_inst: HashMap::new(),
+            trait_unsafe: HashMap::new(),
+            fn_effective_unsafe: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn seed_fn_effective_unsafe(&mut self, map: &HashMap<DefId, bool>) {
+        self.fn_effective_unsafe
+            .extend(map.iter().map(|(k, v)| (*k, *v)));
+    }
+
+    fn is_effective_unsafe(&self, def: DefId) -> bool {
+        self.fn_effective_unsafe.get(&def).copied().unwrap_or(false)
+    }
+
+    fn mark_fn_effective_unsafe(&mut self, def: DefId) {
+        self.fn_effective_unsafe.insert(def, true);
+    }
+
+    fn check_unsafe_fn_call(&mut self, def: DefId, span: Span) {
+        if !self.is_effective_unsafe(def) || self.unsafe_depth > 0 {
+            return;
+        }
+        let Some(record) = self.resolved.defs.get(def.index() as usize) else {
+            return;
+        };
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnsafeFnCallRequiresUnsafe {
+                name: self.symbol_name(record.name),
+                span,
+            },
+        );
+    }
+
+    fn trait_method_sig_unsafe(
+        sig: &phx_syntax::ast::decl::FunctionSig,
+        trait_unsafe: bool,
+    ) -> bool {
+        trait_unsafe || sig.unsafe_
+    }
+
+    fn validate_impl_unsafe(
+        &mut self,
+        type_name: &TypeName,
+        trait_ty: &Node<Type>,
+        impl_unsafe: bool,
+        members: &[ImplMember],
+        span: Span,
+    ) {
+        let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) else {
+            return;
+        };
+        let Some(&trait_def) = self.type_defs.get(&trait_symbol) else {
+            return;
+        };
+        let trait_unsafe = self.trait_unsafe.get(&trait_def).copied().unwrap_or(false);
+        let trait_name = self.symbol_name(trait_symbol);
+        if trait_unsafe && !impl_unsafe {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsafeTraitRequiresUnsafeImpl { trait_name, span },
+            );
+        }
+        if !trait_unsafe && impl_unsafe {
+            let type_name = self.symbol_name(type_name.symbol);
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::UnsafeImplOfSafeTrait { type_name, span },
+            );
+        }
+        let Some(trait_items) = self.find_trait_items(trait_def).map(<[TraitItem]>::to_vec) else {
+            return;
+        };
+        for member in members {
+            let ImplMember::Method(m) = member else {
+                continue;
+            };
+            let Some(TraitItem::Method(sig)) = trait_items.iter().find(|item| {
+                matches!(
+                    item,
+                    TraitItem::Method(s) if s.name.symbol == m.name.symbol
+                )
+            }) else {
+                continue;
+            };
+            let expected_unsafe = Self::trait_method_sig_unsafe(sig, trait_unsafe);
+            if trait_unsafe && m.unsafe_ {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::RedundantUnsafeInUnsafeTrait {
+                        method: self.symbol_name(m.name.symbol),
+                        span: m.name.span,
+                    },
+                );
+            }
+            if expected_unsafe != m.unsafe_ && !trait_unsafe {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::Mismatch {
+                        expected: if expected_unsafe {
+                            format!("`unsafe {}`", self.symbol_name(m.name.symbol))
+                        } else {
+                            format!("`{}`", self.symbol_name(m.name.symbol))
+                        },
+                        found: if m.unsafe_ {
+                            format!("`unsafe {}`", self.symbol_name(m.name.symbol))
+                        } else {
+                            format!("`{}`", self.symbol_name(m.name.symbol))
+                        },
+                        span: m.name.span,
+                        kind: MismatchKind::default(),
+                    },
+                );
+            }
         }
     }
 
@@ -1329,6 +1447,7 @@ impl<'a> TypeChecker<'a> {
                 trait_,
                 generics,
                 members,
+                unsafe_: _impl_unsafe,
                 ..
             } => {
                 let saved_defs = self.type_defs.clone();
@@ -1366,6 +1485,8 @@ impl<'a> TypeChecker<'a> {
                                 .collect();
                             if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
                                 if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
+                                    let trait_unsafe =
+                                        self.trait_unsafe.get(&trait_def).copied().unwrap_or(false);
                                     if let Some(trait_items) =
                                         self.find_trait_items(trait_def).map(<[TraitItem]>::to_vec)
                                     {
@@ -1376,6 +1497,7 @@ impl<'a> TypeChecker<'a> {
                                                     trait_items: &trait_items,
                                                     impl_method_names: &impl_method_names,
                                                     module: self.current_module,
+                                                    trait_unsafe,
                                                     pending_inherited_defs: &mut self
                                                         .pending_inherited_defs,
                                                     inherited_trait_methods: &mut self
@@ -1389,6 +1511,11 @@ impl<'a> TypeChecker<'a> {
                                             &inst_key,
                                             &registered,
                                         );
+                                        if trait_unsafe {
+                                            for (_, def) in &registered {
+                                                self.mark_fn_effective_unsafe(*def);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1416,7 +1543,23 @@ impl<'a> TypeChecker<'a> {
                                 if let Some(fn_def) =
                                     self.find_def(self.current_module, m.name.symbol, DefKind::Fn)
                                 {
-                                    if let Some(trait_ty) = trait_ {
+                                    if let Some(trait_ty) = trait_.as_ref() {
+                                        if let Some((trait_symbol, _)) =
+                                            trait_bound_head(&trait_ty.inner)
+                                        {
+                                            if let Some(&trait_def) =
+                                                self.type_defs.get(&trait_symbol)
+                                            {
+                                                if self
+                                                    .trait_unsafe
+                                                    .get(&trait_def)
+                                                    .copied()
+                                                    .unwrap_or(false)
+                                                {
+                                                    self.mark_fn_effective_unsafe(fn_def);
+                                                }
+                                            }
+                                        }
                                         if let Some(inst_key) = self.build_trait_inst_key(
                                             type_def,
                                             vec![],
@@ -1448,8 +1591,17 @@ impl<'a> TypeChecker<'a> {
                 self.type_defs = saved_defs;
             }
             TopLevelDecl::Trait {
-                generics, items, ..
+                name,
+                generics,
+                items,
+                unsafe_,
+                ..
             } => {
+                if let Some(trait_def) =
+                    self.find_def(self.current_module, name.symbol, DefKind::Trait)
+                {
+                    self.trait_unsafe.insert(trait_def, *unsafe_);
+                }
                 let mut td = self.type_defs.clone();
                 push_generics(
                     &mut td,
@@ -1517,6 +1669,9 @@ impl<'a> TypeChecker<'a> {
         let fn_ty = self.fn_type_for_function(f);
         if let Some(def) = self.find_def(self.current_module, f.name.symbol, DefKind::Fn) {
             self.value_types.insert(def, fn_ty);
+            if f.unsafe_ {
+                self.mark_fn_effective_unsafe(def);
+            }
         }
     }
 
@@ -1687,8 +1842,22 @@ impl<'a> TypeChecker<'a> {
                 trait_,
                 generics,
                 members,
+                unsafe_: impl_unsafe,
                 ..
-            } => self.check_impl_decl(type_name, trait_, generics.as_deref(), members, span),
+            } => {
+                if *impl_unsafe && trait_.is_none() {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsafeImplOfSafeTrait {
+                            type_name: self.symbol_name(type_name.symbol),
+                            span,
+                        },
+                    );
+                } else if let Some(trait_ty) = trait_.as_ref() {
+                    self.validate_impl_unsafe(type_name, trait_ty, *impl_unsafe, members, span);
+                }
+                self.check_impl_decl(type_name, trait_, generics.as_deref(), members, span);
+            }
             _ => {}
         }
     }
@@ -1852,7 +2021,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
         };
-        if f.unsafe_ {
+        if self.is_effective_unsafe(def) {
             self.with_unsafe(|this| check_body(this));
         } else {
             check_body(self);
@@ -2764,6 +2933,7 @@ impl<'a> TypeChecker<'a> {
             return self.unit;
         };
         self.associated_fn_sites.insert(site_id, fn_def);
+        self.check_unsafe_fn_call(fn_def, span);
         let Some(&fn_ty) = self.value_types.get(&fn_def) else {
             return self.unit;
         };
@@ -3813,7 +3983,8 @@ impl<'a> TypeChecker<'a> {
         let Some(fn_def) = callee_def else {
             return self.check_call(callee, args, span);
         };
-        let Some(f) = self.find_function_decl(fn_def) else {
+        self.check_unsafe_fn_call(fn_def, span);
+        let Some(f) = self.find_function_decl(fn_def).cloned() else {
             if self.program_layout.tuple_structs.contains(&fn_def) {
                 return self.check_tuple_struct_ctor_call(fn_def, generics, args, span);
             }
@@ -3824,7 +3995,7 @@ impl<'a> TypeChecker<'a> {
             }
             return self.check_call(callee, args, span);
         };
-        let param_defs = self.generic_param_defs_for_fn(f, fn_def);
+        let param_defs = self.generic_param_defs_for_fn(&f, fn_def);
         let fn_generics = f.generics.clone();
         if param_defs.is_empty() {
             if generics.is_some() {
@@ -4050,6 +4221,7 @@ impl<'a> TypeChecker<'a> {
         let Some(fn_def) = fn_def else {
             return self.emit_ambiguous_or_unresolved_method(receiver, type_def, name, span);
         };
+        self.check_unsafe_fn_call(fn_def, span);
         let Some(&fn_ty) = self.value_types.get(&fn_def) else {
             return self.emit_unresolved_method(receiver, name, span);
         };
@@ -4958,6 +5130,7 @@ impl<'a> TypeChecker<'a> {
         IntrinsicKernel,
         Vec<crate::resolver::Def>,
         trait_defaults::InheritedTraitMethods,
+        HashMap<DefId, bool>,
     ) {
         (
             self.types,
@@ -4977,6 +5150,7 @@ impl<'a> TypeChecker<'a> {
             self.intrinsic_kernel,
             self.pending_inherited_defs,
             self.inherited_trait_methods,
+            self.fn_effective_unsafe,
         )
     }
 
@@ -5296,6 +5470,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         intrinsic_kernel,
         pending_inherited_defs,
         inherited_trait_methods,
+        fn_effective_unsafe,
     ) = checker.finish();
     if bag.has_errors() {
         return Err(bag);
@@ -5323,6 +5498,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         intrinsic_call_sites,
         intrinsic_kernel,
         inherited_trait_methods,
+        fn_effective_unsafe,
     };
     let mono_bag = super::mono::monomorphize(&mut program, &mono_insts, &type_mono_insts);
     if mono_bag.has_errors() {

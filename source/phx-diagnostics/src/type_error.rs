@@ -312,6 +312,34 @@ pub enum TypeCheckError {
         /// Call site span.
         span: Span,
     },
+    /// Call to an effectively-unsafe function requires an `unsafe` block or `unsafe fn`.
+    UnsafeFnCallRequiresUnsafe {
+        /// Callee name.
+        name: String,
+        /// Call site span.
+        span: Span,
+    },
+    /// An `unsafe trait` requires an `unsafe impl`.
+    UnsafeTraitRequiresUnsafeImpl {
+        /// Trait name.
+        trait_name: String,
+        /// Impl block span.
+        span: Span,
+    },
+    /// `unsafe` on a trait method is redundant inside an `unsafe trait`.
+    RedundantUnsafeInUnsafeTrait {
+        /// Method name.
+        method: String,
+        /// Method span.
+        span: Span,
+    },
+    /// `unsafe impl` is only valid for an `unsafe trait`.
+    UnsafeImplOfSafeTrait {
+        /// Implementing type name.
+        type_name: String,
+        /// Impl block span.
+        span: Span,
+    },
     /// Type implements both `Drop` and `Copyable`, which conflict.
     CopyableDropConflict {
         /// Type name for diagnostics.
@@ -358,8 +386,12 @@ impl TypeCheckError {
             Self::InvalidTryOperand { .. } => DiagnosticCode::new("E2029"),
             Self::TryErrorFromMissing { .. } => DiagnosticCode::new("E2031"),
             Self::ExternCallRequiresUnsafe { .. } => DiagnosticCode::new("E2032"),
-            Self::IntrinsicRequiresUnsafe { .. } => DiagnosticCode::new("E2034"),
             Self::CopyableDropConflict { .. } => DiagnosticCode::new("E2033"),
+            Self::IntrinsicRequiresUnsafe { .. } => DiagnosticCode::new("E2034"),
+            Self::UnsafeFnCallRequiresUnsafe { .. } => DiagnosticCode::new("E2035"),
+            Self::UnsafeTraitRequiresUnsafeImpl { .. } => DiagnosticCode::new("E2036"),
+            Self::RedundantUnsafeInUnsafeTrait { .. } => DiagnosticCode::new("E2037"),
+            Self::UnsafeImplOfSafeTrait { .. } => DiagnosticCode::new("E2038"),
         }
     }
 
@@ -400,6 +432,10 @@ impl TypeCheckError {
             | Self::TryErrorFromMissing { span, .. }
             | Self::ExternCallRequiresUnsafe { span, .. }
             | Self::IntrinsicRequiresUnsafe { span, .. }
+            | Self::UnsafeFnCallRequiresUnsafe { span, .. }
+            | Self::UnsafeTraitRequiresUnsafeImpl { span, .. }
+            | Self::RedundantUnsafeInUnsafeTrait { span, .. }
+            | Self::UnsafeImplOfSafeTrait { span, .. }
             | Self::CopyableDropConflict { span, .. } => Some(*span),
         }
     }
@@ -543,6 +579,21 @@ impl fmt::Display for TypeCheckError {
             Self::IntrinsicRequiresUnsafe { name, .. } => {
                 write!(f, "call to intrinsic `{name}` requires `unsafe`")
             }
+            Self::UnsafeFnCallRequiresUnsafe { name, .. } => {
+                write!(f, "call to `{name}` requires `unsafe`")
+            }
+            Self::UnsafeTraitRequiresUnsafeImpl { trait_name, .. } => write!(
+                f,
+                "implementation of `unsafe trait` `{trait_name}` must use `unsafe impl`"
+            ),
+            Self::RedundantUnsafeInUnsafeTrait { method, .. } => write!(
+                f,
+                "redundant `unsafe` on method `{method}` in `unsafe trait` (methods inherit unsafety)"
+            ),
+            Self::UnsafeImplOfSafeTrait { type_name, .. } => write!(
+                f,
+                "`unsafe impl` of `{type_name}` is only allowed for an `unsafe trait`"
+            ),
             Self::CopyableDropConflict { type_name, .. } => write!(
                 f,
                 "type `{type_name}` cannot implement both `Drop` and `Copyable`"

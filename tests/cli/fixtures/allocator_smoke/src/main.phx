@@ -1,0 +1,10 @@
+#import std::core::memory::allocator::{Allocator, Layout, VmHeapAllocator};
+
+main :: () => {
+    var alloc: VmHeapAllocator = VmHeapAllocator {};
+    const layout: Layout = Layout { size: 8u, align: 1u };
+    unsafe {
+        const ptr: *mut u8 = alloc.alloc(layout);
+        alloc.dealloc(ptr, layout);
+    };
+};

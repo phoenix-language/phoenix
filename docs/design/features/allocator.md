@@ -82,7 +82,7 @@ Layout :: struct {
 Defined in `std::core::memory::allocator`:
 
 ```phoenix
-Allocator :: trait {
+pub Allocator :: unsafe trait {
     alloc :: (self: &mut Self, layout: Layout) => *mut u8;
     dealloc :: (self: &mut Self, ptr: *mut u8, layout: Layout) => ();
 };
@@ -93,7 +93,9 @@ Allocator :: trait {
 | `alloc` | Returns a pointer to at least `layout.size` bytes, or a null pointer on failure (Std v0: VM bump heap does not report failure — document as future `Result`) |
 | `dealloc` | Releases the block previously obtained with the **same** `layout.size`; must not be called on pointers not allocated through this allocator instance |
 
-Methods take `&mut Self` so stateful allocators (arenas, pools) can update bookkeeping. `Global` and `VmHeapAllocator` are zero-sized; mutation is a no-op but keeps a uniform trait surface for generic collections.
+Methods take `&mut Self` so stateful allocators (arenas, pools) can update bookkeeping. `Global` / `VmHeapAllocator` are zero-sized; mutation is a no-op but keeps a uniform trait surface for generic collections.
+
+**V0-066:** `Allocator` is an `unsafe trait` (Option B). `VmHeapAllocator :: unsafe impl :: Allocator` calls heap intrinsics in method bodies without per-method `unsafe` keywords. Application code must still use `unsafe { … }` when calling `alloc` / `dealloc` on a trait receiver.
 
 **Not in the trait (Std v0):** `realloc`, `grow`, `shrink`, `allocate_zeroed`. Collections compose `alloc` + copy + `dealloc` until a later std revision adds optional extension traits.
 
@@ -104,7 +106,7 @@ Methods take `&mut Self` so stateful allocators (arenas, pools) can update bookk
 | Type | Role |
 |------|------|
 | `VmHeapAllocator` | ZST; **only** std type whose implementation calls `alloc_bytes` / `dealloc_bytes` (inside `unsafe`) |
-| `Global` | Public default; holds `VmHeapAllocator` and forwards `Allocator` methods |
+| `Global` | Public default name; **type alias** for `VmHeapAllocator` in V0-066 (wrapper struct with forwarding lives in a follow-up when field trait dispatch is stable) |
 
 Application and library code should import `Global` (or a custom `Allocator`), not `std::core::alloc` intrinsics. Direct intrinsic use remains legal for low-level tests and compiler fixtures but is discouraged outside `std::core::memory`.
 
@@ -139,7 +141,7 @@ The compiler does not enforce orphans in V0 beyond name resolution and duplicate
 | Path | Contents |
 |------|----------|
 | `std::core::alloc` | Intrinsic stubs `alloc_bytes`, `dealloc_bytes` (V0-065) |
-| `std::core::memory::allocator` | `Layout`, `Allocator`, `VmHeapAllocator`, `Global` (V0-066) |
+| `std::core::memory::allocator` | `Layout`, `Allocator`, `VmHeapAllocator`, `Global` (alias) (V0-066) |
 | `std::collections::dynamic_array` | `DynamicArray<T, A: Allocator>` (Std v0, after V0-066) |
 
 ---

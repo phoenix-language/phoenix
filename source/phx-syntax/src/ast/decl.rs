@@ -131,6 +131,8 @@ pub enum TraitItem {
 pub struct FunctionSig {
     /// Name.
     pub name: Ident,
+    /// `unsafe` on the method (only when the enclosing trait is not `unsafe trait`).
+    pub unsafe_: bool,
     /// Generic parameters.
     pub generics: Option<Vec<GenericParam>>,
     /// Parameters.
@@ -220,6 +222,8 @@ pub enum TopLevelDecl {
         name: TypeName,
         /// `#derive` attributes.
         derives: Vec<DeriveDirective>,
+        /// `unsafe trait` — all methods are effectively `unsafe fn`.
+        unsafe_: bool,
         /// Generic parameters.
         generics: Option<Vec<GenericParam>>,
         /// Trait items.
@@ -231,6 +235,8 @@ pub enum TopLevelDecl {
         type_name: TypeName,
         /// Generic parameters on impl.
         generics: Option<Vec<GenericParam>>,
+        /// `unsafe impl` — required when implementing an `unsafe trait`.
+        unsafe_: bool,
         /// Optional trait (`PartialEq`, `From<Source>`, …).
         trait_: Option<Node<Type>>,
         /// Impl members.

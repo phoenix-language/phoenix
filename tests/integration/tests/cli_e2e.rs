@@ -360,6 +360,15 @@ fn build_allocator_smoke() {
 }
 
 #[test]
+fn check_allocator_smoke_unsafe_fails() {
+    e2e(|cli| {
+        let project = cli_project("allocator_smoke_unsafe_fail");
+        cli.check_fails(&project.join("src/main.phx"))
+            .assert_contains("unsafe");
+    });
+}
+
+#[test]
 fn check_heap_dealloc_unsafe_fails() {
     e2e(|cli| {
         let project = cli_project("heap_dealloc_unsafe");

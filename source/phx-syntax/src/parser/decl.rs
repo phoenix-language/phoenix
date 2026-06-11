@@ -269,13 +269,47 @@ impl Parser<'_> {
             }
             TokenKind::Keyword(Keyword::Trait) => {
                 self.bump();
-                let items = self.parse_trait_items()?;
+                let items = self.parse_trait_items(false)?;
                 Ok(TopLevelDecl::Trait {
                     name,
                     derives,
                     generics,
+                    unsafe_: false,
                     items,
                 })
+            }
+            TokenKind::Keyword(Keyword::Unsafe)
+                if matches!(
+                    self.peek_at(1),
+                    TokenKind::Keyword(Keyword::Trait | Keyword::Impl)
+                ) =>
+            {
+                self.bump();
+                match self.peek_kind() {
+                    TokenKind::Keyword(Keyword::Trait) => {
+                        self.bump();
+                        let items = self.parse_trait_items(true)?;
+                        Ok(TopLevelDecl::Trait {
+                            name,
+                            derives,
+                            generics,
+                            unsafe_: true,
+                            items,
+                        })
+                    }
+                    TokenKind::Keyword(Keyword::Impl) => {
+                        self.bump();
+                        let (trait_, members) = self.parse_impl_tail(generics.clone())?;
+                        Ok(TopLevelDecl::Impl {
+                            type_name: name,
+                            generics,
+                            unsafe_: true,
+                            trait_,
+                            members,
+                        })
+                    }
+                    _ => Err(self.error_unexpected(ExpectedToken::Token)),
+                }
             }
             TokenKind::Keyword(Keyword::Impl) => {
                 self.bump();
@@ -283,6 +317,7 @@ impl Parser<'_> {
                 Ok(TopLevelDecl::Impl {
                     type_name: name,
                     generics,
+                    unsafe_: false,
                     trait_,
                     members,
                 })
@@ -383,7 +418,10 @@ impl Parser<'_> {
     }
 
     /// Parses trait members inside `{ … }`.
-    fn parse_trait_items(&mut self) -> Result<Vec<TraitItem>, ParseError> {
+    fn parse_trait_items(
+        &mut self,
+        parent_trait_unsafe: bool,
+    ) -> Result<Vec<TraitItem>, ParseError> {
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
         let mut items = Vec::new();
         while !self.eat_kind(&TokenKind::RBrace) {
@@ -397,7 +435,7 @@ impl Parser<'_> {
                     id: name.id,
                 }));
             } else {
-                let sig = self.parse_function_sig()?;
+                let sig = self.parse_function_sig(parent_trait_unsafe)?;
                 self.expect_semi()?;
                 items.push(TraitItem::Method(sig));
             }
@@ -438,7 +476,16 @@ impl Parser<'_> {
     }
 
     /// Parses a function signature (optional body for default impls).
-    fn parse_function_sig(&mut self) -> Result<FunctionSig, ParseError> {
+    fn parse_function_sig(&mut self, parent_trait_unsafe: bool) -> Result<FunctionSig, ParseError> {
+        let mut unsafe_ = false;
+        if self.eat_keyword(Keyword::Unsafe) {
+            if parent_trait_unsafe {
+                return Err(self.reject_unsupported(
+                    "redundant `unsafe` on method in `unsafe trait` (methods inherit unsafety)",
+                ));
+            }
+            unsafe_ = true;
+        }
         let name = self.parse_ident()?;
         self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
         let generics = if self.peek_kind() == TokenKind::Lt {
@@ -455,6 +502,7 @@ impl Parser<'_> {
         };
         Ok(FunctionSig {
             name,
+            unsafe_,
             generics,
             params,
             ret,
@@ -672,6 +720,7 @@ impl Parser<'_> {
         let ret = self.parse_optional_return_type()?;
         Ok(FunctionSig {
             name,
+            unsafe_: false,
             generics: None,
             params,
             ret,

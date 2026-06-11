@@ -336,6 +336,33 @@ fn decl_impl_for_trait() {
 }
 
 #[test]
+fn decl_unsafe_trait_minimal() {
+    assert_ok("Alloc :: unsafe trait { f :: () => (); }; main :: () => { };");
+}
+
+#[test]
+fn decl_unsafe_trait_and_impl() {
+    assert_ok(
+        "Alloc :: unsafe trait { alloc :: (self: &mut Self) => *mut u8; }; T :: struct {}; T :: unsafe impl :: Alloc { alloc :: (self: &mut Self) => *mut u8 { 0 as *mut u8 }; }; main :: () => { };",
+    );
+}
+
+#[test]
+fn decl_safe_trait_unsafe_method() {
+    assert_ok(
+        "Low :: trait { safe_fn :: () => (); unsafe raw :: () => *mut u8; }; main :: () => { };",
+    );
+}
+
+#[test]
+fn decl_unsafe_trait_redundant_method_unsafe_rejected() {
+    assert_unsupported(
+        "Alloc :: unsafe trait { unsafe alloc :: () => *mut u8; }; main :: () => { };",
+        "redundant `unsafe` on method in `unsafe trait` (methods inherit unsafety)",
+    );
+}
+
+#[test]
 fn decl_impl_for_trait_legacy_syntax_rejected() {
     assert_unsupported(
         "P :: impl for Eq { eq :: (self, o: &Self) => bool { true }; }; main :: () => { };",

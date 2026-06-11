@@ -118,6 +118,14 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         let spec_def =
             alloc_specialized_def(&mut typed.resolved, inst.base_fn, &inst.args, &typed.types);
         typed.specialized_from.insert(spec_def, inst.base_fn);
+        if typed
+            .fn_effective_unsafe
+            .get(&inst.base_fn)
+            .copied()
+            .unwrap_or(false)
+        {
+            typed.fn_effective_unsafe.insert(spec_def, true);
+        }
         let skip_impl_body = find_impl_generics_for_fn(&typed.resolved, inst.base_fn)
             .is_some_and(|params| !params.is_empty())
             && f.generics.as_ref().is_none_or(Vec::is_empty);
@@ -132,6 +140,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             checker.seed_std_trait_kernel(&typed.std_trait_kernel);
             checker.seed_intrinsic_kernel(&typed.intrinsic_kernel);
             checker.seed_value_types(&typed.value_types);
+            checker.seed_fn_effective_unsafe(&typed.fn_effective_unsafe);
             checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
             let (
                 checker_types,

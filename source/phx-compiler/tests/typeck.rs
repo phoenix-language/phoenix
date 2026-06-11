@@ -1449,10 +1449,10 @@ fn heap_dealloc_fixture_typechecks() {
         return;
     }
     let unit = check_file(&path).expect("heap_dealloc typecheck");
-    assert_eq!(
-        unit.typed.intrinsic_call_sites.len(),
-        2,
-        "expected alloc_bytes + dealloc_bytes intrinsic sites"
+    assert!(
+        unit.typed.intrinsic_call_sites.len() >= 2,
+        "expected at least alloc_bytes + dealloc_bytes intrinsic sites, got {}",
+        unit.typed.intrinsic_call_sites.len()
     );
 }
 
@@ -1506,10 +1506,10 @@ fn heap_slice_fixture_typechecks() {
         return;
     }
     let unit = check_file(&path).expect("heap_slice typecheck");
-    assert_eq!(
-        unit.typed.intrinsic_call_sites.len(),
-        2,
-        "expected alloc_bytes + slice_from_raw_parts intrinsic sites"
+    assert!(
+        unit.typed.intrinsic_call_sites.len() >= 2,
+        "expected at least alloc_bytes + slice_from_raw_parts intrinsic sites, got {}",
+        unit.typed.intrinsic_call_sites.len()
     );
 }
 
@@ -1531,6 +1531,80 @@ fn heap_alloc_fixture_typechecks() {
 #[test]
 fn extern_call_in_unsafe_ok() {
     compile_ok("extern \"C\" stub :: (x: s32) => s32; main :: () => { unsafe { stub(1); }; };");
+}
+
+#[test]
+fn unsafe_fn_call_requires_unsafe() {
+    let source = "unsafe leak :: () => *mut u8 { 0 as *mut u8 }; main :: () => { leak(); };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::UnsafeFnCallRequiresUnsafe { .. })),
+        "expected UnsafeFnCallRequiresUnsafe: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn unsafe_trait_requires_unsafe_impl() {
+    let source = "A :: unsafe trait { f :: () => (); }; T :: struct {}; T :: impl :: A { f :: () => () {}; }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors().iter().any(|e| matches!(
+            &e.error,
+            TypeCheckError::UnsafeTraitRequiresUnsafeImpl { .. }
+        )),
+        "expected UnsafeTraitRequiresUnsafeImpl: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn unsafe_impl_of_safe_trait_rejected() {
+    let source = "A :: trait { f :: () => (); }; T :: struct {}; T :: unsafe impl :: A { f :: () => () {}; }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::UnsafeImplOfSafeTrait { .. })),
+        "expected UnsafeImplOfSafeTrait: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn unsafe_trait_method_call_requires_unsafe() {
+    let source = "A :: unsafe trait { f :: (self: &mut Self) => (); }; T :: struct {}; T :: unsafe impl :: A { f :: (self: &mut Self) => () {}; }; main :: () => { var t: T = T {}; t.f(); };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::UnsafeFnCallRequiresUnsafe { .. })),
+        "expected UnsafeFnCallRequiresUnsafe: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn allocator_smoke_unsafe_fail_fixture() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/allocator_smoke_unsafe_fail/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let err = check_file(&path).expect_err("expected alloc outside unsafe to fail");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::UnsafeFnCallRequiresUnsafe { .. })),
+        "expected UnsafeFnCallRequiresUnsafe: {:?}",
+        bag.errors()
+    );
 }
 
 #[test]

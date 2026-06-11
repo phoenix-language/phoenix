@@ -94,6 +94,8 @@ pub struct TypedProgram {
     pub value_types: std::collections::HashMap<crate::resolver::DefId, TypeId>,
     /// Trait default methods synthesized for empty/partial impl blocks.
     pub inherited_trait_methods: trait_defaults::InheritedTraitMethods,
+    /// Functions that require `unsafe` at call sites (top-level `unsafe fn`, `unsafe trait` methods, etc.).
+    pub fn_effective_unsafe: std::collections::HashMap<crate::resolver::DefId, bool>,
 }
 
 /// Lowering hint for indirect function pointer calls (`CallIndirect`).

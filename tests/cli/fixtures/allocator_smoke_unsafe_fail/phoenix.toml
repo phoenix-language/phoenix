@@ -1,0 +1,9 @@
+[project]
+name = "allocator_smoke_unsafe_fail"
+version = "0.1.0"
+description = "V0-066 Allocator trait call outside unsafe must fail (E2035)"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

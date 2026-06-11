@@ -86,15 +86,15 @@ variant            = type_identifier
 
 type_alias_decl    = "type" , type_identifier , [ generic_params ] , "=" , type_expr ;
 
-trait_decl         = type_identifier , "::" , [ generic_params ] , "trait" ,
+trait_decl         = type_identifier , "::" , [ generic_params ] , [ "unsafe" ] , "trait" ,
                      "{" , { trait_item } , "}" ;
 trait_item         = associated_type_decl | trait_method ;
-trait_method       = function_decl_body , ";"
-                   | function_signature , ";" ;
+trait_method       = [ "unsafe" ] , function_decl_body , ";"
+                   | [ "unsafe" ] , function_signature , ";" ;
 associated_type_decl = "type" , type_identifier , ";" ;
 associated_type_impl = "type" , type_identifier , "=" , type_expr , ";" ;
 
-impl_decl          = type_identifier , "::" , [ generic_params ] , "impl" ,
+impl_decl          = type_identifier , "::" , [ generic_params ] , [ "unsafe" ] , "impl" ,
                      [ "::" , type_identifier ] , impl_block ;
 impl_block         = "{" , { impl_member } , "}" ;
 impl_member        = { attribute } , function_decl_body , ";" | associated_type_impl ;

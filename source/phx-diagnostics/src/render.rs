@@ -400,6 +400,16 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E2031" => {
             Some("`?` requires a `From` conversion between error types that is not implemented.")
         }
+        "E2032" => Some("An `extern \"C\"` call requires an `unsafe` block or `unsafe fn`."),
+        "E2034" => Some("A VM intrinsic call requires an `unsafe` block or `unsafe fn`."),
+        "E2035" => {
+            Some("An effectively-unsafe function call requires an `unsafe` block or `unsafe fn`.")
+        }
+        "E2036" => Some("An `unsafe trait` must be implemented with `unsafe impl`."),
+        "E2037" => {
+            Some("Methods in an `unsafe trait` inherit unsafety; per-method `unsafe` is redundant.")
+        }
+        "E2038" => Some("`unsafe impl` is only valid when implementing an `unsafe trait`."),
         "E3001" => Some("The parser encountered unexpected tokens."),
         "E4001" => Some("The compiler hit an internal lowering invariant (please report)."),
         "W3001" | "W3002" => Some("A lint warning (does not fail the build in v1)."),

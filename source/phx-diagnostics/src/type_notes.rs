@@ -257,9 +257,25 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
             ));
         }
         TypeCheckError::ExternCallRequiresUnsafe { .. }
-        | TypeCheckError::IntrinsicRequiresUnsafe { .. } => {
+        | TypeCheckError::IntrinsicRequiresUnsafe { .. }
+        | TypeCheckError::UnsafeFnCallRequiresUnsafe { .. } => {
             out.helps.push(String::from(
                 "wrap the call in `unsafe { ... }` or declare the enclosing function as `unsafe`",
+            ));
+        }
+        TypeCheckError::UnsafeTraitRequiresUnsafeImpl { .. } => {
+            out.helps.push(String::from(
+                "use `Type :: unsafe impl :: Trait { ... }` to implement an `unsafe trait`",
+            ));
+        }
+        TypeCheckError::RedundantUnsafeInUnsafeTrait { .. } => {
+            out.helps.push(String::from(
+                "remove `unsafe` from the method — all methods in an `unsafe trait` are implicitly unsafe",
+            ));
+        }
+        TypeCheckError::UnsafeImplOfSafeTrait { .. } => {
+            out.helps.push(String::from(
+                "use a normal `impl` block, or mark the trait as `unsafe trait` if all implementers must be unsafe",
             ));
         }
     }
