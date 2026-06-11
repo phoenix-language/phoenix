@@ -1357,6 +1357,13 @@ fn generic_user_trait_bound_at_mono_site_compile_ok() {
 }
 
 #[test]
+fn type_alias_forwards_trait_bound_at_mono_site() {
+    compile_ok(
+        "Marker :: trait { }; Tagged :: struct { n: s32 }; Tagged :: impl :: Marker { }; type Alias = Tagged; identity :: <t: Marker> (x: t) => t { x }; main :: () => { const t = Alias { n: 1 }; const _: Alias = identity(t); };",
+    );
+}
+
+#[test]
 fn associated_from_call_compile_ok() {
     compile_ok(
         "FromLocal :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: FromLocal<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; main :: () => { const w: Wrap = Wrap::from(42); const _ = w.n; };",

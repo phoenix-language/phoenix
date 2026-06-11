@@ -1,0 +1,36 @@
+// std::core::memory::unique_ptr — single-owner heap pointer (Rust `Box` equivalent).
+
+#import std::core::drop::Drop;
+#import std::core::memory::allocator::{Allocator, Layout, VmHeapAllocator};
+
+pub UniquePtr :: <t> struct {
+    ptr: *mut t,
+    layout: Layout,
+    alloc: VmHeapAllocator,
+};
+
+UniquePtr :: <t> impl {
+    new :: (value: t, byte_layout: Layout) => UniquePtr<t> {
+        var g: VmHeapAllocator = VmHeapAllocator {};
+        unsafe {
+            const raw: *mut u8 = g.alloc(byte_layout);
+            const ptr: *mut t = raw as *mut t;
+            *ptr = value;
+            UniquePtr :: <t> { ptr: ptr, layout: byte_layout, alloc: g };
+        };
+    };
+
+    get :: (self: &Self) => t {
+        unsafe {
+            *self.ptr
+        };
+    };
+};
+
+UniquePtr :: <t> impl :: Drop {
+    drop :: (self) => () {
+        unsafe {
+            self.alloc.dealloc(self.ptr as *mut u8, self.layout);
+        };
+    };
+};

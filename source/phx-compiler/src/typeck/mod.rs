@@ -27,6 +27,7 @@ mod std_kernel;
 mod std_trait_kernel;
 mod subst;
 mod trait_defaults;
+mod type_size;
 mod types;
 mod unify;
 
@@ -46,6 +47,7 @@ pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_fo
 pub use std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
 pub use std_trait_kernel::StdTraitKernel;
 pub use trait_defaults::lookup_function;
+pub use type_size::type_byte_size;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::{DefId, ResolvedProgram};
@@ -84,6 +86,8 @@ pub struct TypedProgram {
     pub indirect_call_sites: std::collections::HashMap<ExprId, IndirectCallMeta>,
     /// VM intrinsic call sites keyed by postfix `Call` expression id.
     pub intrinsic_call_sites: std::collections::HashMap<ExprId, IntrinsicSite>,
+    /// Compile-time `size_of` results keyed by postfix `Call` expression id.
+    pub size_of_literals: std::collections::HashMap<ExprId, u32>,
     /// Std / VM intrinsic definition ids.
     pub intrinsic_kernel: IntrinsicKernel,
     /// Compiler builtin method sites on primitives (`eq`, `clone`).

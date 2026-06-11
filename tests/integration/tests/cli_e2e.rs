@@ -360,6 +360,62 @@ fn build_allocator_smoke() {
 }
 
 #[test]
+fn build_dynamic_array_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_smoke");
+        let project = cli_project("dynamic_array_smoke");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/dynamic_array_smoke.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_dynamic_array_drop_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_drop_smoke");
+        let project = cli_project("dynamic_array_drop_smoke");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/dynamic_array_drop_smoke.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
+fn build_unique_ptr_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("unique_ptr_smoke");
+        let project = cli_project("unique_ptr_smoke");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/unique_ptr_smoke.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_unique_ptr_drop_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("unique_ptr_drop_smoke");
+        let project = cli_project("unique_ptr_drop_smoke");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/unique_ptr_drop_smoke.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
+fn check_unique_ptr_use_after_move_fails() {
+    e2e(|cli| {
+        cli.check_fails(&cli_fixture("unique_ptr_use_after_move.phx"))
+            .assert_contains("moved");
+    });
+}
+
+#[test]
 fn check_allocator_smoke_unsafe_fails() {
     e2e(|cli| {
         let project = cli_project("allocator_smoke_unsafe_fail");

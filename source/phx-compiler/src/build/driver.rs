@@ -20,7 +20,8 @@ use crate::pxi::{
 };
 use crate::resolver::DefId;
 use crate::typeck::{
-    CrossCrateMonoReq, apply_mono_worklist, collect_cross_crate_mono_reqs, type_check,
+    CrossCrateMonoReq, apply_mono_worklist, collect_cross_crate_mono_reqs, mangle_export_id,
+    type_check,
 };
 
 use super::error::BuildError;
@@ -721,10 +722,15 @@ fn build_global_fn_map(
             if def.kind != DefKind::Fn {
                 continue;
             }
+            let def_id = DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX));
             let Some(logical) = module_logical(def.module) else {
                 continue;
             };
             if module_in_workspace_package(&logical, workspace) {
+                continue;
+            }
+            // Monomorphized impl methods are lowered in the consumer crate.
+            if typed.specialized_from.contains_key(&def_id) {
                 continue;
             }
             let name = interner.resolve(def.name);
@@ -741,7 +747,7 @@ fn build_global_fn_map(
                             "missing function_id for export `{export_id}` in dependency `.pxi`"
                         ),
                     })?;
-            map.insert(DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)), *id);
+            map.insert(def_id, *id);
         }
     }
 
@@ -759,17 +765,25 @@ fn build_global_fn_map(
             continue;
         };
         if !module_in_workspace_package(&logical, workspace) {
-            if !map.contains_key(&f.def) {
-                let name = interner.resolve(def.name);
-                let export_id = stable_export_id(&logical, name, "fn");
-                if dep_template_fn_exports.contains(&export_id) {
-                    continue;
-                }
-                return Err(BuildError::StaleInterface {
-                    module: logical,
-                    message: format!("missing function_id for dependency fn `{name}` in `.pxi`"),
-                });
+            if map.contains_key(&f.def) {
+                continue;
             }
+            let name = interner.resolve(def.name);
+            let export_id = if typed.specialized_from.contains_key(&f.def) {
+                mangle_export_id(&logical, "fn", name)
+            } else {
+                stable_export_id(&logical, name, "fn")
+            };
+            if dep_template_fn_exports.contains(&export_id) {
+                continue;
+            }
+            if let Some(&id) = dep_export_fn_ids.get(&export_id) {
+                map.insert(f.def, id);
+                continue;
+            }
+            // Dependency generic impl method monomorphized in this crate.
+            map.insert(f.def, next);
+            next = next.saturating_add(1);
             continue;
         }
         if map.contains_key(&f.def) {

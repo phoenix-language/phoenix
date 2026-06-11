@@ -1,0 +1,9 @@
+[project]
+name = "dynamic_array_drop_smoke"
+version = "0.1.0"
+description = "DynamicArray scope-exit Drop smoke test"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

@@ -749,7 +749,7 @@ fn lower_postfix_inner(
                 lower_expr(ctx, arg);
             }
             if let Some(site) = ctx.typed.intrinsic_call_sites.get(&postfix_expr_id) {
-                lower_intrinsic_call(ctx, *site, result_ty);
+                lower_intrinsic_call(ctx, *site, result_ty, postfix_expr_id);
             } else {
                 ctx.emit(IrInst::Call {
                     callee,
@@ -872,7 +872,7 @@ fn lower_postfix_inner(
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    lower_intrinsic_call(ctx, *site, result_ty);
+                    lower_intrinsic_call(ctx, *site, result_ty, postfix_expr_id);
                     receiver_ty = result_ty;
                 } else if let Some(meta) = ctx.typed.indirect_call_sites.get(&postfix_expr_id) {
                     for arg in args {
@@ -1062,7 +1062,24 @@ fn lower_try_convert_err(
     });
 }
 
-fn lower_intrinsic_call(ctx: &mut LowerCtx<'_>, site: IntrinsicSite, result_ty: TypeId) {
+fn size_of_bytes_for_specialized_fn(ctx: &LowerCtx<'_>) -> Option<u32> {
+    let base = ctx.typed.specialized_from.get(&ctx.layout.def)?;
+    let inst = ctx.typed.mono_insts.iter().find(|i| i.base_fn == *base)?;
+    let elem = *inst.args.first()?;
+    crate::typeck::type_byte_size(
+        &ctx.typed.types,
+        &ctx.typed.layout,
+        &ctx.typed.resolved,
+        elem,
+    )
+}
+
+fn lower_intrinsic_call(
+    ctx: &mut LowerCtx<'_>,
+    site: IntrinsicSite,
+    result_ty: TypeId,
+    expr_id: ExprId,
+) {
     match site {
         IntrinsicSite::AllocBytes => {
             ctx.emit(IrInst::Alloc { result: result_ty });
@@ -1079,6 +1096,24 @@ fn lower_intrinsic_call(ctx: &mut LowerCtx<'_>, site: IntrinsicSite, result_ty: 
                 _ => phx_bytecode::SLOT_KIND_AGG,
             };
             ctx.emit(IrInst::MakeSliceFromPtr { elem_kind });
+        }
+        IntrinsicSite::SizeOf => {
+            let bytes = ctx
+                .typed
+                .size_of_literals
+                .get(&expr_id)
+                .copied()
+                .or_else(|| size_of_bytes_for_specialized_fn(ctx))
+                .unwrap_or(0);
+            let idx = ctx.intern_const(IrConst::Int(
+                i128::from(bytes),
+                phx_bytecode::PrimitiveKind::U32,
+            ));
+            ctx.emit(IrInst::Const {
+                index: idx,
+                ty: result_ty,
+                prim_kind: phx_bytecode::PrimitiveKind::U32.as_u8(),
+            });
         }
     }
 }

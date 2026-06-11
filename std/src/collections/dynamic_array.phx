@@ -1,0 +1,80 @@
+// std::collections::dynamic_array — growable buffer over VmHeapAllocator (V0).
+
+#import std::core::memory::allocator::{Allocator, Layout, VmHeapAllocator};
+#import std::core::drop::Drop;
+#import std::core::slice::slice_from_raw_parts;
+#import std::core::mem::size_of;
+
+pub DynamicArray :: <t> struct {
+    ptr: *mut u8,
+    len: u32,
+    cap: u32,
+    alloc: VmHeapAllocator,
+};
+
+DynamicArray :: <t> impl {
+    len :: (self: &Self) => u32 {
+        self.len
+    };
+
+    get :: (self: &Self, index: u32) => t {
+        unsafe {
+            const elem_ptr: *mut t = self.ptr as *mut t;
+            const sl: [t] = slice_from_raw_parts(elem_ptr, self.len);
+            sl[index]
+        };
+    };
+
+    push :: (self: &mut Self, value: t) => () {
+        if self.len >= self.cap {
+            self.grow();
+        };
+        unsafe {
+            const elem_ptr: *mut t = self.ptr as *mut t;
+            const sl: [t] = slice_from_raw_parts(elem_ptr, self.cap);
+            sl[self.len] = value;
+        };
+        self.len = self.len + 1u;
+    };
+
+    grow :: (self: &mut Self) => () {
+        const new_cap: u32 = if self.cap == 0u { 4u } else { self.cap * 2u };
+        const elem_size: u32 = size_of :: <t> ();
+        const byte_size: u32 = new_cap * elem_size;
+        const layout: Layout = Layout { size: byte_size, align: 1u };
+        unsafe {
+            const new_ptr: *mut u8 = self.alloc.alloc(layout);
+            if self.len > 0u {
+                var i: u32 = 0u;
+                while i < self.len {
+                    const old_elem_ptr: *mut t = self.ptr as *mut t;
+                    const old_sl: [t] = slice_from_raw_parts(old_elem_ptr, self.len);
+                    const new_elem_ptr: *mut t = new_ptr as *mut t;
+                    const new_sl: [t] = slice_from_raw_parts(new_elem_ptr, new_cap);
+                    new_sl[i] = old_sl[i];
+                    i = i + 1u;
+                };
+            };
+            if self.cap > 0u {
+                const old_byte_size: u32 = self.cap * elem_size;
+                const old_layout: Layout = Layout { size: old_byte_size, align: 1u };
+                self.alloc.dealloc(self.ptr, old_layout);
+            };
+            self.ptr = new_ptr;
+            self.cap = new_cap;
+        };
+    };
+};
+
+DynamicArray :: <t> impl :: Drop {
+    drop :: (self) => () {
+        if self.cap != 0u {
+            const elem_size: u32 = size_of :: <t> ();
+            const byte_size: u32 = self.cap * elem_size;
+            const layout: Layout = Layout { size: byte_size, align: 1u };
+            unsafe {
+                self.alloc.dealloc(self.ptr, layout);
+            };
+        };
+    };
+};

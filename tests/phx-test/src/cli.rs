@@ -86,6 +86,7 @@ pub const NEG_CHECK_FIXTURES: &[(&str, &str)] = &[
     ("for_in_bad.phx", "IntoIter"),
     ("derive_bad.phx", "unsupported derive trait"),
     ("newtype_bad.phx", "type mismatch"),
+    ("unique_ptr_use_after_move.phx", "moved"),
 ];
 
 /// Captured output from a `phx` subprocess invocation.
@@ -138,7 +139,17 @@ impl PhxOutput {
     }
 }
 
-/// Runner for the `phx` CLI binary at `{repo_root}/target/debug/phx`.
+/// Path to the freshly built `phx` binary (honors `CARGO_TARGET_DIR` when set).
+#[must_use]
+pub fn phx_bin_path() -> PathBuf {
+    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
+        PathBuf::from(dir).join("debug/phx")
+    } else {
+        repo_root().join("target/debug/phx")
+    }
+}
+
+/// Runner for the `phx` CLI binary at [`phx_bin_path`].
 #[derive(Debug)]
 pub struct PhxCli {
     bin: PathBuf,
@@ -155,7 +166,7 @@ impl PhxCli {
                 .expect("spawn cargo build -p phx");
             assert!(status.success(), "cargo build -p phx failed");
         });
-        let bin = repo_root().join("target/debug/phx");
+        let bin = phx_bin_path();
         assert!(bin.is_file(), "missing binary: {}", bin.display());
         Self { bin }
     }

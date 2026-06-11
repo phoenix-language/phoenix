@@ -1,0 +1,5 @@
+// std::core::mem — compile-time layout helpers (compiler-lowering).
+
+pub size_of :: <t>() => u32 {
+    0u
+};

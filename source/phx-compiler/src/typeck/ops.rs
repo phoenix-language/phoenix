@@ -148,8 +148,29 @@ pub fn check_cast(env: &AliasEnv<'_>, from: TypeId, to: TypeId) -> bool {
         (Ty::Str, Ty::Slice(slice_elem)) => {
             matches!(types.get(*slice_elem), Ty::Primitive(Keyword::U8))
         }
+        (
+            Ty::Ptr {
+                inner: from_inner, ..
+            },
+            Ty::Ptr {
+                inner: to_inner, ..
+            },
+        ) => ptr_elem_cast_allowed(types, *from_inner, *to_inner),
         _ => from == to,
     }
+}
+
+fn ptr_elem_cast_allowed(types: &TypeInterner, from: TypeId, to: TypeId) -> bool {
+    if from == to {
+        return true;
+    }
+    let from_ty = types.get(from);
+    let to_ty = types.get(to);
+    matches!(
+        (from_ty, to_ty),
+        (Ty::Primitive(Keyword::U8), Ty::Primitive(_))
+            | (Ty::Primitive(_), Ty::Primitive(Keyword::U8))
+    )
 }
 
 fn is_primitive(ty: &Ty) -> bool {

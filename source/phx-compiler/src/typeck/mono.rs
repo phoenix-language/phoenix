@@ -60,7 +60,56 @@ pub fn monomorphize(
     let mut bag = TypeCheckBag::new();
     monomorphize_functions(typed, fn_insts, &mut bag);
     monomorphize_types(typed, type_insts, &mut bag);
+    patch_specialized_drop_fns(typed);
     bag
+}
+
+fn patch_specialized_drop_fns(typed: &mut TypedProgram) {
+    let mut patches: Vec<(usize, usize, DefId)> = Vec::new();
+    for (layout_idx, layout) in typed.functions.iter().enumerate() {
+        for (event_idx, event) in layout.drop_events.iter().enumerate() {
+            let super::types::Ty::Named { def, args } = typed.types.get(event.ty).clone() else {
+                continue;
+            };
+            let Some(template_drop) = super::builtins::resolve_drop_fn(
+                &typed.layout,
+                &typed.resolved,
+                &typed.std_trait_kernel,
+                def,
+                &args,
+            ) else {
+                continue;
+            };
+            if event.drop_fn != template_drop {
+                continue;
+            }
+            if let Some(spec) = specialized_fn_for_inst(typed, template_drop, &args) {
+                patches.push((layout_idx, event_idx, spec));
+            }
+        }
+    }
+    for (layout_idx, event_idx, spec) in patches {
+        typed.functions[layout_idx].drop_events[event_idx].drop_fn = spec;
+    }
+}
+
+fn specialized_fn_for_inst(
+    typed: &TypedProgram,
+    base_fn: DefId,
+    args: &[super::types::TypeId],
+) -> Option<DefId> {
+    let expected =
+        mangle::mangle_symbol_for_specialization(&typed.resolved, base_fn, args, &typed.types);
+    typed.specialized_from.iter().find_map(|(spec, base)| {
+        if *base != base_fn {
+            return None;
+        }
+        let name = typed
+            .resolved
+            .interner
+            .resolve(typed.resolved.defs[spec.index() as usize].name);
+        (name == expected).then_some(*spec)
+    })
 }
 
 #[allow(clippy::too_many_lines)]
@@ -102,6 +151,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             &typed.layout,
             &typed.types,
             &typed.std_trait_kernel,
+            &typed.value_types,
             Some(&combined_generics),
             &param_defs,
             &inst.args,
@@ -153,6 +203,8 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 try_sites,
                 associated_fn_sites,
                 indirect_call_sites,
+                intrinsic_call_sites,
+                size_of_literals,
             ) = checker.finish_all();
             if checker_bag.has_errors() {
                 for located in checker_bag.into_errors() {
@@ -167,6 +219,8 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             typed.try_sites.extend(try_sites);
             typed.associated_fn_sites.extend(associated_fn_sites);
             typed.indirect_call_sites.extend(indirect_call_sites);
+            typed.intrinsic_call_sites.extend(intrinsic_call_sites);
+            typed.size_of_literals.extend(size_of_literals);
             typed.value_types.extend(value_types);
         }
         for node_id in &inst.call_sites {
@@ -225,6 +279,7 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
             &typed.layout,
             &typed.types,
             &typed.std_trait_kernel,
+            &typed.value_types,
             generic_params.as_deref(),
             &param_defs,
             &inst.args,
@@ -560,9 +615,6 @@ pub fn collect_cross_crate_mono_reqs(
         if module_in_workspace_package(&logical, workspace_package) {
             continue;
         }
-        if !base_def.exported {
-            continue;
-        }
         let dep_package = logical
             .split("::")
             .next()
@@ -617,7 +669,7 @@ pub fn apply_mono_worklist(
         if specialized_export_exists(typed, &req.mangled_name) {
             continue;
         }
-        let Some(base_fn) = find_exported_fn_by_name(
+        let Some(base_fn) = find_fn_by_name(
             &typed.resolved,
             &module_logical,
             &req.logical_module,
@@ -651,11 +703,11 @@ fn module_in_workspace_package(logical: &str, workspace: &str) -> bool {
 }
 
 fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {
-    typed.resolved.defs.iter().any(|d| {
-        d.exported
-            && d.kind == DefKind::Fn
-            && typed.resolved.interner.resolve(d.name) == mangled_name
-    })
+    typed
+        .resolved
+        .defs
+        .iter()
+        .any(|d| d.kind == DefKind::Fn && typed.resolved.interner.resolve(d.name) == mangled_name)
 }
 
 /// Returns true when `def_id` is a generic function template (not a monomorphized specialization).
@@ -707,14 +759,14 @@ fn fn_def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
         .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
 }
 
-fn find_exported_fn_by_name(
+fn find_fn_by_name(
     resolved: &ResolvedProgram,
     module_logical: &impl Fn(u32) -> Option<String>,
     logical_module: &str,
     name: &str,
 ) -> Option<DefId> {
     resolved.defs.iter().enumerate().find_map(|(i, d)| {
-        if d.kind != DefKind::Fn || !d.exported {
+        if d.kind != DefKind::Fn {
             return None;
         }
         let log = module_logical(d.module)?;

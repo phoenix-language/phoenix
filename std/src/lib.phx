@@ -2,6 +2,7 @@
 // Core types: std::core::option::Option, std::core::result::Result, …
 
 pub mod core;
+pub mod collections;
 pub mod ffi;
 
 pub version :: () => s32 { 1 };

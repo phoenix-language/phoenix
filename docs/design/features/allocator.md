@@ -14,7 +14,7 @@ Status: Active — **V0-066**
 |------|-----------|
 | Single intrinsic boundary | Only `VmHeapAllocator` in std calls `alloc_bytes` / `dealloc_bytes` |
 | Pluggable policy in std | Arenas, pools, and test fakes implement `Allocator` in Phoenix source |
-| Default for collections | `Global` is the default backing allocator for `Box`, `DynamicArray`, and similar owning types |
+| Default for collections | `Global` is the default backing allocator for `UniquePtr`, `DynamicArray`, and similar owning types |
 | No compiler special cases | Trait dispatch and monomorphization only — same as `Iterator` or `Drop` |
 
 ---
@@ -25,8 +25,8 @@ Status: Active — **V0-066**
 Application / collections
         │
         ▼
-  Box<T, A>  ──Drop──►  A.dealloc(ptr, layout)
-  DynamicArray<T, A>     (Std v0 — not Language v0)
+  UniquePtr<T, A>  ──Drop──►  A.dealloc(ptr, layout)
+  DynamicArray<T, A>         (Std v0)
         │
         ▼
   Allocator trait  (std::core::memory::allocator)
@@ -41,19 +41,19 @@ Application / collections
   VM bump heap + allocation ledger
 ```
 
-### `Allocator` → `Drop` on `Box`
+### `Allocator` → `Drop` on `UniquePtr`
 
-`Box<T, A>` (Std v0) stores:
+`UniquePtr<T, A>` (Std v0; Rust `Box` equivalent) stores:
 
 - `ptr: *mut T` (or raw bytes + typed view),
 - `layout: Layout`,
 - `alloc: A` (or `A` held by reference / ZST handle).
 
-Construction calls `A.alloc(layout)` (inside `unsafe` at the std boundary). On scope exit, `Drop for Box<T, A>` calls `A.dealloc(ptr, layout)` — **not** the intrinsics directly. Custom allocators therefore control both allocation and reclamation without changing VM opcodes.
+Construction calls `A.alloc(layout)` (inside `unsafe` at the std boundary). On scope exit, `Drop for UniquePtr<T, A>` calls `A.dealloc(ptr, layout)` — **not** the intrinsics directly. Custom allocators therefore control both allocation and reclamation without changing VM opcodes.
 
 `DynamicArray<T, A: Allocator = Global>` follows the same pattern: grow/reallocate via `Allocator`; `Drop` frees the backing store through the trait.
 
-**Language v0 scope:** document this layering; implement `Allocator`, `Layout`, `Global`, and `VmHeapAllocator` only. `Box` and `DynamicArray` are subsequent Std v0 items.
+**Language v0 scope:** document this layering; implement `Allocator`, `Layout`, `Global`, and `VmHeapAllocator` only. `UniquePtr` and `DynamicArray` are subsequent Std v0 items.
 
 ---
 
@@ -106,7 +106,7 @@ Methods take `&mut Self` so stateful allocators (arenas, pools) can update bookk
 | Type | Role |
 |------|------|
 | `VmHeapAllocator` | ZST; **only** std type whose implementation calls `alloc_bytes` / `dealloc_bytes` (inside `unsafe`) |
-| `Global` | Public default name; **type alias** for `VmHeapAllocator` in V0-066 (wrapper struct with forwarding lives in a follow-up when field trait dispatch is stable) |
+| `Global` | Public default name; **type alias** for `VmHeapAllocator` (trait bound checks resolve aliases to the underlying impl) |
 
 Application and library code should import `Global` (or a custom `Allocator`), not `std::core::alloc` intrinsics. Direct intrinsic use remains legal for low-level tests and compiler fixtures but is discouraged outside `std::core::memory`.
 
@@ -131,7 +131,7 @@ The compiler does not enforce orphans in V0 beyond name resolution and duplicate
 |-------|----------------|
 | Compiler | Lower `alloc_bytes` / `dealloc_bytes` call sites to `ALLOC` / `FREE`; require `unsafe` at call sites |
 | VM | Bump heap + `(ptr, size)` ledger; double-free and size mismatch errors |
-| Std | `Allocator` trait, `Layout`, `Global`, `VmHeapAllocator`; future `Box` / `DynamicArray` |
+| Std | `Allocator` trait, `Layout`, `Global`, `VmHeapAllocator`; `UniquePtr` / `DynamicArray` |
 | Language | **No** allocator type in `Ty`; **no** built-in `Allocator` trait |
 
 ---
@@ -142,13 +142,14 @@ The compiler does not enforce orphans in V0 beyond name resolution and duplicate
 |------|----------|
 | `std::core::alloc` | Intrinsic stubs `alloc_bytes`, `dealloc_bytes` (V0-065) |
 | `std::core::memory::allocator` | `Layout`, `Allocator`, `VmHeapAllocator`, `Global` (alias) (V0-066) |
-| `std::collections::dynamic_array` | `DynamicArray<T, A: Allocator>` (Std v0, after V0-066) |
+| `std::core::memory::unique_ptr` | `UniquePtr<T>` over `VmHeapAllocator` (Std v0; generic `A: Allocator` follow-up) |
+| `std::collections::dynamic_array` | `DynamicArray<T>` over `VmHeapAllocator` (Std v0; generic `A` follow-up) |
 
 ---
 
 ## Acceptance (V0-066)
 
-- [x] Design doc: trait shape, `Layout`, orphan rules, layering to `Box` / `Drop`
+- [x] Design doc: trait shape, `Layout`, orphan rules, layering to `UniquePtr` / `Drop`
 - [x] Std implementation: `Allocator`, `Global`, `VmHeapAllocator` in Phoenix source
 - [x] No `Ty::Allocator` or compiler builtin for allocation policy
-- [ ] `Box<T, A>` and `DynamicArray<T, A>` — Std v0 follow-ups (out of V0-066 scope)
+- [x] `UniquePtr<T>` and `DynamicArray<T>` — Std v0 (`std::core::memory::unique_ptr`, `std::collections::dynamic_array`); pluggable `A: Allocator` generic param is a follow-up

@@ -121,6 +121,8 @@ pub struct TypeChecker<'a> {
     indirect_call_sites: HashMap<ExprId, IndirectCallMeta>,
     /// VM intrinsic call sites (`alloc_bytes`, …).
     intrinsic_call_sites: HashMap<ExprId, IntrinsicSite>,
+    /// Compile-time `size_of` results keyed by postfix `Call` expression id.
+    size_of_literals: HashMap<ExprId, u32>,
     /// Kernel of std intrinsic definition ids.
     intrinsic_kernel: IntrinsicKernel,
     /// Nesting depth of `unsafe` blocks and `unsafe fn` bodies.
@@ -205,6 +207,7 @@ impl<'a> TypeChecker<'a> {
             associated_fn_sites: HashMap::new(),
             indirect_call_sites: HashMap::new(),
             intrinsic_call_sites: HashMap::new(),
+            size_of_literals: HashMap::new(),
             intrinsic_kernel: IntrinsicKernel::default(),
             unsafe_depth: 0,
             pending_inherited_defs: Vec::new(),
@@ -412,15 +415,6 @@ impl<'a> TypeChecker<'a> {
         self.value_types.insert(spec_def, fn_ty);
         if let Ty::Fn { ret, .. } = self.types.get(fn_ty).clone() {
             self.fn_ret = Some(ret);
-        }
-        let method_is_generic = f.generics.as_ref().is_some_and(|g| !g.is_empty());
-        let on_generic_impl = self.impl_type_for_method(base_fn).is_some_and(|type_def| {
-            self.find_inherent_impl_generics(type_def)
-                .is_some_and(|params| !params.is_empty())
-        });
-        if on_generic_impl && !method_is_generic {
-            self.fn_ret = None;
-            return;
         }
         let saved_module = self.current_module;
         if let Some(def) = self.resolved.defs.get(spec_def.index() as usize) {
@@ -812,15 +806,17 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn check_intrinsic_call(
         &mut self,
         site: IntrinsicSite,
         def: DefId,
+        type_args: Option<&[Node<Type>]>,
         args: &[ExprNode],
         span: Span,
         expr_id: ExprId,
     ) -> TypeId {
-        if self.unsafe_depth == 0 {
+        if site != IntrinsicSite::SizeOf && self.unsafe_depth == 0 {
             let name = self
                 .resolved
                 .defs
@@ -900,6 +896,67 @@ impl<'a> TypeChecker<'a> {
                 let ret = self.types.intern(&Ty::Slice(inner));
                 self.intrinsic_call_sites.insert(expr_id, site);
                 ret
+            }
+            IntrinsicSite::SizeOf => {
+                let u32_ty = super::builtins::int_literal_type(&mut self.types, true);
+                if !args.is_empty() {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: 0,
+                            found: args.len(),
+                            span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return u32_ty;
+                }
+                let Some(type_args) = type_args else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "size_of requires an explicit type argument",
+                            span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return u32_ty;
+                };
+                if type_args.len() != 1 {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "size_of expects exactly one type argument",
+                            span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return u32_ty;
+                }
+                let type_defs = self.type_defs.clone();
+                let mut queried = self.lower_ast_type_with_defs(&type_args[0], &type_defs);
+                if let Some(subst) = &self.subst {
+                    queried = Substitution::apply(&mut self.types, queried, subst);
+                }
+                let Some(bytes) = super::type_size::type_byte_size(
+                    &self.types,
+                    &self.program_layout,
+                    self.resolved,
+                    queried,
+                ) else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "size_of for this type",
+                            span: type_args[0].span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return u32_ty;
+                };
+                self.size_of_literals.insert(expr_id, bytes);
+                self.intrinsic_call_sites.insert(expr_id, site);
+                u32_ty
             }
         }
     }
@@ -1938,6 +1995,12 @@ impl<'a> TypeChecker<'a> {
             return;
         }
         let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
+        if self.impl_type_for_method(def).is_some_and(|type_def| {
+            super::mono::generic_param_defs_for_type(self.resolved, type_def)
+                .is_some_and(|params| !params.is_empty())
+        }) {
+            return;
+        }
         self.check_function_body(f, def, true);
     }
 
@@ -2242,6 +2305,7 @@ impl<'a> TypeChecker<'a> {
             iter_ty,
             into_iter_trait,
             &[],
+            Some(&self.alias_env()),
         ) {
             let type_name = format_type_diagnostic(
                 &self.types,
@@ -2338,6 +2402,7 @@ impl<'a> TypeChecker<'a> {
             iter_state_ty,
             iterator_trait,
             &[],
+            Some(&self.alias_env()),
         ) {
             let type_name = format_type_diagnostic(
                 &self.types,
@@ -2926,8 +2991,14 @@ impl<'a> TypeChecker<'a> {
             );
             return self.unit;
         };
-        let Some(fn_def) =
-            find_trait_method_def(&self.program_layout, def, &implementer_args, method.symbol)
+        let Some(fn_def) = self
+            .program_layout
+            .inherent_methods
+            .get(&(def, method.symbol))
+            .copied()
+            .or_else(|| {
+                find_trait_method_def(&self.program_layout, def, &implementer_args, method.symbol)
+            })
         else {
             self.emit_ambiguous_or_unresolved_method(target_ty, def, &method, span);
             return self.unit;
@@ -3061,7 +3132,7 @@ impl<'a> TypeChecker<'a> {
                         callee_def,
                         callee_def.and_then(|d| self.intrinsic_kernel.site_for_call(d)),
                     ) {
-                        if generics.is_some() {
+                        if generics.is_some() && site != IntrinsicSite::SizeOf {
                             self.bag.push(
                                 self.current_module,
                                 TypeCheckError::UnsupportedFeature {
@@ -3070,7 +3141,14 @@ impl<'a> TypeChecker<'a> {
                                 },
                             );
                         }
-                        ty = self.check_intrinsic_call(site, def, args, span, expr_id);
+                        ty = self.check_intrinsic_call(
+                            site,
+                            def,
+                            generics.as_deref(),
+                            args,
+                            span,
+                            expr_id,
+                        );
                     } else {
                         let foreign = callee_def.is_some_and(|d| {
                             self.resolved
@@ -3176,11 +3254,42 @@ impl<'a> TypeChecker<'a> {
         {
             return;
         }
+        self.queue_impl_method_monos(base_def, &args);
         self.type_mono_insts.push(TypeMonoInst {
             base_def,
             kind,
             args,
         });
+    }
+
+    fn queue_impl_method_monos(&mut self, type_def: DefId, args: &[TypeId]) {
+        let mut fns: Vec<DefId> = self
+            .program_layout
+            .inherent_methods
+            .iter()
+            .filter_map(|((def, _), fn_def)| (*def == type_def).then_some(*fn_def))
+            .collect();
+        for ((key, _), fn_def) in &self.program_layout.trait_methods {
+            if key.implementer == type_def && key.implementer_args.is_empty() {
+                fns.push(*fn_def);
+            }
+        }
+        fns.sort_by_key(|d| d.index());
+        fns.dedup();
+        for base_fn in fns {
+            if self
+                .mono_insts
+                .iter()
+                .any(|i| i.base_fn == base_fn && i.args == args)
+            {
+                continue;
+            }
+            self.mono_insts.push(MonoInst {
+                base_fn,
+                args: args.to_vec(),
+                call_sites: Vec::new(),
+            });
+        }
     }
 
     /// Ensures monomorphized layout exists when matching on a generic enum scrutinee.
@@ -5127,6 +5236,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<DefId, TypeId>,
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
+        HashMap<ExprId, u32>,
         IntrinsicKernel,
         Vec<crate::resolver::Def>,
         trait_defaults::InheritedTraitMethods,
@@ -5147,6 +5257,7 @@ impl<'a> TypeChecker<'a> {
             self.value_types,
             self.indirect_call_sites,
             self.intrinsic_call_sites,
+            self.size_of_literals,
             self.intrinsic_kernel,
             self.pending_inherited_defs,
             self.inherited_trait_methods,
@@ -5154,7 +5265,6 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
-    #[allow(clippy::type_complexity)]
     #[allow(clippy::type_complexity)]
     pub(crate) fn finish_all(
         self,
@@ -5169,6 +5279,8 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, DefId>,
         HashMap<ExprId, IndirectCallMeta>,
+        HashMap<ExprId, IntrinsicSite>,
+        HashMap<ExprId, u32>,
     ) {
         (
             self.types,
@@ -5181,6 +5293,8 @@ impl<'a> TypeChecker<'a> {
             self.try_sites,
             self.associated_fn_sites,
             self.indirect_call_sites,
+            self.intrinsic_call_sites,
+            self.size_of_literals,
         )
     }
 
@@ -5467,6 +5581,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         value_types,
         indirect_call_sites,
         intrinsic_call_sites,
+        size_of_literals,
         intrinsic_kernel,
         pending_inherited_defs,
         inherited_trait_methods,
@@ -5496,6 +5611,7 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
         value_types,
         indirect_call_sites,
         intrinsic_call_sites,
+        size_of_literals,
         intrinsic_kernel,
         inherited_trait_methods,
         fn_effective_unsafe,

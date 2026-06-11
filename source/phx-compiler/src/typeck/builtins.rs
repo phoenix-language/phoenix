@@ -202,13 +202,15 @@ pub fn implements_drop_for_def(
     args: &[TypeId],
 ) -> bool {
     if let Some(drop_trait) = std_traits.drop_trait {
-        if layout_has_trait_impl(layout, def, args, drop_trait, &[]) {
+        if layout_has_trait_impl(layout, def, args, drop_trait, &[])
+            || (!args.is_empty() && layout_has_trait_impl(layout, def, &[], drop_trait, &[]))
+        {
             return true;
         }
     }
     layout.trait_methods.keys().any(|(key, _)| {
         key.implementer == def
-            && key.implementer_args.as_slice() == args
+            && implementer_args_match(&key.implementer_args, args)
             && is_drop_trait_def(resolved, key.trait_def)
     })
 }
@@ -244,7 +246,7 @@ pub fn resolve_drop_fn(
         .iter()
         .filter(|((key, _), _)| {
             key.implementer == type_def
-                && key.implementer_args.as_slice() == type_args
+                && implementer_args_match(&key.implementer_args, type_args)
                 && is_drop_trait_def(resolved, key.trait_def)
         })
         .map(|(_, f)| *f)
@@ -256,6 +258,10 @@ pub fn resolve_drop_fn(
     } else {
         None
     }
+}
+
+fn implementer_args_match(key_args: &[TypeId], concrete_args: &[TypeId]) -> bool {
+    key_args == concrete_args || (key_args.is_empty() && !concrete_args.is_empty())
 }
 
 fn layout_has_trait_impl(

@@ -1,5 +1,7 @@
 //! Trait bound checking at generic instantiation sites.
 
+use std::collections::HashMap;
+
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 use phx_syntax::Span;
 use phx_syntax::ast::Node;
@@ -12,6 +14,7 @@ use super::lower_ty::{build_type_def_map, lower_type};
 use super::std_trait_kernel::StdTraitKernel;
 use super::subst::Substitution;
 use super::types::{Ty, TypeId, TypeInterner};
+use super::unify::AliasEnv;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Validates that each concrete type argument satisfies the corresponding generic parameter bounds.
@@ -24,6 +27,7 @@ pub fn validate_instantiation_bounds(
     layout: &ProgramLayout,
     types: &TypeInterner,
     std_traits: &StdTraitKernel,
+    value_types: &HashMap<DefId, TypeId>,
     generics: Option<&[GenericParam]>,
     param_defs: &[DefId],
     concrete_args: &[TypeId],
@@ -31,6 +35,11 @@ pub fn validate_instantiation_bounds(
     span: Span,
     bag: &mut TypeCheckBag,
 ) -> bool {
+    let alias_env = AliasEnv {
+        types,
+        defs: &resolved.defs,
+        value_types,
+    };
     let Some(generic_params) = generics else {
         return true;
     };
@@ -97,6 +106,7 @@ pub fn validate_instantiation_bounds(
                 concrete,
                 trait_def,
                 &trait_args,
+                Some(&alias_env),
             ) {
                 let type_name = format_type_name(resolved, types, concrete);
                 let trait_name = format_trait_bound(resolved, types, &bound.inner);
@@ -197,7 +207,11 @@ pub fn type_satisfies_trait_inst(
     concrete: TypeId,
     trait_def: DefId,
     trait_args: &[TypeId],
+    aliases: Option<&AliasEnv<'_>>,
 ) -> bool {
+    let concrete = aliases
+        .map(|env| super::unify::normalize_type(env, concrete))
+        .unwrap_or(concrete);
     if std_traits.is_copyable_trait(trait_def) && trait_args.is_empty() {
         return type_satisfies_copyable(types, layout, std_traits, concrete);
     }
@@ -217,13 +231,15 @@ pub fn type_satisfies_trait_inst(
         Ty::Tuple(elems) => {
             trait_args.is_empty()
                 && elems.iter().all(|e| {
-                    type_satisfies_trait_inst(layout, types, std_traits, *e, trait_def, trait_args)
+                    type_satisfies_trait_inst(
+                        layout, types, std_traits, *e, trait_def, trait_args, aliases,
+                    )
                 })
         }
         Ty::Array { elem, .. } => {
             trait_args.is_empty()
                 && type_satisfies_trait_inst(
-                    layout, types, std_traits, *elem, trait_def, trait_args,
+                    layout, types, std_traits, *elem, trait_def, trait_args, aliases,
                 )
         }
         _ => false,
@@ -279,6 +295,7 @@ pub fn resolve_from_fn_for_error(
         err_out,
         from_trait_def,
         &[err_in],
+        None,
     ) {
         return None;
     }

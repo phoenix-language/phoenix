@@ -9,6 +9,8 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Logical module path for std heap allocation.
 const STD_ALLOC_MODULE: &str = "std::core::alloc";
+/// Logical module path for compile-time layout helpers.
+const STD_MEM_MODULE: &str = "std::core::mem";
 /// Logical module path for std slice construction.
 const STD_SLICE_MODULE: &str = "std::core::slice";
 
@@ -21,6 +23,8 @@ pub struct IntrinsicKernel {
     pub dealloc_bytes: Option<DefId>,
     /// `std::core::slice::slice_from_raw_parts`
     pub slice_from_raw_parts: Option<DefId>,
+    /// `std::core::mem::size_of`
+    pub size_of: Option<DefId>,
 }
 
 /// Lowering hint for a call to a compiler intrinsic.
@@ -32,6 +36,8 @@ pub enum IntrinsicSite {
     DeallocBytes,
     /// `slice_from_raw_parts(ptr, len)` → `MAKE_SLICE_FROM_PTR` opcode.
     SliceFromRawParts,
+    /// `size_of::<T>()` → compile-time `u32` constant.
+    SizeOf,
 }
 
 impl IntrinsicKernel {
@@ -64,6 +70,9 @@ impl IntrinsicKernel {
                 DefKind::Fn,
             );
         }
+        if let Some(mod_id) = module_id(resolved, STD_MEM_MODULE) {
+            kernel.size_of = find_def(resolved, &resolved.interner, mod_id, "size_of", DefKind::Fn);
+        }
         kernel
     }
 
@@ -76,6 +85,8 @@ impl IntrinsicKernel {
             Some(IntrinsicSite::DeallocBytes)
         } else if self.slice_from_raw_parts == Some(def) {
             Some(IntrinsicSite::SliceFromRawParts)
+        } else if self.size_of == Some(def) {
+            Some(IntrinsicSite::SizeOf)
         } else {
             None
         }
@@ -87,6 +98,7 @@ impl IntrinsicKernel {
         self.alloc_bytes == Some(def)
             || self.dealloc_bytes == Some(def)
             || self.slice_from_raw_parts == Some(def)
+            || self.size_of == Some(def)
     }
 }
 
