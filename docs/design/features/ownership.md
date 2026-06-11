@@ -270,12 +270,16 @@ Phoenix has no GC. Heap bytes come from `#import std::core::alloc::alloc_bytes` 
 | Rule | Behavior |
 |---|---|
 | Pairing | Every `alloc_bytes(n)` must have exactly one matching `dealloc_bytes(ptr, n)` on all paths, or the block leaks until the VM run ends |
-| `Drop` | Std owning wrappers (`Box`, buffers, growable collections) implement `Drop` to call `dealloc_bytes` inside `unsafe` |
+| `Drop` | Std owning wrappers (`Box`, buffers, growable collections) implement `Drop` to deallocate via `Allocator` (see [allocator.md](allocator.md)) |
 | Raw pointers | Copyable address values; copying the pointer does not transfer deallocation responsibility |
 | Compiler | No proof of pairing in V0-065; VM ledger catches double-free and size mismatch at runtime |
 | Compaction | `FREE` marks bytes dead (zeroed) but does not shrink the bump heap |
 
-Future std layering: an `Allocator` trait (V0-066) wraps these intrinsics; only the default VM heap allocator calls `alloc_bytes` / `dealloc_bytes` directly. See [language-v0-completion-roadmap.md](language-v0-completion-roadmap.md).
+### Std allocator layering (V0-066)
+
+Heap intrinsics remain in `std::core::alloc`. The `Allocator` trait in `std::core::memory::allocator` wraps them; **only** `VmHeapAllocator` calls `alloc_bytes` / `dealloc_bytes` directly. Application code and collections use `Global` (or a custom `Allocator`) instead of the intrinsics. Owning types such as `Box` and `DynamicArray` call `Allocator::dealloc` from `Drop`, not the intrinsics.
+
+Full trait shape, `Layout`, orphan rules, and `Allocator` → `Drop` on `Box`: [allocator.md](allocator.md).
 
 ---
 
@@ -287,5 +291,6 @@ Future std layering: an `Allocator` trait (V0-066) wraps these intrinsics; only 
 | Actor runtime design | [concurrency.md](concurrency.md) |
 | `#unsafe` forms | [compiler-directives.md](compiler-directives.md) |
 | VM move/borrow opcodes | [vm-linear.md](vm-linear.md) |
+| Heap allocator trait | [allocator.md](allocator.md) |
 | std `Clone` / phased `Copyable` | [traits.md](traits.md#clone-and-copyable), [Phased: Copyable](traits.md#phased-copyable-language--std) |
 | `Option` / `Result` (std, post-MVP) | [type-system.md](type-system.md#phased-option-and-result-language--std) |

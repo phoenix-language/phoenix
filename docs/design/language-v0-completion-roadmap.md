@@ -57,7 +57,7 @@ flowchart LR
 | **Match on multi-payload `Result`** | [error-handling.md](features/error-handling.md) requires `match` / `if const` / `?` | `Option` match solid; `Result<ok, err>` with **two generic parameters** partial   | — (partial in audit)     |
 | Heap `ALLOC` intrinsic              | Done (V0-030)                                                                       | Done                                                                              | V0-030                   |
 | `dealloc_bytes` / `FREE`            | Documented in design (V0-065)                                                       | Done                                                                              | V0-065                   |
-| Pluggable `Allocator` trait         | Not yet designed                                                                    | Not implemented                                                                   | Std v0 (post-completion) |
+| Pluggable `Allocator` trait         | [allocator.md](features/allocator.md) (V0-066)                                      | Std `Allocator` + `Global` in Phoenix source                                      | V0-066                   |
 
 
 ### What already works (do not re-litigate)
@@ -317,6 +317,8 @@ Status: **Done** (implemented)
 **Work:** Author design section in [ownership.md](features/ownership.md) or new `docs/design/features/allocator.md`. Implement in std **after** V0-065. Generic `DynamicArray<T, A: Allocator = Global>` is Std v0 scope — not a Language v0 compiler item.
 
 **Acceptance:** Document trait shape, `Layout`, orphan rules, and layering (`Allocator` → `Drop` on `Box`). No `Ty::Allocator` in compiler.
+
+Status: **Done** (design + std `Allocator` / `Global` / `VmHeapAllocator`)
 
 ---
 

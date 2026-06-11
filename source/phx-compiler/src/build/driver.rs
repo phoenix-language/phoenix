@@ -432,6 +432,7 @@ fn write_interfaces_and_collect_objects(
 
     let stale_modules =
         workspace_stale_modules(loaded, layout, &dep_names, *old_manifest, *options);
+    let rebuild_all_workspace = !stale_modules.is_empty();
 
     for module in &loaded.modules {
         let logical = module.logical_path.display();
@@ -456,6 +457,7 @@ fn write_interfaces_and_collect_objects(
 
         let skip = old_manifest.is_some_and(|old| {
             !options.force
+                && !rebuild_all_workspace
                 && !stale_modules.contains(&logical)
                 && !module_imports_stale(&deps, &stale_modules)
                 && module_is_up_to_date(

@@ -1,0 +1,3 @@
+// std::core::memory — allocation policy (traits and layouts).
+
+pub mod allocator;

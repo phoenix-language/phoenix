@@ -413,3 +413,5 @@ Generic types, `Clone`/`Eq`, and custom derives are out of scope for V0-056.
 ## Trait impl scope and orphans
 
 A `Type :: impl :: Trait` block should live where either the trait or the type is defined (orphan-rule family constraint) to prevent conflicting downstream implementations.
+
+Std example: `Allocator` and `Global :: impl :: Allocator` both live in `std::core::memory::allocator` — see [allocator.md](allocator.md).

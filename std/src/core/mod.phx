@@ -11,4 +11,5 @@ pub mod drop;
 pub mod cmp;
 pub mod fmt;
 pub mod alloc;
+pub mod memory;
 pub mod slice;

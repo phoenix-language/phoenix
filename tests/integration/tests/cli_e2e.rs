@@ -350,6 +350,16 @@ fn build_heap_dealloc() {
 }
 
 #[test]
+fn build_allocator_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("allocator_smoke");
+        let project = cli_project("allocator_smoke");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/allocator_smoke.phx0").is_file());
+    });
+}
+
+#[test]
 fn check_heap_dealloc_unsafe_fails() {
     e2e(|cli| {
         let project = cli_project("heap_dealloc_unsafe");
