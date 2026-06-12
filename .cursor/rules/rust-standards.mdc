@@ -1,0 +1,52 @@
+---
+description: Rust standards — types, ownership, errors, panics, API design, docs
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust standards
+
+Correctness first — a compiler that produces wrong output is worse than one that produces none. Make wrong states unrepresentable; optimize for readers and invariants, not cleverness.
+
+## Types
+
+- **Newtypes** for anything with domain meaning: `Symbol`, `TypeId`, `NodeId`, offsets, slots. Never pass bare `u32` where an ID is meant.
+- Validate at **construction boundaries** (parse, load, verify); inner code assumes valid values. Private fields by default + fallible `new`.
+- Prefer one `enum` over parallel `bool`s/`Option`s that must stay consistent (`OwnershipState::Moved(Span)` beats `is_moved: bool` + `move_span: Option<Span>`).
+- `#[non_exhaustive]` on public enums modeling extensible domains (AST nodes, tokens, opcodes).
+- `Option<T>` over sentinels (`0`, `-1`, `""`). `Option` = absence is normal; `Result` = failure needs reporting.
+- Intern identifiers — store `Symbol` in AST/IR nodes, never `String`. `&str` at API boundaries; `String` only when you allocate or store.
+- Fixed-width ints (`u8`/`u32`/…) in file formats and wire layouts; `usize` only for host indexing. Convert with `try_from`; no silent truncation.
+
+## Ownership and memory
+
+- Move owned data forward through pipeline stages; borrow for shared readers. Repeated `clone` in hot paths is a design smell — restructure or use arenas/handles.
+- `Vec::with_capacity` when a bound is known; reuse buffers (`clear()` + refill) in lexer/serializer loops.
+- Arena/bulk allocation for many same-lifetime nodes — don't `Box` AST/IR nodes individually.
+- `std::mem::take`/`replace` to move out of `&mut T` without cloning.
+
+## Errors and panics
+
+- **Never panic on external input** — user source, bytecode from disk, CLI args, env. Every such path returns a `Result` with a domain error (`LexError`, `ParseError`, `VmError`, … one per module) feeding `phx-diagnostics`.
+- `unwrap`/`expect` are **denied by Clippy** outside tests. Use `match`, `if let`, or `?`.
+- Implement `Display` + `std::error::Error` manually — no error crates.
+- `#[must_use]` on `Result`-like types and important outputs.
+- Parser and passes **recover** after errors (collect into a diagnostic bag); one syntax error must not abort the file.
+- `debug_assert!` for internal invariants; `unreachable!` only after a match the type system proves exhaustive — if a variant could arrive from deserialization, return an internal error instead.
+- Internal bugs surface as a structured internal-compiler-error, never a Rust panic to the user.
+
+## Control flow and API design
+
+- Match **exhaustively** on AST/token/opcode/IR enums — no `_` wildcards; new variants must break compilation at every match site.
+- Spans flow through the whole pipeline: every token, node, and diagnostic carries one. Never discard span information.
+- ≤5 parameters, else a config/context struct. Pass `&mut Ctx` explicitly — no globals or thread-locals.
+- `const`/`const fn` for magic bytes, sizes, opcode tags. Early `return`/`continue` to reduce nesting.
+
+## Performance and concurrency
+
+- Order: correct → clear → profiled → optimized. Hot paths are lexer, parser inner loops, type unification, VM dispatch — profile before touching, and don't optimize cold paths.
+- Compiler passes are **single-threaded**; threads/`Arc` belong to the VM runtime only. Prefer channels over shared mutable state; document `Send`/`Sync` on anything crossing threads; never hold locks across I/O.
+
+## Documentation
+
+`missing_docs` and `missing_errors_doc` are denied — every public item gets a doc comment with `# Errors` for `Result` returns, `# Panics` where any panic path exists (prefer "never panics on malformed input"), and `# Safety` on public `unsafe fn`. Document each bytecode instruction with its stack effect (`[..., a, b] → [..., a + b]`). Code comments explain *why*, not *what*. See `docs/contributing/rust-docs.md`.

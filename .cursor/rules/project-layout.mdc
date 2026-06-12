@@ -1,0 +1,47 @@
+---
+description: Workspace crate map, where code lives, commands, and completion gates
+alwaysApply: true
+---
+
+# Project layout and workflow
+
+Cargo workspace; crates live under `source/`. One pipeline stage per crate — never reach across stages (no typeck logic in codegen, no lexing in the parser, etc.).
+
+| Crate | Owns |
+|---|---|
+| `source/phx-syntax` | Lexer, token stream, parser, AST (`ast/`), interner (`intern.rs`), source files/spans |
+| `source/phx-compiler` | Resolver, typeck (incl. `ownership.rs`, `mono.rs`, intrinsic/std kernels), IR, lowering, codegen, modules, lints, linking, build orchestration |
+| `source/phx-bytecode` | `PHX0` format: opcodes, instructions, sections, encode/decode, constant pool, **verifier** (`verify.rs`), stack-effect metadata |
+| `source/phx-vm` | Interpreter, frames, VM errors, foreign/host functions |
+| `source/phx-diagnostics` | Error types, codes, rendering, `explain` text — all user-facing diagnostics flow through here |
+| `source/phx-cli` / `source/phx` | CLI commands, arg parsing, reporting / binary entry point |
+| `std/` | Phoenix standard library written in Phoenix (`.phx`) |
+| `tests/` | `integration/` (E2E + diagnostics fixtures), `cli/` (fixtures), `phx-test`, `ci/` (policy scripts) |
+
+**Feature order** for any new language feature: lexer → parser → AST → resolver → typeck → IR → codegen → verifier → VM → std → tests. Don't skip the resolver for `#import`/multi-file work.
+
+## Hard project policies
+
+- **Stdlib-only**: no crates.io dependencies — CI (`just dep-check`) fails the build on any. Implement what you need in-tree.
+- Edition 2024. Enforced lints: `missing_docs`, `missing_errors_doc`, `unwrap_used`, `expect_used`, `dbg_macro`, `print_stdout`, `print_stderr` are all **deny**; `clippy::pedantic` and `perf` warn (and `-D warnings` in CI makes warns fatal).
+- Release profile is `panic = "abort"` — panics are never a recovery strategy.
+- Diagnostics shown to Phoenix developers must include a span, a clear message, and a fix hint where possible. Never leak Rust panics, backtraces, or `Debug` dumps to them.
+
+## Commands (Justfile)
+
+| Task | Command |
+|---|---|
+| Build / test everything | `just build` / `just test` (`cargo test --workspace`) |
+| Run a Phoenix file | `just run file.phx` or `just phx <args>` |
+| Language E2E tests | `just test-lang` |
+| Lint / format | `just lint` / `just fmt` |
+| Full pre-commit gate | `just pre-commit` (fmt-check, clippy `-D warnings`, doc-check, dep-check, test-lang) |
+
+## Completion gate
+
+Before marking a task complete, suggesting a commit, or opening a PR:
+
+1. Run `just pre-commit` from the repo root; fix and re-run until green.
+2. `just pre-commit` does **not** run `cargo test --workspace` — run `just test` too when changes touch compiler logic, the VM, or tests.
+
+Commit messages: `[stage]: description` — e.g. `[typeck]: enforce use-after-move diagnostics`, `[lower]: add IndexStore slice stores`. Each commit leaves the workspace building and passing tests. Never commit commented-out code or debug prints.

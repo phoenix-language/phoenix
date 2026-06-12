@@ -1,32 +1,23 @@
 ---
-description: Phoenix language design — semantics, MVP scope, and design doc authority
+description: Phoenix language semantics, MVP scope, and design doc authority
 alwaysApply: true
 ---
 
 # Phoenix language design
 
-You are implementing **Phoenix**, a systems-oriented language with a static frontend and a bytecode VM runtime. Language behavior comes from `docs/design/` — do not invent semantics in code or in conversation.
+You are implementing **Phoenix**, a systems language with a static frontend and a bytecode VM. Language behavior comes from `docs/design/` — **never invent semantics** in code or conversation. If behavior is ambiguous, update the design doc first; prefer narrowing MVP over shipping undocumented semantics.
 
-**Product shape (long-term):**
-
-- Programs compile to portable **`PHX0` bytecode** and run on a Phoenix VM (not LLVM-as-primary).
-- **No GC** — memory safety via ownership, moves, and (post-MVP) borrowing.
-- **Runtime transparency** — pure computation, schedulable I/O, and actor boundaries must be visible in types or syntax (see post-MVP docs).
-- **Errors as values** — post-MVP std `Result<T, E>`, `Option<T>`, and `?`; no exceptions.
-
-Correctness of the **language definition** beats clever features. If a behavior is not in the design docs, it is out of scope until the docs are updated.
-
----
+**Product shape:** portable `PHX0` bytecode on a Phoenix VM (not LLVM); no GC — ownership and moves; errors as values (no exceptions); runtime transparency (pure vs schedulable I/O vs actors, post-MVP).
 
 ## Design authority
 
-Read these before changing language behavior, grammar, or acceptance criteria:
+Read the relevant doc **before** changing language behavior, grammar, or acceptance criteria:
 
-| Document | Use when |
+| Document | Authority over |
 |---|---|
 | `docs/design/mvp.md` | What is in/out of MVP |
 | `docs/design/grammar.ebnf` | Lexer, parser, syntax |
-| `docs/design/features/type-system.md` | Types, primitives, `Option`/`Result` |
+| `docs/design/features/type-system.md` | Types, primitives, `Option`/`Result` phasing |
 | `docs/design/features/ownership.md` | Moves, Copyable, borrows |
 | `docs/design/features/vm-linear.md` | Bytecode format, opcodes, verifier contract |
 | `docs/design/features/modules.md` | `#import`, files as modules, `pub` |
@@ -35,162 +26,30 @@ Read these before changing language behavior, grammar, or acceptance criteria:
 | `docs/design/features/traits.md` | Traits, Copyable vs Clone |
 | `docs/design/features/grammar-deferred.md` | Parse-only / not-yet-designed grammar |
 
-**Post-MVP (reference only — do not implement until MVP checklist passes):**
+Post-MVP reference only (do not implement until the MVP checklist passes): `runtime-transparency.md`, `concurrency.md`, `messages.md`.
 
-| Document | Topic |
-|---|---|
-| `docs/design/features/runtime-transparency.md` | Pure vs schedulable I/O vs actors |
-| `docs/design/features/concurrency.md` | Scheduler, M:N, schedulable I/O |
-| `docs/design/features/messages.md` | Actor messages and ownership |
+## MVP scope
 
----
+Pipeline: **lex → parse → resolve → typeck → lower → bytecode → verify → run** on a single-process, deterministic stack VM. Every executable defines `main :: () => { … }`; compilation fails without it.
 
-## MVP goal
+**In:** `const`/`var`/functions; numeric primitives, `bool`, tuples, `()`, raw pointers, `&T`/`&mut T` in signatures, arrays `[T; N]`, slices; `struct`/`enum`/type aliases; traits (`Name :: trait`, `Type :: impl`, `Type :: impl :: Trait`, static method resolution); `if`, `if const`/`if var`, `match`, `while`, `loop`, `break`, `continue`, `return`; arithmetic/comparison/logical operators; explicit `expr as Type`.
 
-Deliver the pipeline in `docs/design/mvp.md`:
+**Out (do not implement until MVP is accepted):** scheduler, actors, mailboxes, supervision; full borrow checker (beyond use-after-move); primitive `string` (MVP is byte-first: `u8`, arrays, slices, pointers, alloc intrinsics); std I/O, networking, rich collections; std `Option`/`Result`/`?`; JIT, hot reload, `#derive`/`@derive` codegen; deferred grammar semantics.
 
-1. Parse Phoenix source.
-2. Type-check the MVP subset.
-3. Lower to **`PHX0` bytecode**.
-4. **Verify** bytecode, then run on a **single-process stack VM**.
+## Non-negotiable semantics
 
-Every executable program must define:
+- Integer literals default to `s32`; `u` suffix → `u32`; float literals default to `f32`. **No implicit numeric widening/narrowing** — require `expr as Type`.
+- Parameters always explicitly typed; omitted return type → `()`. `if`/`match` expression branches must unify to one type.
+- Uniform `::` declarations: `Name :: struct`, `Name :: enum`, `Name :: trait`, `Type :: impl`, `name :: (…) => T`.
+- **Copyable** = language marker, implicit bitwise copy (never call it Rust's `Copy` in diagnostics). **Clone** = std trait, explicit, may allocate.
+- `#` = compile-time directives (`#import`, `#unsafe`, `#inline`); `@` = runtime (`@spawn`, `@send`) — post-MVP execution semantics.
+- Files are modules; paths use `::`; items private by default; `pub` exports.
+- **Use-after-move is a compile error**; the diagnostic must cite the move site. Full borrow checking is post-MVP.
+- `Option`/`Result` are **post-MVP std enums**, not compiler builtins. MVP typeck rejects `Option`/`Result` types, `Some`/`None`/`Ok`/`Err` ctors, and `?`. Never add `Ty::Option`/`Ty::Result` to the compiler.
+- Collections naming: `Array` `[T; N]` fixed-size, `DynamicArray<T>` growable — never `Vec`/`vector` in Phoenix-facing names.
 
-```phoenix
-main :: () => { /* ... */ }
-```
+## Bytecode and VM contract
 
-Compilation fails if `main` is missing. MVP runs `main` on a plain stack interpreter — no scheduler, no std I/O.
-
----
-
-## MVP in scope
-
-| Area | Included |
-|---|---|
-| Pipeline | lex → parse → resolve → typeck → lower → bytecode |
-| Runtime | single-process stack VM + verifier |
-| Declarations | `const`, `var`, functions |
-| Types | numeric primitives, `bool`, tuples, `()`, raw pointers, `&T` / `&mut T` in signatures, **Arrays** `[T; N]`, slices |
-| User types | `Name :: struct`, `Name :: enum`, type aliases |
-| Traits | `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait` (parse + static method resolution per spec) |
-| Control flow | `if`, `if const` / `if var`, `match`, `while`, `loop`, `break`, `continue`, `return` |
-| Operators | arithmetic, comparison, logical; explicit `expr as Type` |
-
----
-
-## MVP out of scope
-
-Do not implement until MVP is accepted:
-
-- M:N scheduler, actors, mailboxes, supervision
-- Full borrow checker (beyond **use-after-move**)
-- Primitive `string` — MVP is **byte-first** (`u8`, arrays, slices, pointers, alloc intrinsics)
-- Std I/O, networking, rich collections, std `Option` / `Result` / `?`
-- JIT, hot reload, `#derive` / `@derive` codegen
-- Deferred grammar semantics — see `grammar-deferred.md`
-
----
-
-## Feature implementation order
-
-When adding a **language** feature:
-
-**lexer → parser → AST → resolver → type checker → IR → codegen → bytecode verifier → VM → tests**
-
-- Do not skip **resolver** for `#import` or multi-file work.
-- Do not build post-MVP runtime (scheduler, actors) before MVP passes.
-
----
-
-## Language semantics (summary)
-
-Full rules live in the design docs. These are the non-negotiable headlines:
-
-### Types and literals
-
-- No primitive `string` in MVP.
-- Integer literals default to `s32`; `u` suffix → `u32`. Float literals default to `f32`.
-- **No implicit numeric widening/narrowing** — use `expr as Type`.
-- Function parameters are always explicitly typed; omitted return type → `()`.
-- `if` / `match` expression branches must unify to one type.
-- MVP operators are compiler-defined for primitive numerics and `bool` only.
-
-### Copyable vs Clone
-
-- **Copyable** — language marker; implicit **bitwise** copy when eligible. Not Rust’s `Copy` trait name in user-facing diagnostics.
-- **Clone** — std **trait** for explicit duplication that may allocate.
-
-### Declarations
-
-Uniform `::` declaration style: `Name :: struct`, `Name :: enum`, `Name :: trait`, `Type :: impl`, `Type :: impl :: Trait`, and functions `name :: (…) => T`.
-
-### Directives and modules
-
-- `#` — compile-time (`#import`, `#unsafe`, `#inline`, …)
-- `@` — runtime (`@spawn`, `@send`, …) — **post-MVP** execution semantics
-- Files are modules; paths use `::`; items private by default; `pub` exports (`modules.md`).
-
-### Ownership (phased)
-
-- **MVP:** use-after-move is a compile error; diagnostic cites the move site.
-- **Post-MVP:** full borrow checking (`&T` / `&mut T` exclusivity, lifetimes, actor boundaries) per `ownership.md`.
-
-### Errors
-
-- No exceptions. Post-MVP: discarded `Result` / `Option` without `match`, `if const` / `if var`, or `?` is a type error once std defines those enums.
-
----
-
-## Bytecode and VM (language contract)
-
-Implementation details for Rust live in `phoenix-rust.mdc`. The **language** promises:
-
-- On-disk format: magic `PHX0`, header, section table, payloads — see `vm-linear.md`.
-- Portable bytecode; **VM** is per-platform.
-- Variable-length instructions: `opcode` + `operand_count` + operands (indices only — no embedded strings/pointers in instructions).
-- **Verifier** before execution: valid header/sections, jumps, locals, stack depth, valid `entry_function_id` for zero-arity `main`.
-- **MVP VM:** deterministic stack interpreter only.
-
-**Post-MVP VM (documented, not MVP work):** M:N scheduler, schedulable I/O parking, actors/mailboxes, supervision, hot reload, optional JIT — still centered on bytecode distribution.
-
----
-
-## Post-MVP runtime model (language)
-
-Do not implement in the compiler/VM until MVP checklist passes:
-
-- All user code (including `main`) runs under a **scheduler**; no “bare OS thread” Phoenix execution model.
-- **Schedulable I/O** parks the current context cooperatively; must be visible in types at call sites (syntax TBD).
-- **Actors** are opt-in via `@spawn` / `@send` / `@receive` for isolation and supervision.
-- Scheduler + schedulable-I/O runtime **before** std I/O APIs ship.
-
----
-
-## Built-ins and std (design direction)
-
-- The compiler needs a **small intrinsic kernel** (primitives, operators, alloc) known at compile time before a full std exists.
-- **Language core:** `struct`, `enum`, `trait`, `impl`, generics, control flow, `Copyable`, primitives — not rich std APIs.
-- **`Option` / `Result`:** **Post-MVP std** — generic `enum` types in the library, not compiler builtins. MVP type-check rejects `Option`/`Result` types, `Some`/`None`/`Ok`/`Err` ctors, and `?`. See `type-system.md` (Phased: Option and Result). Do not add `Ty::Option` / `Ty::Result` or bootstrap tables in the compiler.
-- Higher-level APIs (text, **`DynamicArray`**, I/O, `Clone`) are std/post-MVP unless listed as MVP bootstrap. Use **`Array`** `[T; N]` for fixed-size sequences and **`DynamicArray<T>`** for growable — not `Vec` or `vector`.
-- Packaging/modules: follow `modules.md`; Odin-style “file = module” and package layout may evolve — do not invent a second module system in code without updating docs.
-
----
-
-## When in doubt
-
-1. Read the relevant `docs/design/` file.
-2. If behavior is ambiguous, update the design doc — do not guess in the implementation.
-3. Prefer narrowing MVP over shipping undocumented semantics.
-
----
-
-## Agent completion gate
-
-Before marking a task complete, suggesting a commit, or opening a PR:
-
-1. From the repo root, run **`just pre-commit`**.
-2. If it fails, fix the issues and re-run until it passes.
-3. Do not describe the branch as ready to push until `just pre-commit` is green.
-
-`just pre-commit` runs `fmt-check`, `clippy` (`-D warnings`), `doc-check` (`cargo doc --no-deps`), and `test-lang` (CLI fixture scripts). It does **not** run `cargo test --workspace`; run that (or `just test`) before merge when changes may affect unit or integration tests.
+- On-disk: magic `PHX0`, header, section table, payloads (`vm-linear.md`). Bytecode is portable; the VM is per-platform.
+- Instructions: `opcode` + `operand_count` + operands — operands are **indices only**, never embedded strings or pointers.
+- The **verifier runs before execution**: header/sections, jump targets, locals, stack depth, valid zero-arity `main` entry. A malformed module must produce a clean error, never a panic or OOB access.

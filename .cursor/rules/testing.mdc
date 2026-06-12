@@ -1,0 +1,30 @@
+---
+description: Testing conventions — unit, integration, diagnostics fixtures
+globs: "**/*.rs,tests/**"
+alwaysApply: false
+---
+
+# Testing
+
+Every compiler pass and VM feature change ships with tests. Arrange–Act–Assert; one behavior per test; `unwrap` is fine inside `#[cfg(test)]`.
+
+## Where tests go
+
+| Kind | Location |
+|---|---|
+| Unit tests | `#[cfg(test)]` module next to the code under test |
+| End-to-end programs | `tests/integration/tests/*.rs` driving full compile/run of Phoenix sources |
+| Diagnostics fixtures | `tests/integration/diagnostics/` — `name.phx` with a `name.stderr` sidecar holding the expected rendered diagnostic |
+| CLI fixtures | `tests/cli/fixtures/` |
+
+## What to cover, per stage
+
+- **Lexer**: table-driven (`input`, `expected`, `name` per row); one row per token type and edge case (empty input, max length, unterminated literals).
+- **Parser**: valid programs assert AST shape; invalid programs assert **error recovery** — the rest of the file still parses and later diagnostics still surface.
+- **Typeck**: the core Phoenix guarantees — use-after-move (diagnostic cites the move site), no implicit numeric conversions, branch type unification, Copyable eligibility.
+- **Bytecode/verifier**: round-trip encode/decode; malformed modules (bad magic, OOB sections, bad jumps, stack underflow) produce clean errors, never panics.
+- **VM**: observable program behavior via integration tests, plus error paths (traps, invalid entry).
+
+Test error paths and edge cases, not just happy paths. When a bug is fixed, add the regression test in the same commit.
+
+Run `just test` for the workspace, `just test-lang` for the CLI/E2E suite (it runs single-threaded by design — keep it that way). New diagnostics need a `.stderr` fixture so rendering changes are caught.

@@ -1,0 +1,40 @@
+---
+description: Unsafe Rust policy — where it belongs, layering, and SAFETY requirements
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Unsafe Rust policy
+
+Phoenix is a language implementation — VMs, arenas, bytecode views, and value layouts legitimately need raw memory control. `unsafe` is a normal tool here, not a sin. What is banned is *casual* unsafe and *leaky* abstractions.
+
+**Default to safe Rust.** Reach for `unsafe` when it is the honest way to express memory, layout, or measured performance — typically in: VM heap/stack frames and tagged values, verified bytecode buffer views (`from_raw_parts` after bounds checks), arenas/bump allocators, `repr(C)` layouts, and platform syscalls. Frontend passes (lex/parse/typeck) should stay safe in practice.
+
+## Layering
+
+1. **Validate at the edge** — verifier, loader, span/length checks prove invariants once.
+2. **Unsafe core** — pointer ops and allocator internals, concentrated behind types that enforce the invariants (`Arena`, `VmStack`, bytecode section views).
+3. **Safe API outward** — callers see `&[u8]`, handles, `Result`; never `*mut u8`. No raw pointers leaking into safe modules; never pass raw pointers across scheduler/thread boundaries.
+
+## Every unsafe block must have
+
+1. A `// SAFETY:` comment listing **all** preconditions: alignment, lifetime, initialization, aliasing, thread context.
+2. The **smallest possible scope** — one operation per block when practical.
+3. For public `unsafe fn`, a `# Safety` rustdoc section mirroring the comment:
+
+```rust
+/// # Safety
+///
+/// `ptr` must be non-null, aligned for `u8`, and valid for reads of `len`
+/// bytes for `'a`.
+pub unsafe fn slice_from_parts<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
+    // SAFETY: caller upholds validity per the function docs.
+    unsafe { std::slice::from_raw_parts(ptr, len) }
+}
+```
+
+## When to stay safe
+
+- **User-controlled lengths/indices**: validate first, then unsafe — never the reverse. A malformed bytecode file must produce a clean error, not UB.
+- **Speed without measurement**: bounds-checked slice iteration is usually fast enough; profile before `get_unchecked`.
+- Remember `&mut` is exclusive even inside unsafe code — document who may read/write and for how long.

@@ -166,7 +166,7 @@ just phx run path/to/main.phx --dump-main
 
 ## Rust contributors
 
-- Coding standards: workspace `.cursor/rules/phoenix-rust.mdc` and [docs/contributing/rust-docs.md](contributing/rust-docs.md)
+- Coding standards: workspace `.cursor/rules/rust-standards.mdc` (plus `rust-unsafe.mdc`, `testing.mdc`) and [docs/contributing/rust-docs.md](contributing/rust-docs.md)
 - Commit messages: `[stage]: description` (e.g. `[typeck]: enforce use-after-move`)
 - PRs: `just pre-commit` must be green
 

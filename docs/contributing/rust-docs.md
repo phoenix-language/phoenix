@@ -1,6 +1,6 @@
 # Rust documentation standards (Phoenix workspace)
 
-This document is the contributor reference for rustdoc in `source/`. Cursor rules in `.cursor/rules/phoenix-rust.mdc` summarize the same template; this file defines **tiers** and **crate order** for doc passes.
+This document is the contributor reference for rustdoc in `source/`. Cursor rules in `.cursor/rules/rust-standards.mdc` summarize the same template; this file defines **tiers** and **crate order** for doc passes.
 
 Language semantics belong in `docs/design/` — do not invent behavior in doc comments.
 
@@ -85,7 +85,7 @@ Do **not** require docs on every private one-line helper.
 ### Tier C — Tooling
 
 - `just doc-check` — `cargo doc --workspace --no-deps`
-- `just pre-commit` — fmt, clippy, CLI lang tests (see `.cursor/rules/phoenix.mdc`)
+- `just pre-commit` — fmt, clippy, doc-check, dep-check, CLI lang tests (see `.cursor/rules/project-layout.mdc`)
 - Full CI parity before merge: `cargo test --workspace`
 
 ---
@@ -102,4 +102,4 @@ cargo test --workspace   # unit + integration (not in pre-commit)
 
 ## Agent / pre-commit gate
 
-Before finishing work in this repo, agents run `**just pre-commit**` from the repo root. See `.cursor/rules/phoenix.mdc` (Agent completion gate).
+Before finishing work in this repo, agents run `**just pre-commit**` from the repo root. See `.cursor/rules/project-layout.mdc` (Completion gate).
