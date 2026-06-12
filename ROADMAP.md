@@ -30,7 +30,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Item | Finding | Work |
 |---|---|---|
 | Fork/join ownership state across `if`/`match` arms | **PHX-023 (Critical)** | Snapshot per arm, join at merge; kills false `UseAfterMove` from sibling branches |
-| Loop back-edge move detection | **PHX-024 (Critical)** | Decide the loop rule (see Open Design Questions), implement, test `loop { use(x); consume(x); }` |
+| Loop back-edge move detection | **PHX-024 (Critical)** | **Decided:** move-in-loop of an outer binding is always an error (Resolved Design Decisions #1); implement + spec in `ownership.md`, test `loop { use(x); consume(x); }` |
 | Model `JumpIfFalse` (and `JumpIfTrue` fall-through) in stack-flow CFG; remove `_` wildcard on `Opcode` | **PHX-045 (Critical)** | Verifier soundness; add `JumpIfFalse` underflow mutation test |
 | Codegen map misses must error, never encode `0` | PHX-034 | `CodegenError` on missing callee/jump/drop-fn targets |
 | Lowering `ExprId` cursor drift must error, never fall back to `()` | PHX-037 | `LowerError` on miss; document ordering invariant on `TypedProgram::expr_types` |
@@ -49,7 +49,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 
 | Item | Finding | Work |
 |---|---|---|
-| Decide and implement (or explicitly document away) partial-move tracking | PHX-025 | Requires design decision in `ownership.md` first |
+| Reject partial moves (moving a non-Copyable field out of a struct) | PHX-025 | **Decided:** error in v0 (Resolved Design Decisions #2); diagnostic suggests borrow or whole-value destructure; spec in `ownership.md` |
 | Remove name-based std-type fallbacks (`find_enum_def_by_name("Option")`, `"Iterator"`/`"From"`/`"Drop"` scans) | PHX-026 | All std-item lookup goes through path-scoped `StdKernel`/`StdTraitKernel`; missing std ⇒ clear error |
 | Generic bounds arity mismatch must error, not silently pass | PHX-027 | Push diagnostic, return failure, negative test |
 | Remove module-level `allow(unreachable_patterns)` / `_` arms on AST enums in typeck and lower | PHX-019 | Explicit arms (an `unsupported` diagnostic arm is acceptable) |
@@ -58,7 +58,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Eliminate the parser's raw-pointer recovery bag (`unsafe`) | PHX-001 | Own the bag in `Parser` |
 | `Interner::resolve` must not mask invalid symbols | PHX-003 | `Option<&str>`; restrict `Symbol::from_raw` |
 | Unclosed `{` emits `UnexpectedEof` | PHX-006 | Parser recovery diagnostic |
-| `range_pattern`: parse-and-defer or reject with `UnsupportedSyntax` | PHX-007 | Pick per `grammar-deferred.md` policy |
+| `range_pattern`: parse-and-defer | PHX-007 | **Decided:** AST node + `UnsupportedFeature` in typeck (Resolved Design Decisions #9); add row to `grammar-deferred.md` |
 | `[INFRA]` Negative-test expansion for typeck: branch/loop moves, cast edges, bounds arity, inference holes | PHX-061 | Lands with the fixes above |
 | `[FEATURE]` Cast-rule consolidation: move tuple-struct and `[u8; N] as str` special casts into `ops.rs` with documented rules | — | Single cast authority; no implicit widening anywhere (verified none exists today) |
 
@@ -73,14 +73,14 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Validate operand arity for all opcodes (jumps, calls) | PHX-046 | `MalformedInstruction` on wrong arity |
 | Verify header version; reject overlapping/duplicate sections | PHX-047 | Pairwise section range checks; no last-wins decode |
 | Clamp untrusted `with_capacity` counts at decode | PHX-048 | Cap against remaining section bytes (DoS) |
-| Fix `DropLocal` stack leak (emit `Pop` or define return-depth contract) | PHX-035 | Requires small design decision on stack-at-return invariant; update `vm-linear.md` POP note |
-| Split signed/unsigned arithmetic; fix u128 div/mod/compare; real float `Mod`/`Pow` error | PHX-051 | Width-accurate execution per `wide-integers.md` |
-| Shift masking and NaN comparison semantics | PHX-052 | Requires design decision (document, then implement); IEEE NaN inequality recommended |
+| Fix `DropLocal` stack leak; verifier enforces canonical stack depth at `Return` | PHX-035 | **Decided:** depth at `RETURN` must equal return arity (Resolved Design Decisions #3); spec in `vm-linear.md`, update POP note |
+| Split signed/unsigned arithmetic; fix u128 div/mod/compare; float `Mod` = IEEE truncated remainder; cut `Pow` from v0 | PHX-051 | **Decided:** Resolved Design Decisions #4; width-accurate execution per `wide-integers.md` |
+| Shift masking and NaN comparison semantics | PHX-052 | **Decided:** mask shift amounts to width; IEEE 754 NaN (`NaN != NaN`, ordered comparisons false) (Resolved Design Decisions #4); spec in `wide-integers.md`/`type-system.md`, then implement |
 | Heap allocation cap; remove pointer sentinel | PHX-053 | `VmError::OutOfMemory` instead of abort |
-| Use-after-free detection against the live ledger (at least checked mode) | PHX-054 | Protects the std bootstrap (M6) |
+| Use-after-free detection against the live ledger, on by default | PHX-054 | **Decided:** always-checked in v0 behind a single gateable function (Resolved Design Decisions #5); protects the std bootstrap (M6) |
 | Verifier fidelity cluster: join-mismatch error kind, `Trap` operand contract, `MakeStr` tag, layouts required at minor ≥ 1 | PHX-049 | — |
 | Carry `(function_id, pc)` on `VmError` | PHX-056 | Coarse runtime attribution (full source maps deferred) |
-| `run_verified()` / `VerifiedModule` so the verify-before-run invariant is type-enforced; PC-past-end is an error | PHX-055 | Library-boundary hardening |
+| `run_verified()` / `VerifiedModule` so the verify-before-run invariant is type-enforced; PC-past-end is an error | PHX-055 | **Decided:** VM assumes verified input; `VerifiedModule` constructible only via the verifier (Resolved Design Decisions #7) |
 | `[INFRA]` Mutation-test expansion: `JumpIfFalse` underflow, join mismatch, section overlap, oversized alloc, non-boundary jump | PHX-061 | Pairs with the fixes above |
 
 ---
@@ -125,7 +125,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | `[INFRA]` Lower/codegen/verify tests for `IndexStore` and nested index chains | PHX-061 | Currently untested in-flight surface |
 | Drop glue verified end to end on std types after PHX-035 | PHX-035 | `DynamicArray`/`UniquePtr` drop fixtures assert balanced stacks |
 | `[INFRA]` Wire or delete dead `interface_loader.rs` scaffolding | PHX-044 | — |
-| `[FEATURE]` Document `str`/`Ty::Str` as the sanctioned core text view in `type-system.md` (already in `mvp.md`) | — | Close the byte-first-vs-`str` doc ambiguity |
+| `[FEATURE]` Document `str`/`Ty::Str` as the sanctioned core text view in `type-system.md` (already in `mvp.md`) | — | **Decided:** `Ty::Str` stays compiler-known through v0; add normative Copyable-view statement + phased migration note (Resolved Design Decisions #6) |
 
 ---
 
@@ -150,7 +150,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 |---|---|---|
 | `?`-with-`From` lowering: replace `debug_assert` + silent return with `LowerError` | PHX-042 | Release-mode safety for the desugar |
 | `[FEATURE]` Must-use enforcement for `Result`/`Option`: type-aware discard error | PHX-029-adjacent, requires PHX-028's typed-lint plumbing | Pass `TypedProgram` into lint (PHX-029); per `error-handling.md` |
-| Lint parity across commands (warnings on `compile`/`run`/`build`, not just `check`) | PHX-059 | Or document the asymmetry |
+| Document `check`-only lint surface in CLI docs | PHX-059 | **Decided:** `check` is deliberately the only linting command in v0 (Resolved Design Decisions #10); lint parity revisited post-beta with a lint-config design |
 | `[INFRA]` Golden diagnostics for `?` mismatch, missing `From` impl, discarded `Result` | PHX-061 | — |
 
 ---
@@ -166,7 +166,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | IR validator (terminator-last, target-in-range, optional depth simulation) in debug builds | PHX-039 | Catches lowering bugs before they become verify mysteries |
 | Span hygiene: spans (or side table) on `IrInst`; eliminate `Span::new(0,0)` synthesis | PHX-063 | Backend diagnostics cite source |
 | Parse-error formatting moves into `phx-diagnostics`; complete `phx explain` coverage (E3002–E3005, E2033) | PHX-012, PHX-013 | — |
-| `#[non_exhaustive]` on diagnostic enums; table-driven `TypeCheckError` metadata to stop 4-way match drift | PHX-014, PHX-015 | Triage with documented decision |
+| Diagnostic enum policy: write the `#[non_exhaustive]` exemption into the Rust rules; `macro_rules!` table-driven `TypeCheckError` metadata to stop 4-way match drift | PHX-014, PHX-015 | **Decided:** per-pass error enums stay exhaustively matchable; table-driven definition approved (Resolved Design Decisions #8) |
 | Hot-path cleanups: peek-by-reference, literal-payload side table, `strip_underscores`, interner pollution | PHX-002, PHX-009 | Profile-first per project rules |
 | Clone audit: `ResolvedProgram` clone, per-mono `TypeInterner` clones, `type_defs.clone()` | PHX-020 | Profile-first |
 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | PHX-058 | — |
@@ -194,17 +194,17 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 
 ---
 
-## Open Design Questions
+## Resolved Design Decisions
 
-These require a decision by the Phoenix author — they are gaps or ambiguities, not code fixes:
+These were the review's open questions; each is now decided (2026-06-12). The guiding rule throughout: the conservative option is strictly forward-compatible — it can be loosened later without breaking programs — while the permissive option locks us in. Each decision must land in its design doc as part of the milestone that implements it.
 
-1. **Loop move semantics (PHX-024).** When a non-Copyable binding declared outside a loop is moved inside the loop body, is that (a) always an error (conservative), or (b) legal if the binding is reassigned before the back-edge? `ownership.md` is silent. M0 needs the answer.
-2. **Partial moves (PHX-025).** Is extracting a non-Copyable field from a struct a whole-value move, a partial move (parent partially invalidated), or an error in v0? `ownership.md`'s phased model doesn't pin this down.
-3. **Stack-at-return invariant (PHX-035).** Should the verifier require a canonical operand-stack depth at `Return` (catching leaks like the `DropLocal` bug), or stay permissive? `vm-linear.md` documents per-block consistency but not the return contract.
-4. **Numeric edge semantics (PHX-051/052).** Shift-amount behavior (mask to width vs trap vs zero), NaN ordering/equality, and float `%`/`**` are unspecified in `wide-integers.md`/`type-system.md`. The VM currently chooses silently.
-5. **Use-after-free policy in the safe VM (PHX-054).** Should heap loads validate against the live-allocation ledger always, only in a checked mode, or not at all in v0? Trade-off: bootstrap debuggability vs interpreter cost.
-6. **`str` Copyable + rodata story.** `mvp.md` ships `str` as a Copyable view; `type-system.md` should state this explicitly and define whether `Ty::Str` remains a compiler-known type or migrates to a std-defined fat pointer once slices mature.
-7. **Library trust boundary (PHX-055).** Is `phx_vm::run` allowed to assume verified input (enforced by a `VerifiedModule` type), or must the VM be safe against arbitrary modules without the verifier? Affects how much runtime re-checking the interpreter keeps long-term.
-8. **Diagnostic enum policy (PHX-014/015).** Are per-pass error enums intentionally exempt from `#[non_exhaustive]`, and is a table/macro-driven single definition per error acceptable under the std-only, no-proc-macro constraint?
-9. **`range_pattern` (PHX-007).** Parse-and-defer (AST node + `UnsupportedFeature` in typeck, per `grammar-deferred.md` policy) or reject at parse? The grammar includes it; the parser doesn't.
-10. **Lint surface (PHX-059).** Should `compile`/`run`/`build` emit lint warnings like `check` does, or is `check` deliberately the only linting command?
+1. **Loop move semantics (PHX-024) — always an error (conservative).** A non-Copyable binding declared outside a loop that is moved inside the loop body is a `UseAfterMove` error at the back-edge, even if reassigned before it. Definite-reassignment analysis belongs to the post-MVP path-sensitive ownership work already scoped in `ownership.md` ("MVP limitation: flow-insensitive"). Document the workaround (restructure or shadow inside the loop). Spec in `ownership.md`; implemented in **M0**.
+2. **Partial moves (PHX-025) — error in v0.** Extracting a non-Copyable field from a struct is rejected ("cannot move field out of struct; borrow or destructure the whole value"). Neither whole-value-move (surprising parent invalidation) nor true partial-move tracking (per-field validity, drop glue, diagnostics) is justified at this stage; rejecting is cheap and compatible with either future answer. Spec in `ownership.md`; implemented in **M1**.
+3. **Stack-at-return invariant (PHX-035) — canonical depth required.** At `RETURN`, operand-stack depth must be exactly the return arity (0 or 1). Phoenix codegen is the only producer and must emit balanced stacks; the verifier enforces it (the Wasm model). This is what catches leaks like the `DropLocal` bug. Spec in `vm-linear.md`; implemented in **M2**.
+4. **Numeric edge semantics (PHX-051/052) — Rust/Wasm defaults, written into the spec.** Shift amounts are **masked to the operand width** (`x << (n & (W-1))`, per Wasm / Rust `wrapping_shl`); a trapping checked mode is post-beta. NaN follows **IEEE 754**: `NaN != NaN`, all ordered comparisons involving NaN are false; no language-level total order (std trait concern later). Float `%` is IEEE truncated remainder (Rust/C `fmod`). `**`/`Pow` is **cut from v0** rather than specified. Whatever the VM does must be in the docs — portable bytecode means every future backend (JIT) reproduces these semantics bit-for-bit. Spec in `wide-integers.md` + `type-system.md`; implemented in **M2**.
+5. **Use-after-free policy (PHX-054) — ledger-checked always in v0.** Heap loads/stores validate against the live-allocation ledger by default; the check sits behind a single function so a future `--unchecked` mode can gate it once borrow checking matures. The MVP VM is an interpreter where the lookup is noise next to dispatch cost, and bootstrap debuggability is worth far more than interpreter speed now. Implemented in **M2**, exercised by std misuse fixtures in **M6**.
+6. **`str` story — `Ty::Str` stays compiler-known through v0.** `type-system.md` gets a normative statement: `str` is a Copyable `(ptr, len)` UTF-8 view over rodata (or heap via V0-062 slices). Migration to a std-defined fat pointer is deferred with a one-line "phased" note mirroring the Copyable bootstrap exception — no migration design now. Doc work lands in **M5**.
+7. **Library trust boundary (PHX-055) — VM assumes verified input, type-enforced.** `phx_vm::run` takes a `VerifiedModule` constructible only via the verifier (the Wasm model: validate once at load, execute trusting static invariants). The interpreter keeps only the dynamic checks the verifier cannot prove (bounds, allocation ledger) and sheds per-instruction re-checking long-term. Implemented in **M2**; `load_project_binary` verify-on-load stays as M8 defense-in-depth.
+8. **Diagnostic enum policy (PHX-014/015) — exemption confirmed, table-driven definition approved.** Per-pass error enums are internal, consumed within the workspace where exhaustive matching is a feature; `#[non_exhaustive]` stays reserved for Phoenix language-construct enums (AST, tokens, opcodes). A `macro_rules!`-driven single definition per error is acceptable under the std-only constraint (`macro_rules!` is not a proc macro) — keep the macro simple and messages greppable. Write the exemption into the Rust rules doc as part of **M8**.
+9. **`range_pattern` (PHX-007) — parse-and-defer.** AST node + `UnsupportedFeature` in typeck, consistent with every other row in `grammar-deferred.md` (range *expressions* are already "parse; reject at typeck"). Rejecting at parse would make the parser disagree with `grammar.ebnf`. Implemented in **M1**.
+10. **Lint surface (PHX-059) — `check` is deliberately the only linting command in v0.** Emitting lints from `compile`/`run`/`build` raises unspecced questions (lint config, `--deny`, suppression, warning stability). Keep the surface small; document the asymmetry in the CLI docs so it reads as intent. Revisit alongside a lint-configuration design post-beta. Documented in **M7**.
