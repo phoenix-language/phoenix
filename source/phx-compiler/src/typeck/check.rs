@@ -1564,30 +1564,40 @@ impl<'a> TypeChecker<'a> {
                                     if let Some(trait_items) =
                                         self.find_trait_items(trait_def).map(<[TraitItem]>::to_vec)
                                     {
-                                        let registered =
-                                            trait_defaults::synthesize_inherited_methods(
-                                                &mut trait_defaults::InheritedSynthesisCtx {
-                                                    resolved: self.resolved,
-                                                    trait_items: &trait_items,
-                                                    impl_method_names: &impl_method_names,
-                                                    module: self.current_module,
-                                                    trait_unsafe,
-                                                    pending_inherited_defs: &mut self
-                                                        .pending_inherited_defs,
-                                                    inherited_trait_methods: &mut self
-                                                        .inherited_trait_methods,
-                                                    inst_key: &inst_key,
-                                                    inherited_by_inst: &mut self.inherited_by_inst,
-                                                },
-                                            );
-                                        self.register_inherited_trait_method_types(
-                                            trait_def,
-                                            &inst_key,
-                                            &registered,
-                                        );
-                                        if trait_unsafe {
-                                            for (_, def) in &registered {
-                                                self.mark_fn_effective_unsafe(*def);
+                                        match trait_defaults::synthesize_inherited_methods(
+                                            &mut trait_defaults::InheritedSynthesisCtx {
+                                                resolved: self.resolved,
+                                                trait_items: &trait_items,
+                                                impl_method_names: &impl_method_names,
+                                                module: self.current_module,
+                                                trait_unsafe,
+                                                pending_inherited_defs: &mut self
+                                                    .pending_inherited_defs,
+                                                inherited_trait_methods: &mut self
+                                                    .inherited_trait_methods,
+                                                inst_key: &inst_key,
+                                                inherited_by_inst: &mut self.inherited_by_inst,
+                                            },
+                                        ) {
+                                            Ok(registered) => {
+                                                self.register_inherited_trait_method_types(
+                                                    trait_def,
+                                                    &inst_key,
+                                                    &registered,
+                                                );
+                                                if trait_unsafe {
+                                                    for (_, def) in &registered {
+                                                        self.mark_fn_effective_unsafe(*def);
+                                                    }
+                                                }
+                                            }
+                                            Err(_) => {
+                                                self.bag.push(
+                                                    self.current_module,
+                                                    TypeCheckError::ProgramTooLarge {
+                                                        span: trait_ty.span,
+                                                    },
+                                                );
                                             }
                                         }
                                     }

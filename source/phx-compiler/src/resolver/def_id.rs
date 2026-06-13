@@ -11,6 +11,10 @@ use phx_syntax::Symbol;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DefId(u32);
 
+/// Error when a dense def index does not fit in `u32`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DefIdOverflow;
+
 impl DefId {
     /// Creates a definition id from a raw index (tests only).
     #[must_use]
@@ -18,10 +22,40 @@ impl DefId {
         Self(index)
     }
 
+    /// Maps a table length or index to a [`DefId`], or fails when it exceeds `u32::MAX`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DefIdOverflow`] when `index` does not fit in `u32`.
+    pub(crate) fn try_from_index(index: usize) -> Result<Self, DefIdOverflow> {
+        u32::try_from(index).map(Self).map_err(|_| DefIdOverflow)
+    }
+
     /// Returns the raw index.
     #[must_use]
     pub const fn index(self) -> u32 {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DefId, DefIdOverflow};
+
+    #[test]
+    fn try_from_index_accepts_u32_max() {
+        assert_eq!(
+            DefId::try_from_index(u32::MAX as usize),
+            Ok(DefId::from_raw(u32::MAX))
+        );
+    }
+
+    #[test]
+    fn try_from_index_rejects_overflow() {
+        assert_eq!(
+            DefId::try_from_index(u32::MAX as usize + 1),
+            Err(DefIdOverflow)
+        );
     }
 }
 

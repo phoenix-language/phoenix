@@ -52,7 +52,7 @@ impl ScopeStack {
                 module,
                 ResolveError::DuplicateDefinition {
                     symbol_index: name.index(),
-                    first_span: defs[first_id.index() as usize].span,
+                    first_span: defs.get(first_id.index() as usize).map_or(span, |d| d.span),
                     span,
                 },
             );
@@ -78,7 +78,7 @@ impl ScopeStack {
                 module,
                 ResolveError::DuplicateDefinition {
                     symbol_index: name.index(),
-                    first_span: defs[first_id.index() as usize].span,
+                    first_span: defs.get(first_id.index() as usize).map_or(span, |d| d.span),
                     span,
                 },
             );

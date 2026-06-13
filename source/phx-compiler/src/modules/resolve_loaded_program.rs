@@ -8,7 +8,9 @@ use phx_syntax::ast::decl::{Program, TopLevelDecl};
 use phx_syntax::{SourceFile, Symbol};
 
 use crate::resolver::scopes::ScopeStack;
-use crate::resolver::{DefId, ProgramImportEnv, ResolvedProgram, Resolver, SourceModule};
+use crate::resolver::{
+    DefId, DefIdOverflow, ProgramImportEnv, ResolvedProgram, Resolver, SourceModule,
+};
 
 use super::discover::SubmoduleRegistry;
 use super::import_resolve::{ImportResolveCtx, resolve_import_directive};
@@ -18,6 +20,19 @@ use crate::project::PackageType;
 use crate::pxi::PxiType;
 
 type ExportMap = HashMap<Symbol, DefId>;
+
+/// Maps a module-local [`DefId`] into the merged program table.
+fn try_remap_local_def_id(def_base: usize, local: DefId) -> Result<DefId, DefIdOverflow> {
+    let index = def_base
+        .checked_add(local.index() as usize)
+        .ok_or(DefIdOverflow)?;
+    DefId::try_from_index(index)
+}
+
+/// Allocates the next global [`DefId`] when appending defs during module merge.
+fn try_alloc_merged_def_id(len: usize) -> Result<DefId, DefIdOverflow> {
+    DefId::try_from_index(len)
+}
 
 /// Resolves all modules in `loaded` into a [`ResolvedProgram`].
 ///
@@ -59,6 +74,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         .collect();
 
     // Phase 1: collect definitions and exports.
+    let mut def_table_full = false;
     for (idx, module) in modules.iter().enumerate() {
         let sf = SourceFile::new(module.program.clone(), interner.clone());
         let mut resolver = Resolver {
@@ -82,6 +98,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             shared_interner: None,
             import_types: None,
             def_attrs: crate::attrs::DefAttrs::new(),
+            def_table_full: false,
         };
         resolver.resolve_program();
         if resolver.main_fn.is_some() && package_type == PackageType::Lib {
@@ -108,27 +125,45 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         if module.id == root
             && let Some(local_main) = resolver.main_fn
         {
-            let global = def_base
-                .checked_add(local_main.index() as usize)
-                .and_then(|n| u32::try_from(n).ok())
-                .unwrap_or(u32::MAX);
-            main_fn = Some(DefId::from_raw(global));
+            if let Ok(global) = try_remap_local_def_id(def_base, local_main) {
+                main_fn = Some(global);
+            } else {
+                let span = main_function_span(&module.program, &interner)
+                    .unwrap_or_else(|| Span::new(0, 1));
+                bag.push(module.id.index(), ResolveError::ProgramTooLarge { span });
+                def_table_full = true;
+            }
         }
         for def in resolver.defs {
-            let id = DefId::from_raw(u32::try_from(defs.len()).unwrap_or(u32::MAX));
+            if def_table_full {
+                break;
+            }
+            let Ok(id) = try_alloc_merged_def_id(defs.len()) else {
+                bag.push(
+                    module.id.index(),
+                    ResolveError::ProgramTooLarge { span: def.span },
+                );
+                def_table_full = true;
+                break;
+            };
             if def.exported {
                 exports[idx].insert(def.name, id);
             }
             defs.push(def);
         }
         for (local_id, attrs) in resolver.def_attrs {
-            let global = DefId::from_raw(
-                u32::try_from(def_base)
-                    .ok()
-                    .and_then(|b| b.checked_add(local_id.index()))
-                    .unwrap_or(u32::MAX),
-            );
-            def_attrs.insert(global, attrs);
+            if def_table_full {
+                break;
+            }
+            let span = defs
+                .get(def_base + local_id.index() as usize)
+                .map_or_else(|| Span::new(0, 1), |d| d.span);
+            if let Ok(global) = try_remap_local_def_id(def_base, local_id) {
+                def_attrs.insert(global, attrs);
+            } else {
+                bag.push(module.id.index(), ResolveError::ProgramTooLarge { span });
+                def_table_full = true;
+            }
         }
     }
 
@@ -183,6 +218,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             shared_interner: Some(&mut interner),
             import_types: Some(&mut import_types),
             def_attrs: crate::attrs::DefAttrs::new(),
+            def_table_full: false,
         };
         let def_base = defs.len();
         resolver.resolve_program();
@@ -197,15 +233,33 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         resolutions.extend(resolver.resolutions);
         closures.extend(resolver.closures);
         let extra_attrs = resolver.def_attrs;
-        defs.extend(extra_defs);
+        for def in extra_defs {
+            if def_table_full {
+                break;
+            }
+            if try_alloc_merged_def_id(defs.len()).is_ok() {
+                defs.push(def);
+            } else {
+                bag.push(
+                    module.id.index(),
+                    ResolveError::ProgramTooLarge { span: def.span },
+                );
+                def_table_full = true;
+            }
+        }
         for (local_id, attrs) in extra_attrs {
-            let global = DefId::from_raw(
-                u32::try_from(def_base)
-                    .ok()
-                    .and_then(|b| b.checked_add(local_id.index()))
-                    .unwrap_or(u32::MAX),
-            );
-            def_attrs.insert(global, attrs);
+            if def_table_full {
+                break;
+            }
+            let span = defs
+                .get(def_base + local_id.index() as usize)
+                .map_or_else(|| Span::new(0, 1), |d| d.span);
+            if let Ok(global) = try_remap_local_def_id(def_base, local_id) {
+                def_attrs.insert(global, attrs);
+            } else {
+                bag.push(module.id.index(), ResolveError::ProgramTooLarge { span });
+                def_table_full = true;
+            }
         }
     }
 

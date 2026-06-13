@@ -363,6 +363,9 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E1021" => Some("A child module is missing a `mod.phx` entry file."),
         "E1022" => Some("A private submodule was imported from outside its parent."),
         "E1023" => Some("`pub reexport` requires the reexported item to be `pub`."),
+        "E1024" | "E2040" => Some(
+            "The program defines more items than the compiler can index; split into smaller modules or reduce generated definitions.",
+        ),
         "E2001" => Some("An expression's type does not match the expected type."),
         "E2002" => Some("A type name is unknown or not in scope."),
         "E2003" => Some("A function or constructor was called with the wrong number of arguments."),

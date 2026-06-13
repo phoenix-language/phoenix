@@ -6,7 +6,7 @@ use phx_syntax::Symbol;
 use phx_syntax::ast::decl::{Function, FunctionSig, TopLevelDecl};
 use phx_syntax::ast::decl::{ImplMember, TraitItem};
 
-use crate::resolver::{Def, DefId, DefKind, ResolvedProgram};
+use crate::resolver::{Def, DefId, DefIdOverflow, DefKind, ResolvedProgram};
 use crate::typeck::TypedProgram;
 use crate::typeck::layout::TraitInstKey;
 
@@ -34,9 +34,20 @@ pub fn sig_to_function(sig: &FunctionSig, trait_unsafe: bool) -> Option<Function
 }
 
 /// Allocates a synthetic `DefKind::Fn` id for an inherited trait method (not yet in `resolved.defs`).
-#[must_use]
-pub fn alloc_pending_inherited_fn_def(resolved: &ResolvedProgram, pending_count: usize) -> DefId {
-    DefId::from_raw(u32::try_from(resolved.defs.len() + pending_count).unwrap_or(u32::MAX))
+///
+/// # Errors
+///
+/// Returns [`DefIdOverflow`] when the definition table would exceed `u32::MAX`.
+pub fn try_alloc_pending_inherited_fn_def(
+    resolved: &ResolvedProgram,
+    pending_count: usize,
+) -> Result<DefId, DefIdOverflow> {
+    let index = resolved
+        .defs
+        .len()
+        .checked_add(pending_count)
+        .ok_or(DefIdOverflow)?;
+    DefId::try_from_index(index)
 }
 
 /// Pushes pending inherited fn defs into `resolved.defs`.
@@ -103,7 +114,13 @@ pub struct InheritedSynthesisCtx<'a> {
 }
 
 /// Synthesizes inherited trait default methods missing from an impl block.
-pub fn synthesize_inherited_methods(ctx: &mut InheritedSynthesisCtx<'_>) -> Vec<(Symbol, DefId)> {
+///
+/// # Errors
+///
+/// Returns [`DefIdOverflow`] when the definition table would exceed `u32::MAX`.
+pub fn synthesize_inherited_methods(
+    ctx: &mut InheritedSynthesisCtx<'_>,
+) -> Result<Vec<(Symbol, DefId)>, DefIdOverflow> {
     let mut registered = Vec::new();
     for item in ctx.trait_items {
         let TraitItem::Method(sig) = item else {
@@ -115,7 +132,8 @@ pub fn synthesize_inherited_methods(ctx: &mut InheritedSynthesisCtx<'_>) -> Vec<
         let Some(function) = sig_to_function(sig, ctx.trait_unsafe) else {
             continue;
         };
-        let def = alloc_pending_inherited_fn_def(ctx.resolved, ctx.pending_inherited_defs.len());
+        let def =
+            try_alloc_pending_inherited_fn_def(ctx.resolved, ctx.pending_inherited_defs.len())?;
         ctx.pending_inherited_defs.push(Def::new(
             DefKind::Fn,
             sig.name.symbol,
@@ -131,5 +149,5 @@ pub fn synthesize_inherited_methods(ctx: &mut InheritedSynthesisCtx<'_>) -> Vec<
             .push((def, function));
         registered.push((sig.name.symbol, def));
     }
-    registered
+    Ok(registered)
 }

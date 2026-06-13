@@ -353,6 +353,11 @@ pub enum TypeCheckError {
         /// Related source span.
         span: Span,
     },
+    /// Definition table exceeded `u32::MAX` entries.
+    ProgramTooLarge {
+        /// Related source span.
+        span: Span,
+    },
 }
 
 impl fmt::Display for TypeCheckError {

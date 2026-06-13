@@ -226,13 +226,20 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             inst.owner_module,
         ) {
             Ok(id) => id,
-            Err(phx_syntax::InternError::TableFull) => {
+            Err(AllocSpecializedDefError::Intern(phx_syntax::InternError::TableFull)) => {
                 bag.push(
                     base_module,
                     TypeCheckError::UnsupportedFeature {
                         feature: "interner table full during monomorphization",
                         span: base_span,
                     },
+                );
+                continue;
+            }
+            Err(AllocSpecializedDefError::ProgramTooLarge) => {
+                bag.push(
+                    base_module,
+                    TypeCheckError::ProgramTooLarge { span: base_span },
                 );
                 continue;
             }
@@ -680,10 +687,13 @@ fn alloc_specialized_def(
     args: &[TypeId],
     types: &super::types::TypeInterner,
     owner_module: u32,
-) -> Result<DefId, phx_syntax::InternError> {
+) -> Result<DefId, AllocSpecializedDefError> {
     let base_def = &resolved.defs[base.index() as usize];
     let mangled = mangle::mangle_symbol_for_specialization(resolved, base, args, types);
-    let sym = resolved.interner.intern(&mangled)?;
+    let sym = resolved
+        .interner
+        .intern(&mangled)
+        .map_err(AllocSpecializedDefError::Intern)?;
     let def = Def::new(
         DefKind::Fn,
         sym,
@@ -692,9 +702,18 @@ fn alloc_specialized_def(
         base_def.exported,
         base_def.scope_depth,
     );
-    let id = DefId::from_raw(u32::try_from(resolved.defs.len()).unwrap_or(u32::MAX));
+    let id = DefId::try_from_index(resolved.defs.len())
+        .map_err(|_| AllocSpecializedDefError::ProgramTooLarge)?;
     resolved.defs.push(def);
     Ok(id)
+}
+
+/// Failure while allocating a monomorphized function definition.
+enum AllocSpecializedDefError {
+    /// Interner table is full.
+    Intern(phx_syntax::InternError),
+    /// Definition table would exceed `u32::MAX`.
+    ProgramTooLarge,
 }
 
 /// Cross-crate generic export requested by a consumer package build.

@@ -12,13 +12,14 @@ use scopes::ScopeStack;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use phx_diagnostics::{DiagnosticBag, Span};
+use phx_diagnostics::{DiagnosticBag, ResolveError, Span};
 use phx_syntax::{AstNodeId, Interner, Program, SourceFile, Symbol};
 
 use crate::modules::{LoadedModule, ModuleId, SourceText};
 use crate::project::BuildLayout;
 use crate::pxi::PxiType;
 
+pub(crate) use def_id::DefIdOverflow;
 pub use def_id::{Def, DefId, DefKind};
 
 /// Program-wide context for resolving block-scoped `#import` directives.
@@ -139,6 +140,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         shared_interner: None,
         import_types: None,
         def_attrs: crate::attrs::DefAttrs::new(),
+        def_table_full: false,
     };
     resolver.resolve_program();
     if resolver.bag.has_errors() {
@@ -197,18 +199,30 @@ pub(crate) struct Resolver<'a> {
     pub(crate) import_types: Option<&'a mut HashMap<DefId, PxiType>>,
     /// Item attribute metadata collected during definition collection.
     pub(crate) def_attrs: crate::attrs::DefAttrs,
+    /// Set after the definition table exceeds `u32::MAX`; further defs are skipped.
+    pub(crate) def_table_full: bool,
 }
 
 impl Resolver<'_> {
     /// Appends a [`Def`] and returns its [`DefId`].
+    ///
+    /// Returns `None` when the definition table is full ([`ResolveError::ProgramTooLarge`]).
     pub(crate) fn alloc_def(
         &mut self,
         kind: DefKind,
         name: Symbol,
         span: Span,
         exported: bool,
-    ) -> DefId {
-        let id = DefId::from_raw(u32::try_from(self.defs.len()).unwrap_or(u32::MAX));
+    ) -> Option<DefId> {
+        if self.def_table_full {
+            return None;
+        }
+        let Ok(id) = DefId::try_from_index(self.defs.len()) else {
+            self.bag
+                .push(self.current_module, ResolveError::ProgramTooLarge { span });
+            self.def_table_full = true;
+            return None;
+        };
         self.defs.push(Def::new(
             kind,
             name,
@@ -217,12 +231,17 @@ impl Resolver<'_> {
             exported,
             self.scopes.depth(),
         ));
-        id
+        Some(id)
     }
 
     /// Registers a value name in the current scope (records duplicates in the bag).
-    pub(crate) fn define_value(&mut self, name: Symbol, span: Span, kind: DefKind) -> DefId {
-        let id = self.alloc_def(kind, name, span, false);
+    pub(crate) fn define_value(
+        &mut self,
+        name: Symbol,
+        span: Span,
+        kind: DefKind,
+    ) -> Option<DefId> {
+        let id = self.alloc_def(kind, name, span, false)?;
         self.scopes.define_value(
             &self.defs,
             &mut self.bag,
@@ -231,12 +250,12 @@ impl Resolver<'_> {
             id,
             span,
         );
-        id
+        Some(id)
     }
 
     /// Registers a type name in the current scope (records duplicates in the bag).
-    pub(crate) fn define_type(&mut self, name: Symbol, span: Span, kind: DefKind) -> DefId {
-        let id = self.alloc_def(kind, name, span, false);
+    pub(crate) fn define_type(&mut self, name: Symbol, span: Span, kind: DefKind) -> Option<DefId> {
+        let id = self.alloc_def(kind, name, span, false)?;
         self.scopes.define_type(
             &self.defs,
             &mut self.bag,
@@ -245,7 +264,7 @@ impl Resolver<'_> {
             id,
             span,
         );
-        id
+        Some(id)
     }
 
     /// Registers a top-level exported value or type.
@@ -255,8 +274,8 @@ impl Resolver<'_> {
         span: Span,
         kind: DefKind,
         exported: bool,
-    ) -> DefId {
-        let id = self.alloc_def(kind, name, span, exported);
+    ) -> Option<DefId> {
+        let id = self.alloc_def(kind, name, span, exported)?;
         if is_type_kind(kind) {
             self.scopes.define_type(
                 &self.defs,
@@ -276,7 +295,7 @@ impl Resolver<'_> {
                 span,
             );
         }
-        id
+        Some(id)
     }
 
     /// Stores item attribute metadata for `def_id`.

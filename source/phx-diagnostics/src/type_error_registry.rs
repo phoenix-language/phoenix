@@ -72,6 +72,7 @@ typecheck_error_registry! {
     RedundantUnsafeInUnsafeTrait => "E2037",
     UnsafeImplOfSafeTrait => "E2038",
     InternalError => "E2039",
+    ProgramTooLarge => "E2040",
 }
 
 #[cfg(test)]

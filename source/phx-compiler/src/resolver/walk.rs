@@ -87,18 +87,21 @@ impl Resolver<'_> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn collect_top_level_item(&mut self, item: &TopLevelItem, span: Span) {
         let exported = item.pub_;
         let item_attrs = crate::attrs::item_attrs_for_top_level(&self.source.interner, item);
         match &item.decl {
             TopLevelDecl::Struct { name, generics, .. } => {
                 self.collect_generic_params(generics);
-                let id = self.define_exported(
+                let Some(id) = self.define_exported(
                     name.symbol,
                     name_span_type(name),
                     DefKind::Struct,
                     exported,
-                );
+                ) else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs);
             }
             TopLevelDecl::Enum {
@@ -108,21 +111,36 @@ impl Resolver<'_> {
                 ..
             } => {
                 self.collect_generic_params(generics);
-                let id = self.define_exported(name.symbol, span, DefKind::Enum, exported);
+                let Some(id) = self.define_exported(name.symbol, span, DefKind::Enum, exported)
+                else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs.clone());
                 for v in variants {
                     let vspan = name_span_type(&v.name);
-                    self.define_exported(v.name.symbol, vspan, DefKind::EnumVariant, exported);
+                    if self
+                        .define_exported(v.name.symbol, vspan, DefKind::EnumVariant, exported)
+                        .is_none()
+                    {
+                        return;
+                    }
                 }
             }
             TopLevelDecl::TypeAlias { name, generics, .. } => {
                 self.collect_generic_params(generics);
-                let id = self.define_exported(name.symbol, span, DefKind::TypeAlias, exported);
+                let Some(id) =
+                    self.define_exported(name.symbol, span, DefKind::TypeAlias, exported)
+                else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs);
             }
             TopLevelDecl::Trait { name, generics, .. } => {
                 self.collect_generic_params(generics);
-                let id = self.define_exported(name.symbol, span, DefKind::Trait, exported);
+                let Some(id) = self.define_exported(name.symbol, span, DefKind::Trait, exported)
+                else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs);
             }
             TopLevelDecl::Impl {
@@ -132,7 +150,9 @@ impl Resolver<'_> {
                 for member in members {
                     if let ImplMember::Method(f) = member {
                         let mspan = name_span_ident(&f.name);
-                        let id = self.define_value(f.name.symbol, mspan, DefKind::Fn);
+                        let Some(id) = self.define_value(f.name.symbol, mspan, DefKind::Fn) else {
+                            return;
+                        };
                         let attrs = crate::attrs::item_attrs_for_function(&self.source.interner, f);
                         self.record_def_attrs(id, attrs);
                     }
@@ -140,7 +160,10 @@ impl Resolver<'_> {
             }
             TopLevelDecl::Function(f) => {
                 self.collect_generic_params(&f.generics);
-                let id = self.define_exported(f.name.symbol, span, DefKind::Fn, exported);
+                let Some(id) = self.define_exported(f.name.symbol, span, DefKind::Fn, exported)
+                else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs);
                 if self.is_main_name(f.name.symbol) {
                     if self.current_module == self.root_module {
@@ -157,11 +180,17 @@ impl Resolver<'_> {
                 }
             }
             TopLevelDecl::Const { name, .. } => {
-                let id = self.define_exported(name.symbol, span, DefKind::Const, exported);
+                let Some(id) = self.define_exported(name.symbol, span, DefKind::Const, exported)
+                else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs);
             }
             TopLevelDecl::Var { name, .. } => {
-                let id = self.define_exported(name.symbol, span, DefKind::Var, exported);
+                let Some(id) = self.define_exported(name.symbol, span, DefKind::Var, exported)
+                else {
+                    return;
+                };
                 self.record_def_attrs(id, item_attrs);
             }
             TopLevelDecl::Mod { .. } => {}
@@ -190,7 +219,11 @@ impl Resolver<'_> {
     ) {
         for sig in sigs {
             let sig_span = name_span_ident(&sig.name);
-            let id = self.define_exported(sig.name.symbol, sig_span, DefKind::ExternFn, exported);
+            let Some(id) =
+                self.define_exported(sig.name.symbol, sig_span, DefKind::ExternFn, exported)
+            else {
+                return;
+            };
             self.record_def_attrs(id, item_attrs.clone());
         }
     }
@@ -808,8 +841,11 @@ impl Resolver<'_> {
                 self.resolve_expr_node(end);
             }
             Expr::Lambda { params, body } => {
-                let closure_id =
-                    self.alloc_def(DefKind::Closure, closure_def_symbol(), span, false);
+                let Some(closure_id) =
+                    self.alloc_def(DefKind::Closure, closure_def_symbol(), span, false)
+                else {
+                    return;
+                };
                 self.closure_stack.push(closure_id);
                 self.scopes.push();
                 for p in params {

@@ -283,13 +283,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/resolver/mod.rs:211`, `resolver/scopes.rs:55`, `typeck/trait_defaults.rs:39`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `DefId` allocation saturates to `u32::MAX` on overflow instead of erroring.
 **Detail:** Theoretical, but it is silent state corruption on (very large) user input — same family as PHX-016.
 **Recommendation:** Emit a fatal "program too large" diagnostic.
 
----
+**Resolution:** Added `DefId::try_from_index` and made resolver `alloc_def` / `define_*` fallible with a one-shot `def_table_full` flag and `ResolveError::ProgramTooLarge` (E1024). Hardened duplicate-definition reporting in `scopes.rs`. Type-check growth sites (`trait_defaults`, mono `alloc_specialized_def`) emit `TypeCheckError::ProgramTooLarge` (E2040). Multi-module merge in `resolve_loaded_program` uses checked remapping instead of saturating to `u32::MAX`.
 
 **[PHX-022] Severity: Suggestion**
 **Location:** `phx-compiler/src/resolver/mod.rs:87–113`; `typeck/mod.rs:34–39`; `lib.rs:57–86`
@@ -851,7 +851,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-018 | - [x]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
 | PHX-019 | - [x]  | Major        | phx-compiler    | `#![allow(unreachable_patterns)]` in typeck and lower                     |
 | PHX-020 | - [x]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
-| PHX-021 | - [ ]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
+| PHX-021 | - [x]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
 | PHX-022 | - [ ]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
 | PHX-023 | - [ ]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
 | PHX-024 | - [ ]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |

@@ -198,6 +198,11 @@ pub enum ResolveError {
         /// Declaration span.
         span: Span,
     },
+    /// Definition table exceeded `u32::MAX` entries.
+    ProgramTooLarge {
+        /// Related source span.
+        span: Span,
+    },
 }
 
 impl ResolveError {
@@ -228,6 +233,7 @@ impl ResolveError {
             Self::MissingModuleEntry { .. } => DiagnosticCode::new("E1021"),
             Self::PrivateSubmodule { .. } => DiagnosticCode::new("E1022"),
             Self::ReexportRequiresPub { .. } => DiagnosticCode::new("E1023"),
+            Self::ProgramTooLarge { .. } => DiagnosticCode::new("E1024"),
         }
     }
 
@@ -257,7 +263,8 @@ impl ResolveError {
             | Self::AmbiguousModuleEntry { span, .. }
             | Self::MissingModuleEntry { span, .. }
             | Self::PrivateSubmodule { span, .. }
-            | Self::ReexportRequiresPub { span, .. } => Some(*span),
+            | Self::ReexportRequiresPub { span, .. }
+            | Self::ProgramTooLarge { span, .. } => Some(*span),
         }
     }
 }
@@ -342,6 +349,9 @@ impl fmt::Display for ResolveError {
             }
             Self::ReexportRequiresPub { .. } => {
                 f.write_str("`reexport` requires `pub`")
+            }
+            Self::ProgramTooLarge { .. } => {
+                f.write_str("program too large (definition table exceeds limit)")
             }
         }
     }

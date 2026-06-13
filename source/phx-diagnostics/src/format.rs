@@ -151,6 +151,9 @@ pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
         }
         ResolveError::ModuleParse { message, .. } => message.clone(),
         ResolveError::ModuleIo { message, .. } => format!("failed to read module: {message}"),
+        ResolveError::ProgramTooLarge { .. } => {
+            "program too large (definition table exceeds limit)".to_owned()
+        }
         other => other.to_string(),
     }
 }
@@ -358,6 +361,9 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
         }
         TypeCheckError::InternalError { detail, .. } => {
             format!("internal error: {detail}")
+        }
+        TypeCheckError::ProgramTooLarge { .. } => {
+            "program too large (definition table exceeds limit)".to_owned()
         }
     }
 }
