@@ -119,7 +119,7 @@ impl Parser<'_> {
         let start = self.pos;
         let attrs = self.parse_attribute_list()?;
         let pub_ = self.eat_keyword(Keyword::Pub);
-        let mut decl =
+        let decl =
             if pub_ && (self.peek_keyword(Keyword::Reexport) || self.peek_keyword(Keyword::Mod)) {
                 if self.peek_keyword(Keyword::Reexport) {
                     self.parse_reexport_decl()?
@@ -129,7 +129,6 @@ impl Parser<'_> {
             } else {
                 self.parse_top_level_decl()?
             };
-        self.merge_bracket_derives(&mut decl, &attrs);
         self.expect_semi()?;
         Ok(self.node(TopLevelItem { attrs, pub_, decl }, self.span_from(start)))
     }
@@ -517,16 +516,15 @@ impl Parser<'_> {
 
     /// Parses a full function (directives, name, sig, body).
     fn parse_function_decl_body(&mut self, name_only: bool) -> Result<Function, ParseError> {
-        let attrs = self.parse_attribute_list()?;
-        let mut derives = self.parse_derive_directives()?;
-        derives.extend(self.derive_attrs_from_bracket(&attrs));
+        let _leading_attrs = self.parse_attribute_list()?;
+        let derives = self.parse_derive_directives()?;
         self.parse_function_decl_with_derives(derives, name_only)
     }
 
     /// Parses a function after `#derive` directives are already consumed.
     fn parse_function_decl_with_derives(
         &mut self,
-        mut derives: Vec<DeriveDirective>,
+        derives: Vec<DeriveDirective>,
         name_only: bool,
     ) -> Result<Function, ParseError> {
         let attrs = if name_only {
@@ -534,7 +532,6 @@ impl Parser<'_> {
         } else {
             self.parse_attribute_list()?
         };
-        derives.extend(self.derive_attrs_from_bracket(&attrs));
         let directives = self.parse_fn_directives();
         let unsafe_ = self.eat_keyword(Keyword::Unsafe);
         let name = if name_only {
@@ -563,39 +560,6 @@ impl Parser<'_> {
             ret,
             body,
         })
-    }
-
-    /// Merges `#[derive(...)]` bracket attributes into `#derive` directive list.
-    fn derive_attrs_from_bracket(
-        &self,
-        attrs: &[crate::ast::Node<crate::ast::Attribute>],
-    ) -> Vec<DeriveDirective> {
-        crate::attr_collect::derive_from_bracket_attrs(&self.interner, attrs)
-    }
-
-    fn merge_bracket_derives(
-        &self,
-        decl: &mut TopLevelDecl,
-        attrs: &[crate::ast::Node<crate::ast::Attribute>],
-    ) {
-        let extra = self.derive_attrs_from_bracket(attrs);
-        if extra.is_empty() {
-            return;
-        }
-        match decl {
-            TopLevelDecl::Struct { derives, .. }
-            | TopLevelDecl::Enum { derives, .. }
-            | TopLevelDecl::Trait { derives, .. } => derives.extend(extra),
-            TopLevelDecl::Function(f) => f.derives.extend(extra),
-            TopLevelDecl::TypeAlias { .. }
-            | TopLevelDecl::Const { .. }
-            | TopLevelDecl::Var { .. }
-            | TopLevelDecl::Impl { .. }
-            | TopLevelDecl::Mod { .. }
-            | TopLevelDecl::Reexport { .. }
-            | TopLevelDecl::ExternBlock { .. }
-            | TopLevelDecl::ExternItem { .. } => {}
-        }
     }
 
     fn parse_optional_return_type(

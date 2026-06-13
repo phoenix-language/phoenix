@@ -2,13 +2,11 @@
 
 use std::collections::HashMap;
 
+use phx_syntax::Symbol;
 use phx_syntax::ast::Node;
-use phx_syntax::ast::attr::Attribute;
-use phx_syntax::ast::decl::{Function, TopLevelItem};
-use phx_syntax::{
-    DeprecatedMeta, Interner, allow_names_from_attrs, deprecated_from_attrs, has_must_use_attr,
-    top_level_bracket_attrs,
-};
+use phx_syntax::ast::attr::{AttrArg, Attribute};
+use phx_syntax::ast::decl::{DeriveDirective, Function, Program, TopLevelDecl, TopLevelItem};
+use phx_syntax::{Interner, attr_collect::top_level_bracket_attrs};
 
 use crate::resolver::DefId;
 
@@ -21,8 +19,138 @@ pub struct ItemAttrs {
     pub must_use: bool,
 }
 
+/// `#[deprecated(...)]` fields parsed from bracket attributes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeprecatedMeta {
+    /// `since = "…"` when present.
+    pub since: Option<String>,
+    /// `note = "…"` when present.
+    pub note: Option<String>,
+    /// `suggestion = "…"` when present.
+    pub suggestion: Option<String>,
+}
+
 /// Map from definition id to item attribute metadata.
 pub type DefAttrs = HashMap<DefId, ItemAttrs>;
+
+/// Merges `#[derive(...)]` from bracket attributes into each item's `#derive` list.
+pub fn merge_bracket_derives_into_program(program: &mut Program, interner: &Interner) {
+    for item in &mut program.items {
+        merge_bracket_derives_into_decl(&mut item.inner.decl, &item.inner.attrs, interner);
+        if let TopLevelDecl::Function(f) = &mut item.inner.decl {
+            let extra = derive_from_bracket_attrs(interner, &f.attrs);
+            f.derives.extend(extra);
+        }
+    }
+}
+
+fn merge_bracket_derives_into_decl(
+    decl: &mut TopLevelDecl,
+    attrs: &[Node<Attribute>],
+    interner: &Interner,
+) {
+    let extra = derive_from_bracket_attrs(interner, attrs);
+    if extra.is_empty() {
+        return;
+    }
+    match decl {
+        TopLevelDecl::Struct { derives, .. }
+        | TopLevelDecl::Enum { derives, .. }
+        | TopLevelDecl::Trait { derives, .. } => derives.extend(extra),
+        TopLevelDecl::Function(f) => f.derives.extend(extra),
+        _ => {}
+    }
+}
+
+/// Merges `#[derive(...)]` traits from bracket attributes into a derive list.
+#[must_use]
+pub fn derive_from_bracket_attrs(
+    interner: &Interner,
+    attrs: &[Node<Attribute>],
+) -> Vec<DeriveDirective> {
+    let mut out = Vec::new();
+    for attr in attrs {
+        if !attr_named(interner, &attr.inner, "derive") {
+            continue;
+        }
+        let mut traits = Vec::new();
+        for arg in &attr.inner.args {
+            if let AttrArg::TypeName(ty) = arg {
+                traits.push(*ty);
+            }
+        }
+        if !traits.is_empty() {
+            out.push(DeriveDirective { traits });
+        }
+    }
+    out
+}
+
+/// Returns whether an attribute list contains `#[must_use]`.
+#[must_use]
+pub fn has_must_use_attr(interner: &Interner, attrs: &[Node<Attribute>]) -> bool {
+    attrs
+        .iter()
+        .any(|a| attr_named(interner, &a.inner, "must_use") && a.inner.args.is_empty())
+}
+
+/// Returns `true` when `name` matches the attribute identifier (via interner).
+#[must_use]
+pub fn attr_named(interner: &Interner, attr: &Attribute, name: &str) -> bool {
+    interner.resolves_to(attr.name.symbol, name)
+}
+
+/// Parses `#[deprecated(...)]` from bracket attributes, if any.
+#[must_use]
+pub fn deprecated_from_attrs(
+    interner: &Interner,
+    attrs: &[Node<Attribute>],
+) -> Option<DeprecatedMeta> {
+    for attr in attrs {
+        if !attr_named(interner, &attr.inner, "deprecated") {
+            continue;
+        }
+        let mut meta = DeprecatedMeta::default();
+        for arg in &attr.inner.args {
+            if let AttrArg::Named { name, value } = arg {
+                let key = interner.resolve(name.symbol);
+                match (key, value) {
+                    (Some("since"), phx_syntax::ast::AttrValue::Str(s)) => {
+                        meta.since = Some(s.clone());
+                    }
+                    (Some("note"), phx_syntax::ast::AttrValue::Str(s)) => {
+                        meta.note = Some(s.clone());
+                    }
+                    (Some("suggestion"), phx_syntax::ast::AttrValue::Str(s)) => {
+                        meta.suggestion = Some(s.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        return Some(meta);
+    }
+    None
+}
+
+/// Allow lint names from `#[allow(...)]` on the given attributes.
+#[must_use]
+pub fn allow_names_from_attrs(interner: &Interner, attrs: &[Node<Attribute>]) -> Vec<Symbol> {
+    let mut names = Vec::new();
+    for attr in attrs {
+        if !attr_named(interner, &attr.inner, "allow") {
+            continue;
+        }
+        for arg in &attr.inner.args {
+            match arg {
+                AttrArg::Flag(ident) => names.push(ident.symbol),
+                AttrArg::Named { name, .. } => names.push(name.symbol),
+                _ => {}
+            }
+        }
+    }
+    names
+}
 
 /// Builds [`ItemAttrs`] from bracket attributes on a top-level item.
 #[must_use]
@@ -30,7 +158,7 @@ pub fn item_attrs_for_top_level(interner: &Interner, item: &TopLevelItem) -> Ite
     let refs = top_level_bracket_attrs(item);
     let owned: Vec<Node<Attribute>> = refs.into_iter().map(|n| (*n).clone()).collect();
     let mut attrs = item_attrs_from_bracket(interner, &owned);
-    if let phx_syntax::ast::decl::TopLevelDecl::Function(f) = &item.decl {
+    if let TopLevelDecl::Function(f) = &item.decl {
         let fn_attrs = item_attrs_from_bracket(interner, &f.attrs);
         attrs.must_use |= fn_attrs.must_use;
         if attrs.deprecated.is_none() {

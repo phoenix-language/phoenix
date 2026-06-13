@@ -62,6 +62,7 @@ impl DeriveTrait {
 ///
 /// Returns [`DeriveError`] for unsupported traits, generics, or duplicate impls.
 pub fn expand_derives(program: &mut Program, interner: &Interner) -> Result<(), DeriveError> {
+    crate::attrs::merge_bracket_derives_into_program(program, interner);
     let existing = collect_existing_impls(&program.items, interner);
     let taken = std::mem::take(&mut program.items);
     let mut out = Vec::with_capacity(taken.len());

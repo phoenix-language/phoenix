@@ -110,7 +110,7 @@ A clean front end: `lexer`/`token` → `parser/` (split by construct) → plain-
 **Location:** `phx-syntax/src/attr_collect.rs`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Name-based attribute semantics (`derive`, `deprecated`, `allow`) live in the syntax crate.
 **Detail:** Resolving attribute meaning by interner string comparison is a resolution concern; keeping it in `phx-syntax` blurs the stage boundary and forces the syntax crate to know lint names.
@@ -889,7 +889,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-005 | - [x] | Major | phx-syntax | Partial AST discarded on any parse error |
 | PHX-006 | - [x] | Minor | phx-syntax | Unclosed `{` exits block loop with no diagnostic |
 | PHX-007 | - [x] | Minor | phx-syntax | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |
-| PHX-008 | - [ ] | Minor | phx-syntax | Attribute semantics resolved in syntax crate |
+| PHX-008 | - [x] | Minor | phx-syntax | Attribute semantics resolved in syntax crate |
 | PHX-009 | - [ ] | Minor | phx-syntax | Wasted allocations in hot paths |
 | PHX-010 | - [ ] | Suggestion | phx-syntax | Test/grammar drift on keywords and `extern`/`mod` |
 | PHX-011 | - [ ] | Suggestion | phx-syntax | API hygiene: missing `#[non_exhaustive]`, broad `pub(crate)` |

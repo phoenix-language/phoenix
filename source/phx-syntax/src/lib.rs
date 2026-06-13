@@ -21,10 +21,7 @@ pub mod source_file;
 pub mod token;
 
 pub use ast::{AstNodeId, Program};
-pub use attr_collect::{
-    DeprecatedMeta, allow_names_from_attrs, attr_named, deprecated_from_attrs,
-    derive_from_bracket_attrs, function_bracket_attrs, has_must_use_attr, top_level_bracket_attrs,
-};
+pub use attr_collect::{function_bracket_attrs, top_level_bracket_attrs};
 pub use import_walk::all_imports;
 pub use intern::{
     InternError, Interner, Symbol, closure_def_symbol, for_in_iter_symbol, impl_receiver_symbol,
