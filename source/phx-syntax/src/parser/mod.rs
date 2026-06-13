@@ -32,7 +32,7 @@ pub(crate) struct Parser<'src> {
     /// Intern table filled while parsing identifiers.
     pub(crate) interner: Interner,
     /// When set, parse errors are collected and parsing continues at sync points.
-    recovery: Option<*mut ParseBag>,
+    recovery: Option<ParseBag>,
     /// Next [`AstNodeId`] to assign (monotonic per parse).
     next_node_id: u32,
     /// Set when an inner `>` was absorbed from `>>` and closes the enclosing generic list.
@@ -69,20 +69,18 @@ impl<'src> Parser<'src> {
         Node::new(inner, span, self.alloc_node_id())
     }
 
-    /// Enables error recovery into `bag` for the remainder of this parse.
-    pub(crate) fn enable_recovery(&mut self, bag: &mut ParseBag) {
-        self.recovery = Some(std::ptr::from_mut(bag));
+    /// Enables error recovery for the remainder of this parse.
+    pub(crate) fn enable_recovery(&mut self) {
+        self.recovery = Some(ParseBag::new());
     }
 
-    fn recovery_bag(&mut self) -> Option<&mut ParseBag> {
-        self.recovery.map(|ptr| {
-            // SAFETY: `enable_recovery` sets this from `&mut ParseBag` on the same parser instance.
-            unsafe { &mut *ptr }
-        })
+    /// Takes the collected recovery errors, leaving recovery disabled.
+    pub(crate) fn take_recovery_bag(&mut self) -> ParseBag {
+        self.recovery.take().unwrap_or_default()
     }
 
     fn record_error(&mut self, error: ParseError) {
-        if let Some(bag) = self.recovery_bag() {
+        if let Some(bag) = &mut self.recovery {
             bag.push(error);
         }
     }
@@ -527,16 +525,16 @@ pub fn parse_with_interner(source: &str, interner: &mut Interner) -> Result<Sour
         Ok(t) => t,
         Err(e) => return Err(ParseBag::from_single(ParseError::Lex(e))),
     };
-    let mut bag = ParseBag::new();
     let mut parser = Parser::with_interner(source, &tokens, std::mem::take(interner));
-    parser.enable_recovery(&mut bag);
+    parser.enable_recovery();
     let program = match parser.parse_program() {
         Ok(p) => p,
         Err(e) => {
-            bag.push(e);
-            return Err(bag);
+            parser.record_error(e);
+            return Err(parser.take_recovery_bag());
         }
     };
+    let bag = parser.take_recovery_bag();
     *interner = parser.interner;
     if bag.has_errors() {
         return Err(bag);
