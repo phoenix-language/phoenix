@@ -241,11 +241,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/derive/mod.rs:265–269` (`intern_sym`)
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** The only `expect_used` override in production code — derive expansion panics if the intern table is full.
 **Detail:** Intern-table exhaustion is driven by user input volume; the workspace deny-policy exists precisely so this surfaces as a diagnostic, not an abort (release profile is `panic = "abort"`, so this kills the process with no ICE message path).
 **Recommendation:** Propagate as a `DeriveError` like every other derive failure.
+
+**Resolution:** `AstGen::intern_sym` records `InternError::TableFull` in a short-circuit `failed` slot; `copyable_impl` / `partialeq_impl` / `debug_impl` return `DeriveError` via `finish` instead of panicking. Existing compile/loader paths already map `DeriveError` to user diagnostics.
 
 ---
 
@@ -842,7 +844,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-015 | - [x]  | Suggestion   | phx-diagnostics | ~40 variants maintained across 4 parallel match sites                    |
 | PHX-016 | - [x]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
 | PHX-017 | - [x]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
-| PHX-018 | - [ ]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
+| PHX-018 | - [x]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
 | PHX-019 | - [ ]  | Major        | phx-compiler    | #![allow(unreachable_patterns)]` in typeck and lower                     |
 | PHX-020 | - [ ]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
 | PHX-021 | - [ ]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |

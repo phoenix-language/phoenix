@@ -16,7 +16,7 @@ use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::{GenericParam, Type};
 use phx_syntax::ast::{AstNodeId, BlockNode, ExprNode, Node, PatternNode};
 use phx_syntax::token::{IntegerSuffix, Keyword};
-use phx_syntax::{Interner, Program, Symbol, impl_receiver_symbol};
+use phx_syntax::{InternError, Interner, Program, Symbol, impl_receiver_symbol};
 
 /// Failure while expanding `#derive(...)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,9 +200,9 @@ fn expand_type_derives(
             }
             seen.push(kind);
             let item = match kind {
-                DeriveTrait::Copyable => builder.copyable_impl(type_name),
-                DeriveTrait::PartialEq => builder.partialeq_impl(type_name, shape),
-                DeriveTrait::Debug => builder.debug_impl(type_name, interner),
+                DeriveTrait::Copyable => builder.copyable_impl(type_name)?,
+                DeriveTrait::PartialEq => builder.partialeq_impl(type_name, shape)?,
+                DeriveTrait::Debug => builder.debug_impl(type_name, interner)?,
             };
             impls.push(item);
         }
@@ -221,6 +221,7 @@ struct AstGen {
     interner: Interner,
     span: Span,
     next_id: u32,
+    failed: Option<DeriveError>,
 }
 
 impl AstGen {
@@ -229,6 +230,7 @@ impl AstGen {
             interner: interner.clone(),
             span,
             next_id: 0x4_000_000,
+            failed: None,
         }
     }
 
@@ -260,11 +262,24 @@ impl AstGen {
         }
     }
 
-    #[allow(clippy::expect_used)]
     fn intern_sym(&mut self, name: &str) -> Symbol {
-        self.interner
-            .intern(name)
-            .expect("derive: intern table should not be full during expansion")
+        if self.failed.is_some() {
+            return Symbol::from_raw(0);
+        }
+        match self.interner.intern(name) {
+            Ok(s) => s,
+            Err(InternError::TableFull) => {
+                self.failed = Some(DeriveError {
+                    span: self.span,
+                    message: "identifier intern table is full during derive expansion".to_string(),
+                });
+                Symbol::from_raw(0)
+            }
+        }
+    }
+
+    fn finish(&mut self, item: Node<TopLevelItem>) -> Result<Node<TopLevelItem>, DeriveError> {
+        self.failed.take().map_or(Ok(item), Err)
     }
 
     fn type_bool(&mut self) -> Node<Type> {
@@ -322,11 +337,16 @@ impl AstGen {
         })
     }
 
-    fn copyable_impl(&mut self, type_name: &TypeName) -> Node<TopLevelItem> {
-        self.trait_impl(type_name, "Copyable", Vec::new())
+    fn copyable_impl(&mut self, type_name: &TypeName) -> Result<Node<TopLevelItem>, DeriveError> {
+        let item = self.trait_impl(type_name, "Copyable", Vec::new());
+        self.finish(item)
     }
 
-    fn partialeq_impl(&mut self, type_name: &TypeName, shape: TypeShape<'_>) -> Node<TopLevelItem> {
+    fn partialeq_impl(
+        &mut self,
+        type_name: &TypeName,
+        shape: TypeShape<'_>,
+    ) -> Result<Node<TopLevelItem>, DeriveError> {
         let body = match shape {
             TypeShape::Struct(body) => self.struct_partialeq_body(type_name, body),
             TypeShape::Enum(variants) => self.enum_partialeq_body(type_name, variants),
@@ -334,10 +354,15 @@ impl AstGen {
         let eq_params = vec![self.receiver_param(), self.named_ref_self_param("other")];
         let eq_ret = self.type_bool();
         let method = self.trait_method("eq", eq_params, eq_ret, body);
-        self.trait_impl(type_name, "PartialEq", vec![ImplMember::Method(method)])
+        let item = self.trait_impl(type_name, "PartialEq", vec![ImplMember::Method(method)]);
+        self.finish(item)
     }
 
-    fn debug_impl(&mut self, type_name: &TypeName, interner: &Interner) -> Node<TopLevelItem> {
+    fn debug_impl(
+        &mut self,
+        type_name: &TypeName,
+        interner: &Interner,
+    ) -> Result<Node<TopLevelItem>, DeriveError> {
         let name = interner.resolve(type_name.symbol).unwrap_or("<?>");
         let bytes = debug_name_bytes(name);
         let array_expr = self.u8_array_literal(&bytes);
@@ -345,7 +370,8 @@ impl AstGen {
         let fmt_params = vec![self.receiver_param()];
         let fmt_ret = self.type_u8_array_32();
         let method = self.trait_method("fmt", fmt_params, fmt_ret, block);
-        self.trait_impl(type_name, "Debug", vec![ImplMember::Method(method)])
+        let item = self.trait_impl(type_name, "Debug", vec![ImplMember::Method(method)]);
+        self.finish(item)
     }
 
     fn trait_impl(
@@ -706,4 +732,56 @@ fn debug_name_bytes(name: &str) -> [u8; 32] {
         out[i] = b;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finish_surfaces_intern_table_full_error() {
+        let interner = Interner::new();
+        let span = Span::new(0, 4);
+        let mut ast_gen = AstGen::new(&interner, span);
+        ast_gen.failed = Some(DeriveError {
+            span,
+            message: "identifier intern table is full during derive expansion".to_string(),
+        });
+        let type_name = TypeName {
+            symbol: Symbol::from_raw(0),
+            span,
+            id: ast_gen.alloc_id(),
+        };
+        let item = ast_gen.node(TopLevelItem {
+            attrs: Vec::new(),
+            pub_: false,
+            decl: TopLevelDecl::Struct {
+                name: type_name,
+                derives: Vec::new(),
+                generics: None,
+                body: StructBody::Unit,
+            },
+        });
+        let err = ast_gen.finish(item).expect_err("expected derive error");
+        assert!(err.message.contains("intern table is full"));
+    }
+
+    #[test]
+    fn intern_sym_poison_after_failure_does_not_overwrite_error() {
+        let interner = Interner::new();
+        let span = Span::new(0, 1);
+        let mut ast_gen = AstGen::new(&interner, span);
+        ast_gen.failed = Some(DeriveError {
+            span,
+            message: "identifier intern table is full during derive expansion".to_string(),
+        });
+        let sym = ast_gen.intern_sym("unused");
+        assert_eq!(sym, Symbol::from_raw(0));
+        assert!(
+            ast_gen
+                .failed
+                .as_ref()
+                .is_some_and(|e| e.message.contains("intern table is full"))
+        );
+    }
 }
