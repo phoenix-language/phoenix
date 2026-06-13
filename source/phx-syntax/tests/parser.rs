@@ -1452,7 +1452,26 @@ fn error_unexpected_token() {
 #[test]
 fn error_unexpected_eof() {
     assert_parse_err("main :: () => {", |e| {
-        matches!(e, ParseError::UnexpectedEof { .. })
+        matches!(
+            e,
+            ParseError::UnexpectedEof {
+                expected: ExpectedToken::Punct("}"),
+                ..
+            }
+        )
+    });
+}
+
+#[test]
+fn block_unclosed_brace_in_nested_block() {
+    assert_parse_err(&in_main("{ const x = 1; "), |e| {
+        matches!(
+            e,
+            ParseError::UnexpectedEof {
+                expected: ExpectedToken::Punct("}"),
+                ..
+            }
+        )
     });
 }
 

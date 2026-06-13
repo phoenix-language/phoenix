@@ -18,6 +18,12 @@ impl Parser<'_> {
         let mut items = Vec::new();
         while !self.eat_kind(&TokenKind::RBrace) {
             if self.at_end() {
+                let err = self.error_unexpected(ExpectedToken::Punct("}"));
+                if self.in_recovery_mode() {
+                    self.record_error(err);
+                } else {
+                    return Err(err);
+                }
                 break;
             }
             match self.parse_block_item() {

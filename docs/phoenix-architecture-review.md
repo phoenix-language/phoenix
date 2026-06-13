@@ -84,7 +84,7 @@ A clean front end: `lexer`/`token` → `parser/` (split by construct) → plain-
 **Location:** `phx-syntax/src/parser/stmt.rs:19–22` (`parse_block`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** An unclosed `{` exits the block loop at EOF without recording any diagnostic.
 **Detail:** The caller receives a structurally incomplete block with no `UnexpectedEof { expected: "}" }`, so the user may get downstream errors with no mention of the missing brace.
@@ -887,7 +887,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-003 | - [x] | Major | phx-syntax | Invalid `Symbol` silently resolves to placeholder string |
 | PHX-004 | - [x] | Major | phx-syntax | Block statements strip `StmtNode` span |
 | PHX-005 | - [x] | Major | phx-syntax | Partial AST discarded on any parse error |
-| PHX-006 | - [ ] | Minor | phx-syntax | Unclosed `{` exits block loop with no diagnostic |
+| PHX-006 | - [x] | Minor | phx-syntax | Unclosed `{` exits block loop with no diagnostic |
 | PHX-007 | - [ ] | Minor | phx-syntax | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |
 | PHX-008 | - [ ] | Minor | phx-syntax | Attribute semantics resolved in syntax crate |
 | PHX-009 | - [ ] | Minor | phx-syntax | Wasted allocations in hot paths |
