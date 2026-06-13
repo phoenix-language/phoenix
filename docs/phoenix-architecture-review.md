@@ -213,11 +213,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/types.rs:129–132` (`TypeInterner::get`)
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** An out-of-bounds `TypeId` silently resolves to `&Ty::Unit`.
 **Detail:** Any internal bug that fabricates or corrupts a `TypeId` is laundered into "this expression is `()`", which then type-checks against real rules and produces wrong diagnostics or wrong code. Verified: `self.types.get(...).unwrap_or(&Ty::Unit)`. This is the frontend instance of the codebase-wide silent-fallback pattern (see PHX-034, PHX-037).
 **Recommendation:** Return a poison `Ty::Error` (rejected everywhere, suppresses cascading diagnostics) or `Option<&Ty>` with an ICE diagnostic; never default to `Unit`.
+
+**Resolution:** `TypeInterner::get` returns a static poison `Ty::Error` for out-of-range indices (never `Ty::Unit`); regression tests cover empty and populated interners plus `is_error_type`.
 
 ---
 
@@ -836,7 +838,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-013 | - [x]  | Minor        | phx-diagnostics | Incomplete `phx explain` coverage                                        |
 | PHX-014 | - [x]  | Minor        | phx-diagnostics | `LexError`/`ParseError` missing `#[non_exhaustive]`                      |
 | PHX-015 | - [x]  | Suggestion   | phx-diagnostics | ~40 variants maintained across 4 parallel match sites                    |
-| PHX-016 | - [ ]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
+| PHX-016 | - [x]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
 | PHX-017 | - [ ]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
 | PHX-018 | - [ ]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
 | PHX-019 | - [ ]  | Major        | phx-compiler    | #![allow(unreachable_patterns)]` in typeck and lower                     |

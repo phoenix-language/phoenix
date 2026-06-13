@@ -101,6 +101,9 @@ pub struct TypeInterner {
     types: Vec<Ty>,
 }
 
+/// Poison returned by [`TypeInterner::get`] for out-of-range [`TypeId`] indices.
+static OOB_TYPE: Ty = Ty::Error;
+
 /// Returns `true` when `id` is the poison [`Ty::Error`] type.
 #[must_use]
 pub fn is_error_type(types: &TypeInterner, id: TypeId) -> bool {
@@ -126,14 +129,46 @@ impl TypeInterner {
     }
 
     /// Borrows a type by id.
+    ///
+    /// Out-of-range indices return poison [`Ty::Error`], never [`Ty::Unit`], so internal
+    /// bugs cannot masquerade as unit and propagate through unification.
     #[must_use]
     pub fn get(&self, id: TypeId) -> &Ty {
-        self.types.get(id.index() as usize).unwrap_or(&Ty::Unit)
+        self.types.get(id.index() as usize).unwrap_or(&OOB_TYPE)
     }
 
     /// All interned types.
     #[must_use]
     pub fn types(&self) -> &[Ty] {
         &self.types
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use phx_syntax::token::Keyword;
+
+    #[test]
+    fn get_oob_on_empty_interner_returns_error_not_unit() {
+        let types = TypeInterner::new();
+        let oob = TypeId::from_raw(0);
+        assert!(matches!(types.get(oob), Ty::Error));
+        assert!(!matches!(types.get(oob), Ty::Unit));
+    }
+
+    #[test]
+    fn get_large_oob_id_returns_error() {
+        let mut types = TypeInterner::new();
+        let _ = types.intern(&Ty::Primitive(Keyword::S32));
+        let oob = TypeId::from_raw(999);
+        assert!(matches!(types.get(oob), Ty::Error));
+    }
+
+    #[test]
+    fn is_error_type_true_for_oob_id() {
+        let types = TypeInterner::new();
+        let oob = TypeId::from_raw(42);
+        assert!(is_error_type(&types, oob));
     }
 }
