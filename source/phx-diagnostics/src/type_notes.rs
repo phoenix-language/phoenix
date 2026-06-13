@@ -1,4 +1,7 @@
 //! Secondary notes and help text for type-check diagnostics.
+//!
+//! Variant codes live in [`crate::type_error_registry`]; add a match arm here when introducing
+//! a new [`TypeCheckError`] variant that needs notes or help text.
 
 use crate::Span;
 use crate::SymbolNames;

@@ -28,6 +28,7 @@ mod resolve_error;
 mod span;
 mod symbol_names;
 mod type_error;
+mod type_error_registry;
 mod type_notes;
 
 pub use code::DiagnosticCode;

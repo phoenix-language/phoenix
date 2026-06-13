@@ -181,7 +181,7 @@ Dependency-free root crate: `Span`, per-pass error enums (`LexError`, `ParseErro
 **Location:** `phx-diagnostics/src/parse_error.rs`, `lex_error.rs`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `LexError`/`ParseError` lack `#[non_exhaustive]` while the workspace convention applies it to extensible domain enums.
 **Recommendation:** Add the attribute. Flag for review whether diagnostic enums are intentionally exempt.
@@ -192,10 +192,12 @@ Dependency-free root crate: `Span`, per-pass error enums (`LexError`, `ParseErro
 **Location:** `phx-diagnostics/src/type_error.rs:352–440` + `code()`/`span()`/`Display`/`type_notes`
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** ~40 `TypeCheckError` variants each maintained across four parallel match sites; drift already observed (PHX-013).
 **Recommendation:** Flag for review — a macro or table-driven definition (std-only, no external deps required) would collapse the four sites into one.
+
+**Resolution:** Added `type_error_registry.rs` with a table-driven macro that generates `code()` and `span()` from one variant→code map (38 variants, E2001–E2038). Removed the duplicate `code()`/`span()`/`Display` impls from `type_error.rs`; `Display` now delegates to `format::typecheck_message`. Expanded `typecheck_message` to full variant coverage. Added `every_typecheck_code_has_explain_entry` test to guard explain drift. `type_notes` and `explain_code` remain separate (payload-specific notes and long-form text); registry is documented as the canonical code source.
 
 ---
 
@@ -820,20 +822,20 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | ID      | Status | Severity     | Crate           | Short Description                                                        |
 | ------- | ------ | ------------ | --------------- | ------------------------------------------------------------------------ |
 | PHX-001 | - [x]  | Major        | phx-syntax      | Raw `*mut ParseBag` in only unsafe block                                 |
-| PHX-002 | - [ ]  | Major        | phx-syntax      | Parser peeks clone full `TokenKind` with heap payloads                   |
+| PHX-002 | - [x]  | Major        | phx-syntax      | Parser peeks clone full `TokenKind` with heap payloads                   |
 | PHX-003 | - [x]  | Major        | phx-syntax      | Invalid `Symbol` silently resolves to placeholder string                 |
 | PHX-004 | - [x]  | Major        | phx-syntax      | Block statements strip `StmtNode` span                                   |
 | PHX-005 | - [x]  | Major        | phx-syntax      | Partial AST discarded on any parse error                                 |
 | PHX-006 | - [x]  | Minor        | phx-syntax      | Unclosed `{` exits block loop with no diagnostic                         |
 | PHX-007 | - [x]  | Minor        | phx-syntax      | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |
 | PHX-008 | - [x]  | Minor        | phx-syntax      | Attribute semantics resolved in syntax crate                             |
-| PHX-009 | - [ ]  | Minor        | phx-syntax      | Wasted allocations in hot paths                                          |
-| PHX-010 | - [ ]  | Suggestion   | phx-syntax      | Test/grammar drift on keywords and `extern`/`mod`                        |
-| PHX-011 | - [ ]  | Suggestion   | phx-syntax      | API hygiene: missing `#[non_exhaustive]`, broad `pub(crate)`             |
-| PHX-012 | - [ ]  | Major        | phx-diagnostics | Parse-error formatting lives in wrong crate                              |
-| PHX-013 | - [ ]  | Minor        | phx-diagnostics | Incomplete `phx explain` coverage                                        |
-| PHX-014 | - [ ]  | Minor        | phx-diagnostics | `LexError`/`ParseError` missing `#[non_exhaustive]`                      |
-| PHX-015 | - [ ]  | Suggestion   | phx-diagnostics | ~40 variants maintained across 4 parallel match sites                    |
+| PHX-009 | - [x]  | Minor        | phx-syntax      | Wasted allocations in hot paths                                          |
+| PHX-010 | - [x]  | Suggestion   | phx-syntax      | Test/grammar drift on keywords and `extern`/`mod`                        |
+| PHX-011 | - [x]  | Suggestion   | phx-syntax      | API hygiene: missing `#[non_exhaustive]`, broad `pub(crate)`             |
+| PHX-012 | - [x]  | Major        | phx-diagnostics | Parse-error formatting lives in wrong crate                              |
+| PHX-013 | - [x]  | Minor        | phx-diagnostics | Incomplete `phx explain` coverage                                        |
+| PHX-014 | - [x]  | Minor        | phx-diagnostics | `LexError`/`ParseError` missing `#[non_exhaustive]`                      |
+| PHX-015 | - [x]  | Suggestion   | phx-diagnostics | ~40 variants maintained across 4 parallel match sites                    |
 | PHX-016 | - [ ]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
 | PHX-017 | - [ ]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
 | PHX-018 | - [ ]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |

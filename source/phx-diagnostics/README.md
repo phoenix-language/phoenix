@@ -37,7 +37,7 @@ Stable codes ([`DiagnosticCode`](src/code.rs)) are appended in formatters as `[E
 
 ### Type-check codes (E2xxx)
 
-E2001–E2020 — see [`TypeCheckError::code`](src/type_error.rs).
+E2001–E2038 — see [`type_error_registry.rs`](src/type_error_registry.rs) (single source for variant → code mapping).
 
 ### Parse codes (E3xxx)
 

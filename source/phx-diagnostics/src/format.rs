@@ -211,35 +211,158 @@ pub fn format_resolve_error_styled(
 }
 
 /// Human-readable message for a type-check error (no caret).
+#[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> String {
     match err {
+        TypeCheckError::Mismatch {
+            expected, found, ..
+        } => format!("type mismatch: expected {expected}, found {found}"),
         TypeCheckError::UnknownType { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
-            format!("unknown type `{name}`")
+            format!("unknown type ({})", sym_label(names, *symbol_index))
         }
-        TypeCheckError::UnresolvedValue { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
-            format!("unresolved value `{name}`")
+        TypeCheckError::ArityMismatch {
+            expected, found, ..
+        } => format!("argument count mismatch: expected {expected}, found {found}"),
+        TypeCheckError::NotCallable { found, .. } => {
+            format!("value of type `{found}` is not callable")
         }
         TypeCheckError::UnresolvedMethod {
             receiver,
             method_index,
             ..
-        } => {
-            let name = names.symbol_name(*method_index).unwrap_or("<?>");
-            format!("no method `{name}` on type `{receiver}`")
-        }
+        } => format!(
+            "no method {} on type `{receiver}`",
+            sym_label(names, *method_index)
+        ),
         TypeCheckError::AmbiguousMethod {
             receiver,
             method_index,
             ..
-        } => {
-            let name = names.symbol_name(*method_index).unwrap_or("<?>");
-            format!("ambiguous method `{name}` on type `{receiver}` (multiple trait impls)")
+        } => format!(
+            "ambiguous method {} on type `{receiver}` (multiple trait impls)",
+            sym_label(names, *method_index)
+        ),
+        TypeCheckError::NonUnifyingBranches { .. } => "branch types do not unify".to_owned(),
+        TypeCheckError::NonExhaustiveMatch { missing, .. } => {
+            if missing.is_empty() {
+                "non-exhaustive `match` on enum".to_owned()
+            } else {
+                format!(
+                    "non-exhaustive `match`: missing variant(s) {}",
+                    missing.join(", ")
+                )
+            }
         }
-        other => other.to_string(),
+        TypeCheckError::UnreachableMatchArm { reason, .. } => {
+            format!("unreachable `match` arm: {reason}")
+        }
+        TypeCheckError::UnknownStructField { name, .. } => {
+            format!("struct literal has no field `{name}`")
+        }
+        TypeCheckError::MissingStructField { name, .. } => {
+            format!("struct literal is missing field `{name}`")
+        }
+        TypeCheckError::UnknownEnumVariantField { name, .. } => {
+            format!("enum variant literal has no field `{name}`")
+        }
+        TypeCheckError::MissingEnumVariantField { name, .. } => {
+            format!("enum variant literal is missing field `{name}`")
+        }
+        TypeCheckError::InvalidCast { from, to, .. } => {
+            format!("invalid cast from `{from}` to `{to}`")
+        }
+        TypeCheckError::InvalidOperator { op, .. } => {
+            format!("invalid use of operator `{op}`")
+        }
+        TypeCheckError::UnsupportedFeature { feature, .. } => {
+            format!("{feature} is not available in MVP")
+        }
+        TypeCheckError::UseAfterMove { name, .. } => format!("use of moved value `{name}`"),
+        TypeCheckError::MovedAssignTarget { name, .. } => {
+            format!("cannot assign to moved value `{name}`")
+        }
+        TypeCheckError::UnresolvedValue { symbol_index, .. } => {
+            format!("unresolved value ({})", sym_label(names, *symbol_index))
+        }
+        TypeCheckError::LoopControlOutsideLoop { keyword, .. } => {
+            format!("`{keyword}` outside of a loop")
+        }
+        TypeCheckError::RecursiveTypeAlias { .. } => "recursive type alias".to_owned(),
+        TypeCheckError::ReturnEscapesLocal { .. } => {
+            "cannot return a borrow of a local variable".to_owned()
+        }
+        TypeCheckError::TraitNotSatisfied {
+            type_name,
+            trait_name,
+            ..
+        } => format!("type `{type_name}` does not satisfy trait bound `{trait_name}`"),
+        TypeCheckError::UnknownTraitBound { trait_name, .. } => {
+            format!("unknown trait bound `{trait_name}`")
+        }
+        TypeCheckError::InferenceFailed { .. } => {
+            "could not infer generic type arguments from call arguments".to_owned()
+        }
+        TypeCheckError::InferenceAmbiguous { .. } => {
+            "ambiguous generic type argument inference".to_owned()
+        }
+        TypeCheckError::MissingTraitMethod {
+            type_name,
+            trait_name,
+            method_name,
+            ..
+        } => format!(
+            "type `{type_name}` does not implement trait method `{method_name}` from `{trait_name}`"
+        ),
+        TypeCheckError::MissingAssociatedType {
+            type_name,
+            trait_name,
+            assoc_name,
+            ..
+        } => format!(
+            "type `{type_name}` does not specify associated type `{assoc_name}` from `{trait_name}`"
+        ),
+        TypeCheckError::TryOutsideFunction { .. } => {
+            "`?` is only valid inside a function returning `Option` or `Result`".to_owned()
+        }
+        TypeCheckError::InvalidTryOperand {
+            found,
+            expected_return,
+            ..
+        } => format!("cannot apply `?` to `{found}` in function returning `{expected_return}`"),
+        TypeCheckError::TryErrorFromMissing {
+            err_in, err_out, ..
+        } => format!(
+            "cannot use `?` on `Result<_, {err_in}>` in function returning `Result<_, {err_out}`: no `From<{err_in}>` implementation for `{err_out}`"
+        ),
+        TypeCheckError::ExternCallRequiresUnsafe { name, .. } => {
+            format!("call to foreign function `{name}` requires `unsafe`")
+        }
+        TypeCheckError::IntrinsicRequiresUnsafe { name, .. } => {
+            format!("call to intrinsic `{name}` requires `unsafe`")
+        }
+        TypeCheckError::UnsafeFnCallRequiresUnsafe { name, .. } => {
+            format!("call to `{name}` requires `unsafe`")
+        }
+        TypeCheckError::UnsafeTraitRequiresUnsafeImpl { trait_name, .. } => {
+            format!("implementation of `unsafe trait` `{trait_name}` must use `unsafe impl`")
+        }
+        TypeCheckError::RedundantUnsafeInUnsafeTrait { method, .. } => format!(
+            "redundant `unsafe` on method `{method}` in `unsafe trait` (methods inherit unsafety)"
+        ),
+        TypeCheckError::UnsafeImplOfSafeTrait { type_name, .. } => {
+            format!("`unsafe impl` of `{type_name}` is only allowed for an `unsafe trait`")
+        }
+        TypeCheckError::CopyableDropConflict { type_name, .. } => {
+            format!("type `{type_name}` cannot implement both `Drop` and `Copyable`")
+        }
     }
+}
+
+fn sym_label(names: &impl SymbolNames, symbol_index: u32) -> String {
+    names
+        .symbol_name(symbol_index)
+        .map_or_else(|| format!("sym#{symbol_index}"), |name| format!("`{name}`"))
 }
 
 /// Formats a type-check error with source carets; includes secondary notes for move errors.
