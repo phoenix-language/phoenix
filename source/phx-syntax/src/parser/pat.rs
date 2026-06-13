@@ -106,7 +106,7 @@ impl Parser<'_> {
 
     /// Parses the right-hand side of a match arm (expression or braced block).
     pub(crate) fn parse_expr_or_block_value(&mut self) -> Result<ExprNode, ParseError> {
-        if self.peek_kind() == TokenKind::LBrace {
+        if matches!(self.peek_kind(), TokenKind::LBrace) {
             let block = self.parse_block()?;
             let span = block.span;
             return Ok(self.node(crate::ast::Expr::Block(block), span));

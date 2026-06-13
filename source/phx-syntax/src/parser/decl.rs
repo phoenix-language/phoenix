@@ -57,6 +57,7 @@ impl Parser<'_> {
         loop {
             match self.peek_kind() {
                 TokenKind::TypeIdent(seg) => {
+                    let seg = *seg;
                     let span = self.current_span();
                     self.bump();
                     segments.push(crate::ast::PathSegment::Type(
@@ -64,11 +65,12 @@ impl Parser<'_> {
                     ));
                 }
                 TokenKind::Ident(seg) => {
+                    let seg = *seg;
                     segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
                 }
                 _ => break,
             }
-            if self.peek_kind() != TokenKind::ColonColon {
+            if !matches!(self.peek_kind(), TokenKind::ColonColon) {
                 break;
             }
             if matches!(self.peek_at(1), TokenKind::LBrace) {
@@ -89,6 +91,7 @@ impl Parser<'_> {
         loop {
             match self.peek_kind() {
                 TokenKind::TypeIdent(seg) => {
+                    let seg = *seg;
                     let span = self.current_span();
                     self.bump();
                     segments.push(crate::ast::PathSegment::Type(
@@ -96,6 +99,7 @@ impl Parser<'_> {
                     ));
                 }
                 TokenKind::Ident(seg) => {
+                    let seg = *seg;
                     segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
                 }
                 _ => break,
@@ -132,7 +136,7 @@ impl Parser<'_> {
 
     /// Parses `type`, `const`, `var`, `fn`, or `Name :: struct/enum/trait/impl`.
     fn parse_top_level_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
-        if self.peek_kind() == TokenKind::HashDerive {
+        if matches!(self.peek_kind(), TokenKind::HashDerive) {
             let derives = self.parse_derive_directives()?;
             if matches!(self.peek_kind(), TokenKind::TypeIdent(_)) {
                 return self.parse_named_decl_with_derives(derives);
@@ -203,6 +207,7 @@ impl Parser<'_> {
     fn parse_reexport_path(&mut self) -> Result<crate::ast::Path, ParseError> {
         let mut segments = Vec::new();
         while let TokenKind::Ident(seg) = self.peek_kind() {
+            let seg = *seg;
             segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
             if !self.eat_kind(&TokenKind::ColonColon) {
                 break;
@@ -218,7 +223,7 @@ impl Parser<'_> {
     fn parse_type_alias(&mut self) -> Result<TopLevelDecl, ParseError> {
         self.bump();
         let name = self.parse_type_alias_name()?;
-        let generics = if self.peek_kind() == TokenKind::Lt {
+        let generics = if matches!(self.peek_kind(), TokenKind::Lt) {
             Some(self.parse_generic_params()?)
         } else {
             None
@@ -241,7 +246,7 @@ impl Parser<'_> {
     ) -> Result<TopLevelDecl, ParseError> {
         let name = self.parse_type_name()?;
         self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
-        let generics = if self.peek_kind() == TokenKind::Lt {
+        let generics = if matches!(self.peek_kind(), TokenKind::Lt) {
             Some(self.parse_generic_params()?)
         } else {
             None
@@ -447,10 +452,10 @@ impl Parser<'_> {
         &mut self,
         _generics: Option<Vec<crate::ast::GenericParam>>,
     ) -> Result<(Option<crate::ast::Node<crate::ast::Type>>, Vec<ImplMember>), ParseError> {
-        let trait_ = if self.peek_kind() == TokenKind::ColonColon {
+        let trait_ = if matches!(self.peek_kind(), TokenKind::ColonColon) {
             self.bump();
             Some(self.parse_trait_bound()?)
-        } else if self.peek_kind() == TokenKind::Keyword(Keyword::For) {
+        } else if matches!(self.peek_kind(), TokenKind::Keyword(Keyword::For)) {
             self.bump();
             return Err(self.reject_unsupported(
                 "trait impl uses 'Type :: impl :: Trait', not 'impl for Trait'",
@@ -488,14 +493,14 @@ impl Parser<'_> {
         }
         let name = self.parse_ident()?;
         self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
-        let generics = if self.peek_kind() == TokenKind::Lt {
+        let generics = if matches!(self.peek_kind(), TokenKind::Lt) {
             Some(self.parse_generic_params()?)
         } else {
             None
         };
         let params = self.parse_params()?;
         let ret = self.parse_optional_return_type()?;
-        let body = if self.peek_kind() == TokenKind::LBrace {
+        let body = if matches!(self.peek_kind(), TokenKind::LBrace) {
             Some(self.parse_block()?)
         } else {
             None
@@ -539,7 +544,7 @@ impl Parser<'_> {
             self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
             id
         };
-        let generics = if self.peek_kind() == TokenKind::Lt {
+        let generics = if matches!(self.peek_kind(), TokenKind::Lt) {
             Some(self.parse_generic_params()?)
         } else {
             None
@@ -599,7 +604,7 @@ impl Parser<'_> {
         if !self.eat_kind(&TokenKind::FatArrow) {
             return Ok(None);
         }
-        if self.peek_kind() == TokenKind::LBrace {
+        if matches!(self.peek_kind(), TokenKind::LBrace) {
             return Ok(None);
         }
         Ok(Some(self.parse_type()?))
@@ -631,7 +636,7 @@ impl Parser<'_> {
     /// Parses leading `#derive(Trait, …)` attributes.
     pub(crate) fn parse_derive_directives(&mut self) -> Result<Vec<DeriveDirective>, ParseError> {
         let mut derives = Vec::new();
-        while self.peek_kind() == TokenKind::HashDerive {
+        while matches!(self.peek_kind(), TokenKind::HashDerive) {
             self.bump();
             self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
             let mut traits = vec![self.parse_type_name()?];
@@ -686,7 +691,7 @@ impl Parser<'_> {
     fn parse_extern_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
         self.eat_keyword(Keyword::Extern);
         let abi = self.parse_abi_string()?;
-        if self.peek_kind() == TokenKind::LBrace {
+        if matches!(self.peek_kind(), TokenKind::LBrace) {
             self.bump();
             let mut items = Vec::new();
             while !self.eat_kind(&TokenKind::RBrace) {
@@ -702,10 +707,10 @@ impl Parser<'_> {
 
     fn parse_abi_string(&mut self) -> Result<String, ParseError> {
         match self.peek_kind() {
-            TokenKind::String(s) => {
-                self.bump();
-                Ok(s)
-            }
+            TokenKind::String(_) => match self.bump_kind() {
+                Some(TokenKind::String(s)) => Ok(s),
+                _ => Err(self.error_unexpected(ExpectedToken::Literal)),
+            },
             _ => Err(self.error_unexpected(ExpectedToken::Literal)),
         }
     }
@@ -713,7 +718,7 @@ impl Parser<'_> {
     fn parse_extern_function_sig(&mut self) -> Result<FunctionSig, ParseError> {
         let name = self.parse_ident()?;
         self.expect_kind(ExpectedToken::Punct("::"), &TokenKind::ColonColon)?;
-        if self.peek_kind() == TokenKind::Lt {
+        if matches!(self.peek_kind(), TokenKind::Lt) {
             return Err(self.error_unexpected(ExpectedToken::Punct("(")));
         }
         let params = self.parse_params()?;

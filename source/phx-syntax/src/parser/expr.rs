@@ -45,8 +45,7 @@ impl Parser<'_> {
     fn parse_assign_expr(&mut self) -> Result<ExprNode, ParseError> {
         let start = self.pos;
         let left = self.parse_logical_or_expr()?;
-        let kind = self.peek_kind();
-        if let Some(op) = parse_assign_op(&kind) {
+        if let Some(op) = parse_assign_op(self.peek_kind()) {
             self.bump();
             let right = self.parse_assign_expr()?;
             let span = self.span_from(start);
@@ -364,6 +363,7 @@ impl Parser<'_> {
                 if matches!(self.peek_at(1), TokenKind::ColonColon | TokenKind::LBrace) {
                     return self.parse_path_or_struct_literal();
                 }
+                let name = *name;
                 let span = self.current_span();
                 self.bump();
                 let ident = self.intern_ident(name, span)?;
@@ -463,6 +463,7 @@ impl Parser<'_> {
         let start = self.pos;
         let (type_name, first_segment, from_type_ident) = match self.peek_kind() {
             TokenKind::TypeIdent(n) => {
+                let n = *n;
                 let span = self.current_span();
                 self.bump();
                 let tn = self.intern_type_name(n, span)?;
@@ -473,6 +474,7 @@ impl Parser<'_> {
                 )
             }
             TokenKind::Ident(n) => {
+                let n = *n;
                 let id = self.bump_ident(n)?;
                 if matches!(self.peek_kind(), TokenKind::ColonColon)
                     && matches!(self.peek_at(1), TokenKind::Lt)
@@ -570,6 +572,7 @@ impl Parser<'_> {
             loop {
                 match self.peek_kind() {
                     TokenKind::TypeIdent(seg) => {
+                        let seg = *seg;
                         let span = self.current_span();
                         self.bump();
                         segments.push(crate::ast::PathSegment::Type(TypePathSegment::new(
@@ -577,6 +580,7 @@ impl Parser<'_> {
                         )));
                     }
                     TokenKind::Ident(seg) => {
+                        let seg = *seg;
                         segments.push(crate::ast::PathSegment::Ident(self.bump_ident(seg)?));
                     }
                     _ => break,
@@ -625,29 +629,35 @@ impl Parser<'_> {
     pub(crate) fn parse_literal(&mut self) -> Result<Literal, ParseError> {
         match self.peek_kind() {
             TokenKind::Integer { value, suffix } => {
+                let value = *value;
+                let suffix = *suffix;
                 self.bump();
                 Ok(Literal::Int(IntLit { value, suffix }))
             }
             TokenKind::Float { value, suffix } => {
+                let value = *value;
+                let suffix = *suffix;
                 self.bump();
                 Ok(Literal::Float(FloatLit { value, suffix }))
             }
             TokenKind::Bool(b) => {
+                let b = *b;
                 self.bump();
                 Ok(Literal::Bool(b))
             }
             TokenKind::ByteChar(b) => {
+                let b = *b;
                 self.bump();
                 Ok(Literal::ByteChar(b))
             }
-            TokenKind::ByteString(b) => {
-                self.bump();
-                Ok(Literal::ByteString(b))
-            }
-            TokenKind::String(s) => {
-                self.bump();
-                Ok(Literal::String(s))
-            }
+            TokenKind::ByteString(_) => match self.bump_kind() {
+                Some(TokenKind::ByteString(b)) => Ok(Literal::ByteString(b)),
+                _ => Err(self.error_unexpected(ExpectedToken::Literal)),
+            },
+            TokenKind::String(_) => match self.bump_kind() {
+                Some(TokenKind::String(s)) => Ok(Literal::String(s)),
+                _ => Err(self.error_unexpected(ExpectedToken::Literal)),
+            },
             _ => Err(self.error_unexpected(ExpectedToken::Literal)),
         }
     }
@@ -757,7 +767,7 @@ impl Parser<'_> {
         F: FnMut(&mut Self) -> Result<ExprNode, ParseError>,
     {
         let mut left = next(self)?;
-        while self.peek_kind() == *token {
+        while self.peek_kind() == token {
             self.bump();
             let right = next(self)?;
             let span = left.span.merge(right.span);

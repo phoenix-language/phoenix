@@ -60,13 +60,14 @@ impl Parser<'_> {
     #[allow(clippy::too_many_lines)]
     fn parse_type_primary(&mut self) -> Result<Node<Type>, ParseError> {
         let start = self.pos;
-        let kind = self.peek_kind();
-        match kind {
-            TokenKind::Keyword(k) if is_primitive_keyword(k) => {
+        match self.peek_kind() {
+            TokenKind::Keyword(k) if is_primitive_keyword(*k) => {
+                let k = *k;
                 self.bump();
                 Ok(self.node(Type::Primitive(k), self.span_from(start)))
             }
             TokenKind::TypeIdent(name) | TokenKind::Ident(name) => {
+                let name = *name;
                 let span = self.current_span();
                 self.bump();
                 let type_name = self.intern_type_name(name, span)?;
@@ -186,7 +187,7 @@ impl Parser<'_> {
             self.deferred_generic_closing = false;
             return Ok(params);
         }
-        if self.peek_kind() == TokenKind::Shr {
+        if matches!(self.peek_kind(), TokenKind::Shr) {
             self.bump();
             return Ok(params);
         }
@@ -238,7 +239,7 @@ impl Parser<'_> {
         while self.eat_kind(&TokenKind::Comma) {
             args.push(self.parse_type_expr()?);
         }
-        if self.peek_kind() == TokenKind::Shr {
+        if matches!(self.peek_kind(), TokenKind::Shr) {
             self.deferred_generic_closing = true;
             self.bump();
             return Ok(args);
@@ -251,6 +252,8 @@ impl Parser<'_> {
     pub(crate) fn parse_int_lit(&mut self) -> Result<crate::ast::IntLit, ParseError> {
         match self.peek_kind() {
             TokenKind::Integer { value, suffix } => {
+                let value = *value;
+                let suffix = *suffix;
                 self.bump();
                 Ok(crate::ast::IntLit { value, suffix })
             }

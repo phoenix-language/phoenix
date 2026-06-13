@@ -51,7 +51,7 @@ impl Parser<'_> {
             return Ok(BlockItem::Stmt(stmt.inner));
         }
         let expr = self.parse_expr()?;
-        if self.peek_kind() == TokenKind::RBrace {
+        if matches!(self.peek_kind(), TokenKind::RBrace) {
             return Ok(BlockItem::Expr(expr));
         }
         self.expect_semi()?;
@@ -119,7 +119,7 @@ impl Parser<'_> {
             }
             TokenKind::Keyword(Keyword::Return) => {
                 self.bump();
-                let value = if self.peek_kind() == TokenKind::Semicolon {
+                let value = if matches!(self.peek_kind(), TokenKind::Semicolon) {
                     None
                 } else {
                     Some(self.parse_expr()?)
@@ -130,7 +130,7 @@ impl Parser<'_> {
             TokenKind::Keyword(Keyword::Break) => {
                 let span = self.current_span();
                 self.bump();
-                let value = if self.peek_kind() == TokenKind::Semicolon {
+                let value = if matches!(self.peek_kind(), TokenKind::Semicolon) {
                     None
                 } else {
                     Some(self.parse_expr()?)

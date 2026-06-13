@@ -14,7 +14,7 @@ impl<'src> Parser<'src> {
     /// Parses zero or more `#[ident(args?)]` attributes.
     pub(crate) fn parse_attribute_list(&mut self) -> Result<Vec<Node<Attribute>>, ParseError> {
         let mut attrs = Vec::new();
-        while self.peek_kind() == TokenKind::HashBracket {
+        while matches!(self.peek_kind(), TokenKind::HashBracket) {
             attrs.push(self.parse_attribute()?);
         }
         Ok(attrs)
@@ -35,7 +35,10 @@ impl<'src> Parser<'src> {
 
     fn parse_attr_name(&mut self) -> Result<Ident, ParseError> {
         match self.peek_kind() {
-            TokenKind::Ident(text) => self.bump_ident(text),
+            TokenKind::Ident(text) => {
+                let text = *text;
+                self.bump_ident(text)
+            }
             TokenKind::Keyword(Keyword::SelfLower) => {
                 let span = self.current_span();
                 self.bump();
@@ -79,15 +82,17 @@ impl<'src> Parser<'src> {
 
     fn parse_attr_value(&mut self) -> Result<AttrValue, ParseError> {
         match self.peek_kind() {
-            TokenKind::String(text) => {
-                self.bump();
-                Ok(AttrValue::Str(text.clone()))
-            }
+            TokenKind::String(_) => match self.bump_kind() {
+                Some(TokenKind::String(text)) => Ok(AttrValue::Str(text)),
+                _ => Err(self.error_unexpected(ExpectedToken::Token)),
+            },
             TokenKind::Bool(b) => {
+                let b = *b;
                 self.bump();
                 Ok(AttrValue::Bool(b))
             }
             TokenKind::Ident(text) => {
+                let text = *text;
                 let ident = self.bump_ident(text)?;
                 Ok(AttrValue::Ident(ident))
             }

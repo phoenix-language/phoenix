@@ -47,16 +47,8 @@ fn compute_block_starts(
         starts[block_id] = offset;
         for inst in &block.insts {
             scratch.clear();
-            emit_inst(
-                &mut scratch,
-                inst,
-                pool,
-                def_to_fn,
-                &starts,
-            );
-            offset = offset.saturating_add(
-                u32::try_from(scratch.len()).unwrap_or(u32::MAX),
-            );
+            emit_inst(&mut scratch, inst, pool, def_to_fn, &starts);
+            offset = offset.saturating_add(u32::try_from(scratch.len()).unwrap_or(u32::MAX));
         }
     }
     starts

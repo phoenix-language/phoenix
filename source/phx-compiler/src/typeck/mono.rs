@@ -6,9 +6,9 @@ use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{Function, ImplMember, TopLevelDecl};
 use phx_syntax::ast::types::GenericParam;
 
+use super::bindings::FunctionLayout;
 use super::bounds::validate_instantiation_bounds;
 use super::check::TypeChecker;
-use super::bindings::FunctionLayout;
 use super::layout::{EnumLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout};
 use super::mangle;
 use super::subst::Substitution;
@@ -548,9 +548,7 @@ fn reserve_impl_method_scratch_temps(typed: &mut TypedProgram, layout: &mut Func
     let scratch_ty = unit(&mut typed.types);
     for _ in 0..IMPL_METHOD_SCRATCH_TEMPS {
         let symbol = Symbol::from_raw(0x9000_0000 | layout.match_temp_slots.len() as u32);
-        let slot = LocalSlot::from_raw(
-            u32::try_from(layout.bindings.len()).unwrap_or(u32::MAX),
-        );
+        let slot = LocalSlot::from_raw(u32::try_from(layout.bindings.len()).unwrap_or(u32::MAX));
         layout.bindings.push(Binding {
             symbol,
             slot,

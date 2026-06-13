@@ -21,6 +21,9 @@ use crate::lexer::lex;
 use crate::source_file::SourceFile;
 use crate::token::{Keyword, Token, TokenKind};
 
+/// Sentinel returned by [`Parser::peek_kind`] / [`Parser::peek_at`] past the token stream.
+const EOF_KIND: TokenKind<'static> = TokenKind::Eof;
+
 /// Parser over a token stream and source text.
 pub(crate) struct Parser<'src> {
     /// Original source buffer (for spans and literal text).
@@ -200,15 +203,13 @@ impl<'src> Parser<'src> {
     }
 
     /// Returns the kind of the current token (or [`TokenKind::Eof`]).
-    pub(crate) fn peek_kind(&self) -> TokenKind<'src> {
-        self.peek().map_or(TokenKind::Eof, |t| t.kind.clone())
+    pub(crate) fn peek_kind(&self) -> &TokenKind<'src> {
+        self.peek().map_or(&EOF_KIND, |t| &t.kind)
     }
 
     /// Returns the token kind at `pos + n` without consuming.
-    pub(crate) fn peek_at(&self, n: usize) -> TokenKind<'src> {
-        self.tokens
-            .get(self.pos + n)
-            .map_or(TokenKind::Eof, |t| t.kind.clone())
+    pub(crate) fn peek_at(&self, n: usize) -> &TokenKind<'src> {
+        self.tokens.get(self.pos + n).map_or(&EOF_KIND, |t| &t.kind)
     }
 
     /// Returns `true` when the current token is `{` and the following tokens look like a struct literal body (`..`, `field:`, or empty only for type names), not a block or `match` arms.
@@ -234,6 +235,13 @@ impl<'src> Parser<'src> {
         let t = &self.tokens[self.pos];
         self.pos += 1;
         Some(t)
+    }
+
+    /// Advances and returns the consumed token kind (single clone).
+    pub(crate) fn bump_kind(&mut self) -> Option<TokenKind<'src>> {
+        let idx = self.pos;
+        self.bump()?;
+        Some(self.tokens[idx].kind.clone())
     }
 
     /// Span of the current token, or EOF position in `source`.
@@ -335,25 +343,26 @@ impl<'src> Parser<'src> {
 
     /// Parses a `snake_case` identifier.
     pub(crate) fn parse_ident(&mut self) -> Result<crate::ast::Ident, ParseError> {
-        match self.peek_kind() {
-            TokenKind::Ident(name) => {
-                let span = self.current_span();
-                self.bump();
-                self.intern_ident(name, span)
-            }
-            _ => Err(self.error_unexpected(ExpectedToken::Ident)),
-        }
+        let name = match self.peek_kind() {
+            TokenKind::Ident(name) => *name,
+            _ => return Err(self.error_unexpected(ExpectedToken::Ident)),
+        };
+        let span = self.current_span();
+        self.bump();
+        self.intern_ident(name, span)
     }
 
     /// Parses a tuple struct field name: `ident` or integer index (`0`, `1`, …).
     pub(crate) fn parse_tuple_field_name(&mut self) -> Result<crate::ast::Ident, ParseError> {
         match self.peek_kind() {
             TokenKind::Ident(name) => {
+                let name = *name;
                 let span = self.current_span();
                 self.bump();
                 self.intern_ident(name, span)
             }
-            TokenKind::Integer { value, .. } if value >= 0 => {
+            TokenKind::Integer { value, .. } if *value >= 0 => {
+                let value = *value;
                 let span = self.current_span();
                 self.bump();
                 let name = value.to_string();
@@ -365,20 +374,20 @@ impl<'src> Parser<'src> {
 
     /// Parses one symbol in a braced `#import` list (`foo` or `Error`).
     pub(crate) fn parse_import_symbol(&mut self) -> Result<crate::ast::Ident, ParseError> {
-        match self.peek_kind() {
-            TokenKind::Ident(name) | TokenKind::TypeIdent(name) => {
-                let span = self.current_span();
-                self.bump();
-                self.intern_ident(name, span)
-            }
-            _ => Err(self.error_unexpected(ExpectedToken::Ident)),
-        }
+        let name = match self.peek_kind() {
+            TokenKind::Ident(name) | TokenKind::TypeIdent(name) => *name,
+            _ => return Err(self.error_unexpected(ExpectedToken::Ident)),
+        };
+        let span = self.current_span();
+        self.bump();
+        self.intern_ident(name, span)
     }
 
     /// Parses a type alias name (`PascalCase` or lowercase C-style `c_int`).
     pub(crate) fn parse_type_alias_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
         match self.peek_kind() {
             TokenKind::TypeIdent(name) | TokenKind::Ident(name) => {
+                let name = *name;
                 let span = self.current_span();
                 self.bump();
                 self.intern_type_name(name, span)
@@ -396,6 +405,7 @@ impl<'src> Parser<'src> {
     pub(crate) fn parse_type_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
         match self.peek_kind() {
             TokenKind::TypeIdent(name) => {
+                let name = *name;
                 let span = self.current_span();
                 self.bump();
                 self.intern_type_name(name, span)
@@ -431,7 +441,7 @@ impl<'src> Parser<'src> {
 
     /// Consumes `kw` when the next token is that keyword.
     pub(crate) fn eat_keyword(&mut self, kw: Keyword) -> bool {
-        if matches!(self.peek_kind(), TokenKind::Keyword(k) if k == kw) {
+        if matches!(self.peek_kind(), TokenKind::Keyword(k) if *k == kw) {
             self.bump();
             true
         } else {
@@ -441,7 +451,7 @@ impl<'src> Parser<'src> {
 
     /// Returns true when the next token is `kw`.
     pub(crate) fn peek_keyword(&self, kw: Keyword) -> bool {
-        matches!(self.peek_kind(), TokenKind::Keyword(k) if k == kw)
+        matches!(self.peek_kind(), TokenKind::Keyword(k) if *k == kw)
     }
 
     /// Requires the next token to be `kw`.
@@ -460,7 +470,7 @@ impl<'src> Parser<'src> {
 
     /// Consumes the next token when its kind equals `kind`.
     pub(crate) fn eat_kind(&mut self, kind: &TokenKind<'src>) -> bool {
-        if self.peek_kind() == *kind {
+        if self.peek_kind() == kind {
             self.bump();
             true
         } else {
