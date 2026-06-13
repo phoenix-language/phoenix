@@ -25,7 +25,7 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 pub fn validate_instantiation_bounds(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,
-    types: &TypeInterner,
+    types: &mut TypeInterner,
     std_traits: &StdTraitKernel,
     value_types: &HashMap<DefId, TypeId>,
     generics: Option<&[GenericParam]>,
@@ -35,11 +35,6 @@ pub fn validate_instantiation_bounds(
     span: Span,
     bag: &mut TypeCheckBag,
 ) -> bool {
-    let alias_env = AliasEnv {
-        types,
-        defs: &resolved.defs,
-        value_types,
-    };
     let Some(generic_params) = generics else {
         return true;
     };
@@ -106,6 +101,11 @@ pub fn validate_instantiation_bounds(
                 continue;
             };
             let trait_args = lower_trait_bound_args(types, &type_defs, trait_arg_nodes, &subst);
+            let alias_env = AliasEnv {
+                types,
+                defs: &resolved.defs,
+                value_types,
+            };
             if !type_satisfies_trait_inst(
                 layout,
                 types,
@@ -143,7 +143,7 @@ pub fn trait_bound_head(ty: &Type) -> Option<(phx_syntax::Symbol, Option<&[Node<
 }
 
 fn lower_trait_bound_args(
-    types: &TypeInterner,
+    types: &mut TypeInterner,
     type_defs: &super::lower_ty::TypeDefMap,
     trait_arg_nodes: Option<&[Node<Type>]>,
     subst: &Substitution,
@@ -151,12 +151,11 @@ fn lower_trait_bound_args(
     let Some(nodes) = trait_arg_nodes else {
         return Vec::new();
     };
-    let mut interner = types.clone();
     nodes
         .iter()
         .map(|node| {
-            let id = lower_type(&mut interner, type_defs, &node.inner);
-            Substitution::apply(&mut interner, id, subst)
+            let id = lower_type(types, type_defs, &node.inner);
+            Substitution::apply(types, id, subst)
         })
         .collect()
 }

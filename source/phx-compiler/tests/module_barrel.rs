@@ -37,7 +37,7 @@ fn bin_barrel_reexport_resolves() {
         return;
     }
     let resolved = load_project("modules_bin_barrel").expect("resolve barrel project");
-    type_check(&resolved).expect("typecheck barrel import util::add");
+    type_check(resolved).expect("typecheck barrel import util::add");
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn orphan_file_fails_load() {
 fn std_error_import_path_flattened() {
     let _lock = fixture_fs_lock();
     let resolved = load_project("std_errors").expect("resolve std_errors");
-    type_check(&resolved).expect("typecheck std::core::error::Error imports");
+    type_check(resolved).expect("typecheck std::core::error::Error imports");
 }
 
 #[test]

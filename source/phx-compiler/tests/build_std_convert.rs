@@ -41,7 +41,7 @@ fn std_convert_typechecks() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_convert program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck std_convert");
+    let typed = type_check(resolved).expect("typecheck std_convert");
     assert!(
         !typed.associated_fn_sites.is_empty(),
         "expected associated fn sites for From/TryFrom calls"

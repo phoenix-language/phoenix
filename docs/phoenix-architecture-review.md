@@ -269,11 +269,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/check.rs:5997` (`resolved.clone()`); `typeck/mono.rs:241–242`; pervasive `type_defs.clone()`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Wholesale clones across pass boundaries — full `ResolvedProgram` cloned at typeck finish, full `TypeInterner` recloned per monomorphization instance, `TypeDefMap` cloned repeatedly inside function checking.
 **Detail:** Violates the "avoid cloning across pipeline stages" rule and will dominate compile time for multi-module std builds.
 **Recommendation:** Pass `ResolvedProgram` by value into `type_check`; layer mono specializations over a shared base interner. Profile before further surgery.
+
+**Resolution:** `type_check` now takes `ResolvedProgram` by value (eliminating the finish-time clone). Mono re-check moves the shared `TypeInterner` with `mem::take` instead of cloning per instance. Added `with_pushed_generics` to consolidate scoped `type_defs` save/push/restore; removed duplicate clones in function-body checking and trait/impl lowering. `lower_trait_bound_args` threads `&mut TypeInterner` instead of cloning. Remaining `type_defs` clones are scoped one-per-lower (borrow-checker requirement) or save/restore at impl boundaries — a generic overlay stack is deferred pending profiling.
 
 ---
 
@@ -848,7 +850,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-017 | - [x]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
 | PHX-018 | - [x]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
 | PHX-019 | - [x]  | Major        | phx-compiler    | `#![allow(unreachable_patterns)]` in typeck and lower                     |
-| PHX-020 | - [ ]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
+| PHX-020 | - [x]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
 | PHX-021 | - [ ]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
 | PHX-022 | - [ ]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
 | PHX-023 | - [ ]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |

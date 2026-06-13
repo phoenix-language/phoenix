@@ -41,7 +41,7 @@ fn std_traits_records_primitive_method_sites() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_traits program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     assert!(
         !typed.primitive_method_sites.is_empty(),
         "expected primitive eq/clone method sites"

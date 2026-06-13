@@ -94,12 +94,13 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
     };
 
     let module_count = resolved.modules.len();
-    let typed = match type_check(&resolved) {
+    let typeck_ctx = DiagnosticContext::from_resolved(&resolved);
+    let typed = match type_check(resolved) {
         Ok(typed) => typed,
         Err(type_bag) => {
             let err = CompileError::TypeCheck {
                 bag: type_bag,
-                context: DiagnosticContext::from_resolved(&resolved),
+                context: typeck_ctx,
                 prior_parse: None,
             };
             reporter.compile_error(&err, Some(&source), Some(&file));

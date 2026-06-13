@@ -76,9 +76,10 @@ pub fn check_standalone_unit_with_context(
         context: Some(diag_ctx.clone()),
         prior_parse: None,
     })?;
-    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+    let typeck_ctx = DiagnosticContext::from_resolved(&resolved);
+    let typed = type_check(resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
-        context: DiagnosticContext::from_resolved(&resolved),
+        context: typeck_ctx,
         prior_parse: None,
     })?;
     Ok(crate::unit::CompilationUnit {

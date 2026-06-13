@@ -52,7 +52,7 @@ fn derive_partialeq_typechecks() {
     let mut file = parsed.value;
     expand_derives(&mut file.program, &file.interner).expect("expand");
     let resolved = resolve(&file).expect("resolve");
-    type_check(&resolved).expect("typecheck");
+    type_check(resolved).expect("typecheck");
 }
 
 #[test]
@@ -65,5 +65,5 @@ fn derive_enum_partialeq_typechecks() {
     let mut file = parsed.value;
     expand_derives(&mut file.program, &file.interner).expect("expand");
     let resolved = resolve(&file).expect("resolve");
-    type_check(&resolved).expect("typecheck");
+    type_check(resolved).expect("typecheck");
 }

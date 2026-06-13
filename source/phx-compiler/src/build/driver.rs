@@ -164,7 +164,7 @@ fn build_package(
     }
 
     let resolved = resolve_loaded_program(loaded.clone()).map_err(BuildError::Resolve)?;
-    let mut typed = type_check(&resolved).map_err(BuildError::TypeCheck)?;
+    let mut typed = type_check(resolved).map_err(BuildError::TypeCheck)?;
 
     let module_logical = |module_id: u32| -> Option<String> {
         loaded

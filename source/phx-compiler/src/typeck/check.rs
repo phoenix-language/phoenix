@@ -480,30 +480,42 @@ impl<'a> TypeChecker<'a> {
             .unwrap_or(self.current_module)
     }
 
+    /// Temporarily extends `type_defs` with generic parameters for `module`.
+    fn with_pushed_generics<R>(
+        &mut self,
+        module: u32,
+        generics: Option<&[phx_syntax::ast::types::GenericParam]>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let saved = self.type_defs.clone();
+        push_generics(&mut self.type_defs, &self.resolved.defs, module, generics);
+        let result = f(self);
+        self.type_defs = saved;
+        result
+    }
+
     fn fn_type_for_function(&mut self, f: &Function) -> TypeId {
-        let mut td = self.type_defs.clone();
-        push_generics(
-            &mut td,
-            &self.resolved.defs,
-            self.fn_module(f),
-            f.generics.as_deref(),
-        );
-        let ret = f
-            .ret
-            .as_ref()
-            .map(|r| self.lower_ast_type_with_defs(r, &td))
-            .unwrap_or(self.unit);
-        let params: Vec<_> = f
-            .params
-            .iter()
-            .filter_map(|p| match p {
-                Param::Named { ty, .. } => Some(self.lower_ast_type_with_defs(ty, &td)),
-                Param::Receiver { ty, .. } => {
-                    ty.as_ref().map(|t| self.lower_ast_type_with_defs(t, &td))
-                }
-            })
-            .collect();
-        self.types.intern(&Ty::Fn { params, ret })
+        let module = self.fn_module(f);
+        let generics = f.generics.as_deref();
+        self.with_pushed_generics(module, generics, |this| {
+            let type_defs = this.type_defs.clone();
+            let ret = f
+                .ret
+                .as_ref()
+                .map(|r| this.lower_ast_type_with_defs(r, &type_defs))
+                .unwrap_or(this.unit);
+            let params: Vec<_> = f
+                .params
+                .iter()
+                .filter_map(|p| match p {
+                    Param::Named { ty, .. } => Some(this.lower_ast_type_with_defs(ty, &type_defs)),
+                    Param::Receiver { ty, .. } => ty
+                        .as_ref()
+                        .map(|t| this.lower_ast_type_with_defs(t, &type_defs)),
+                })
+                .collect();
+            this.types.intern(&Ty::Fn { params, ret })
+        })
     }
 
     fn alloc_type_id(&mut self, def: DefId) -> u32 {
@@ -1364,47 +1376,44 @@ impl<'a> TypeChecker<'a> {
                 body,
             } => {
                 let _ = derives;
-                let mut td = self.type_defs.clone();
-                push_generics(
-                    &mut td,
-                    &self.resolved.defs,
-                    self.current_module,
-                    generics.as_deref(),
-                );
-                if let Some(def) = self.find_def(self.current_module, name.symbol, DefKind::Struct)
-                {
-                    let mut fields_map = HashMap::new();
-                    let mut ordered = Vec::new();
-                    match body {
-                        StructBody::Fields(fs) => {
-                            for f in fs {
-                                let ty = self.lower_ast_type_with_defs(&f.ty, &td);
-                                fields_map.insert(f.name.symbol, ty);
-                                ordered.push((f.name.symbol, ty));
+                self.with_pushed_generics(self.current_module, generics.as_deref(), |this| {
+                    let type_defs = this.type_defs.clone();
+                    if let Some(def) =
+                        this.find_def(this.current_module, name.symbol, DefKind::Struct)
+                    {
+                        let mut fields_map = HashMap::new();
+                        let mut ordered = Vec::new();
+                        match body {
+                            StructBody::Fields(fs) => {
+                                for f in fs {
+                                    let ty = this.lower_ast_type_with_defs(&f.ty, &type_defs);
+                                    fields_map.insert(f.name.symbol, ty);
+                                    ordered.push((f.name.symbol, ty));
+                                }
                             }
-                        }
-                        StructBody::Tuple(types) => {
-                            self.program_layout.tuple_structs.insert(def);
-                            for (i, t) in types.iter().enumerate() {
-                                let ty = self.lower_ast_type_with_defs(t, &td);
-                                let Some(field_name) = self.tuple_field_symbol(i) else {
-                                    continue;
-                                };
-                                fields_map.insert(field_name, ty);
-                                ordered.push((field_name, ty));
+                            StructBody::Tuple(types) => {
+                                this.program_layout.tuple_structs.insert(def);
+                                for (i, t) in types.iter().enumerate() {
+                                    let ty = this.lower_ast_type_with_defs(t, &type_defs);
+                                    let Some(field_name) = this.tuple_field_symbol(i) else {
+                                        continue;
+                                    };
+                                    fields_map.insert(field_name, ty);
+                                    ordered.push((field_name, ty));
+                                }
                             }
+                            StructBody::Unit => {}
                         }
-                        StructBody::Unit => {}
+                        this.struct_fields
+                            .insert(def, StructFields { fields: fields_map });
+                        this.program_layout
+                            .structs
+                            .insert(def, StructLayout { fields: ordered });
+                        let _ = this.alloc_type_id(def);
+                        let struct_ty = this.types.intern(&Ty::Named { def, args: vec![] });
+                        this.value_types.insert(def, struct_ty);
                     }
-                    self.struct_fields
-                        .insert(def, StructFields { fields: fields_map });
-                    self.program_layout
-                        .structs
-                        .insert(def, StructLayout { fields: ordered });
-                    let _ = self.alloc_type_id(def);
-                    let struct_ty = self.types.intern(&Ty::Named { def, args: vec![] });
-                    self.value_types.insert(def, struct_ty);
-                }
+                });
             }
             TopLevelDecl::Enum {
                 name,
@@ -1413,94 +1422,93 @@ impl<'a> TypeChecker<'a> {
                 variants,
             } => {
                 let _ = derives;
-                let mut td = self.type_defs.clone();
-                push_generics(
-                    &mut td,
-                    &self.resolved.defs,
-                    self.current_module,
-                    generics.as_deref(),
-                );
-                if let Some(enum_def) =
-                    self.find_def(self.current_module, name.symbol, DefKind::Enum)
-                {
-                    let enum_ty = self.types.intern(&Ty::Named {
-                        def: enum_def,
-                        args: vec![],
-                    });
-                    self.value_types.insert(enum_def, enum_ty);
-                    let type_id = self.alloc_type_id(enum_def);
-                    let _ = type_id;
-                    let mut variant_layouts = Vec::new();
-                    for (tag, v) in variants.iter().enumerate() {
-                        let tag = u32::try_from(tag).unwrap_or(u32::MAX);
-                        let variant_def =
-                            self.find_def(self.current_module, v.name.symbol, DefKind::EnumVariant);
-                        let (payload_types, kind) = match &v.kind {
-                            Variant::Unit => (vec![], VariantKind::Unit),
-                            Variant::Tuple(ts) => {
-                                let pts: Vec<TypeId> = ts
-                                    .iter()
-                                    .map(|t| self.lower_ast_type_with_defs(t, &td))
-                                    .collect();
-                                (pts.clone(), VariantKind::Tuple(pts))
-                            }
-                            Variant::Struct(fs) => {
-                                let fields: Vec<(Symbol, TypeId)> = fs
-                                    .iter()
-                                    .map(|f| {
-                                        (f.name.symbol, self.lower_ast_type_with_defs(&f.ty, &td))
-                                    })
-                                    .collect();
-                                let pts: Vec<TypeId> = fields.iter().map(|(_, ty)| *ty).collect();
-                                (pts, VariantKind::Struct(fields))
-                            }
-                        };
-                        if let Some(vdef) = variant_def {
-                            let params: Vec<TypeId> = payload_types.clone();
-                            let ctor_ty = self.types.intern(&Ty::Fn {
-                                params,
-                                ret: enum_ty,
-                            });
-                            self.value_types.insert(vdef, ctor_ty);
-                            self.program_layout.variants.insert(
-                                vdef,
-                                VariantMeta {
-                                    enum_def,
-                                    tag,
-                                    payload: kind.clone(),
-                                },
+                self.with_pushed_generics(self.current_module, generics.as_deref(), |this| {
+                    let type_defs = this.type_defs.clone();
+                    if let Some(enum_def) =
+                        this.find_def(this.current_module, name.symbol, DefKind::Enum)
+                    {
+                        let enum_ty = this.types.intern(&Ty::Named {
+                            def: enum_def,
+                            args: vec![],
+                        });
+                        this.value_types.insert(enum_def, enum_ty);
+                        let type_id = this.alloc_type_id(enum_def);
+                        let _ = type_id;
+                        let mut variant_layouts = Vec::new();
+                        for (tag, v) in variants.iter().enumerate() {
+                            let tag = u32::try_from(tag).unwrap_or(u32::MAX);
+                            let variant_def = this.find_def(
+                                this.current_module,
+                                v.name.symbol,
+                                DefKind::EnumVariant,
                             );
-                            variant_layouts.push(VariantLayout {
-                                def: vdef,
-                                name: v.name.symbol,
-                                tag,
-                                kind,
-                            });
+                            let (payload_types, kind) = match &v.kind {
+                                Variant::Unit => (vec![], VariantKind::Unit),
+                                Variant::Tuple(ts) => {
+                                    let pts: Vec<TypeId> = ts
+                                        .iter()
+                                        .map(|t| this.lower_ast_type_with_defs(t, &type_defs))
+                                        .collect();
+                                    (pts.clone(), VariantKind::Tuple(pts))
+                                }
+                                Variant::Struct(fs) => {
+                                    let fields: Vec<(Symbol, TypeId)> = fs
+                                        .iter()
+                                        .map(|f| {
+                                            (
+                                                f.name.symbol,
+                                                this.lower_ast_type_with_defs(&f.ty, &type_defs),
+                                            )
+                                        })
+                                        .collect();
+                                    let pts: Vec<TypeId> =
+                                        fields.iter().map(|(_, ty)| *ty).collect();
+                                    (pts, VariantKind::Struct(fields))
+                                }
+                            };
+                            if let Some(vdef) = variant_def {
+                                let params: Vec<TypeId> = payload_types.clone();
+                                let ctor_ty = this.types.intern(&Ty::Fn {
+                                    params,
+                                    ret: enum_ty,
+                                });
+                                this.value_types.insert(vdef, ctor_ty);
+                                this.program_layout.variants.insert(
+                                    vdef,
+                                    VariantMeta {
+                                        enum_def,
+                                        tag,
+                                        payload: kind.clone(),
+                                    },
+                                );
+                                variant_layouts.push(VariantLayout {
+                                    def: vdef,
+                                    name: v.name.symbol,
+                                    tag,
+                                    kind,
+                                });
+                            }
                         }
-                    }
-                    self.program_layout.enums.insert(
-                        enum_def,
-                        EnumLayout {
+                        this.program_layout.enums.insert(
                             enum_def,
-                            variants: variant_layouts,
-                        },
-                    );
-                }
+                            EnumLayout {
+                                enum_def,
+                                variants: variant_layouts,
+                            },
+                        );
+                    }
+                });
             }
             TopLevelDecl::TypeAlias { name, generics, ty } => {
-                let mut td = self.type_defs.clone();
-                push_generics(
-                    &mut td,
-                    &self.resolved.defs,
-                    self.current_module,
-                    generics.as_deref(),
-                );
-                if let Some(def) =
-                    self.find_def(self.current_module, name.symbol, DefKind::TypeAlias)
-                {
-                    let lowered = self.lower_ast_type_with_defs(ty, &td);
-                    self.value_types.insert(def, lowered);
-                }
+                self.with_pushed_generics(self.current_module, generics.as_deref(), |this| {
+                    let type_defs = this.type_defs.clone();
+                    if let Some(def) =
+                        this.find_def(this.current_module, name.symbol, DefKind::TypeAlias)
+                    {
+                        let lowered = this.lower_ast_type_with_defs(ty, &type_defs);
+                        this.value_types.insert(def, lowered);
+                    }
+                });
             }
             TopLevelDecl::Function(f) => {
                 self.collect_fn_sig(f);
@@ -1520,15 +1528,18 @@ impl<'a> TypeChecker<'a> {
                     self.current_module,
                     generics.as_deref(),
                 );
+                let impl_type_defs = self.type_defs.clone();
                 if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
-                    let td = self.type_defs.clone();
                     let self_ty = self.impl_self_type_id(type_def, generics.as_deref());
                     let saved_collect_self = self.impl_self_type;
                     self.impl_self_type = Some(self_ty);
                     if let Some(trait_ty) = trait_ {
-                        if let Some(inst_key) =
-                            self.build_trait_inst_key(type_def, vec![], &trait_ty.inner, &td)
-                        {
+                        if let Some(inst_key) = self.build_trait_inst_key(
+                            type_def,
+                            vec![],
+                            &trait_ty.inner,
+                            &impl_type_defs,
+                        ) {
                             if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
                                 if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
                                     self.check_copyable_drop_conflict(
@@ -1592,9 +1603,10 @@ impl<'a> TypeChecker<'a> {
                                         type_def,
                                         vec![],
                                         &trait_ty.inner,
-                                        &td,
+                                        &impl_type_defs,
                                     ) {
-                                        let concrete = self.lower_ast_type_with_defs(ty, &td);
+                                        let concrete =
+                                            self.lower_ast_type_with_defs(ty, &impl_type_defs);
                                         self.program_layout
                                             .trait_assoc_impls
                                             .insert((inst_key, name.symbol), concrete);
@@ -1627,7 +1639,7 @@ impl<'a> TypeChecker<'a> {
                                             type_def,
                                             vec![],
                                             &trait_ty.inner,
-                                            &td,
+                                            &impl_type_defs,
                                         ) {
                                             self.program_layout
                                                 .trait_methods
@@ -1664,41 +1676,37 @@ impl<'a> TypeChecker<'a> {
                 {
                     self.trait_unsafe.insert(trait_def, *unsafe_);
                 }
-                let mut td = self.type_defs.clone();
-                push_generics(
-                    &mut td,
-                    &self.resolved.defs,
-                    self.current_module,
-                    generics.as_deref(),
-                );
-                let mut abstract_assoc = HashMap::new();
-                for item in items {
-                    if let TraitItem::AssociatedType(assoc_name) = item {
-                        if let Some(assoc_def) = self.find_def(
-                            self.current_module,
-                            assoc_name.symbol,
-                            DefKind::TraitAssocType,
-                        ) {
-                            let abstract_ty = self.types.intern(&Ty::Named {
-                                def: assoc_def,
-                                args: vec![],
-                            });
-                            abstract_assoc.insert(assoc_name.symbol, abstract_ty);
-                            td.insert(assoc_name.symbol, assoc_def);
+                self.with_pushed_generics(self.current_module, generics.as_deref(), |this| {
+                    let type_defs = this.type_defs.clone();
+                    let mut abstract_assoc = HashMap::new();
+                    for item in items {
+                        if let TraitItem::AssociatedType(assoc_name) = item {
+                            if let Some(assoc_def) = this.find_def(
+                                this.current_module,
+                                assoc_name.symbol,
+                                DefKind::TraitAssocType,
+                            ) {
+                                let abstract_ty = this.types.intern(&Ty::Named {
+                                    def: assoc_def,
+                                    args: vec![],
+                                });
+                                abstract_assoc.insert(assoc_name.symbol, abstract_ty);
+                                this.type_defs.insert(assoc_name.symbol, assoc_def);
+                            }
                         }
                     }
-                }
-                let saved_abstract =
-                    std::mem::replace(&mut self.trait_assoc_abstract, abstract_assoc);
-                let saved_self = self.impl_self_type;
-                self.impl_self_type = Some(self.types.intern(&Ty::Var(u32::MAX)));
-                for item in items {
-                    if let TraitItem::Method(sig) = item {
-                        self.collect_fn_sig_only_with_defs(sig, &td);
+                    let saved_abstract =
+                        std::mem::replace(&mut this.trait_assoc_abstract, abstract_assoc);
+                    let saved_self = this.impl_self_type;
+                    this.impl_self_type = Some(this.types.intern(&Ty::Var(u32::MAX)));
+                    for item in items {
+                        if let TraitItem::Method(sig) = item {
+                            this.collect_fn_sig_only_with_defs(sig, &type_defs);
+                        }
                     }
-                }
-                self.impl_self_type = saved_self;
-                self.trait_assoc_abstract = saved_abstract;
+                    this.impl_self_type = saved_self;
+                    this.trait_assoc_abstract = saved_abstract;
+                });
             }
             TopLevelDecl::Const { name, ty, .. } => {
                 if let (Some(def), Some(t)) = (
@@ -1823,7 +1831,6 @@ impl<'a> TypeChecker<'a> {
             let Some(f) = self.inherited_trait_methods.get(fn_def).cloned() else {
                 continue;
             };
-            let saved_td = self.type_defs.clone();
             let trait_subst = self.trait_subst_for_inst(trait_def, inst_key);
             let mut fn_ty = self.fn_type_for_function(&f);
             if let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() {
@@ -1835,7 +1842,6 @@ impl<'a> TypeChecker<'a> {
                 fn_ty = self.types.intern(&Ty::Fn { params, ret });
             }
             self.value_types.insert(*fn_def, fn_ty);
-            self.type_defs = saved_td;
         }
     }
 
@@ -1937,9 +1943,9 @@ impl<'a> TypeChecker<'a> {
             self.current_module,
             generics,
         );
+        let impl_type_defs = self.type_defs.clone();
         let saved_trait_impl = self.active_trait_impl;
         let saved_impl_assoc = std::mem::take(&mut self.impl_assoc_types);
-        let type_defs_snapshot = self.type_defs.clone();
         if let (Some(trait_ty), Some(&type_def)) =
             (trait_.as_ref(), self.type_defs.get(&type_name.symbol))
         {
@@ -1948,7 +1954,7 @@ impl<'a> TypeChecker<'a> {
                     self.active_trait_impl = Some((type_def, trait_def));
                     for member in members {
                         if let ImplMember::AssociatedType { name, ty } = member {
-                            let concrete = self.lower_ast_type_with_defs(ty, &type_defs_snapshot);
+                            let concrete = self.lower_ast_type(ty);
                             self.impl_assoc_types.insert(name.symbol, concrete);
                         }
                     }
@@ -1965,12 +1971,9 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             if let Some(trait_ty) = trait_.as_ref() {
-                if let Some(inst_key) = self.build_trait_inst_key(
-                    type_def,
-                    vec![],
-                    &trait_ty.inner,
-                    &type_defs_snapshot,
-                ) {
+                if let Some(inst_key) =
+                    self.build_trait_inst_key(type_def, vec![], &trait_ty.inner, &impl_type_defs)
+                {
                     if let Some(inherited) = self.inherited_by_inst.get(&inst_key).cloned() {
                         self.check_inherited_trait_methods(&inst_key, inherited);
                     }
@@ -2025,8 +2028,6 @@ impl<'a> TypeChecker<'a> {
             return;
         }
         let module = self.def_module(def);
-        let mut td = self.type_defs.clone();
-        push_generics(&mut td, &self.resolved.defs, module, f.generics.as_deref());
         let saved_type_defs = self.type_defs.clone();
         push_generics(
             &mut self.type_defs,
@@ -2034,10 +2035,11 @@ impl<'a> TypeChecker<'a> {
             module,
             f.generics.as_deref(),
         );
+        let type_defs = self.type_defs.clone();
         let ret = self.fn_ret.unwrap_or_else(|| {
             f.ret
                 .as_ref()
-                .map(|r| self.lower_ast_type_with_defs(r, &td))
+                .map(|r| self.lower_ast_type_with_defs(r, &type_defs))
                 .unwrap_or(self.unit)
         });
         self.fn_ret = Some(ret);
@@ -2063,7 +2065,7 @@ impl<'a> TypeChecker<'a> {
                     let pty = specialized_param_types
                         .as_ref()
                         .and_then(|params| params.get(param_index).copied())
-                        .unwrap_or_else(|| self.lower_ast_type_with_defs(ty, &td));
+                        .unwrap_or_else(|| self.lower_ast_type_with_defs(ty, &type_defs));
                     param_index += 1;
                     self.define_local(name.symbol, pty, BindingKind::Param, None);
                 }
@@ -2071,7 +2073,10 @@ impl<'a> TypeChecker<'a> {
                     let pty = specialized_param_types
                         .as_ref()
                         .and_then(|params| params.get(param_index).copied())
-                        .or_else(|| ty.as_ref().map(|t| self.lower_ast_type_with_defs(t, &td)))
+                        .or_else(|| {
+                            ty.as_ref()
+                                .map(|t| self.lower_ast_type_with_defs(t, &type_defs))
+                        })
                         .or(self.impl_self_type)
                         .unwrap_or(self.unit);
                     param_index += 1;
@@ -2088,7 +2093,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         if emit_layout && !check_body {
-            self.collect_layout_bindings_block(&f.body.inner, &td);
+            self.collect_layout_bindings_block(&f.body.inner, &type_defs);
         }
         if check_body {
             let check_body = |this: &mut Self| {
@@ -2787,8 +2792,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Assign { target, value, .. } => self.check_assign_expr(target, value, span),
             Expr::Cast { expr, ty } => {
                 let from = self.check_expr_node(expr);
-                let td = self.type_defs.clone();
-                let to = self.lower_ast_type_with_defs(ty, &td);
+                let to = self.lower_ast_type(ty);
                 if !check_cast(&self.alias_env(), from, to)
                     && !self.check_tuple_struct_cast(from, to)
                     && !self.check_utf8_array_to_str_cast(from, to, &expr.inner)
@@ -3488,48 +3492,48 @@ impl<'a> TypeChecker<'a> {
         if provided.len() < param_defs.len() {
             let generic_params = generic_params_for_def(self.resolved, base_def)?;
             let module = self.def_module(base_def);
-            let mut type_defs = self.type_defs.clone();
-            push_generics(
-                &mut type_defs,
-                &self.resolved.defs,
-                module,
-                Some(&generic_params),
-            );
-            let mut subst = Substitution::new();
-            for (i, param_def) in param_defs.iter().enumerate() {
-                if i < provided.len() {
-                    subst.insert(*param_def, provided[i]);
+            let completed = self.with_pushed_generics(module, Some(&generic_params), |this| {
+                let type_defs = this.type_defs.clone();
+                let mut subst = Substitution::new();
+                for (i, param_def) in param_defs.iter().enumerate() {
+                    if i < provided.len() {
+                        subst.insert(*param_def, provided[i]);
+                    }
                 }
-            }
-            for i in provided.len()..param_defs.len() {
-                let param = generic_params.get(i)?;
-                let Some(default) = param.default.as_ref() else {
-                    self.bag.push(
-                        self.current_module,
-                        TypeCheckError::ArityMismatch {
-                            expected: param_defs.len(),
-                            found: provided.len(),
-                            span,
-                        },
-                    );
-                    return None;
-                };
-                let lowered = self.lower_ast_type_with_defs(default, &type_defs);
-                let concrete = Substitution::apply(&mut self.types, lowered, &subst);
-                subst.insert(param_defs[i], concrete);
-                provided.push(concrete);
-            }
+                let mut result = provided;
+                for i in result.len()..param_defs.len() {
+                    let param = generic_params.get(i)?;
+                    let Some(default) = param.default.as_ref() else {
+                        this.bag.push(
+                            this.current_module,
+                            TypeCheckError::ArityMismatch {
+                                expected: param_defs.len(),
+                                found: result.len(),
+                                span,
+                            },
+                        );
+                        return None;
+                    };
+                    let lowered = this.lower_ast_type_with_defs(default, &type_defs);
+                    let concrete = Substitution::apply(&mut this.types, lowered, &subst);
+                    subst.insert(param_defs[i], concrete);
+                    result.push(concrete);
+                }
+                Some(result)
+            });
+            provided = completed?;
         }
+        let bounds_module = self.def_module(base_def);
         if !validate_instantiation_bounds(
             self.resolved,
             &self.program_layout,
-            &self.types,
+            &mut self.types,
             &self.std_trait_kernel,
             &self.value_types,
             generic_params_for_def(self.resolved, base_def).as_deref(),
             &param_defs,
             &provided,
-            self.def_module(base_def),
+            bounds_module,
             span,
             &mut self.bag,
         ) {
@@ -3557,41 +3561,42 @@ impl<'a> TypeChecker<'a> {
             );
             return None;
         }
-        let mut type_defs = self.type_defs.clone();
-        push_generics(&mut type_defs, &self.resolved.defs, module, generic_params);
-        let mut provided: Vec<TypeId> = provided_nodes
-            .iter()
-            .map(|n| self.lower_ast_type_with_defs(n, &type_defs))
-            .collect();
-        if provided.len() == param_defs.len() {
-            return Some(provided);
-        }
-        let generic_params = generic_params?;
-        let mut subst = Substitution::new();
-        for (i, param_def) in param_defs.iter().enumerate() {
-            if i < provided.len() {
-                subst.insert(*param_def, provided[i]);
+        self.with_pushed_generics(module, generic_params, |this| {
+            let type_defs = this.type_defs.clone();
+            let mut provided: Vec<TypeId> = provided_nodes
+                .iter()
+                .map(|n| this.lower_ast_type_with_defs(n, &type_defs))
+                .collect();
+            if provided.len() == param_defs.len() {
+                return Some(provided);
             }
-        }
-        for i in provided.len()..param_defs.len() {
-            let param = generic_params.get(i)?;
-            let Some(default) = param.default.as_ref() else {
-                self.bag.push(
-                    self.current_module,
-                    TypeCheckError::ArityMismatch {
-                        expected: param_defs.len(),
-                        found: provided.len(),
-                        span,
-                    },
-                );
-                return None;
-            };
-            let lowered = self.lower_ast_type_with_defs(default, &type_defs);
-            let concrete = Substitution::apply(&mut self.types, lowered, &subst);
-            subst.insert(param_defs[i], concrete);
-            provided.push(concrete);
-        }
-        Some(provided)
+            let generic_params = generic_params?;
+            let mut subst = Substitution::new();
+            for (i, param_def) in param_defs.iter().enumerate() {
+                if i < provided.len() {
+                    subst.insert(*param_def, provided[i]);
+                }
+            }
+            for i in provided.len()..param_defs.len() {
+                let param = generic_params.get(i)?;
+                let Some(default) = param.default.as_ref() else {
+                    this.bag.push(
+                        this.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: param_defs.len(),
+                            found: provided.len(),
+                            span,
+                        },
+                    );
+                    return None;
+                };
+                let lowered = this.lower_ast_type_with_defs(default, &type_defs);
+                let concrete = Substitution::apply(&mut this.types, lowered, &subst);
+                subst.insert(param_defs[i], concrete);
+                provided.push(concrete);
+            }
+            Some(provided)
+        })
     }
 
     fn resolve_instantiated_named(&mut self, base: DefId, args: Vec<TypeId>, span: Span) -> TypeId {
@@ -4307,34 +4312,35 @@ impl<'a> TypeChecker<'a> {
         enum_def: Option<DefId>,
         fn_module: u32,
     ) -> Option<Vec<TypeId>> {
-        let mut td = self.type_defs.clone();
-        push_generics(&mut td, &self.resolved.defs, fn_module, fn_generics);
         if let Some(nodes) = generic_nodes {
-            if nodes.len() > param_defs.len() {
-                self.bag.push(
-                    self.current_module,
-                    TypeCheckError::ArityMismatch {
-                        expected: param_defs.len(),
-                        found: nodes.len(),
+            return self.with_pushed_generics(fn_module, fn_generics, |this| {
+                let type_defs = this.type_defs.clone();
+                if nodes.len() > param_defs.len() {
+                    this.bag.push(
+                        this.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: param_defs.len(),
+                            found: nodes.len(),
+                            span,
+                        },
+                    );
+                    return None;
+                }
+                if nodes.len() < param_defs.len() {
+                    return this.complete_generic_args_from_ast(
+                        fn_generics,
+                        param_defs,
+                        nodes,
+                        fn_module,
                         span,
-                    },
-                );
-                return None;
-            }
-            if nodes.len() < param_defs.len() {
-                return self.complete_generic_args_from_ast(
-                    fn_generics,
-                    param_defs,
-                    nodes,
-                    fn_module,
-                    span,
-                );
-            }
-            let mut concrete_args = Vec::new();
-            for ty_node in nodes {
-                concrete_args.push(self.lower_ast_type_with_defs(ty_node, &td));
-            }
-            return Some(concrete_args);
+                    );
+                }
+                let mut concrete_args = Vec::new();
+                for ty_node in nodes {
+                    concrete_args.push(this.lower_ast_type_with_defs(ty_node, &type_defs));
+                }
+                Some(concrete_args)
+            });
         }
         let mut infer = InferenceCtx::new();
         let mut subst = Substitution::new();
@@ -5692,8 +5698,7 @@ impl<'a> TypeChecker<'a> {
                 operand,
             } => self.expr_borrow_site(&operand.inner),
             Expr::Cast { expr, ty } => {
-                let td = self.type_defs.clone();
-                let to = self.lower_ast_type_with_defs(ty, &td);
+                let to = self.lower_ast_type(ty);
                 if matches!(self.types.get(to), Ty::Slice(_) | Ty::Str) {
                     self.expr_borrow_site(&expr.inner)
                 } else {
@@ -5990,8 +5995,8 @@ fn pattern_literal_eq(a: &Literal, b: &Literal) -> bool {
 /// # Errors
 ///
 /// Returns [`TypeCheckBag`] when one or more type errors were collected.
-pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
-    let mut checker = TypeChecker::new(resolved);
+pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
+    let mut checker = TypeChecker::new(&resolved);
     checker.check_program();
     let mono_insts = checker.take_mono_insts();
     let type_mono_insts = checker.take_type_mono_insts();
@@ -6020,7 +6025,6 @@ pub fn type_check(resolved: &ResolvedProgram) -> Result<super::TypedProgram, Typ
     if bag.has_errors() {
         return Err(bag);
     }
-    let mut resolved = resolved.clone();
     trait_defaults::merge_pending_inherited_defs(&mut resolved, pending_inherited_defs);
     let entry = resolved.main_fn;
     let mut program = super::TypedProgram {

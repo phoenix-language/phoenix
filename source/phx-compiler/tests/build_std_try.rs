@@ -41,7 +41,7 @@ fn std_try_lowers_match_tag_for_question_mark() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_try program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     assert!(
         !typed.try_sites.is_empty(),
         "expected try_sites for read_bytes(path)?"
@@ -70,7 +70,7 @@ fn std_try_read_config_ir_has_try_unwrap_sequence() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_try program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     let ir = lower(&typed).expect("lower");
     let interner = &typed.resolved.interner;
     let read_config = ir.functions.iter().find(|f| {
@@ -116,7 +116,7 @@ fn std_try_bytecode_type_id_resolved_after_mono() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_try program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     for meta in typed.try_sites.values() {
         assert!(
             typed

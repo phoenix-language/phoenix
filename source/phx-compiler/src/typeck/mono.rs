@@ -200,7 +200,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         if !validate_instantiation_bounds(
             &typed.resolved,
             &typed.layout,
-            &typed.types,
+            &mut typed.types,
             &typed.std_trait_kernel,
             &typed.value_types,
             Some(&combined_generics),
@@ -252,8 +252,11 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         if skip_impl_body {
             clone_specialized_function_layout(typed, inst.base_fn, spec_def, &subst);
         } else {
-            let mut checker =
-                TypeChecker::new_with_substitution(&typed.resolved, subst, typed.types.clone());
+            let mut checker = TypeChecker::new_with_substitution(
+                &typed.resolved,
+                subst,
+                std::mem::take(&mut typed.types),
+            );
             checker.set_expr_id_base(expr_base);
             checker.seed_layout_tables(&typed.layout);
             checker.seed_std_kernel(&typed.std_kernel);
@@ -359,7 +362,7 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
         if !validate_instantiation_bounds(
             &typed.resolved,
             &typed.layout,
-            &typed.types,
+            &mut typed.types,
             &typed.std_trait_kernel,
             &typed.value_types,
             generic_params.as_deref(),

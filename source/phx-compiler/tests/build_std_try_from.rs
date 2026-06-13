@@ -42,7 +42,7 @@ fn std_try_from_records_convert_err_try_site() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_try_from program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     assert!(
         typed
             .try_sites
@@ -67,7 +67,7 @@ fn std_try_from_read_config_lowers_from_on_err_path() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_try_from program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     let ir = lower(&typed).expect("lower");
     let interner = &typed.resolved.interner;
     let read_config = ir.functions.iter().find(|f| {

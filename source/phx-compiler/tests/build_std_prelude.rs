@@ -30,7 +30,7 @@ fn bundled_std_prelude_builds() {
         load_program_with_context(&config.default_entry_file(), &ctx, Some(&layout), &mut bag)
             .expect("load");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     let entry = typed.entry.expect("main entry");
     assert!(
         typed

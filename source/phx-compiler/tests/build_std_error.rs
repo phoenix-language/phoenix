@@ -58,7 +58,7 @@ fn std_errors_records_try_site() {
     let loaded = load_program_with_context(&entry, &ctx, Some(&layout), &mut bag)
         .expect("load std_errors program");
     let resolved = resolve_loaded_program(loaded).expect("resolve");
-    let typed = type_check(&resolved).expect("typecheck");
+    let typed = type_check(resolved).expect("typecheck");
     assert!(
         typed
             .try_sites

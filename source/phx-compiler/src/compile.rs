@@ -494,7 +494,7 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
         prior_parse: prior_parse.clone(),
     })?;
     let ctx = DiagnosticContext::from_resolved(&resolved);
-    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+    let typed = type_check(resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
         context: ctx,
         prior_parse: prior_parse.clone(),
@@ -576,9 +576,10 @@ pub fn compile_source_with_module_root(
         context: Some(ctx.clone()),
         prior_parse: None,
     })?;
-    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+    let typeck_ctx = DiagnosticContext::from_resolved(&resolved);
+    let typed = type_check(resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
-        context: DiagnosticContext::from_resolved(&resolved),
+        context: typeck_ctx,
         prior_parse: None,
     })?;
     Ok(CompilationUnit {
@@ -630,9 +631,10 @@ pub fn check_project_file(
         context: Some(ctx_diag.clone()),
         prior_parse: None,
     })?;
-    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+    let typeck_ctx = DiagnosticContext::from_resolved(&resolved);
+    let typed = type_check(resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
-        context: DiagnosticContext::from_resolved(&resolved),
+        context: typeck_ctx,
         prior_parse: None,
     })?;
     Ok(CompilationUnit {
@@ -667,9 +669,10 @@ pub fn check_file_with_module_path(
         context: Some(ctx.clone()),
         prior_parse: None,
     })?;
-    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+    let typeck_ctx = DiagnosticContext::from_resolved(&resolved);
+    let typed = type_check(resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
-        context: DiagnosticContext::from_resolved(&resolved),
+        context: typeck_ctx,
         prior_parse: None,
     })?;
     Ok(CompilationUnit {

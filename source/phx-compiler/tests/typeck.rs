@@ -1772,7 +1772,7 @@ fn missing_fn_def_emits_internal_error_instead_of_def_zero() {
     assert!(!file.has_errors(), "parse: {:?}", file.errors_bag());
     let mut resolved = resolve(&file.value).expect("resolve");
     resolved.defs.retain(|d| d.kind != DefKind::Fn);
-    let bag = type_check(&resolved).expect_err("expected typeck failure");
+    let bag = type_check(resolved).expect_err("expected typeck failure");
     assert!(
         bag.errors().iter().any(|e| {
             matches!(

@@ -95,6 +95,6 @@ fn import_types_map_populated_for_single_file() {
     let source =
         "add :: (a: s32, b: s32) => s32 { a + b };\n\nmain :: () => { const _ = add(1, 2); };\n";
     let unit = compile_source(source, None).unwrap_or_else(|e| panic!("{e}"));
-    let typed = type_check(&unit.typed.resolved).expect("typeck");
+    let typed = type_check(unit.typed.resolved.clone()).expect("typeck");
     assert!(typed.resolved.import_types.is_empty());
 }

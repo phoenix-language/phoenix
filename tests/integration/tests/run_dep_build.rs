@@ -57,7 +57,7 @@ fn path_dep_pxi_seeds_import_types() {
         !resolved.import_types.is_empty(),
         "math::add should get types from build/deps/math/pxi"
     );
-    type_check(&resolved).expect("typeck with dep pxi types");
+    type_check(resolved).expect("typeck with dep pxi types");
 }
 
 #[test]
