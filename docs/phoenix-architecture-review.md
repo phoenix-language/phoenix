@@ -169,7 +169,7 @@ Dependency-free root crate: `Span`, per-pass error enums (`LexError`, `ParseErro
 **Location:** `phx-diagnostics/src/render.rs:332–417` (`explain_code`)
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `phx explain` coverage is incomplete — `E3002`–`E3005` and `E2033` have codes but no explain entries.
 **Detail:** This is the first instance of the four-parallel-match drift predicted by PHX-015; users get "no explanation available" for real codes.

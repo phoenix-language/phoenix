@@ -9,6 +9,7 @@ use crate::code::DiagnosticCode;
 
 /// A lexical error produced while tokenizing Phoenix source.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LexError {
     /// A byte string or byte character literal was not closed.
     UnterminatedString {

@@ -50,6 +50,7 @@ impl fmt::Display for ExpectedToken {
 
 /// A parse error produced while building the AST.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ParseError {
     /// Lexical error from the lexer.
     Lex(LexError),
