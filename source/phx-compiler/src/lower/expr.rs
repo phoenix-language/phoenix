@@ -1809,6 +1809,9 @@ pub(crate) fn emit_arm_condition(
                 ctx.emit(IrInst::Jump { target: fail_id });
             }
         }
+        Pattern::Range { .. } => {
+            ctx.emit(IrInst::Jump { target: fail_id });
+        }
         #[allow(unreachable_patterns)]
         _ => {
             // Reserved for future `Pattern` variants (`#[non_exhaustive]`).
@@ -1944,6 +1947,7 @@ pub(crate) fn bind_match_pattern(
             }
         }
         Pattern::Wildcard | Pattern::Literal(_) => {}
+        Pattern::Range { .. } => {}
         _ => {}
     }
 }

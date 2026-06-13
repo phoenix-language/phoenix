@@ -12,6 +12,7 @@
 use phx_diagnostics::{ExpectedToken, LexError, ParseBag, ParseError};
 use phx_syntax::ast::decl::{FnDirective, StructBody, TopLevelDecl, Variant};
 use phx_syntax::ast::expr::{AssignOp, Expr, PostfixOp};
+use phx_syntax::ast::pat::Pattern;
 use phx_syntax::ast::stmt::{BlockItem, Stmt};
 use phx_syntax::ast::{BlockNode, Program};
 use phx_syntax::parse;
@@ -103,8 +104,8 @@ mod support {
 }
 
 use support::{
-    assert_ok, assert_parse_err, assert_unsupported, in_main, in_main_expr, main_fn, parse_ok,
-    with_type_alias,
+    assert_ok, assert_parse_err, assert_unsupported, first_stmt_expr, in_main, in_main_expr,
+    main_fn, parse_ok, with_type_alias,
 };
 
 // -----------------------------------------------------------------------------
@@ -1388,6 +1389,38 @@ fn deferred_parse_range_expr_dot_dot() {
 #[test]
 fn deferred_parse_range_expr_dot_dot_eq() {
     assert_ok(&in_main_expr("0..=1"));
+}
+
+#[test]
+fn deferred_parse_range_pattern_dot_dot() {
+    let p = parse_ok(&in_main_expr("match 0 { 0..1 => 0; _ => 1; }"));
+    let expr = first_stmt_expr(&main_fn(&p).body);
+    let Expr::Match { arms, .. } = expr else {
+        panic!("expected match expression");
+    };
+    assert!(matches!(
+        arms[0].pattern.inner,
+        Pattern::Range {
+            inclusive: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn deferred_parse_range_pattern_dot_dot_eq() {
+    let p = parse_ok(&in_main_expr("match 0 { 0..=1 => 0; _ => 1; }"));
+    let expr = first_stmt_expr(&main_fn(&p).body);
+    let Expr::Match { arms, .. } = expr else {
+        panic!("expected match expression");
+    };
+    assert!(matches!(
+        arms[0].pattern.inner,
+        Pattern::Range {
+            inclusive: true,
+            ..
+        }
+    ));
 }
 
 #[test]

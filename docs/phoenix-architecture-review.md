@@ -97,7 +97,7 @@ A clean front end: `lexer`/`token` → `parser/` (split by construct) → plain-
 **Location:** `phx-syntax/src/parser/pat.rs` vs `docs/design/grammar.ebnf:249–251`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `range_pattern` is in the grammar but not parsed; it fails as a generic `InvalidPattern`.
 **Detail:** Design policy is that deferred grammar is *parsed* and rejected in typeck with `UnsupportedFeature`, not rejected at parse with a misleading code.
@@ -888,7 +888,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-004 | - [x] | Major | phx-syntax | Block statements strip `StmtNode` span |
 | PHX-005 | - [x] | Major | phx-syntax | Partial AST discarded on any parse error |
 | PHX-006 | - [x] | Minor | phx-syntax | Unclosed `{` exits block loop with no diagnostic |
-| PHX-007 | - [ ] | Minor | phx-syntax | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |
+| PHX-007 | - [x] | Minor | phx-syntax | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |
 | PHX-008 | - [ ] | Minor | phx-syntax | Attribute semantics resolved in syntax crate |
 | PHX-009 | - [ ] | Minor | phx-syntax | Wasted allocations in hot paths |
 | PHX-010 | - [ ] | Suggestion | phx-syntax | Test/grammar drift on keywords and `extern`/`mod` |

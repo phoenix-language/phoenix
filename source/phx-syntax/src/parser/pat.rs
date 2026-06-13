@@ -4,8 +4,9 @@
 
 use phx_diagnostics::ExpectedToken;
 
+use crate::ast::expr::Expr;
 use crate::ast::pat::{MatchArm, Pattern, StructPatternField};
-use crate::ast::{ExprNode, PatternNode};
+use crate::ast::{ExprNode, PathSegment, PatternNode};
 use crate::parser::Parser;
 use crate::token::{Keyword, TokenKind};
 
@@ -23,18 +24,60 @@ impl Parser<'_> {
             | TokenKind::Bool(_)
             | TokenKind::ByteChar(_)
             | TokenKind::ByteString(_)
-            | TokenKind::String(_) => {
-                let lit = self.parse_literal()?;
-                Ok(self.node(Pattern::Literal(lit), self.span_from(start)))
-            }
+            | TokenKind::String(_)
+            | TokenKind::Ident(_) => self.parse_atom_or_range_pattern(start),
             TokenKind::TypeIdent(_) => self.parse_type_pattern(start),
-            TokenKind::Ident(_) => {
-                let id = self.parse_ident()?;
-                Ok(self.node(Pattern::Ident(id), self.span_from(start)))
-            }
             _ => Err(ParseError::InvalidPattern {
                 span: self.current_span(),
             }),
+        }
+    }
+
+    /// Parses a literal or ident pattern, or `equality_expr..equality_expr` / `..=`.
+    fn parse_atom_or_range_pattern(&mut self, start: usize) -> Result<PatternNode, ParseError> {
+        let left = self.parse_equality_expr()?;
+        if let Some(inclusive) = self.eat_range_op() {
+            let right = self.parse_equality_expr()?;
+            let span = left.span.merge(right.span);
+            return Ok(self.node(
+                Pattern::Range {
+                    start: Box::new(left),
+                    end: Box::new(right),
+                    inclusive,
+                },
+                span,
+            ));
+        }
+        self.expr_to_pattern(left, start)
+    }
+
+    /// Converts a simple expression into a non-range pattern.
+    fn expr_to_pattern(&mut self, expr: ExprNode, start: usize) -> Result<PatternNode, ParseError> {
+        match expr.inner {
+            Expr::Literal(lit) => Ok(self.node(Pattern::Literal(lit), self.span_from(start))),
+            Expr::Ident(ident) => Ok(self.node(Pattern::Ident(ident), self.span_from(start))),
+            Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
+                PathSegment::Ident(ident) => {
+                    Ok(self.node(Pattern::Ident(*ident), self.span_from(start)))
+                }
+                PathSegment::Type(_) => Err(ParseError::InvalidPattern { span: expr.span }),
+            },
+            _ => Err(ParseError::InvalidPattern { span: expr.span }),
+        }
+    }
+
+    /// Consumes `..` or `..=` when present.
+    fn eat_range_op(&mut self) -> Option<bool> {
+        match self.peek_kind() {
+            TokenKind::DotDot => {
+                self.bump();
+                Some(false)
+            }
+            TokenKind::DotDotEq => {
+                self.bump();
+                Some(true)
+            }
+            _ => None,
         }
     }
 

@@ -5120,6 +5120,7 @@ impl<'a> TypeChecker<'a> {
                 .program_layout
                 .enum_variant_by_name(name.symbol)
                 .map(|(_, v)| v.name),
+            Pattern::Range { .. } => None,
             _ => None,
         }
     }
@@ -5275,6 +5276,11 @@ impl<'a> TypeChecker<'a> {
                         }
                     }
                 }
+            }
+            Pattern::Range { start, end, .. } => {
+                let _ = self.check_expr_node(start);
+                let _ = self.check_expr_node(end);
+                self.push_unsupported("range pattern", span);
             }
             _ => {}
         }

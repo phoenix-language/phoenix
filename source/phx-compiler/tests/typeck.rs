@@ -726,6 +726,12 @@ fn deferred_typeck_range_expr() {
 }
 
 #[test]
+fn deferred_typeck_range_pattern() {
+    let bag = typeck_err("main :: () => { match 0 { 0..1 => (); _ => (); }; };");
+    assert!(has_unsupported(&bag, "range pattern"));
+}
+
+#[test]
 fn deferred_typeck_lambda() {
     let bag = typeck_err("main :: () => { const _ = () => 1; };");
     assert!(has_unsupported(&bag, "lambda"));

@@ -99,7 +99,7 @@ impl Parser<'_> {
         ))
     }
 
-    fn parse_equality_expr(&mut self) -> Result<ExprNode, ParseError> {
+    pub(crate) fn parse_equality_expr(&mut self) -> Result<ExprNode, ParseError> {
         let mut left = self.parse_relational_expr()?;
         while matches!(self.peek_kind(), TokenKind::EqEq | TokenKind::Ne) {
             let Some(tok) = self.bump() else {

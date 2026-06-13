@@ -31,6 +31,15 @@ pub enum Pattern {
         /// Inner patterns.
         patterns: Vec<Node<Pattern>>,
     },
+    /// Range `start..end` or `start..=end` (deferred; rejected at typeck).
+    Range {
+        /// Left bound.
+        start: Box<ExprNode>,
+        /// Right bound.
+        end: Box<ExprNode>,
+        /// `true` for `..=`.
+        inclusive: bool,
+    },
 }
 
 /// Field in a struct pattern.

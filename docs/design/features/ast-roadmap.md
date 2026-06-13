@@ -16,6 +16,12 @@ Reserved and planned AST shapes referenced by compiler reviews. Implementation o
 | `Expr::Lambda` | Parsed; resolver capture table + `DefKind::Closure`; typeck/lowering TBD |
 | `Expr::RuntimeDirective` | Parsed `@spawn` / `@send` / …; post-MVP runtime |
 
+## Pattern variants (planned)
+
+| Variant | Purpose |
+|---------|---------|
+| `Pattern::Range` | Parsed; typeck rejects until range pattern semantics |
+
 ## Statement variants (planned)
 
 | Variant | Purpose |

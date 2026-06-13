@@ -936,6 +936,10 @@ impl Resolver<'_> {
                     self.resolve_pattern_node(p);
                 }
             }
+            Pattern::Range { start, end, .. } => {
+                self.resolve_expr_node(start);
+                self.resolve_expr_node(end);
+            }
             _ => {}
         }
     }
