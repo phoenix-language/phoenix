@@ -76,7 +76,6 @@ pub fn check_binary(
                 None
             }
         }
-        _ => None,
     }
 }
 
@@ -127,7 +126,6 @@ pub fn check_unary(
                 None
             }
         }
-        _ => None,
     }
 }
 

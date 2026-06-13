@@ -10,7 +10,6 @@ use crate::ast::types::Type;
 
 /// A statement.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Stmt {
     /// `const name [: T] = expr;`
     Const {
@@ -75,7 +74,6 @@ pub enum Stmt {
 
 /// Item inside a block: statement or trailing expression.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum BlockItem {
     /// Statement with semicolon.
     Stmt(StmtNode),

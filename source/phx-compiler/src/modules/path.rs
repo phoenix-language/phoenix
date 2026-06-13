@@ -169,7 +169,6 @@ fn segment_to_string(seg: &PathSegment, interner: &Interner) -> String {
     let sym = match seg {
         PathSegment::Ident(i) => i.symbol,
         PathSegment::Type(t) => t.name.symbol,
-        _ => return String::new(),
     };
     interner.resolve_display(sym)
 }

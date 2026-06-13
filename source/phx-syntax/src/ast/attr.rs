@@ -13,7 +13,6 @@ pub struct Attribute {
 
 /// One argument inside `#[name(...)]`.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum AttrArg {
     /// `key = value`.
     Named {
@@ -37,7 +36,6 @@ pub enum AttrArg {
 
 /// Attribute argument value.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum AttrValue {
     /// String literal.
     Str(String),

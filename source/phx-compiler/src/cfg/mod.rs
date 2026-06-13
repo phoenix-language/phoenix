@@ -60,7 +60,7 @@ pub fn strip_cfg(
             for member in old {
                 let keep = match member {
                     ImplMember::Method(ref f) => cfg_attrs_active(&f.attrs, compile_cfg, interner)?,
-                    _ => true,
+                    ImplMember::AssociatedType { .. } => true,
                 };
                 if keep {
                     next.push(member);
@@ -169,10 +169,6 @@ fn eval_cfg_arg(
         AttrArg::TypeName(_) => Err(CfgError {
             span,
             message: "unexpected type name in `#[cfg]` predicate".to_string(),
-        }),
-        _ => Err(CfgError {
-            span,
-            message: "unsupported `#[cfg]` argument shape".to_string(),
         }),
     }
 }

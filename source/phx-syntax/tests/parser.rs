@@ -98,7 +98,7 @@ mod support {
                 other => panic!("expected const or expr stmt, got {other:?}"),
             },
             BlockItem::Expr(e) => &e.inner,
-            other => panic!("expected expr item, got {other:?}"),
+            BlockItem::Import(_) => panic!("expected expr item, got import"),
         }
     }
 }
@@ -1210,7 +1210,6 @@ fn expr_assoc_path_preserves_type_generics() {
                     "expected type generics on first path segment"
                 ),
                 PathSegment::Ident(_) => panic!("expected type segment, got ident"),
-                _ => panic!("unexpected path segment variant"),
             }
         }
         other => panic!("expected Path, got {other:?}"),

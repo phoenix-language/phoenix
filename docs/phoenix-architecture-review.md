@@ -255,11 +255,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/check.rs:3–4`; `lower/expr.rs:114, 272, 523, 1813`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Module-level `#![allow(unreachable_patterns)]` plus `_` wildcard arms on `#[non_exhaustive]` AST enums.
 **Detail:** The project's stated invariant is "every new AST/token/opcode variant is a compile error until all match sites are updated." The module-level allow disables exactly that guarantee in the two passes most likely to miscompile a new construct silently. PHX-045 in `phx-bytecode` is a live demonstration of what `_` wildcards on opcode matches cost.
 **Recommendation:** Remove the module-level allows; handle new variants explicitly (an `unsupported(expr)` helper arm that pushes a diagnostic is fine — `_` is not).
+
+**Resolution:** Removed `#[non_exhaustive]` from phx-syntax AST/token enums; deleted module-level `unreachable_patterns` allows in typeck, lower, and resolver; replaced silent `_` catch-alls with explicit variant arms across typeck, lower, resolver, lint, derive, and cfg. New AST variants now fail compilation at every match site.
 
 ---
 
@@ -816,7 +818,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 
 **Crate dependency graph.** Verified clean and acyclic in production: `phx-diagnostics` ← `phx-syntax` ← `phx-compiler` (also ← `phx-bytecode`); `phx-vm` ← {`phx-bytecode`, `phx-diagnostics`} — `**phx-vm` correctly does not depend on `phx-compiler`**; `phx-cli` links all; `phx` ← `phx-cli`. Zero external crates anywhere, enforced by `tests/ci/check-deps.sh`. Only dev-time wrinkles: `phx-compiler` ↔ `phx-test` cycle and `phx-bytecode` dev-depending on `phx-vm` (PHX-062).
 
-**Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" holds on every CLI path but is convention-only at the `phx_vm::run` library boundary (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is *not* held (PHX-019, PHX-045) and one of the two violations produced the verifier soundness hole. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
+**Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" holds on every CLI path but is convention-only at the `phx_vm::run` library boundary (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 (opcodes) remains open. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
 
 **Post-MVP readiness.** Honest assessment: the **typeck side-table architecture** and **PHX0 versioned format** are good extension points. Three things will need surgery, none of which is stubbed: (1) the ownership tracker has no CFG notion at all — the full borrow checker cannot grow out of a linear `Vec<BindingEntry>`; expect replacement, which makes fixing PHX-023/024 with a properly shaped fork/join model doubly valuable; (2) the VM has no execution-context abstraction — scheduler work means refactoring `Machine`/frame ownership first (PHX-057); (3) lowering's order-coupled `ExprId` cursor (PHX-037) is fragile under any future reordering optimization; a keyed map or explicit typed-IR would be sturdier. The std bootstrap substrate, by contrast, is largely *done*: `Option`/`Result`/`?`/`Drop`/`DynamicArray`/allocator traits exist as std-authored Phoenix code with a path-scoped kernel — the remaining risk there is PHX-026's name-based fallbacks.
 
@@ -845,7 +847,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-016 | - [x]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
 | PHX-017 | - [x]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
 | PHX-018 | - [x]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
-| PHX-019 | - [ ]  | Major        | phx-compiler    | #![allow(unreachable_patterns)]` in typeck and lower                     |
+| PHX-019 | - [x]  | Major        | phx-compiler    | `#![allow(unreachable_patterns)]` in typeck and lower                     |
 | PHX-020 | - [ ]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
 | PHX-021 | - [ ]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
 | PHX-022 | - [ ]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |

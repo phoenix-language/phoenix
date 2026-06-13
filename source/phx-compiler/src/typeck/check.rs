@@ -1,8 +1,5 @@
 //! Type-checking driver and AST walk.
 
-// AST enums are `#[non_exhaustive]`; wildcard arms reserve future variants.
-#![allow(unreachable_patterns)]
-
 use std::collections::{HashMap, HashSet};
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
@@ -504,7 +501,6 @@ impl<'a> TypeChecker<'a> {
                 Param::Receiver { ty, .. } => {
                     ty.as_ref().map(|t| self.lower_ast_type_with_defs(t, &td))
                 }
-                _ => None,
             })
             .collect();
         self.types.intern(&Ty::Fn { params, ret })
@@ -1399,7 +1395,6 @@ impl<'a> TypeChecker<'a> {
                             }
                         }
                         StructBody::Unit => {}
-                        _ => {}
                     }
                     self.struct_fields
                         .insert(def, StructFields { fields: fields_map });
@@ -1459,7 +1454,6 @@ impl<'a> TypeChecker<'a> {
                                 let pts: Vec<TypeId> = fields.iter().map(|(_, ty)| *ty).collect();
                                 (pts, VariantKind::Struct(fields))
                             }
-                            _ => (vec![], VariantKind::Unit),
                         };
                         if let Some(vdef) = variant_def {
                             let params: Vec<TypeId> = payload_types.clone();
@@ -1549,7 +1543,7 @@ impl<'a> TypeChecker<'a> {
                                 .iter()
                                 .filter_map(|m| match m {
                                     ImplMember::Method(f) => Some(f.name.symbol),
-                                    _ => None,
+                                    ImplMember::AssociatedType { .. } => None,
                                 })
                                 .collect();
                             if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
@@ -1646,7 +1640,6 @@ impl<'a> TypeChecker<'a> {
                                     }
                                 }
                             }
-                            _ => {}
                         }
                     }
                     self.impl_self_type = saved_collect_self;
@@ -1762,7 +1755,6 @@ impl<'a> TypeChecker<'a> {
                 Param::Receiver { ty, .. } => ty
                     .as_ref()
                     .map(|t| self.lower_ast_type_with_defs(t, type_defs)),
-                _ => None,
             })
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
@@ -1783,7 +1775,6 @@ impl<'a> TypeChecker<'a> {
             .filter_map(|p| match p {
                 Param::Named { ty, .. } => Some(self.lower_ast_type(ty)),
                 Param::Receiver { ty, .. } => ty.as_ref().map(|t| self.lower_ast_type(t)),
-                _ => None,
             })
             .collect();
         let fn_ty = self.types.intern(&Ty::Fn { params, ret });
@@ -2086,7 +2077,6 @@ impl<'a> TypeChecker<'a> {
                     param_index += 1;
                     self.define_local(impl_receiver_symbol(), pty, BindingKind::Param, None);
                 }
-                _ => {}
             }
         }
         if self.impl_self_type.is_some() && !has_receiver {
@@ -2143,7 +2133,6 @@ impl<'a> TypeChecker<'a> {
                 BlockItem::Stmt(stmt) => self.check_block_stmt_value(&stmt.inner),
                 BlockItem::Expr(expr) => self.check_expr_node(expr),
                 BlockItem::Import(_) => self.unit,
-                _ => self.unit,
             };
         }
         self.exit_scope();
@@ -2283,7 +2272,6 @@ impl<'a> TypeChecker<'a> {
             }
             Stmt::Loop(body) => self.with_loop_body(|this| this.check_block(&body.inner)),
             Stmt::Unsafe(body) => self.with_unsafe(|this| this.check_block(&body.inner)),
-            _ => {}
         }
     }
 
@@ -2736,7 +2724,22 @@ impl<'a> TypeChecker<'a> {
             Expr::Postfix { base, ops } => {
                 self.check_postfix_with_move(base, ops, span, record_move, expr_id)
             }
-            _ => self.check_expr(expr, span),
+            Expr::Literal(_)
+            | Expr::Path(_)
+            | Expr::Tuple(_)
+            | Expr::Array(_)
+            | Expr::Unary { .. }
+            | Expr::Binary { .. }
+            | Expr::Assign { .. }
+            | Expr::Cast { .. }
+            | Expr::If { .. }
+            | Expr::Match { .. }
+            | Expr::Block(_)
+            | Expr::StructLit { .. }
+            | Expr::Unsafe(_)
+            | Expr::Range { .. }
+            | Expr::Lambda { .. }
+            | Expr::RuntimeDirective { .. } => self.check_expr(expr, span),
         }
     }
 
@@ -2832,7 +2835,6 @@ impl<'a> TypeChecker<'a> {
                 let body_span = match body {
                     phx_syntax::ast::expr::LambdaBody::Expr(e) => e.span,
                     phx_syntax::ast::expr::LambdaBody::Block(b) => b.span,
-                    _ => span,
                 };
                 self.push_unsupported("lambda expression", body_span);
                 self.unit
@@ -2843,7 +2845,6 @@ impl<'a> TypeChecker<'a> {
                     phx_syntax::ast::expr::RuntimeDirectiveKind::Send => "@send directive",
                     phx_syntax::ast::expr::RuntimeDirectiveKind::Receive => "@receive directive",
                     phx_syntax::ast::expr::RuntimeDirectiveKind::Reply => "@reply directive",
-                    _ => "runtime directive",
                 };
                 for arg in args {
                     let _ = self.check_expr_node(arg);
@@ -2851,7 +2852,6 @@ impl<'a> TypeChecker<'a> {
                 self.push_unsupported(feature, span);
                 self.unit
             }
-            _ => self.unit,
         }
     }
 
@@ -2874,7 +2874,6 @@ impl<'a> TypeChecker<'a> {
                 self.types.intern(&Ty::Array { elem: u8, len })
             }
             Literal::String(_) => str_type(&mut self.types),
-            _ => self.unit,
         }
     }
 
@@ -2941,7 +2940,6 @@ impl<'a> TypeChecker<'a> {
                         });
                     }
                 }
-                _ => {}
             }
         }
         self.unit
@@ -2957,7 +2955,6 @@ impl<'a> TypeChecker<'a> {
         let method = match &path.segments[1] {
             PathSegment::Ident(ident) => *ident,
             PathSegment::Type(_) => return None,
-            _ => return None,
         };
         let target_ty = self.resolve_type_segment_for_assoc_fn(&path.segments[0])?;
         Some((target_ty, method))
@@ -3027,7 +3024,6 @@ impl<'a> TypeChecker<'a> {
                 }
                 Some(self.types.intern(&Ty::Named { def, args: vec![] }))
             }
-            _ => None,
         }
     }
 
@@ -3313,7 +3309,6 @@ impl<'a> TypeChecker<'a> {
                     self.check_index(ty, span)
                 }
                 PostfixOp::Try => self.check_try_expr(ty, span, expr_id),
-                _ => self.unit,
             };
         }
         ty
@@ -3351,7 +3346,6 @@ impl<'a> TypeChecker<'a> {
             Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
                 PathSegment::Ident(ident) => self.lookup_resolution(ident.id),
                 PathSegment::Type(seg) => self.lookup_resolution(seg.name.id),
-                _ => None,
             },
             _ => None,
         }
@@ -3976,7 +3970,6 @@ impl<'a> TypeChecker<'a> {
             .filter_map(|m| match m {
                 ImplMember::Method(f) => Some(f.name.symbol),
                 ImplMember::AssociatedType { .. } => None,
-                _ => None,
             })
             .collect();
         let impl_assoc: std::collections::HashSet<Symbol> = members
@@ -3984,7 +3977,6 @@ impl<'a> TypeChecker<'a> {
             .filter_map(|m| match m {
                 ImplMember::AssociatedType { name, .. } => Some(name.symbol),
                 ImplMember::Method(_) => None,
-                _ => None,
             })
             .collect();
         let type_display = self.symbol_name(type_name.symbol);
@@ -4019,7 +4011,6 @@ impl<'a> TypeChecker<'a> {
                         },
                     );
                 }
-                _ => {}
             }
         }
     }
@@ -4943,7 +4934,6 @@ impl<'a> TypeChecker<'a> {
                 self.check_pattern(&pattern.inner, s, pattern.span, kind);
                 self.check_block_expr(then_block)
             }
-            _ => self.poison_type(),
         }
     }
 
@@ -5139,7 +5129,6 @@ impl<'a> TypeChecker<'a> {
                 .enum_variant_by_name(name.symbol)
                 .map(|(_, v)| v.name),
             Pattern::Range { .. } => None,
-            _ => None,
         }
     }
 
@@ -5300,7 +5289,6 @@ impl<'a> TypeChecker<'a> {
                 let _ = self.check_expr_node(end);
                 self.push_unsupported("range pattern", span);
             }
-            _ => {}
         }
     }
 
@@ -5744,7 +5732,6 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
         Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
             PathSegment::Ident(ident) => Some(ident.id),
             PathSegment::Type(seg) => Some(seg.name.id),
-            _ => None,
         },
         _ => None,
     }
@@ -5784,14 +5771,12 @@ impl TypeChecker<'_> {
                     | Stmt::Return(_)
                     | Stmt::Break { .. }
                     | Stmt::Continue { .. }
-                    | Stmt::ForIn { .. }
-                    | _ => {}
+                    | Stmt::ForIn { .. } => {}
                 },
                 BlockItem::Expr(expr) => {
                     self.collect_layout_bindings_from_expr(expr, type_defs);
                 }
                 BlockItem::Import(_) => {}
-                _ => {}
             }
         }
         self.exit_scope();
@@ -5831,7 +5816,6 @@ fn block_item_uses_impl_receiver(item: &BlockItem) -> bool {
         BlockItem::Stmt(stmt) => stmt_uses_impl_receiver(&stmt.inner),
         BlockItem::Expr(expr) => expr_uses_impl_receiver(expr),
         BlockItem::Import(_) => false,
-        _ => false,
     }
 }
 
@@ -5849,7 +5833,6 @@ fn stmt_uses_impl_receiver(stmt: &Stmt) -> bool {
         }
         Stmt::Loop(body) | Stmt::Unsafe(body) => function_body_uses_impl_receiver(&body.inner),
         Stmt::Continue { .. } => false,
-        _ => false,
     }
 }
 
@@ -5874,7 +5857,7 @@ fn expr_uses_impl_receiver(expr: &ExprNode) -> bool {
                 }
                 PostfixOp::Index(idx) => expr_uses_impl_receiver(idx),
                 PostfixOp::Field { .. } => false,
-                _ => false,
+                PostfixOp::Try => false,
             })
         }
         Expr::If {
@@ -5900,12 +5883,10 @@ fn expr_uses_impl_receiver(expr: &ExprNode) -> bool {
         Expr::StructLit { fields, .. } => fields.iter().any(|field| match field {
             StructFieldInit::Field { value, .. } => expr_uses_impl_receiver(value),
             StructFieldInit::Spread(base) => expr_uses_impl_receiver(base),
-            _ => false,
         }),
         Expr::Lambda { body, .. } => match body {
             LambdaBody::Expr(e) => expr_uses_impl_receiver(e),
             LambdaBody::Block(b) => function_body_uses_impl_receiver(&b.inner),
-            _ => false,
         },
         Expr::Tuple(items) | Expr::Array(items) => items.iter().any(expr_uses_impl_receiver),
         Expr::Range { start, end, .. } => {
@@ -5913,7 +5894,6 @@ fn expr_uses_impl_receiver(expr: &ExprNode) -> bool {
         }
         Expr::RuntimeDirective { args, .. } => args.iter().any(expr_uses_impl_receiver),
         Expr::Literal(_) | Expr::Path(_) => false,
-        _ => false,
     }
 }
 
@@ -5921,7 +5901,6 @@ fn if_condition_uses_impl_receiver(condition: &IfCondition) -> bool {
     match condition {
         IfCondition::Bool(expr) => expr_uses_impl_receiver(expr),
         IfCondition::Pattern { scrutinee, .. } => expr_uses_impl_receiver(scrutinee),
-        _ => false,
     }
 }
 
@@ -5988,7 +5967,7 @@ fn trailing_value_expr(block: &Block) -> Option<&ExprNode> {
                 }
                 _ => {}
             },
-            _ => {}
+            BlockItem::Import(_) => {}
         }
     }
     None

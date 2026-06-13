@@ -9,7 +9,6 @@ use crate::ast::lit::Literal;
 
 /// A match or binding pattern.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Pattern {
     /// `_`.
     Wildcard,

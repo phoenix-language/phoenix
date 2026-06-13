@@ -73,7 +73,6 @@ impl SubmoduleRegistry {
                             PathSegment::Type(type_name) => {
                                 interner.resolve_display(type_name.name.symbol)
                             }
-                            _ => String::new(),
                         })
                         .collect();
                     reexports.push(ReexportDecl {

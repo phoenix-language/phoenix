@@ -470,7 +470,7 @@ impl AstGen {
                     .collect();
                 self.and_chain_or_true(comps)
             }
-            _ => self.bool_lit(true),
+            StructBody::Unit => self.bool_lit(true),
         };
         self.expr_block(expr)
     }
@@ -588,10 +588,6 @@ impl AstGen {
                 });
                 (pat, bindings)
             }
-            _ => {
-                let pat = self.node(Pattern::Wildcard);
-                (pat, Vec::new())
-            }
         }
     }
 
@@ -610,7 +606,7 @@ impl AstGen {
                     .collect();
                 self.and_chain_or_true(comps)
             }
-            _ => self.bool_lit(true),
+            Variant::Unit => self.bool_lit(true),
         }
     }
 
@@ -762,7 +758,9 @@ mod tests {
                 body: StructBody::Unit,
             },
         });
-        let err = ast_gen.finish(item).expect_err("expected derive error");
+        let Err(err) = ast_gen.finish(item) else {
+            panic!("expected derive error");
+        };
         assert!(err.message.contains("intern table is full"));
     }
 

@@ -9,7 +9,6 @@ use crate::token::Keyword;
 
 /// A type expression.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Type {
     /// Primitive keyword type (`s32`, `bool`, …).
     Primitive(Keyword),

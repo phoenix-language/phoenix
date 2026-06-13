@@ -28,7 +28,6 @@ pub enum FloatSuffix {
 
 /// A reserved Phoenix keyword.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum Keyword {
     /// `const`
     Const,
@@ -258,7 +257,6 @@ impl Keyword {
 
 /// Classification of a single lexical token.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum TokenKind<'src> {
     /// End of input sentinel (always last in a full [`crate::lex`] result).
     Eof,

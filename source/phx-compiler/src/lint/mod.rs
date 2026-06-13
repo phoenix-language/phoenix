@@ -130,7 +130,7 @@ impl LintWalker<'_> {
                     self.check_discard(expr);
                     self.walk_expr(expr);
                 }
-                _ => {}
+                BlockItem::Import(_) => {}
             }
         }
     }
@@ -223,7 +223,6 @@ impl LintWalker<'_> {
             Expr::Lambda { body, .. } => match body {
                 phx_syntax::ast::expr::LambdaBody::Expr(e) => self.walk_expr(e),
                 phx_syntax::ast::expr::LambdaBody::Block(b) => self.walk_block(&b.inner),
-                _ => {}
             },
             Expr::Range { start, end, .. } => {
                 self.walk_expr(start);
@@ -242,7 +241,6 @@ impl LintWalker<'_> {
         match condition {
             IfCondition::Bool(cond) => self.walk_expr(cond),
             IfCondition::Pattern { scrutinee, .. } => self.walk_expr(scrutinee),
-            _ => {}
         }
     }
 
@@ -379,7 +377,6 @@ impl LintWalker<'_> {
         let node_id = match seg {
             PathSegment::Ident(i) => i.id,
             PathSegment::Type(t) => t.name.id,
-            _ => return None,
         };
         self.resolve_node(node_id)
     }

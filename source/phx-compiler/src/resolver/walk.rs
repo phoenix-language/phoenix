@@ -3,9 +3,7 @@
 //! Pass order: reject `#import` → collect top-level defs → resolve bodies/types/exprs → check
 //! `main`. Uses separate value and type namespaces per [`super::scopes::ScopeStack`].
 
-// AST enums are `#[non_exhaustive]`; wildcard arms reserve future variants.
 #![allow(
-    unreachable_patterns,
     clippy::match_same_arms,
     clippy::ref_option,
     clippy::collapsible_match,
@@ -181,7 +179,6 @@ impl Resolver<'_> {
             TopLevelDecl::ExternItem { sig, .. } => {
                 self.collect_extern_fns(std::slice::from_ref(sig), exported, &item_attrs);
             }
-            _ => {}
         }
     }
 
@@ -323,7 +320,6 @@ impl Resolver<'_> {
                     match member {
                         ImplMember::AssociatedType { ty, .. } => self.resolve_type_node(ty),
                         ImplMember::Method(f) => self.resolve_function(f, true),
-                        _ => {}
                     }
                 }
                 self.self_type_depth -= 1;
@@ -348,7 +344,7 @@ impl Resolver<'_> {
             TopLevelDecl::ExternItem { sig, .. } => {
                 self.resolve_extern_sig(sig);
             }
-            _ => {}
+            TopLevelDecl::Mod { .. } | TopLevelDecl::Reexport { .. } => {}
         }
     }
 
@@ -359,7 +355,6 @@ impl Resolver<'_> {
                 self.define_type(name.symbol, span, DefKind::TraitAssocType);
             }
             TraitItem::Method(sig) => self.resolve_function_sig(sig),
-            _ => {}
         }
     }
 
@@ -376,7 +371,6 @@ impl Resolver<'_> {
                 }
             }
             StructBody::Unit => {}
-            _ => {}
         }
     }
 
@@ -393,7 +387,6 @@ impl Resolver<'_> {
                     self.resolve_type_node(t);
                 }
             }
-            _ => {}
         }
     }
 
@@ -513,7 +506,6 @@ impl Resolver<'_> {
                     self.define_value(name.symbol, name_span_ident(name), DefKind::Param);
                     self.resolve_type_node(ty);
                 }
-                _ => {}
             }
         }
     }
@@ -535,7 +527,6 @@ impl Resolver<'_> {
             BlockItem::Stmt(stmt) => self.resolve_stmt(&stmt.inner),
             BlockItem::Expr(expr) => self.resolve_expr_node(expr),
             BlockItem::Import(imp) => self.apply_block_import(imp),
-            _ => {}
         }
     }
 
@@ -643,7 +634,6 @@ impl Resolver<'_> {
             }
             Stmt::Loop(body) => self.resolve_block_node(body),
             Stmt::Unsafe(body) => self.resolve_block_node(body),
-            _ => {}
         }
     }
 
@@ -681,7 +671,6 @@ impl Resolver<'_> {
             Type::Array { elem, .. } => self.resolve_type_node(elem),
             Type::Slice(inner) => self.resolve_type_node(inner),
             Type::SelfAssoc { member } => self.resolve_type_name(member),
-            _ => {}
         }
     }
 
@@ -810,7 +799,6 @@ impl Resolver<'_> {
                             self.resolve_expr_node(value);
                         }
                         StructFieldInit::Spread(expr) => self.resolve_expr_node(expr),
-                        _ => {}
                     }
                 }
             }
@@ -840,13 +828,11 @@ impl Resolver<'_> {
                                 self.resolve_type_node(t);
                             }
                         }
-                        _ => {}
                     }
                 }
                 match body {
                     phx_syntax::ast::expr::LambdaBody::Expr(e) => self.resolve_expr_node(e),
                     phx_syntax::ast::expr::LambdaBody::Block(b) => self.resolve_block_node(b),
-                    _ => {}
                 }
                 self.scopes.pop();
                 self.closure_stack.pop();
@@ -857,7 +843,6 @@ impl Resolver<'_> {
                     self.resolve_expr_node(arg);
                 }
             }
-            _ => {}
         }
     }
 
@@ -881,7 +866,6 @@ impl Resolver<'_> {
             }
             PostfixOp::Index(expr) => self.resolve_expr_node(expr),
             PostfixOp::Try => {}
-            _ => {}
         }
     }
 
@@ -901,7 +885,6 @@ impl Resolver<'_> {
             phx_syntax::ast::expr::IfCondition::Pattern { scrutinee, .. } => {
                 self.resolve_expr_node(scrutinee);
             }
-            _ => {}
         }
     }
 
@@ -941,7 +924,6 @@ impl Resolver<'_> {
                 self.resolve_expr_node(start);
                 self.resolve_expr_node(end);
             }
-            _ => {}
         }
     }
 
@@ -1002,7 +984,6 @@ impl Resolver<'_> {
                     }
                 }
                 PathSegment::Ident(ident) => self.resolve_type_param_in_assoc_path(ident),
-                _ => {}
             }
             for seg in path.segments.iter().skip(2) {
                 match seg {
@@ -1015,7 +996,6 @@ impl Resolver<'_> {
                             }
                         }
                     }
-                    _ => {}
                 }
             }
             return;
@@ -1030,7 +1010,6 @@ impl Resolver<'_> {
                     }
                 }
             }
-            _ => {}
         }
         if path.segments.len() > 1 {
             for seg in &path.segments[1..] {
@@ -1044,7 +1023,6 @@ impl Resolver<'_> {
                             }
                         }
                     }
-                    _ => {}
                 }
             }
         } else {

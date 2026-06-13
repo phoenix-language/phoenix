@@ -11,7 +11,6 @@ use crate::ast::types::{GenericParam, Type};
 
 /// Function parameter.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Param {
     /// `self` / `mut self` / `self: T` / `mut self: T`.
     Receiver {
@@ -38,7 +37,6 @@ pub struct DeriveDirective {
 
 /// Compile-time function directive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum FnDirective {
     /// `#inline`
     Inline,
@@ -59,7 +57,6 @@ pub struct ImportDirective {
 
 /// Items in a braced import list.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum ImportItem {
     /// Single identifier import.
     Ident(Ident),
@@ -76,7 +73,6 @@ pub struct ImportItems {
 
 /// Struct body shape.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum StructBody {
     /// `struct { fields }`.
     Fields(Vec<StructField>),
@@ -97,7 +93,6 @@ pub struct StructField {
 
 /// Enum variant shape.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Variant {
     /// Unit variant `Eof`.
     Unit,
@@ -118,7 +113,6 @@ pub struct EnumVariant {
 
 /// Trait member.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum TraitItem {
     /// `type Item;`
     AssociatedType(Ident),
@@ -168,7 +162,6 @@ pub struct Function {
 
 /// Trait impl member (method or associated type assignment).
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum ImplMember {
     /// `type Item = T;`
     AssociatedType {
@@ -183,7 +176,6 @@ pub enum ImplMember {
 
 /// Top-level declaration payload.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum TopLevelDecl {
     /// `Name :: struct …`
     Struct {

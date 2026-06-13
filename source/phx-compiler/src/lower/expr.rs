@@ -111,10 +111,6 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
                 UnaryOp::Ref | UnaryOp::RefMut => {
                     // `AddressOfLocal` emitted above; operand already consumed.
                 }
-                #[allow(unreachable_patterns)]
-                _ => {
-                    // Reserved for future `UnaryOp` variants (`#[non_exhaustive]`).
-                }
             }
         }
         Expr::Binary { op, left, right } => {
@@ -269,14 +265,10 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
         Expr::Unsafe(block) => lower_block_expr(ctx, block),
         // Post-MVP / grammar-deferred — rejected by typeck in MVP (`grammar-deferred.md`).
         Expr::Range { .. } | Expr::Lambda { .. } | Expr::RuntimeDirective { .. } => {}
-        #[allow(unreachable_patterns)]
-        _ => {
-            // Reserved for future `Expr` variants (`#[non_exhaustive]`).
-        }
     }
 }
 
-fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u32> {
+fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u32 {
     match lit {
         Literal::Int(i) => {
             let from = if i.suffix == IntegerSuffix::Unsigned {
@@ -289,20 +281,19 @@ fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) -> Option<u
             #[allow(clippy::cast_possible_truncation)]
             let stored = PrimitiveKind::apply_cast(ScalarValue::I32(raw as i32), from, to);
             let (value, kind) = scalar_to_ir_const(stored, to);
-            Some(ctx.intern_const(IrConst::Int(value, kind)))
+            ctx.intern_const(IrConst::Int(value, kind))
         }
         Literal::Float(f) => {
             let kind = primitive_kind_for_type(&ctx.typed.types, ty).unwrap_or(PrimitiveKind::F64);
-            Some(ctx.intern_const(IrConst::Float(f.value, kind)))
+            ctx.intern_const(IrConst::Float(f.value, kind))
         }
-        Literal::Bool(b) => Some(ctx.intern_const(IrConst::Bool(*b))),
+        Literal::Bool(b) => ctx.intern_const(IrConst::Bool(*b)),
         Literal::ByteChar(c) => {
             let u8_ty = primitive_kind_for_type(&ctx.typed.types, ty).unwrap_or(PrimitiveKind::U8);
-            Some(ctx.intern_const(IrConst::Int(i128::from(*c), u8_ty)))
+            ctx.intern_const(IrConst::Int(i128::from(*c), u8_ty))
         }
-        Literal::ByteString(b) => Some(ctx.intern_const(IrConst::Bytes(b.clone()))),
-        Literal::String(s) => Some(ctx.intern_const(IrConst::Bytes(s.clone().into_bytes()))),
-        _ => None,
+        Literal::ByteString(b) => ctx.intern_const(IrConst::Bytes(b.clone())),
+        Literal::String(s) => ctx.intern_const(IrConst::Bytes(s.clone().into_bytes())),
     }
 }
 
@@ -395,9 +386,7 @@ fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
         ctx.emit(IrInst::MakeArray { len });
         return;
     }
-    let Some(index) = intern_literal(ctx, lit, ty) else {
-        return;
-    };
+    let index = intern_literal(ctx, lit, ty);
     ctx.emit(IrInst::Const {
         index,
         ty,
@@ -520,12 +509,6 @@ fn lower_binary(
                 });
             }
         }
-        #[allow(unreachable_patterns)]
-        _ => {
-            // Reserved for future `BinOp` variants (`#[non_exhaustive]`).
-            lower_expr(ctx, left);
-            lower_expr(ctx, right);
-        }
     }
 }
 
@@ -600,7 +583,6 @@ fn binop_to_ir(op: BinOp) -> Option<IrBinOp> {
         BinOp::Shl => Some(IrBinOp::Shl),
         BinOp::Shr => Some(IrBinOp::Shr),
         BinOp::Or | BinOp::And | BinOp::Gt => None,
-        _ => None,
     }
 }
 
@@ -1041,7 +1023,6 @@ fn lower_postfix_inner(
                     receiver_ty = result_ty;
                 }
             }
-            _ => {}
         }
     }
 }
@@ -1450,7 +1431,6 @@ fn path_or_ident_node_id(expr: &Expr) -> Option<phx_syntax::AstNodeId> {
         Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
             PathSegment::Ident(ident) => Some(ident.id),
             PathSegment::Type(seg) => Some(seg.name.id),
-            _ => None,
         },
         _ => None,
     }
@@ -1589,7 +1569,6 @@ fn lower_if_condition_test(
             emit_arm_condition(ctx, &pattern.inner, temp, temp_ty, then_id, else_id);
             Some((pattern.clone(), temp, temp_ty))
         }
-        _ => None,
     }
 }
 
@@ -1750,25 +1729,22 @@ pub(crate) fn emit_arm_condition(
                 ty: temp_ty,
                 prim_kind: prim_kind_byte(ctx.typed, temp_ty),
             });
-            if let Some(index) = intern_literal(ctx, lit, temp_ty) {
-                let bool_id = bool_ty(ctx.typed);
-                ctx.emit(IrInst::Const {
-                    index,
-                    ty: temp_ty,
-                    prim_kind: prim_kind_byte(ctx.typed, temp_ty),
-                });
-                ctx.emit(IrInst::BinOp {
-                    op: IrBinOp::Eq,
-                    result: bool_id,
-                    prim_kind: prim_kind_byte(ctx.typed, bool_id),
-                });
-                ctx.emit(IrInst::JumpIf {
-                    then_block: body_id,
-                    else_block: fail_id,
-                });
-            } else {
-                ctx.emit(IrInst::Jump { target: fail_id });
-            }
+            let index = intern_literal(ctx, lit, temp_ty);
+            let bool_id = bool_ty(ctx.typed);
+            ctx.emit(IrInst::Const {
+                index,
+                ty: temp_ty,
+                prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+            });
+            ctx.emit(IrInst::BinOp {
+                op: IrBinOp::Eq,
+                result: bool_id,
+                prim_kind: prim_kind_byte(ctx.typed, bool_id),
+            });
+            ctx.emit(IrInst::JumpIf {
+                then_block: body_id,
+                else_block: fail_id,
+            });
         }
         Pattern::Struct { name, .. } => {
             if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, name.symbol) {
@@ -1811,11 +1787,6 @@ pub(crate) fn emit_arm_condition(
             }
         }
         Pattern::Range { .. } => {
-            ctx.emit(IrInst::Jump { target: fail_id });
-        }
-        #[allow(unreachable_patterns)]
-        _ => {
-            // Reserved for future `Pattern` variants (`#[non_exhaustive]`).
             ctx.emit(IrInst::Jump { target: fail_id });
         }
     }
@@ -1949,7 +1920,6 @@ pub(crate) fn bind_match_pattern(
         }
         Pattern::Wildcard | Pattern::Literal(_) => {}
         Pattern::Range { .. } => {}
-        _ => {}
     }
 }
 

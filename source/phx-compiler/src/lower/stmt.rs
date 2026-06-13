@@ -24,7 +24,6 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
             BlockItem::Stmt(stmt) => lower_block_stmt(ctx, &stmt.inner),
             BlockItem::Expr(expr) => lower_expr(ctx, expr),
             BlockItem::Import(_) => {}
-            _ => {}
         }
     }
     ctx.exit_scope();
@@ -64,7 +63,6 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
         Stmt::Unsafe(body) => lower_block_value(ctx, &body.inner),
         Stmt::Break { value, .. } => lower_break(ctx, value.as_ref()),
         Stmt::Continue { .. } => lower_continue(ctx),
-        _ => {}
     }
 }
 

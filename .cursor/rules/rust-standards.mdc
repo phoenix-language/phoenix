@@ -13,7 +13,7 @@ Correctness first — a compiler that produces wrong output is worse than one th
 - **Newtypes** for anything with domain meaning: `Symbol`, `TypeId`, `NodeId`, offsets, slots. Never pass bare `u32` where an ID is meant.
 - Validate at **construction boundaries** (parse, load, verify); inner code assumes valid values. Private fields by default + fallible `new`.
 - Prefer one `enum` over parallel `bool`s/`Option`s that must stay consistent (`OwnershipState::Moved(Span)` beats `is_moved: bool` + `move_span: Option<Span>`).
-- `#[non_exhaustive]` on public enums modeling extensible domains (AST nodes, tokens, opcodes).
+- `#[non_exhaustive]` on diagnostic/error enums and internal compiler enums (`Ty`, `IrInst`, opcodes until PHX-045). **Not** on phx-syntax AST/token enums — those are workspace-internal and must stay exhaustively matchable so new variants break compilation in every pass.
 - `Option<T>` over sentinels (`0`, `-1`, `""`). `Option` = absence is normal; `Result` = failure needs reporting.
 - Intern identifiers — store `Symbol` in AST/IR nodes, never `String`. `&str` at API boundaries; `String` only when you allocate or store.
 - Fixed-width ints (`u8`/`u32`/…) in file formats and wire layouts; `usize` only for host indexing. Convert with `try_from`; no silent truncation.

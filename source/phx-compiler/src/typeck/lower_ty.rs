@@ -82,7 +82,7 @@ fn lower_type_inner(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type)
             let i = lower_type_node(types, type_defs, inner);
             types.intern(&Ty::Slice(i))
         }
-        _ => types.intern(&Ty::Error),
+        Type::SelfAssoc { .. } => types.intern(&Ty::Error),
     }
 }
 

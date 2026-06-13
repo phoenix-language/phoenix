@@ -12,7 +12,6 @@ use crate::ast::types::Type;
 
 /// Binary operators on expressions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum BinOp {
     /// `||`
     Or,
@@ -56,7 +55,6 @@ pub enum BinOp {
 
 /// Unary operators on expressions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum UnaryOp {
     /// `-`
     Neg,
@@ -74,7 +72,6 @@ pub enum UnaryOp {
 
 /// Assignment operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum AssignOp {
     /// `=`
     Assign,
@@ -92,7 +89,6 @@ pub enum AssignOp {
 
 /// Postfix operations applied left-to-right.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum PostfixOp {
     /// `.field`
     Field(Ident),
@@ -120,7 +116,6 @@ pub enum PostfixOp {
 
 /// `if` condition: boolean expression or `const` / `var` pattern binding.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum IfCondition {
     /// `if expr { … }`
     Bool(ExprNode),
@@ -137,7 +132,6 @@ pub enum IfCondition {
 
 /// Post-MVP runtime directive (`@spawn`, `@send`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum RuntimeDirectiveKind {
     /// `@spawn(expr)`
     Spawn,
@@ -151,7 +145,6 @@ pub enum RuntimeDirectiveKind {
 
 /// Body of a lambda expression.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum LambdaBody {
     /// Single expression after `=>`.
     Expr(Box<ExprNode>),
@@ -161,7 +154,6 @@ pub enum LambdaBody {
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Expr {
     /// Literal value.
     Literal(Literal),
@@ -270,7 +262,6 @@ pub enum Expr {
 
 /// Struct literal field `field: expr` or `..base`.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum StructFieldInit {
     /// `field: expr`.
     Field {

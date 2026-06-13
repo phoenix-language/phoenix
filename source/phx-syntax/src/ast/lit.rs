@@ -24,7 +24,6 @@ pub struct FloatLit {
 
 /// A literal expression payload.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum Literal {
     /// Integer literal.
     Int(IntLit),

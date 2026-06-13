@@ -5,7 +5,7 @@
     clippy::match_same_arms,
     clippy::ref_option,
     clippy::trivially_copy_pass_by_ref
-)] // `#[non_exhaustive]` AST enums need fallback `_` arms; MVP checker favors clarity
+)]
 //!
 //! Consumes [`ResolvedProgram`] and produces [`TypedProgram`] with interned types per expression.
 

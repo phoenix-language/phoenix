@@ -3,9 +3,8 @@
     clippy::collapsible_if,
     clippy::match_same_arms,
     clippy::needless_pass_by_value,
-    clippy::manual_let_else,
-    unreachable_patterns
-)] // `#[non_exhaustive]` AST enums need fallback `_` arms
+    clippy::manual_let_else
+)]
 //!
 //! Consumes a [`TypedProgram`](crate::typeck::TypedProgram) and produces an [`IrModule`](crate::ir::IrModule).
 //! Does not read source text or build types — type checking must run first.
