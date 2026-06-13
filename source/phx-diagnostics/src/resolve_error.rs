@@ -1,6 +1,6 @@
 //! Name-resolution failure types.
 //!
-//! Collected in [`DiagnosticBag`] during [`phx_compiler::resolve`] (imports, duplicates, `main`).
+//! Collected in [`DiagnosticBag`] during [`phx_compiler::unstable::resolve`] (imports, duplicates, `main`).
 
 use core::fmt;
 

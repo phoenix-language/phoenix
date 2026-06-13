@@ -295,12 +295,14 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/resolver/mod.rs:87–113`; `typeck/mod.rs:34–39`; `lib.rs:57–86`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `ResolvedProgram`'s fields, mono internals (`apply_mono_worklist`), and IR types are all public crate API despite the `facade` module claiming the stable surface.
 **Recommendation:** Flag for review — narrow to `pub(crate)` or move under a documented-unstable `internal` module.
 
-### Language Designer Findings
+**Resolution:** Added `phx_compiler::unstable` for internal graphs and pass entry points; removed IR, resolver, typeck, and unit re-exports from the crate root. Documented three API tiers in `lib.rs` and `facade.rs`. Narrowed mono worklist helpers (`apply_mono_worklist`, `collect_cross_crate_mono_reqs`) to `pub(crate)`. CI guard in `tests/ci/check-compiler-api.sh`.
+
+---
 
 ---
 
@@ -852,7 +854,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-019 | - [x]  | Major        | phx-compiler    | `#![allow(unreachable_patterns)]` in typeck and lower                     |
 | PHX-020 | - [x]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
 | PHX-021 | - [x]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
-| PHX-022 | - [ ]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
+| PHX-022 | - [x]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
 | PHX-023 | - [ ]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
 | PHX-024 | - [ ]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
 | PHX-025 | - [ ]  | Major        | phx-compiler    | No partial-move tracking for field access                                |

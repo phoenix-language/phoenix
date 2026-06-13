@@ -31,11 +31,9 @@ mod type_size;
 mod types;
 mod unify;
 
-#[allow(unused_imports)]
-pub use mono::{
-    CrossCrateMonoReq, MonoInst, TypeMonoInst, TypeMonoKind, apply_mono_worklist,
-    collect_cross_crate_mono_reqs, is_generic_fn_template, is_generic_impl_method_template,
-    monomorphize, specialized_fn_for_inst,
+pub(crate) use mono::{
+    CrossCrateMonoReq, MonoInst, apply_mono_worklist, collect_cross_crate_mono_reqs,
+    is_generic_fn_template, is_generic_impl_method_template, specialized_fn_for_inst,
 };
 
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};

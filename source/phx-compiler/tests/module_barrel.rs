@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use phx_compiler::{
     BuildLayout, BuildOptions, ProjectConfig, load_program_with_context, resolve_loaded_program,
-    type_check,
+    unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 use phx_test::fixture_fs_lock;
@@ -17,7 +17,7 @@ fn fixture_root(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn load_project(name: &str) -> Result<phx_compiler::ResolvedProgram, DiagnosticBag> {
+fn load_project(name: &str) -> Result<phx_compiler::unstable::ResolvedProgram, DiagnosticBag> {
     let root = fixture_root(name);
     let config = ProjectConfig::load(&root).expect("load project");
     let entry = config.default_entry_file();

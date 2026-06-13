@@ -55,7 +55,7 @@ pub struct TypeMonoInst {
 ///
 /// Returns a diagnostic bag when any specialization fails (arity mismatch or re-check errors).
 #[must_use]
-pub fn monomorphize(
+pub(crate) fn monomorphize(
     typed: &mut TypedProgram,
     fn_insts: &[MonoInst],
     type_insts: &[TypeMonoInst],
@@ -144,7 +144,7 @@ fn patch_specialized_drop_fns(typed: &mut TypedProgram) {
 
 /// Resolves the monomorphized `DefId` for `base_fn` instantiated at `args`, if any.
 #[must_use]
-pub fn specialized_fn_for_inst(
+pub(crate) fn specialized_fn_for_inst(
     typed: &TypedProgram,
     base_fn: DefId,
     args: &[super::types::TypeId],
@@ -718,7 +718,7 @@ enum AllocSpecializedDefError {
 
 /// Cross-crate generic export requested by a consumer package build.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CrossCrateMonoReq {
+pub(crate) struct CrossCrateMonoReq {
     /// Path-dependency package name (e.g. `math`).
     pub dep_package: String,
     /// Logical module path of the generic template (e.g. `math`).
@@ -733,7 +733,7 @@ pub struct CrossCrateMonoReq {
 
 /// Collects monomorphization requests for exported generics defined in path dependencies.
 #[must_use]
-pub fn collect_cross_crate_mono_reqs(
+pub(crate) fn collect_cross_crate_mono_reqs(
     typed: &TypedProgram,
     workspace_package: &str,
     module_logical: impl Fn(u32) -> Option<String>,
@@ -792,7 +792,7 @@ pub fn collect_cross_crate_mono_reqs(
 ///
 /// Returns a [`TypeCheckBag`] when specialization fails.
 #[must_use]
-pub fn apply_mono_worklist(
+pub(crate) fn apply_mono_worklist(
     typed: &mut TypedProgram,
     reqs: &[CrossCrateMonoReq],
     module_logical: impl Fn(u32) -> Option<String>,
@@ -853,7 +853,7 @@ fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {
 
 /// Returns true when `def_id` is an impl method on a generic type (not a monomorphized specialization).
 #[must_use]
-pub fn is_generic_impl_method_template(typed: &TypedProgram, def_id: DefId) -> bool {
+pub(crate) fn is_generic_impl_method_template(typed: &TypedProgram, def_id: DefId) -> bool {
     if typed.specialized_from.contains_key(&def_id) {
         return false;
     }
@@ -907,7 +907,7 @@ fn find_type_def_in_module(resolved: &ResolvedProgram, module: u32, name: &str) 
 
 /// Returns true when `def_id` is a generic function template (not a monomorphized specialization).
 #[must_use]
-pub fn is_generic_fn_template(typed: &TypedProgram, def_id: DefId) -> bool {
+pub(crate) fn is_generic_fn_template(typed: &TypedProgram, def_id: DefId) -> bool {
     if typed.specialized_from.contains_key(&def_id) {
         return false;
     }

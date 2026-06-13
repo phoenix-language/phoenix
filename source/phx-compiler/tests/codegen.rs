@@ -5,7 +5,10 @@ use std::path::Path;
 
 use phx_bytecode::verify;
 use phx_bytecode::{BytecodeModule, ConstTag, Opcode};
-use phx_compiler::{IrBinOp, IrInst, IrModule, codegen, compile_source, lower};
+use phx_compiler::{
+    compile_source,
+    unstable::{IrBinOp, IrInst, IrModule, codegen, lower},
+};
 
 #[test]
 fn codegen_generic_fn_inline_verifies() {

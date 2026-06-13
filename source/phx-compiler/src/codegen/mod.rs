@@ -180,7 +180,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     })
 }
 
-/// Codegens one module's IR slice using global function ids for [`crate::IrInst::Call`].
+/// Codegens one module's IR slice using global function ids for [`crate::ir::IrInst::Call`].
 ///
 /// # Errors
 ///

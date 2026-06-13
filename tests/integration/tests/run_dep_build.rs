@@ -5,7 +5,7 @@ use phx_bytecode::{Instruction, Opcode, verify};
 use phx_compiler::BuildOptions;
 use phx_compiler::{
     BuildLayout, ProgramLoadContext, PxiFile, build_project, load_program_with_context,
-    resolve_loaded_program, type_check,
+    resolve_loaded_program, unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 use phx_test::{build_cli_project, cli_project, discover_cli_project, fixture_fs_lock};

@@ -34,6 +34,7 @@ test-cli: test-lang
 
 dep-check:
     bash tests/ci/check-deps.sh
+    bash tests/ci/check-compiler-api.sh
 
 pre-commit:
     just fmt-check lint doc-check dep-check test-lang

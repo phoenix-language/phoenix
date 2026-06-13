@@ -1,8 +1,9 @@
 //! Stable entry points for external tools (LSP, SDK, embedders).
 //!
 //! Wraps the `compile` module without duplicating pipeline logic. Internal compiler graphs
-//! ([`crate::TypedProgram`], [`crate::ResolvedProgram`], [`crate::CompilationUnit`]) remain
-//! accessible in-tree but are not part of this facade.
+//! ([`crate::unstable::TypedProgram`], [`crate::unstable::ResolvedProgram`],
+//! [`crate::unstable::CompilationUnit`]) live under [`crate::unstable`] and are not part of this
+//! facade.
 
 use std::path::Path;
 

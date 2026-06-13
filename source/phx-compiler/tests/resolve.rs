@@ -296,7 +296,7 @@ fn duplicate_trait_impl_rejected() {
 
 #[test]
 fn lambda_closure_records_upvar() {
-    use phx_compiler::resolve;
+    use phx_compiler::unstable::resolve;
     use phx_syntax::parse;
 
     let src = "main :: () => { const x = 1; const _f = () => x; };";

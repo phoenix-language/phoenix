@@ -1,6 +1,6 @@
 //! Type-checking failure types.
 //!
-//! Collected in [`TypeCheckBag`] during [`phx_compiler::type_check`].
+//! Collected in [`TypeCheckBag`] during [`phx_compiler::unstable::type_check`].
 
 use core::fmt;
 

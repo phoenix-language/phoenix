@@ -2,7 +2,10 @@
 
 #![allow(clippy::expect_used)]
 
-use phx_compiler::{expand_derives, resolve, type_check};
+use phx_compiler::{
+    expand_derives,
+    unstable::{resolve, type_check},
+};
 use phx_syntax::ast::decl::TopLevelDecl;
 use phx_syntax::parse;
 

@@ -3,7 +3,10 @@
 
 use std::path::Path;
 
-use phx_compiler::{IrBinOp, IrInst, compile_source, lower};
+use phx_compiler::{
+    compile_source,
+    unstable::{IrBinOp, IrInst, lower},
+};
 
 #[test]
 fn lower_sample_produces_ir() {

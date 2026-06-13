@@ -1,7 +1,9 @@
 //! `.pxi` v2 structured type round-trip and import type seeding.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use phx_compiler::{BuildOptions, PxiExport, PxiFile, PxiType, compile_source, type_check};
+use phx_compiler::{
+    BuildOptions, PxiExport, PxiFile, PxiType, compile_source, unstable::type_check,
+};
 use phx_test::{build_cli_project, cli_project, discover_cli_project};
 
 #[test]

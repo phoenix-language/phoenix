@@ -47,7 +47,7 @@ pub fn compile_source(...) -> Result<..., CompileError>
 
 - All `pub` items in crate roots and re-exported modules.
 - `# Errors` on every public `Result` API.
-- Stability: mark intentional internals `#[doc(hidden)]` or note “not stable for external tools” on exposed compiler graphs (`DefId`, full `TypedProgram`, etc.).
+- Stability: embedders use [`facade`](../../source/phx-compiler/src/facade.rs); internal compiler graphs (`TypedProgram`, `ResolvedProgram`, IR) belong in [`unstable`](../../source/phx-compiler/src/unstable.rs), not `lib.rs` crate-root re-exports.
 
 **Crate order** (pipeline order):
 

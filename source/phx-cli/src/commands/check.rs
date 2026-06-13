@@ -6,7 +6,7 @@ use std::time::Instant;
 use phx_compiler::{
     BuildLayout, BuildOptions, CompileError, DiagnosticContext, ProgramLoadContext,
     emit_interfaces_from_compiled, format_lints, lint_checked, load_program_with_context,
-    resolve_loaded_program, type_check,
+    resolve_loaded_program, unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 

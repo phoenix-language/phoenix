@@ -9,7 +9,6 @@ use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::pat::{MatchArm, Pattern};
 use phx_syntax::ast::stmt::BlockNode;
 
-use crate::TypedProgram;
 use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{
@@ -17,6 +16,7 @@ use crate::lower::ctx::{
     struct_def_by_name, unit_ty,
 };
 use crate::resolver::{DefId, DefKind};
+use crate::typeck::TypedProgram;
 use crate::typeck::{
     BindingKind, ExprId, FunctionLayout, IntrinsicSite, LocalSlot, PrimitiveMethodSite,
     TryFailureMode, TrySiteMeta, Ty, TypeId, VariantKind, primitive_kind_for_type,

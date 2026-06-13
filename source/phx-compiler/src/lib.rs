@@ -1,28 +1,22 @@
 //! Phoenix compiler — resolve, type-check, lower, and codegen to bytecode.
 //!
 //! [`compile_source`] and [`check_file`] run parse → resolve → typeck.
-//! [`compile_to_module`] continues through [`lower::lower`] and [`codegen::codegen`].
+//! [`compile_to_module`] continues through lowering and codegen.
 //! Verify and VM execution are orchestrated by the `phx` CLI, not this crate.
+//!
+//! ## API stability tiers
+//!
+//! **Tier 1 — stable (embedders):** [`facade`] ([`facade::CheckOutput`], [`facade::CompileOutput`],
+//! [`facade::check_file`], [`facade::compile_to_module`]), [`CompileError`], [`build_project`],
+//! [`ProjectConfig`], [`BytecodeModule`].
+//!
+//! **Tier 2 — driver (CLI / in-repo):** [`compile_source`], [`check_file`], `modules`, `standalone`,
+//! [`DiagnosticContext`]. May evolve; does not expose internal graph layout.
+//!
+//! **Tier 3 — unstable:** [`unstable`] — [`unstable::ResolvedProgram`], [`unstable::TypedProgram`], IR, and pass
+//! entry points for tests and contributor tooling. Not semver-stable.
 
 #![allow(clippy::result_large_err)] // `CompileError::TypeCheck` carries full `DiagnosticContext`.
-//!
-//! ## Modules
-//!
-//! - `compile` — [`compile_source`], [`check_file`], [`compile_to_module`], [`CompileError`].
-//! - `unit` module — [`CompilationUnit`] (owned source + [`TypedProgram`]).
-//! - `resolver` — single-file name resolution and [`DefId`] tables.
-//! - `typeck` — type checking → [`TypedProgram`].
-//! - `ir` — intermediate representation.
-//! - [`lower`] — [`TypedProgram`] → [`IrModule`].
-//! - [`codegen`] — [`IrModule`] → [`phx_bytecode::BytecodeModule`].
-//!
-//! ## API stability
-//!
-//! External tools should use [`facade`] ([`check_file`], [`compile_to_module`], [`CompileOutput`],
-//! [`CheckOutput`]). [`ResolvedProgram`], [`TypedProgram`], and [`CompilationUnit`] are internal
-//! compiler graphs for the CLI and tests — their field layout is not stable.
-//!
-//! See `docs/finished-review/10-rust-code-quality.md`.
 
 mod attrs;
 mod build;
@@ -42,13 +36,13 @@ mod resolver;
 mod standalone;
 mod typeck;
 mod unit;
+pub mod unstable;
 
 pub use build::{
     BuildError, BuildOptions, BuildResult, build_project, emit_interfaces_from_compiled,
     load_project_binary,
 };
 pub use cfg::{CompileCfg, strip_cfg};
-pub use codegen::{build_type_table, codegen, codegen_module};
 pub use compile::{
     CompileError, DiagnosticContext, check_file, check_file_with_module_path, check_project_file,
     compile_source, compile_source_with_module_root, compile_to_module,
@@ -56,9 +50,7 @@ pub use compile::{
 };
 pub use derive::{DeriveError, expand_derives};
 pub use facade::{CheckOutput, CompileOutput};
-pub use ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
 pub use link::{LinkError, LinkInput, link_modules};
-pub use lower::lower;
 pub use modules::{
     LoadedModule, LoadedProgram, ProgramLoadContext, load_program_with_context,
     resolve_loaded_program,
@@ -68,21 +60,7 @@ pub use project::{
     BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,
 };
 pub use pxi::{PxiExport, PxiFile, PxiType, digest_bytes, digest_file};
-#[doc(hidden)]
-pub use resolver::ResolvedProgram;
-pub use resolver::{
-    ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, SourceModule, resolve,
-};
 pub use standalone::{
     StandaloneOptions, check_standalone_unit_with_context, check_standalone_with_context,
     compile_standalone_with_context,
 };
-#[doc(hidden)]
-pub use typeck::TypedProgram;
-pub use typeck::{
-    Binding, BindingKind, ExprId, FunctionLayout, Ty, TypeId, TypeInterner, type_check,
-};
-#[doc(hidden)]
-pub use typeck::{TryFailureMode, TrySiteMeta};
-#[doc(hidden)]
-pub use unit::CompilationUnit;

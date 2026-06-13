@@ -1,7 +1,10 @@
 //! Integration tests for the type-checking pass.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use phx_compiler::{CompileError, DefKind, TypedProgram, check_file, compile_source};
+use phx_compiler::{
+    CompileError, check_file, compile_source,
+    unstable::{DefKind, TypedProgram},
+};
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 use phx_test::{compile_ok, expect_typeck_err};
 
@@ -32,10 +35,12 @@ fn has_mangled_fn(typed: &TypedProgram, base: &str, type_suffix: &str) -> bool {
         .any(|name| name.eq_ignore_ascii_case(&needle))
 }
 
-fn fn_def_id(typed: &TypedProgram, name: &str) -> Option<phx_compiler::DefId> {
+fn fn_def_id(typed: &TypedProgram, name: &str) -> Option<phx_compiler::unstable::DefId> {
     typed.resolved.defs.iter().enumerate().find_map(|(i, d)| {
         if d.kind == DefKind::Fn && typed.resolved.interner.resolves_to(d.name, name) {
-            Some(phx_compiler::DefId::from_raw(u32::try_from(i).ok()?))
+            Some(phx_compiler::unstable::DefId::from_raw(
+                u32::try_from(i).ok()?,
+            ))
         } else {
             None
         }
@@ -367,7 +372,7 @@ fn unary_neg_not_and_comparisons_compile_ok() {
     ));
 }
 
-fn typed(source: &str) -> phx_compiler::TypedProgram {
+fn typed(source: &str) -> phx_compiler::unstable::TypedProgram {
     compile_source(source, None)
         .unwrap_or_else(|e| panic!("expected ok: {e}"))
         .typed
@@ -1765,7 +1770,7 @@ main :: () => {};
 
 #[test]
 fn missing_fn_def_emits_internal_error_instead_of_def_zero() {
-    use phx_compiler::{resolve, type_check};
+    use phx_compiler::unstable::{resolve, type_check};
 
     let source = "main :: () => { };";
     let file = phx_syntax::parse(source);

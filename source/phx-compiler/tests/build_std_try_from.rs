@@ -4,10 +4,11 @@
 
 use std::path::PathBuf;
 
-use phx_compiler::TryFailureMode;
+use phx_compiler::unstable::TryFailureMode;
 use phx_compiler::{
-    BuildLayout, BuildOptions, IrInst, ProjectConfig, build_project, load_program_with_context,
-    lower, resolve_loaded_program, type_check,
+    BuildLayout, BuildOptions, ProjectConfig, build_project, load_program_with_context,
+    resolve_loaded_program,
+    unstable::{IrInst, lower, type_check},
 };
 use phx_diagnostics::DiagnosticBag;
 use phx_test::fixture_fs_lock;
