@@ -997,6 +997,17 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
+    fn check_with_ownership_fork<R>(
+        &mut self,
+        pre: &OwnershipTracker,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> (R, OwnershipTracker) {
+        self.ownership = pre.clone();
+        let result = f(self);
+        let end = self.ownership.clone();
+        (result, end)
+    }
+
     fn enter_scope(&mut self) {
         self.ownership.enter_scope();
         if let Some(layout) = &mut self.layout {
@@ -4899,9 +4910,15 @@ impl<'a> TypeChecker<'a> {
         else_block: &Option<BlockNode>,
         span: Span,
     ) -> TypeId {
-        let mut then_ty = self.check_if_arm(condition, then_block);
+        let pre = self.ownership.clone();
+        let mut arm_states = Vec::new();
+        let (mut then_ty, end) =
+            self.check_with_ownership_fork(&pre, |this| this.check_if_arm(condition, then_block));
+        arm_states.push(end);
         for (ec, eb) in else_ifs {
-            let arm_ty = self.check_if_arm(ec, eb);
+            let (arm_ty, end) =
+                self.check_with_ownership_fork(&pre, |this| this.check_if_arm(ec, eb));
+            arm_states.push(end);
             then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
                 self.bag.push(
                     self.current_module,
@@ -4911,7 +4928,9 @@ impl<'a> TypeChecker<'a> {
             });
         }
         if let Some(else_b) = else_block {
-            let arm_ty = self.check_block_expr(else_b);
+            let (arm_ty, end) =
+                self.check_with_ownership_fork(&pre, |this| this.check_block_expr(else_b));
+            arm_states.push(end);
             then_ty = unify_branch(&self.alias_env(), then_ty, arm_ty).unwrap_or_else(|| {
                 self.bag.push(
                     self.current_module,
@@ -4920,6 +4939,7 @@ impl<'a> TypeChecker<'a> {
                 self.unit
             });
         }
+        self.ownership = OwnershipTracker::join_arms(&pre, &arm_states);
         then_ty
     }
 
@@ -4947,8 +4967,11 @@ impl<'a> TypeChecker<'a> {
                 } else {
                     BindingKind::Const
                 };
+                self.enter_scope();
                 self.check_pattern(&pattern.inner, s, pattern.span, kind);
-                self.check_block_expr(then_block)
+                let body_ty = self.check_block_expr(then_block);
+                self.exit_scope();
+                body_ty
             }
         }
     }
@@ -4964,16 +4987,24 @@ impl<'a> TypeChecker<'a> {
         if let Some(layout) = &mut self.layout {
             let _ = layout.alloc_match_scrutinee_temp(s);
         }
+        let pre = self.ownership.clone();
+        let mut arm_states = Vec::new();
         let mut acc: Option<TypeId> = None;
         for arm in arms {
-            self.check_pattern(&arm.pattern.inner, s, arm.pattern.span, BindingKind::Var);
-            if let Some(g) = &arm.guard {
-                let gt = self.check_expr_node(g);
-                if !self.types_equal(gt, self.bool_ty) {
-                    self.error_mismatch(self.bool_ty, gt, g.span, MismatchKind::Condition);
+            let (body_ty, end) = self.check_with_ownership_fork(&pre, |this| {
+                this.enter_scope();
+                this.check_pattern(&arm.pattern.inner, s, arm.pattern.span, BindingKind::Var);
+                if let Some(g) = &arm.guard {
+                    let gt = this.check_expr_node(g);
+                    if !this.types_equal(gt, this.bool_ty) {
+                        this.error_mismatch(this.bool_ty, gt, g.span, MismatchKind::Condition);
+                    }
                 }
-            }
-            let body_ty = self.check_expr_node(&arm.body);
+                let body_ty = this.check_expr_node(&arm.body);
+                this.exit_scope();
+                body_ty
+            });
+            arm_states.push(end);
             acc = Some(match acc {
                 None => body_ty,
                 Some(prev) => unify_branch(&self.alias_env(), prev, body_ty).unwrap_or_else(|| {
@@ -4985,6 +5016,7 @@ impl<'a> TypeChecker<'a> {
                 }),
             });
         }
+        self.ownership = OwnershipTracker::join_arms(&pre, &arm_states);
         self.check_match_unreachable_arms(s, arms);
         self.check_match_exhaustiveness(s, arms, span);
         acc.unwrap_or(self.unit)

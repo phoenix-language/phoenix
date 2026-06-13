@@ -24,7 +24,7 @@ struct BindingEntry {
 }
 
 /// Tracks moves for locals in the current function/block scope.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct OwnershipTracker {
     bindings: Vec<BindingEntry>,
     scope_depth: u32,
@@ -89,6 +89,45 @@ impl OwnershipTracker {
                 BindingState::Valid => None,
             })
     }
+
+    /// Joins ownership state after conditional arms: bindings visible at `base` are moved when
+    /// moved on any arm (flow-insensitive MVP merge).
+    #[must_use]
+    pub fn join_arms(base: &Self, arm_ends: &[Self]) -> Self {
+        let mut out = base.clone();
+        let mut seen = std::collections::HashSet::new();
+        for entry in base
+            .bindings
+            .iter()
+            .rev()
+            .filter(|entry| entry.depth <= base.scope_depth)
+        {
+            if !seen.insert(entry.symbol) {
+                continue;
+            }
+            let symbol = entry.symbol;
+            let depth = entry.depth;
+            for arm in arm_ends {
+                let Some(BindingState::Moved(span)) = arm
+                    .bindings
+                    .iter()
+                    .find(|e| e.symbol == symbol && e.depth == depth)
+                    .map(|e| e.state)
+                else {
+                    continue;
+                };
+                if let Some(out_entry) = out
+                    .bindings
+                    .iter_mut()
+                    .find(|e| e.symbol == symbol && e.depth == depth)
+                {
+                    out_entry.state = BindingState::Moved(span);
+                }
+                break;
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -104,5 +143,56 @@ mod tests {
         let move_span = Span::new(10, 11);
         t.move_binding(sym, move_span);
         assert_eq!(t.moved_at(sym), Some(move_span));
+    }
+
+    #[test]
+    fn join_arms_marks_moved_when_one_arm_moves() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let move_span = Span::new(5, 6);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+
+        let mut arm_a = base.clone();
+        arm_a.move_binding(sym, move_span);
+
+        let arm_b = base.clone();
+
+        let joined = OwnershipTracker::join_arms(&base, &[arm_a, arm_b]);
+        assert_eq!(joined.moved_at(sym), Some(move_span));
+    }
+
+    #[test]
+    fn join_arms_keeps_valid_when_no_arm_moves() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+
+        let joined = OwnershipTracker::join_arms(&base, &[base.clone(), base.clone()]);
+        assert_eq!(joined.moved_at(sym), None);
+    }
+
+    #[test]
+    fn join_arms_ignores_inner_scope_only_bindings() {
+        let outer = Symbol::from_raw(1);
+        let inner = Symbol::from_raw(2);
+        let ty = TypeId::from_raw(0);
+        let move_span = Span::new(1, 2);
+
+        let mut base = OwnershipTracker::new();
+        base.define(outer, ty);
+
+        let mut arm = base.clone();
+        arm.enter_scope();
+        arm.define(inner, ty);
+        arm.move_binding(inner, move_span);
+        arm.exit_scope();
+
+        let joined = OwnershipTracker::join_arms(&base, &[arm]);
+        assert_eq!(joined.moved_at(outer), None);
+        assert_eq!(joined.moved_at(inner), None);
     }
 }

@@ -173,6 +173,8 @@ The MVP compiler records a move only when ownership transfers through a **bare i
 
 Block-scoped shadowing is respected: an inner `var x` does not affect move state for an outer `x` after the inner block ends.
 
+**Conditional branches (`if` / `match`):** Each arm is checked starting from a snapshot of ownership at the branch entry. At the merge point, a binding is treated as **Moved** if it was moved on **any** arm (flow-insensitive join, consistent with drop planning below). Uses of a binding in one arm therefore do not see moves performed only in sibling arms; uses after the whole `if` or `match` expression see the joined state.
+
 Post-MVP ownership analysis will use path-sensitive last-use and move-through-call rules aligned with the full design above.
 
 ### MVP: returning borrows of locals

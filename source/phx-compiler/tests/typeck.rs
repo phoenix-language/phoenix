@@ -263,6 +263,62 @@ fn use_after_move_fn_arg() {
 }
 
 #[test]
+fn if_move_in_then_use_in_else_ok() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { var q: Point = p; } else { const _ = p.r; }; };",
+    );
+}
+
+#[test]
+fn if_else_if_move_isolation() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var a: bool = true; var b: bool = false; if a { const _ = p.r; } else if b { var q: Point = p; } else { const _ = p.r; }; };",
+    );
+}
+
+#[test]
+fn match_move_in_first_arm_use_in_second_ok() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; match c { true => { var q: Point = p; }; false => { const _ = p.r; }; }; };",
+    );
+}
+
+#[test]
+fn if_move_then_use_after_if_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { var q: Point = p; } else { const _ = (); }; const _ = p.r; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+}
+
+#[test]
+fn match_move_then_use_after_match_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; match c { true => { var q: Point = p; }; false => { const _ = (); }; }; const _ = p.r; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+}
+
+#[test]
+fn if_both_arms_use_binding_ok() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { const _ = p.r; } else { const _ = p.r; }; const _ = p.r; };",
+    );
+}
+
+#[test]
 fn function_trailing_expr_return_compile_ok() {
     compile_ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
 }

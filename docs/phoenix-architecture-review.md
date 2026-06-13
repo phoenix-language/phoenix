@@ -310,11 +310,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/check.rs:4859–4920` (`check_if`/`check_if_arm`), `check.rs:4921–4955` (`check_match`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Ownership state is threaded linearly through `if`/`else-if`/`else` and `match` arms — branches are never forked or joined.
 **Detail:** Verified: arms call `check_if_arm`/`check_expr_node` sequentially on the same `OwnershipTracker` with no snapshot/restore (`ownership.rs` has only `enter_scope`/`exit_scope`, which pop bindings *defined* in the scope but persist `Moved` state set on outer bindings). Consequence: moving `x` in a `then` arm makes the `else` arm a false `UseAfterMove`, and moving in match arm 1 poisons arm 2. This mis-enforces the flagship MVP guarantee — valid programs are rejected.
 **Recommendation:** Snapshot ownership state per arm and join at the merge point (Moved if moved in *any* arm for post-merge uses; per-arm state during arm checking). Add the missing tests (PHX-067).
+
+**Resolution:** Added `OwnershipTracker::join_arms` and `check_with_ownership_fork` in typeck; `check_if`/`check_match` fork from a pre-branch snapshot per arm and join with “moved if any arm moved”. Pattern arms are scoped with `enter_scope`/`exit_scope`. Branch-move regression tests (PHX-067) live in `source/phx-compiler/tests/typeck.rs`.
 
 ---
 
@@ -855,7 +857,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-020 | - [x]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
 | PHX-021 | - [x]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
 | PHX-022 | - [x]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
-| PHX-023 | - [ ]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
+| PHX-023 | - [x]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
 | PHX-024 | - [ ]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
 | PHX-025 | - [ ]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
 | PHX-026 | - [ ]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
