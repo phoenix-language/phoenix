@@ -346,6 +346,13 @@ pub enum TypeCheckError {
         /// Impl block span.
         span: Span,
     },
+    /// Internal compiler invariant violation during type checking.
+    InternalError {
+        /// Short invariant description.
+        detail: &'static str,
+        /// Related source span.
+        span: Span,
+    },
 }
 
 impl fmt::Display for TypeCheckError {

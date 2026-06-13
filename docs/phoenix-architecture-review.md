@@ -227,11 +227,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/check.rs:2002` (`check_function`)
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** When `fn_def_for` fails, the checker proceeds with `DefId::from_raw(0)`.
 **Detail:** Function layout and body results get attached to whatever definition happens to be index 0. After resolve-error recovery this is reachable, producing nonsense diagnostics or corrupt layouts rather than a clean internal error.
 **Recommendation:** Skip body checking for that function and record an internal-error diagnostic; never default to def 0.
+
+**Resolution:** `check_function` returns early when `fn_def_for` is `None`, emitting `TypeCheckError::InternalError` (E2039) at the function name span; body checking and layout emission are skipped.
 
 ---
 
@@ -839,7 +841,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-014 | - [x]  | Minor        | phx-diagnostics | `LexError`/`ParseError` missing `#[non_exhaustive]`                      |
 | PHX-015 | - [x]  | Suggestion   | phx-diagnostics | ~40 variants maintained across 4 parallel match sites                    |
 | PHX-016 | - [x]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
-| PHX-017 | - [ ]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
+| PHX-017 | - [x]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
 | PHX-018 | - [ ]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
 | PHX-019 | - [ ]  | Major        | phx-compiler    | #![allow(unreachable_patterns)]` in typeck and lower                     |
 | PHX-020 | - [ ]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |

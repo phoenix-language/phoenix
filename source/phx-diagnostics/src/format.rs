@@ -356,6 +356,9 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
         TypeCheckError::CopyableDropConflict { type_name, .. } => {
             format!("type `{type_name}` cannot implement both `Drop` and `Copyable`")
         }
+        TypeCheckError::InternalError { detail, .. } => {
+            format!("internal error: {detail}")
+        }
     }
 }
 

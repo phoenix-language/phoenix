@@ -413,6 +413,7 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
             Some("Methods in an `unsafe trait` inherit unsafety; per-method `unsafe` is redundant.")
         }
         "E2038" => Some("`unsafe impl` is only valid when implementing an `unsafe trait`."),
+        "E2039" => Some("The compiler hit an internal type-check invariant (please report)."),
         "E3001" => Some("The parser encountered unexpected tokens."),
         "E3002" => Some("Input ended before the parser found a required token."),
         "E3003" => Some("The syntax is recognized but not supported in this compiler version."),

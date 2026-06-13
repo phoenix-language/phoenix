@@ -281,6 +281,7 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "use a normal `impl` block, or mark the trait as `unsafe trait` if all implementers must be unsafe",
             ));
         }
+        TypeCheckError::InternalError { .. } => {}
     }
     out
 }

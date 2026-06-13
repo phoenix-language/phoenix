@@ -1342,6 +1342,13 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
+    fn push_internal_error(&mut self, detail: &'static str, span: Span) {
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::InternalError { detail, span },
+        );
+    }
+
     fn collect_decls(&mut self) {
         for module in &self.resolved.modules {
             self.current_module = module.id;
@@ -1999,7 +2006,13 @@ impl<'a> TypeChecker<'a> {
         if is_generic {
             return;
         }
-        let def = self.fn_def_for(f).unwrap_or(DefId::from_raw(0));
+        let Some(def) = self.fn_def_for(f) else {
+            self.push_internal_error(
+                "unresolved function definition during type checking",
+                f.name.span,
+            );
+            return;
+        };
         if self.impl_type_for_method(def).is_some_and(|type_def| {
             super::mono::generic_param_defs_for_type(self.resolved, type_def)
                 .is_some_and(|params| !params.is_empty())

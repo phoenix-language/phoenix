@@ -1762,3 +1762,26 @@ main :: () => {};
         bag.errors()
     );
 }
+
+#[test]
+fn missing_fn_def_emits_internal_error_instead_of_def_zero() {
+    use phx_compiler::{resolve, type_check};
+
+    let source = "main :: () => { };";
+    let file = phx_syntax::parse(source);
+    assert!(!file.has_errors(), "parse: {:?}", file.errors_bag());
+    let mut resolved = resolve(&file.value).expect("resolve");
+    resolved.defs.retain(|d| d.kind != DefKind::Fn);
+    let bag = type_check(&resolved).expect_err("expected typeck failure");
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::InternalError { detail, .. }
+                    if detail.contains("unresolved function definition")
+            )
+        }),
+        "expected InternalError for missing fn def: {:?}",
+        bag.errors()
+    );
+}

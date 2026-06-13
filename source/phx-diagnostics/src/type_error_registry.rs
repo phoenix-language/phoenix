@@ -71,6 +71,7 @@ typecheck_error_registry! {
     UnsafeTraitRequiresUnsafeImpl => "E2036",
     RedundantUnsafeInUnsafeTrait => "E2037",
     UnsafeImplOfSafeTrait => "E2038",
+    InternalError => "E2039",
 }
 
 #[cfg(test)]
