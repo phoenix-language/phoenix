@@ -105,7 +105,7 @@ fn format_type_inner(
 fn def_name(names: &Interner, defs: &[Def], def: DefId) -> String {
     defs.get(def.index() as usize).map_or_else(
         || format!("def#{}", def.index()),
-        |d| names.resolve(d.name).to_owned(),
+        |d| names.resolve_display(d.name),
     )
 }
 

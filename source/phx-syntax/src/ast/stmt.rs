@@ -78,7 +78,7 @@ pub enum Stmt {
 #[non_exhaustive]
 pub enum BlockItem {
     /// Statement with semicolon.
-    Stmt(Stmt),
+    Stmt(StmtNode),
     /// Trailing expression without semicolon.
     Expr(ExprNode),
     /// Block-scoped `#import` directive.

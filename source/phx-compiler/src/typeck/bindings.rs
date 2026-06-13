@@ -6,12 +6,6 @@ use phx_syntax::Symbol;
 use super::types::TypeId;
 use crate::resolver::DefId;
 
-/// Reserved symbol for a `for`-loop `__iter` temporary (one per plan index).
-#[must_use]
-pub const fn for_in_iter_symbol(plan_index: u32) -> Symbol {
-    Symbol::from_raw(0x8000_1000 | plan_index)
-}
-
 /// Lowering metadata for one `for binding in iter` loop (iterator protocol desugaring).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForInPlan {
@@ -208,7 +202,7 @@ impl FunctionLayoutBuilder {
     pub fn alloc_match_scrutinee_temp(&mut self, ty: TypeId) -> LocalSlot {
         let serial = self.match_temp_serial;
         self.match_temp_serial += 1;
-        let symbol = Symbol::from_raw(0x9000_0000 | serial);
+        let symbol = phx_syntax::scratch_binding_symbol(serial);
         let slot = self.alloc(symbol, ty, BindingKind::MatchTemp, None);
         self.match_temp_slots.push(slot);
         slot

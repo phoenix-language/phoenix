@@ -532,7 +532,7 @@ impl Resolver<'_> {
 
     fn resolve_block_item(&mut self, item: &BlockItem) {
         match item {
-            BlockItem::Stmt(stmt) => self.resolve_stmt(stmt),
+            BlockItem::Stmt(stmt) => self.resolve_stmt(&stmt.inner),
             BlockItem::Expr(expr) => self.resolve_expr_node(expr),
             BlockItem::Import(imp) => self.apply_block_import(imp),
             _ => {}
@@ -713,11 +713,11 @@ impl Resolver<'_> {
     }
 
     fn is_self_type_name(&self, name: &TypeName) -> bool {
-        self.source.interner.resolve(name.symbol) == "Self"
+        self.source.interner.resolves_to(name.symbol, "Self")
     }
 
     fn is_bootstrap_trait_bound(&self, trait_symbol: Symbol) -> bool {
-        self.source.interner.resolve(trait_symbol) == "Copyable"
+        self.source.interner.resolves_to(trait_symbol, "Copyable")
     }
 
     /// Resolves a `PascalCase` name in expression position (enum variant ctors before types).
@@ -1118,7 +1118,7 @@ impl Resolver<'_> {
 
     /// Returns `true` when `symbol` is the interned `main` identifier.
     pub(crate) fn is_main_name(&self, symbol: Symbol) -> bool {
-        self.source.interner.resolve(symbol) == "main"
+        self.source.interner.resolves_to(symbol, "main")
     }
 
     fn program_hint_span(&self) -> Span {

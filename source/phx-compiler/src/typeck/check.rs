@@ -17,13 +17,11 @@ use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
 use phx_syntax::ast::types::GenericParam;
 use phx_syntax::ast::types::Type;
 use phx_syntax::ast::{BlockNode, ExprNode, Node};
-use phx_syntax::{Symbol, impl_receiver_symbol};
+use phx_syntax::{Symbol, for_in_iter_symbol, impl_receiver_symbol};
 
 use super::IndirectCallMeta;
 use super::PrimitiveMethodSite;
-use super::bindings::{
-    BindingKind, DropEvent, ForInPlan, FunctionLayout, FunctionLayoutBuilder, for_in_iter_symbol,
-};
+use super::bindings::{BindingKind, DropEvent, ForInPlan, FunctionLayout, FunctionLayoutBuilder};
 use super::bounds::{
     resolve_from_fn_for_error, trait_bound_head, type_satisfies_trait_inst,
     validate_instantiation_bounds,
@@ -670,7 +668,7 @@ impl<'a> TypeChecker<'a> {
             .any(|((key, method), &def)| {
                 def == fn_def
                     && is_drop_trait_def(self.resolved, key.trait_def)
-                    && self.resolved.interner.resolve(*method) == "drop"
+                    && self.resolved.interner.resolves_to(*method, "drop")
             })
     }
 
@@ -697,7 +695,7 @@ impl<'a> TypeChecker<'a> {
                 .resolved
                 .defs
                 .get(type_def.index() as usize)
-                .map(|d| self.resolved.interner.resolve(d.name).to_owned())
+                .map(|d| self.symbol_name(d.name))
                 .unwrap_or_else(|| "type".to_owned());
             self.bag.push(
                 self.current_module,
@@ -1117,7 +1115,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn is_self_type_name(&self, symbol: Symbol) -> bool {
-        self.resolved.interner.resolve(symbol) == "Self"
+        self.resolved.interner.resolves_to(symbol, "Self")
     }
 
     fn lower_ast_type_with_defs(&mut self, ty: &Node<Type>, type_defs: &TypeDefMap) -> TypeId {
@@ -1386,7 +1384,9 @@ impl<'a> TypeChecker<'a> {
                             self.program_layout.tuple_structs.insert(def);
                             for (i, t) in types.iter().enumerate() {
                                 let ty = self.lower_ast_type_with_defs(t, &td);
-                                let field_name = self.tuple_field_symbol(i);
+                                let Some(field_name) = self.tuple_field_symbol(i) else {
+                                    continue;
+                                };
                                 fields_map.insert(field_name, ty);
                                 ordered.push((field_name, ty));
                             }
@@ -2127,7 +2127,7 @@ impl<'a> TypeChecker<'a> {
         let mut last = self.unit;
         for item in &block.items {
             last = match item {
-                BlockItem::Stmt(stmt) => self.check_block_stmt_value(stmt),
+                BlockItem::Stmt(stmt) => self.check_block_stmt_value(&stmt.inner),
                 BlockItem::Expr(expr) => self.check_expr_node(expr),
                 BlockItem::Import(_) => self.unit,
                 _ => self.unit,
@@ -2300,10 +2300,26 @@ impl<'a> TypeChecker<'a> {
             self.with_loop_body(|this| this.check_block(body));
             return;
         };
-        let item_sym = self.symbol_named("Item");
-        let into_iter_assoc_sym = self.symbol_named("IntoIter");
-        let into_iter_fn_sym = self.symbol_named("into_iter");
-        let next_fn_sym = self.symbol_named("next");
+        let Some(item_sym) = self.symbol_named("Item") else {
+            self.push_unsupported("IntoIter::Item associated type", span);
+            self.with_loop_body(|this| this.check_block(body));
+            return;
+        };
+        let Some(into_iter_assoc_sym) = self.symbol_named("IntoIter") else {
+            self.push_unsupported("IntoIter::IntoIter associated type", span);
+            self.with_loop_body(|this| this.check_block(body));
+            return;
+        };
+        let Some(into_iter_fn_sym) = self.symbol_named("into_iter") else {
+            self.push_unsupported("IntoIter::into_iter", span);
+            self.with_loop_body(|this| this.check_block(body));
+            return;
+        };
+        let Some(next_fn_sym) = self.symbol_named("next") else {
+            self.push_unsupported("Iterator::next", span);
+            self.with_loop_body(|this| this.check_block(body));
+            return;
+        };
         let Some(into_iter_trait) = self.resolve_trait_def_by_name("IntoIter") else {
             self.push_unsupported("IntoIter trait (import std::core::iter)", span);
             self.with_loop_body(|this| this.check_block(body));
@@ -2503,7 +2519,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn symbol_named(&self, name: &str) -> Symbol {
+    fn symbol_named(&self, name: &str) -> Option<Symbol> {
         let interner = &self.resolved.interner;
         self.program_layout
             .trait_assoc_impls
@@ -2521,14 +2537,13 @@ impl<'a> TypeChecker<'a> {
                     .keys()
                     .map(|(_, sym)| *sym),
             )
-            .find(|sym| interner.resolve(*sym) == name)
+            .find(|sym| interner.resolves_to(*sym, name))
             .or_else(|| {
                 self.resolved
                     .defs
                     .iter()
-                    .find_map(|d| (interner.resolve(d.name) == name).then_some(d.name))
+                    .find_map(|d| interner.resolves_to(d.name, name).then_some(d.name))
             })
-            .unwrap_or_else(|| Symbol::from_raw(0))
     }
 
     fn resolve_trait_def_by_name(&self, name: &str) -> Option<DefId> {
@@ -2539,7 +2554,7 @@ impl<'a> TypeChecker<'a> {
             return Some(def);
         }
         self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
-            if d.kind == DefKind::Trait && self.resolved.interner.resolve(d.name) == name {
+            if d.kind == DefKind::Trait && self.resolved.interner.resolves_to(d.name, name) {
                 u32::try_from(i).ok().map(DefId::from_raw)
             } else {
                 None
@@ -2560,7 +2575,7 @@ impl<'a> TypeChecker<'a> {
 
     fn find_enum_def_by_name(&self, name: &str) -> Option<DefId> {
         self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
-            if d.kind == DefKind::Enum && self.resolved.interner.resolve(d.name) == name {
+            if d.kind == DefKind::Enum && self.resolved.interner.resolves_to(d.name, name) {
                 u32::try_from(i).ok().map(DefId::from_raw)
             } else {
                 None
@@ -2580,7 +2595,7 @@ impl<'a> TypeChecker<'a> {
             .get(&def)?
             .variants
             .iter()
-            .find(|v| self.resolved.interner.resolve(v.name) == "Some")
+            .find(|v| self.resolved.interner.resolves_to(v.name, "Some"))
             .map(|v| v.name)
     }
 
@@ -2607,7 +2622,7 @@ impl<'a> TypeChecker<'a> {
         match &target.inner {
             Expr::Ident(ident) => {
                 if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
-                    let name = self.resolved.interner.resolve(ident.symbol).to_owned();
+                    let name = self.symbol_name(ident.symbol);
                     self.bag.push(
                         self.current_module,
                         TypeCheckError::MovedAssignTarget {
@@ -2861,7 +2876,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         if let Some(move_span) = self.ownership.moved_at(ident.symbol) {
-            let name = self.resolved.interner.resolve(ident.symbol).to_owned();
+            let name = self.symbol_name(ident.symbol);
             self.bag.push(
                 self.current_module,
                 TypeCheckError::UseAfterMove {
@@ -3653,12 +3668,9 @@ impl<'a> TypeChecker<'a> {
         fields.into_iter().next()
     }
 
-    fn tuple_field_symbol(&self, index: usize) -> Symbol {
+    fn tuple_field_symbol(&self, index: usize) -> Option<Symbol> {
         let name = index.to_string();
-        self.resolved
-            .interner
-            .lookup(&name)
-            .unwrap_or_else(|| Symbol::from_raw(0))
+        self.resolved.interner.lookup(&name)
     }
 
     fn enum_def_for_variant(&self, variant_def: DefId) -> Option<DefId> {
@@ -3958,12 +3970,12 @@ impl<'a> TypeChecker<'a> {
                 _ => None,
             })
             .collect();
-        let type_display = self.resolved.interner.resolve(type_name.symbol).to_owned();
-        let trait_display = self.resolved.interner.resolve(trait_symbol).to_owned();
+        let type_display = self.symbol_name(type_name.symbol);
+        let trait_display = self.symbol_name(trait_symbol);
         for item in trait_items {
             match item {
                 TraitItem::AssociatedType(name) if !impl_assoc.contains(&name.symbol) => {
-                    let assoc_display = self.resolved.interner.resolve(name.symbol).to_owned();
+                    let assoc_display = self.symbol_name(name.symbol);
                     self.bag.push(
                         self.current_module,
                         TypeCheckError::MissingAssociatedType {
@@ -3979,7 +3991,7 @@ impl<'a> TypeChecker<'a> {
                     if sig.body.is_some() || impl_methods.contains(&sig.name.symbol) {
                         continue;
                     }
-                    let method_display = self.resolved.interner.resolve(sig.name.symbol).to_owned();
+                    let method_display = self.symbol_name(sig.name.symbol);
                     self.bag.push(
                         self.current_module,
                         TypeCheckError::MissingTraitMethod {
@@ -4763,8 +4775,7 @@ impl<'a> TypeChecker<'a> {
         span: Span,
         site_id: ExprId,
     ) -> TypeId {
-        let method = self.resolved.interner.resolve(name.symbol);
-        if method == "eq" {
+        if self.resolved.interner.resolves_to(name.symbol, "eq") {
             if let Some(eq_trait) = self.std_trait_kernel.partial_eq_trait {
                 if self.std_trait_kernel.primitive_satisfies(kw, eq_trait) {
                     if args.len() == 1 {
@@ -4793,7 +4804,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
         }
-        if method == "clone" {
+        if self.resolved.interner.resolves_to(name.symbol, "clone") {
             if let Some(clone_trait) = self.std_trait_kernel.clone_trait {
                 if self.std_trait_kernel.primitive_satisfies(kw, clone_trait) {
                     if !args.is_empty() {
@@ -5017,7 +5028,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn symbol_name(&self, symbol: Symbol) -> String {
-        self.resolved.interner.resolve(symbol).to_owned()
+        self.resolved.interner.resolve_display(symbol)
     }
 
     fn check_match_exhaustiveness(
@@ -5723,30 +5734,38 @@ impl TypeChecker<'_> {
         self.enter_scope();
         for item in &block.items {
             match item {
-                BlockItem::Stmt(Stmt::Const { name, ty, .. }) => {
-                    let pty = ty
-                        .as_ref()
-                        .map(|t| self.lower_ast_type_with_defs(t, type_defs))
-                        .unwrap_or(self.unit);
-                    self.define_local(name.symbol, pty, BindingKind::Const, None);
-                }
-                BlockItem::Stmt(Stmt::Var { name, ty, .. }) => {
-                    let pty = self.lower_ast_type_with_defs(ty, type_defs);
-                    self.define_local(name.symbol, pty, BindingKind::Var, None);
-                }
-                BlockItem::Stmt(Stmt::Unsafe(body) | Stmt::Loop(body)) => {
-                    self.collect_layout_bindings_block(&body.inner, type_defs);
-                }
-                BlockItem::Stmt(Stmt::While { body, .. }) => {
-                    self.collect_layout_bindings_block(&body.inner, type_defs);
-                }
-                BlockItem::Stmt(Stmt::Expr(expr)) => {
-                    self.collect_layout_bindings_from_expr(expr, type_defs);
-                }
+                BlockItem::Stmt(stmt) => match &stmt.inner {
+                    Stmt::Const { name, ty, .. } => {
+                        let pty = ty
+                            .as_ref()
+                            .map(|t| self.lower_ast_type_with_defs(t, type_defs))
+                            .unwrap_or(self.unit);
+                        self.define_local(name.symbol, pty, BindingKind::Const, None);
+                    }
+                    Stmt::Var { name, ty, .. } => {
+                        let pty = self.lower_ast_type_with_defs(ty, type_defs);
+                        self.define_local(name.symbol, pty, BindingKind::Var, None);
+                    }
+                    Stmt::Unsafe(body) | Stmt::Loop(body) => {
+                        self.collect_layout_bindings_block(&body.inner, type_defs);
+                    }
+                    Stmt::While { body, .. } => {
+                        self.collect_layout_bindings_block(&body.inner, type_defs);
+                    }
+                    Stmt::Expr(expr) => {
+                        self.collect_layout_bindings_from_expr(expr, type_defs);
+                    }
+                    Stmt::Assign { .. }
+                    | Stmt::Return(_)
+                    | Stmt::Break { .. }
+                    | Stmt::Continue { .. }
+                    | Stmt::ForIn { .. }
+                    | _ => {}
+                },
                 BlockItem::Expr(expr) => {
                     self.collect_layout_bindings_from_expr(expr, type_defs);
                 }
-                BlockItem::Stmt(_) | BlockItem::Import(_) => {}
+                BlockItem::Import(_) => {}
                 _ => {}
             }
         }
@@ -5784,7 +5803,7 @@ fn function_body_uses_impl_receiver(block: &Block) -> bool {
 
 fn block_item_uses_impl_receiver(item: &BlockItem) -> bool {
     match item {
-        BlockItem::Stmt(stmt) => stmt_uses_impl_receiver(stmt),
+        BlockItem::Stmt(stmt) => stmt_uses_impl_receiver(&stmt.inner),
         BlockItem::Expr(expr) => expr_uses_impl_receiver(expr),
         BlockItem::Import(_) => false,
         _ => false,
@@ -5937,10 +5956,13 @@ fn trailing_value_expr(block: &Block) -> Option<&ExprNode> {
     for item in block.items.iter().rev() {
         match item {
             BlockItem::Expr(expr) => return Some(expr),
-            BlockItem::Stmt(Stmt::Return(expr)) => return expr.as_ref(),
-            BlockItem::Stmt(Stmt::Expr(expr)) if !matches!(expr.inner, Expr::Assign { .. }) => {
-                return Some(expr);
-            }
+            BlockItem::Stmt(stmt) => match &stmt.inner {
+                Stmt::Return(expr) => return expr.as_ref(),
+                Stmt::Expr(expr) if !matches!(expr.inner, Expr::Assign { .. }) => {
+                    return Some(expr);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }

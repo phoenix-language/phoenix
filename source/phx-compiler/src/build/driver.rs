@@ -733,7 +733,7 @@ fn build_global_fn_map(
             if typed.specialized_from.contains_key(&def_id) {
                 continue;
             }
-            let name = interner.resolve(def.name);
+            let name = interner.resolve(def.name).unwrap_or("<?>");
             let export_id = stable_export_id(&logical, name, "fn");
             if dep_template_fn_exports.contains(&export_id) {
                 continue;
@@ -768,7 +768,7 @@ fn build_global_fn_map(
             if map.contains_key(&f.def) {
                 continue;
             }
-            let name = interner.resolve(def.name);
+            let name = interner.resolve(def.name).unwrap_or("<?>");
             let export_id = if typed.specialized_from.contains_key(&f.def) {
                 mangle_export_id(&logical, "fn", name)
             } else {

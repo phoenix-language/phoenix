@@ -71,15 +71,15 @@ fn lex_message(err: &LexError) -> String {
 pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
     match err {
         ResolveError::UnresolvedIdent { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             format!("unresolved identifier `{name}`")
         }
         ResolveError::UnresolvedType { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             format!("unresolved type `{name}`")
         }
         ResolveError::DuplicateDefinition { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             format!("duplicate definition of `{name}`")
         }
         ResolveError::ModuleParse { message, .. } => message.clone(),
@@ -121,7 +121,7 @@ pub fn format_resolve_error_styled(
             symbol_index,
             ..
         } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             render_diagnostic_with_note(
                 style,
                 source,
@@ -148,11 +148,11 @@ pub fn format_resolve_error_styled(
 pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> String {
     match err {
         TypeCheckError::UnknownType { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             format!("unknown type `{name}`")
         }
         TypeCheckError::UnresolvedValue { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             format!("unresolved value `{name}`")
         }
         TypeCheckError::UnresolvedMethod {
@@ -160,7 +160,7 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
             method_index,
             ..
         } => {
-            let name = names.symbol_name(*method_index);
+            let name = names.symbol_name(*method_index).unwrap_or("<?>");
             format!("no method `{name}` on type `{receiver}`")
         }
         TypeCheckError::AmbiguousMethod {
@@ -168,7 +168,7 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
             method_index,
             ..
         } => {
-            let name = names.symbol_name(*method_index);
+            let name = names.symbol_name(*method_index).unwrap_or("<?>");
             format!("ambiguous method `{name}` on type `{receiver}` (multiple trait impls)")
         }
         other => other.to_string(),
@@ -312,8 +312,12 @@ mod tests {
     struct TestNames;
 
     impl SymbolNames for TestNames {
-        fn symbol_name(&self, symbol_index: u32) -> &str {
-            if symbol_index == 0 { "foo" } else { "?" }
+        fn symbol_name(&self, symbol_index: u32) -> Option<&str> {
+            if symbol_index == 0 {
+                Some("foo")
+            } else {
+                Some("?")
+            }
         }
     }
 

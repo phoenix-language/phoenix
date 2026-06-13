@@ -94,7 +94,7 @@ fn cfg_attrs_active(
     let mut saw_cfg = false;
     let mut active = true;
     for attr in attrs {
-        if interner.resolve(attr.inner.name.symbol) != "cfg" {
+        if !interner.resolves_to(attr.inner.name.symbol, "cfg") {
             continue;
         }
         saw_cfg = true;
@@ -132,46 +132,40 @@ fn eval_cfg_arg(
     interner: &Interner,
 ) -> Result<bool, CfgError> {
     match arg {
-        AttrArg::Named { name, value } => {
-            let key = interner.resolve(name.symbol);
-            match key {
-                "target_os" => {
-                    let AttrValue::Str(expected) = value else {
-                        return Err(invalid_value(span, "target_os"));
-                    };
-                    Ok(compile_cfg.target_os == *expected)
-                }
-                "target_arch" => {
-                    let AttrValue::Str(expected) = value else {
-                        return Err(invalid_value(span, "target_arch"));
-                    };
-                    Ok(compile_cfg.target_arch == *expected)
-                }
-                other => Err(unknown_key(span, other)),
+        AttrArg::Named { name, value } => match interner.resolve(name.symbol) {
+            Some("target_os") => {
+                let AttrValue::Str(expected) = value else {
+                    return Err(invalid_value(span, "target_os"));
+                };
+                Ok(compile_cfg.target_os == *expected)
             }
-        }
-        AttrArg::Flag(ident) => {
-            let key = interner.resolve(ident.symbol);
-            match key {
-                "debug_assertions" => Ok(compile_cfg.debug_assertions),
-                other => Err(unknown_key(span, other)),
+            Some("target_arch") => {
+                let AttrValue::Str(expected) = value else {
+                    return Err(invalid_value(span, "target_arch"));
+                };
+                Ok(compile_cfg.target_arch == *expected)
             }
-        }
-        AttrArg::Nested { name, args } => {
-            let key = interner.resolve(name.symbol);
-            match key {
-                "not" => {
-                    if args.len() != 1 {
-                        return Err(CfgError {
-                            span,
-                            message: "`not(...)` requires exactly one predicate".to_string(),
-                        });
-                    }
-                    Ok(!eval_cfg_arg(&args[0], span, compile_cfg, interner)?)
+            Some(other) => Err(unknown_key(span, other)),
+            None => Err(unknown_key(span, "<?>")),
+        },
+        AttrArg::Flag(ident) => match interner.resolve(ident.symbol) {
+            Some("debug_assertions") => Ok(compile_cfg.debug_assertions),
+            Some(other) => Err(unknown_key(span, other)),
+            None => Err(unknown_key(span, "<?>")),
+        },
+        AttrArg::Nested { name, args } => match interner.resolve(name.symbol) {
+            Some("not") => {
+                if args.len() != 1 {
+                    return Err(CfgError {
+                        span,
+                        message: "`not(...)` requires exactly one predicate".to_string(),
+                    });
                 }
-                other => Err(unknown_key(span, other)),
+                Ok(!eval_cfg_arg(&args[0], span, compile_cfg, interner)?)
             }
-        }
+            Some(other) => Err(unknown_key(span, other)),
+            None => Err(unknown_key(span, "<?>")),
+        },
         AttrArg::TypeName(_) => Err(CfgError {
             span,
             message: "unexpected type name in `#[cfg]` predicate".to_string(),

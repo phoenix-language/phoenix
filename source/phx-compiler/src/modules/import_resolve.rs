@@ -99,7 +99,7 @@ pub(crate) fn resolve_import_directive(
                     ctx.module.id.index(),
                     ResolveError::DuplicateImport {
                         span,
-                        name: ctx.interner.resolve(sym).to_owned(),
+                        name: symbol_name(ctx.interner, sym),
                     },
                 );
                 continue;
@@ -137,7 +137,7 @@ pub(crate) fn resolve_import_directive(
                     ctx.module.id.index(),
                     ResolveError::DuplicateImport {
                         span,
-                        name: ctx.interner.resolve(sym).to_owned(),
+                        name: symbol_name(ctx.interner, sym),
                     },
                 );
                 continue;
@@ -152,7 +152,7 @@ pub(crate) fn resolve_import_directive(
                 ctx.module.id.index(),
                 ResolveError::ImportNotExported {
                     span,
-                    name: ctx.interner.resolve(sym).to_owned(),
+                    name: symbol_name(ctx.interner, sym),
                 },
             );
         } else {
@@ -160,7 +160,7 @@ pub(crate) fn resolve_import_directive(
                 ctx.module.id.index(),
                 ResolveError::ImportNotFound {
                     span,
-                    name: ctx.interner.resolve(sym).to_owned(),
+                    name: symbol_name(ctx.interner, sym),
                     module: key.clone(),
                 },
             );
@@ -207,11 +207,15 @@ fn pxi_type_for_export(
     if !pxi.source_is_fresh(&dep_module.filesystem) {
         return None;
     }
-    let name = interner.resolve(sym);
+    let name = interner.resolve(sym).unwrap_or("<?>");
     pxi.exports
         .iter()
         .find(|e| e.name == name)
         .and_then(|e| e.ty.clone())
+}
+
+fn symbol_name(interner: &Interner, sym: Symbol) -> String {
+    interner.resolve_display(sym)
 }
 
 fn exports_for_dependency(
@@ -241,7 +245,7 @@ fn exports_for_dependency(
     let mut from_pxi = ExportMap::new();
     for exp in &pxi.exports {
         for (&sym, &def_id) in ast_exports {
-            if interner.resolve(sym) == exp.name {
+            if interner.resolves_to(sym, &exp.name) {
                 from_pxi.insert(sym, def_id);
             }
         }

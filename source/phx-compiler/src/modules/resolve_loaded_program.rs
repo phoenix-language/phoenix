@@ -359,7 +359,7 @@ fn module_belongs_to_workspace(path: &super::path::ModulePath, workspace_name: &
 fn main_function_span(program: &Program, interner: &Interner) -> Option<Span> {
     for item in &program.items {
         if let TopLevelDecl::Function(f) = &item.inner.decl
-            && interner.resolve(f.name.symbol) == "main"
+            && interner.resolves_to(f.name.symbol, "main")
         {
             return Some(f.name.span);
         }

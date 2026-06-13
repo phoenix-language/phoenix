@@ -932,8 +932,7 @@ fn lower_postfix_inner(
                         .layout
                         .struct_layout(def, &args)
                         .and_then(|s| s.fields.get(field_index as usize))
-                        .map(|(_, ty)| *ty)
-                        .unwrap_or(result_ty);
+                        .map_or(result_ty, |(_, ty)| *ty);
                     ctx.emit(IrInst::GetField {
                         type_id,
                         field_index,

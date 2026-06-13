@@ -438,13 +438,10 @@ fn lower_std_try_emits_question_mark_unwrap() {
     let ir = lower(&unit.typed).expect("lower std_try");
     let interner = &unit.typed.resolved.interner;
     let has_try_lower = ir.functions.iter().any(|f| {
-        let name = unit
-            .typed
-            .resolved
-            .defs
-            .get(f.def.index() as usize)
-            .map(|d| interner.resolve(d.name));
-        name == Some("read_config")
+        let Some(def) = unit.typed.resolved.defs.get(f.def.index() as usize) else {
+            return false;
+        };
+        interner.resolves_to(def.name, "read_config")
             && f.blocks.iter().any(|b| {
                 b.insts
                     .iter()

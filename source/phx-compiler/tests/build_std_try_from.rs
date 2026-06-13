@@ -75,7 +75,7 @@ fn std_try_from_read_config_lowers_from_on_err_path() {
             .resolved
             .defs
             .get(f.def.index() as usize)
-            .is_some_and(|d| interner.resolve(d.name) == "read_config")
+            .is_some_and(|d| interner.resolves_to(d.name, "read_config"))
     });
     let Some(f) = read_config else {
         panic!("read_config function not found in IR");

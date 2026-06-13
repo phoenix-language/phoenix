@@ -40,6 +40,6 @@ pub fn mangle_symbol_for_specialization(
     types: &TypeInterner,
 ) -> String {
     let base_def = &resolved.defs[base.index() as usize];
-    let base_name = resolved.interner.resolve(base_def.name);
+    let base_name = resolved.interner.resolve(base_def.name).unwrap_or("<?>");
     mangle_symbol(base_name, args, types, &resolved.interner, &resolved.defs)
 }

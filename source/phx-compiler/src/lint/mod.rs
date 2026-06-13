@@ -56,7 +56,7 @@ fn validate_allow_attrs(items: &[Node<TopLevelItem>], interner: &Interner) -> Ve
                 .inner
                 .attrs
                 .iter()
-                .find(|a| interner.resolve(a.inner.name.symbol) == "allow")
+                .find(|a| interner.resolves_to(a.inner.name.symbol, "allow"))
         {
             errors.push((attr.span, msg));
         }
@@ -80,7 +80,7 @@ fn check_fn_allow(f: &Function, interner: &Interner, errors: &mut Vec<(Span, Str
         && let Some(attr) = f
             .attrs
             .iter()
-            .find(|a| interner.resolve(a.inner.name.symbol) == "allow")
+            .find(|a| interner.resolves_to(a.inner.name.symbol, "allow"))
     {
         errors.push((attr.span, msg));
     }
@@ -125,7 +125,7 @@ impl LintWalker<'_> {
     fn walk_block(&mut self, block: &Block) {
         for item in &block.items {
             match item {
-                BlockItem::Stmt(stmt) => self.walk_stmt(stmt),
+                BlockItem::Stmt(stmt) => self.walk_stmt(&stmt.inner),
                 BlockItem::Expr(expr) => {
                     self.check_discard(expr);
                     self.walk_expr(expr);
@@ -267,7 +267,7 @@ impl LintWalker<'_> {
             .resolved
             .defs
             .get(def_id.index() as usize)
-            .map_or("item", |d| self.interner.resolve(d.name));
+            .map_or("item", |d| self.interner.resolve(d.name).unwrap_or("<?>"));
         let mut message = format!("use of deprecated item `{name}`");
         if let Some(since) = &meta.since {
             let _ = write!(message, " (since {since})");

@@ -26,7 +26,10 @@ pub use attr_collect::{
     derive_from_bracket_attrs, function_bracket_attrs, has_must_use_attr, top_level_bracket_attrs,
 };
 pub use import_walk::all_imports;
-pub use intern::{Interner, Symbol, closure_def_symbol, impl_receiver_symbol};
+pub use intern::{
+    InternError, Interner, Symbol, closure_def_symbol, for_in_iter_symbol, impl_receiver_symbol,
+    scratch_binding_symbol,
+};
 pub use lexer::{Lexer, lex};
 pub use parser::{parse, parse_with_interner};
 pub use phx_diagnostics::SymbolNames;

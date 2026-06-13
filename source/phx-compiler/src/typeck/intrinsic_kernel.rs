@@ -118,7 +118,7 @@ fn find_def(
     kind: DefKind,
 ) -> Option<DefId> {
     for (i, def) in resolved.defs.iter().enumerate() {
-        if def.module == module && def.kind == kind && interner.resolve(def.name) == name {
+        if def.module == module && def.kind == kind && interner.resolves_to(def.name, name) {
             return Some(DefId::from_raw(u32::try_from(i).ok()?));
         }
     }

@@ -95,7 +95,7 @@ pub(crate) struct PreludeCtx<'a> {
 }
 
 fn seen_contains_name(seen: &HashSet<Symbol>, interner: &Interner, name: &str) -> bool {
-    seen.iter().any(|sym| interner.resolve(*sym) == name)
+    seen.iter().any(|sym| interner.resolves_to(*sym, name))
 }
 
 /// Builds implicit prelude bindings, skipping symbols already imported explicitly.
@@ -117,7 +117,7 @@ pub(crate) fn prelude_bindings(
             continue;
         }
         let Some((sym, def_id)) = ctx.exports[idx].iter().find_map(|(sym, id)| {
-            if ctx.interner.resolve(*sym) == item.name {
+            if ctx.interner.resolves_to(*sym, item.name) {
                 Some((*sym, *id))
             } else {
                 None

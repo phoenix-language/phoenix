@@ -78,7 +78,7 @@ fn std_try_read_config_ir_has_try_unwrap_sequence() {
             .resolved
             .defs
             .get(f.def.index() as usize)
-            .is_some_and(|d| interner.resolve(d.name) == "read_config")
+            .is_some_and(|d| interner.resolves_to(d.name, "read_config"))
     });
     let Some(f) = read_config else {
         return;

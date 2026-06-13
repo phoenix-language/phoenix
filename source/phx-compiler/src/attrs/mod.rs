@@ -62,11 +62,18 @@ pub fn parse_allow_lint_kinds(
 ) -> Result<Vec<phx_diagnostics::LintKind>, String> {
     let mut kinds = Vec::new();
     for sym in allow_names_from_attrs(interner, attrs) {
-        let name = interner.resolve(sym);
-        match name {
-            "deprecated" => kinds.push(phx_diagnostics::LintKind::Deprecated),
-            "must_use" => kinds.push(phx_diagnostics::LintKind::MustUse),
-            other => return Err(format!("unknown lint name `{other}` in `#[allow(...)]`")),
+        match interner.resolve(sym) {
+            Some("deprecated") => kinds.push(phx_diagnostics::LintKind::Deprecated),
+            Some("must_use") => kinds.push(phx_diagnostics::LintKind::MustUse),
+            Some(other) => {
+                return Err(format!("unknown lint name `{other}` in `#[allow(...)]`"));
+            }
+            None => {
+                return Err(format!(
+                    "unknown lint name `sym#{}` in `#[allow(...)]`",
+                    sym.index()
+                ));
+            }
         }
     }
     Ok(kinds)

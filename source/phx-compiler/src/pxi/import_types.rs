@@ -164,7 +164,7 @@ pub fn build_named_def_paths(
             .iter()
             .find(|m| m.id == def.module)
             .map_or("main", |m| m.logical_path.as_str());
-        let name = interner.resolve(def.name);
+        let name = interner.resolve(def.name).unwrap_or("<?>");
         map.insert(format!("{module_path}::{name}"), def_id);
     }
     map

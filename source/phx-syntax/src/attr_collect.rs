@@ -30,7 +30,7 @@ pub fn derive_from_bracket_attrs(
 ) -> Vec<DeriveDirective> {
     let mut out = Vec::new();
     for attr in attrs {
-        if interner.resolve(attr.inner.name.symbol) != "derive" {
+        if !interner.resolves_to(attr.inner.name.symbol, "derive") {
             continue;
         }
         let mut traits = Vec::new();
@@ -51,13 +51,13 @@ pub fn derive_from_bracket_attrs(
 pub fn has_must_use_attr(interner: &Interner, attrs: &[Node<Attribute>]) -> bool {
     attrs
         .iter()
-        .any(|a| interner.resolve(a.inner.name.symbol) == "must_use" && a.inner.args.is_empty())
+        .any(|a| interner.resolves_to(a.inner.name.symbol, "must_use") && a.inner.args.is_empty())
 }
 
 /// Returns `true` when `name` matches the attribute identifier (via interner).
 #[must_use]
 pub fn attr_named(interner: &Interner, attr: &Attribute, name: &str) -> bool {
-    interner.resolve(attr.name.symbol) == name
+    interner.resolves_to(attr.name.symbol, name)
 }
 
 /// Collects deprecated metadata from `#[deprecated(...)]`.
@@ -78,7 +78,7 @@ pub fn deprecated_from_attrs(
     attrs: &[Node<Attribute>],
 ) -> Option<DeprecatedMeta> {
     for attr in attrs {
-        if interner.resolve(attr.inner.name.symbol) != "deprecated" {
+        if !interner.resolves_to(attr.inner.name.symbol, "deprecated") {
             continue;
         }
         let mut meta = DeprecatedMeta::default();
@@ -86,9 +86,9 @@ pub fn deprecated_from_attrs(
             if let AttrArg::Named { name, value } = arg {
                 let key = interner.resolve(name.symbol);
                 match (key, value) {
-                    ("since", crate::ast::AttrValue::Str(s)) => meta.since = Some(s.clone()),
-                    ("note", crate::ast::AttrValue::Str(s)) => meta.note = Some(s.clone()),
-                    ("suggestion", crate::ast::AttrValue::Str(s)) => {
+                    (Some("since"), crate::ast::AttrValue::Str(s)) => meta.since = Some(s.clone()),
+                    (Some("note"), crate::ast::AttrValue::Str(s)) => meta.note = Some(s.clone()),
+                    (Some("suggestion"), crate::ast::AttrValue::Str(s)) => {
                         meta.suggestion = Some(s.clone());
                     }
                     _ => {}
@@ -105,7 +105,7 @@ pub fn deprecated_from_attrs(
 pub fn allow_names_from_attrs(interner: &Interner, attrs: &[Node<Attribute>]) -> Vec<Symbol> {
     let mut names = Vec::new();
     for attr in attrs {
-        if interner.resolve(attr.inner.name.symbol) != "allow" {
+        if !interner.resolves_to(attr.inner.name.symbol, "allow") {
             continue;
         }
         for arg in &attr.inner.args {

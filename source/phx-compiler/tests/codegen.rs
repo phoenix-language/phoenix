@@ -417,7 +417,7 @@ fn codegen_while_loop_stack_analysis_completes() {
                 .resolved
                 .defs
                 .get(f.def.index() as usize)
-                .is_some_and(|d| unit.typed.resolved.interner.resolve(d.name) == "loop_fn")
+                .is_some_and(|d| unit.typed.resolved.interner.resolves_to(d.name, "loop_fn"))
         })
         .expect("loop_fn IR");
     let module = codegen(

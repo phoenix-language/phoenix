@@ -21,7 +21,7 @@ fn fn_def_names(typed: &TypedProgram) -> Vec<String> {
         .defs
         .iter()
         .filter(|d| d.kind == DefKind::Fn)
-        .map(|d| typed.resolved.interner.resolve(d.name).to_owned())
+        .map(|d| typed.resolved.interner.resolve_display(d.name))
         .collect()
 }
 
@@ -34,7 +34,7 @@ fn has_mangled_fn(typed: &TypedProgram, base: &str, type_suffix: &str) -> bool {
 
 fn fn_def_id(typed: &TypedProgram, name: &str) -> Option<phx_compiler::DefId> {
     typed.resolved.defs.iter().enumerate().find_map(|(i, d)| {
-        if d.kind == DefKind::Fn && typed.resolved.interner.resolve(d.name) == name {
+        if d.kind == DefKind::Fn && typed.resolved.interner.resolves_to(d.name, name) {
             Some(phx_compiler::DefId::from_raw(u32::try_from(i).ok()?))
         } else {
             None
@@ -693,7 +693,7 @@ main :: () => { for x in R { n: 0 } { const _ = x; }; };
                 .resolved
                 .defs
                 .get(f.def.index() as usize)
-                .is_some_and(|d| typed.resolved.interner.resolve(d.name) == "main")
+                .is_some_and(|d| typed.resolved.interner.resolves_to(d.name, "main"))
         })
         .expect("main layout");
     assert_eq!(
@@ -922,29 +922,27 @@ fn generic_call_ast_has_args() {
         .iter()
         .find_map(|item| {
             if let phx_syntax::ast::decl::TopLevelDecl::Function(f) = &item.inner.decl
-                && phx_syntax::Interner::resolve(&sf.interner, f.name.symbol) == "main"
+                && sf.interner.resolves_to(f.name.symbol, "main")
             {
                 return Some(f);
             }
             None
         })
         .expect("main");
-    let init =
-        main.body
-            .inner
-            .items
-            .iter()
-            .find_map(|item| {
-                if let phx_syntax::ast::stmt::BlockItem::Stmt(
-                    phx_syntax::ast::stmt::Stmt::Const { init, .. },
-                ) = item
-                {
-                    Some(init)
-                } else {
-                    None
-                }
-            })
-            .expect("const init");
+    let init = main
+        .body
+        .inner
+        .items
+        .iter()
+        .find_map(|item| {
+            if let phx_syntax::ast::stmt::BlockItem::Stmt(stmt) = item
+                && let phx_syntax::ast::stmt::Stmt::Const { init, .. } = &stmt.inner
+            {
+                return Some(init);
+            }
+            None
+        })
+        .expect("const init");
     match &init.inner {
         phx_syntax::ast::expr::Expr::Postfix { ops, .. } => {
             let call = ops

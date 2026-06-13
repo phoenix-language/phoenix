@@ -30,7 +30,7 @@ main :: () => { };
         .iter()
         .filter_map(|item| match &item.inner.decl {
             phx_syntax::ast::decl::TopLevelDecl::Function(f) => {
-                Some(file.interner.resolve(f.name.symbol).to_string())
+                file.interner.resolve(f.name.symbol).map(str::to_owned)
             }
             _ => None,
         })
@@ -63,7 +63,7 @@ main :: () => { };
         .iter()
         .filter_map(|item| match &item.inner.decl {
             phx_syntax::ast::decl::TopLevelDecl::Function(f) => {
-                Some(file.interner.resolve(f.name.symbol).to_string())
+                file.interner.resolve(f.name.symbol).map(str::to_owned)
             }
             _ => None,
         })

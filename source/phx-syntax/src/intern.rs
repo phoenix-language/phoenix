@@ -31,7 +31,8 @@ impl std::error::Error for InternError {}
 pub struct Symbol(u32);
 
 impl Symbol {
-    /// Creates a symbol from a raw index (for tests only).
+    /// Creates a symbol from a raw index (internal and test use only).
+    #[doc(hidden)]
     #[must_use]
     pub const fn from_raw(index: u32) -> Self {
         Self(index)
@@ -54,6 +55,20 @@ pub const fn impl_receiver_symbol() -> Symbol {
 #[must_use]
 pub const fn closure_def_symbol() -> Symbol {
     Symbol::from_raw(0x8000_0001)
+}
+
+/// Synthetic symbol for a `for`-loop `__iter` temporary (one per plan index).
+#[doc(hidden)]
+#[must_use]
+pub const fn for_in_iter_symbol(plan_index: u32) -> Symbol {
+    Symbol::from_raw(0x8000_1000 | plan_index)
+}
+
+/// Synthetic symbol for lowering scratch bindings (match temps, etc.).
+#[doc(hidden)]
+#[must_use]
+pub const fn scratch_binding_symbol(serial: u32) -> Symbol {
+    Symbol::from_raw(0x9000_0000 | serial)
 }
 
 impl fmt::Display for Symbol {
@@ -103,17 +118,62 @@ impl Interner {
         self.index.get(text).copied().map(Symbol)
     }
 
-    /// Resolves a symbol to its text.
+    /// Resolves an interned symbol to its text.
+    ///
+    /// Returns `None` for out-of-range indices and synthetic symbols (`0x8000_*`, `0x9000_*`)
+    /// that are not stored in the intern table.
     #[must_use]
-    pub fn resolve(&self, symbol: Symbol) -> &str {
-        self.strings
-            .get(symbol.0 as usize)
-            .map_or("<invalid-symbol>", String::as_str)
+    pub fn resolve(&self, symbol: Symbol) -> Option<&str> {
+        self.strings.get(symbol.0 as usize).map(String::as_str)
+    }
+
+    /// Returns `true` when `symbol` resolves to `text`.
+    #[must_use]
+    pub fn resolves_to(&self, symbol: Symbol, text: &str) -> bool {
+        matches!(self.resolve(symbol), Some(s) if s == text)
+    }
+
+    /// Resolves `symbol` to its text, or `sym#N` when the index is invalid or synthetic.
+    #[must_use]
+    pub fn resolve_display(&self, symbol: Symbol) -> String {
+        self.resolve(symbol)
+            .map_or_else(|| format!("sym#{}", symbol.index()), str::to_owned)
     }
 }
 
 impl SymbolNames for Interner {
-    fn symbol_name(&self, symbol_index: u32) -> &str {
+    fn symbol_name(&self, symbol_index: u32) -> Option<&str> {
         self.resolve(Symbol::from_raw(symbol_index))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_valid_symbol() {
+        let mut interner = Interner::new();
+        let sym = match interner.intern("foo") {
+            Ok(s) => s,
+            Err(InternError::TableFull) => panic!("intern table should not be full in test"),
+        };
+        assert_eq!(interner.resolve(sym), Some("foo"));
+        assert!(interner.resolves_to(sym, "foo"));
+    }
+
+    #[test]
+    fn resolve_invalid_symbol_returns_none() {
+        let interner = Interner::new();
+        let bad = Symbol::from_raw(999);
+        assert_eq!(interner.resolve(bad), None);
+        assert!(!interner.resolves_to(bad, "derive"));
+    }
+
+    #[test]
+    fn synthetic_symbols_do_not_resolve() {
+        let interner = Interner::new();
+        assert_eq!(interner.resolve(impl_receiver_symbol()), None);
+        assert_eq!(interner.resolve(scratch_binding_symbol(0)), None);
     }
 }

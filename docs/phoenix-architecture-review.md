@@ -43,7 +43,7 @@ A clean front end: `lexer`/`token` → `parser/` (split by construct) → plain-
 **Location:** `phx-syntax/src/intern.rs:108–112` (`Interner::resolve`)
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** An invalid `Symbol` resolves to the placeholder string `"<invalid-symbol>"` instead of failing.
 **Detail:** Combined with public `Symbol::from_raw` (`intern.rs:33–38`), a corrupted symbol silently flows through name comparisons (e.g. `attr_collect` matching `"derive"`), masking real bugs as wrong-name behavior. Silent placeholder values violate the "internal invariant violations must be loud" principle.
@@ -58,7 +58,7 @@ A clean front end: `lexer`/`token` → `parser/` (split by construct) → plain-
 **Location:** `phx-syntax/src/parser/stmt.rs:51,58` (`parse_block_item`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Block statements are stored as `BlockItem::Stmt(stmt.inner)`, stripping the `StmtNode` span and node id.
 **Detail:** The project rule is "never discard span information." Statement-level spans are exactly what downstream diagnostics (drop planning, move sites, lints) want to point at; imports and expressions keep their nodes but statements do not.
@@ -884,8 +884,8 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 |----|--------|----------|-------|-------------------|
 | PHX-001 | - [x] | Major | phx-syntax | Raw `*mut ParseBag` in only unsafe block |
 | PHX-002 | - [ ] | Major | phx-syntax | Parser peeks clone full `TokenKind` with heap payloads |
-| PHX-003 | - [ ] | Major | phx-syntax | Invalid `Symbol` silently resolves to placeholder string |
-| PHX-004 | - [ ] | Major | phx-syntax | Block statements strip `StmtNode` span |
+| PHX-003 | - [x] | Major | phx-syntax | Invalid `Symbol` silently resolves to placeholder string |
+| PHX-004 | - [x] | Major | phx-syntax | Block statements strip `StmtNode` span |
 | PHX-005 | - [ ] | Major | phx-syntax | Partial AST discarded on any parse error |
 | PHX-006 | - [ ] | Minor | phx-syntax | Unclosed `{` exits block loop with no diagnostic |
 | PHX-007 | - [ ] | Minor | phx-syntax | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |

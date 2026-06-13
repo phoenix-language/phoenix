@@ -1,7 +1,7 @@
 //! Map typeck [`Ty`] / layout tables to [`PxiType`] for `.pxi` v2.
 
-use phx_syntax::Interner;
 use phx_syntax::token::Keyword;
+use phx_syntax::{Interner, Symbol};
 
 use crate::resolver::{Def, DefId};
 use crate::typeck::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
@@ -108,7 +108,9 @@ fn ty_to_pxi_inner(
     }
 }
 
-/// Builds export type for a struct definition.
+fn pxi_symbol_name(interner: &Interner, sym: Symbol) -> String {
+    interner.resolve_display(sym)
+}
 #[must_use]
 pub fn struct_export_type(
     types: &TypeInterner,
@@ -123,7 +125,7 @@ pub fn struct_export_type(
         .fields
         .iter()
         .map(|(sym, tid)| PxiField {
-            name: interner.resolve(*sym).to_owned(),
+            name: pxi_symbol_name(interner, *sym),
             ty: ty_to_pxi(types, interner, defs, layout, logical_module, *tid),
         })
         .collect();
@@ -157,14 +159,14 @@ pub fn enum_export_type(
                     fields
                         .iter()
                         .map(|(sym, tid)| PxiField {
-                            name: interner.resolve(*sym).to_owned(),
+                            name: pxi_symbol_name(interner, *sym),
                             ty: ty_to_pxi(types, interner, defs, layout, logical_module, *tid),
                         })
                         .collect(),
                 ),
             };
             PxiVariant {
-                name: interner.resolve(v.name).to_owned(),
+                name: pxi_symbol_name(interner, v.name),
                 tag: v.tag,
                 payload,
             }
@@ -215,7 +217,7 @@ fn named_path(defs: &[Def], interner: &Interner, logical_module: &str, def: DefI
     let Some(d) = defs.get(def.index() as usize) else {
         return format!("{logical_module}::?");
     };
-    let name = interner.resolve(d.name);
+    let name = interner.resolve(d.name).unwrap_or("<?>");
     let _ = d.module;
     format!("{logical_module}::{name}")
 }

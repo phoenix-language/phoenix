@@ -52,7 +52,7 @@ impl SubmoduleRegistry {
         for item in &program.items {
             match &item.inner.decl {
                 TopLevelDecl::Mod { name } => {
-                    let stem = interner.resolve(name.symbol).to_owned();
+                    let stem = interner.resolve_display(name.symbol);
                     decls.push(SubmoduleDecl {
                         name: stem.clone(),
                         exported: item.inner.pub_,
@@ -69,9 +69,9 @@ impl SubmoduleRegistry {
                         .segments
                         .iter()
                         .map(|seg| match seg {
-                            PathSegment::Ident(id) => interner.resolve(id.symbol).to_owned(),
+                            PathSegment::Ident(id) => interner.resolve_display(id.symbol),
                             PathSegment::Type(type_name) => {
-                                interner.resolve(type_name.name.symbol).to_owned()
+                                interner.resolve_display(type_name.name.symbol)
                             }
                         })
                         .collect();

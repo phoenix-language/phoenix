@@ -40,7 +40,7 @@ fn walk_block<'a>(block: &'a Block, out: &mut Vec<&'a Node<ImportDirective>>) {
     for item in &block.items {
         match item {
             BlockItem::Import(imp) => out.push(imp),
-            BlockItem::Stmt(stmt) => walk_stmt(stmt, out),
+            BlockItem::Stmt(stmt) => walk_stmt(&stmt.inner, out),
             BlockItem::Expr(expr) => walk_expr(&expr.inner, out),
         }
     }

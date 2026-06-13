@@ -170,7 +170,7 @@ fn segment_to_string(seg: &PathSegment, interner: &Interner) -> String {
         PathSegment::Ident(i) => i.symbol,
         PathSegment::Type(t) => t.name.symbol,
     };
-    interner.resolve(sym).to_owned()
+    interner.resolve_display(sym)
 }
 
 #[cfg(test)]

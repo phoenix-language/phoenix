@@ -40,9 +40,9 @@ enum DeriveTrait {
 impl DeriveTrait {
     fn parse(interner: &Interner, name: Symbol) -> Option<Self> {
         match interner.resolve(name) {
-            "Copyable" => Some(Self::Copyable),
-            "PartialEq" => Some(Self::PartialEq),
-            "Debug" => Some(Self::Debug),
+            Some("Copyable") => Some(Self::Copyable),
+            Some("PartialEq") => Some(Self::PartialEq),
+            Some("Debug") => Some(Self::Debug),
             _ => None,
         }
     }
@@ -167,35 +167,32 @@ fn expand_type_derives(
         for trait_name in &dir.traits {
             let Some(kind) = DeriveTrait::parse(interner, trait_name.symbol) else {
                 let supported = SUPPORTED_DERIVES.join(", ");
-                let name = interner.resolve(trait_name.symbol);
+                let name = interner.resolve(trait_name.symbol).unwrap_or("<?>");
                 return Err(DeriveError {
                     span: trait_name.span,
                     message: format!("unsupported derive trait `{name}`; supported: {supported}"),
                 });
             };
             if seen.contains(&kind) {
+                let type_display = interner.resolve_display(type_name.symbol);
                 return Err(DeriveError {
                     span: trait_name.span,
-                    message: format!(
-                        "duplicate derive `{}` for `{}`",
-                        kind.as_str(),
-                        interner.resolve(type_name.symbol)
-                    ),
+                    message: format!("duplicate derive `{}` for `{type_display}`", kind.as_str()),
                 });
             }
             if existing
                 .iter()
-                .any(|(t, tr)| *t == type_name.symbol && interner.resolve(*tr) == kind.as_str())
+                .any(|(t, tr)| *t == type_name.symbol && interner.resolves_to(*tr, kind.as_str()))
                 || impls
                     .iter()
                     .any(|item| impl_trait_kind(item, interner) == Some(kind))
             {
+                let type_display = interner.resolve_display(type_name.symbol);
                 return Err(DeriveError {
                     span: trait_name.span,
                     message: format!(
-                        "cannot derive {}: `{}` already implements {}",
+                        "cannot derive {}: `{type_display}` already implements {}",
                         kind.as_str(),
-                        interner.resolve(type_name.symbol),
                         kind.as_str()
                     ),
                 });
@@ -340,7 +337,7 @@ impl AstGen {
     }
 
     fn debug_impl(&mut self, type_name: &TypeName, interner: &Interner) -> Node<TopLevelItem> {
-        let name = interner.resolve(type_name.symbol);
+        let name = interner.resolve(type_name.symbol).unwrap_or("<?>");
         let bytes = debug_name_bytes(name);
         let array_expr = self.u8_array_literal(&bytes);
         let block = self.expr_block(array_expr);
@@ -471,18 +468,20 @@ impl AstGen {
         let lhs_init = self.deref_expr(self_base);
         let other_base = self.other_expr();
         let rhs_init = self.deref_expr(other_base);
+        let lhs_stmt = self.node(Stmt::Const {
+            name: lhs,
+            ty: Some(ty.clone()),
+            init: lhs_init,
+        });
+        let rhs_stmt = self.node(Stmt::Const {
+            name: rhs,
+            ty: Some(ty),
+            init: rhs_init,
+        });
         self.node(Block {
             items: vec![
-                BlockItem::Stmt(Stmt::Const {
-                    name: lhs,
-                    ty: Some(ty.clone()),
-                    init: lhs_init,
-                }),
-                BlockItem::Stmt(Stmt::Const {
-                    name: rhs,
-                    ty: Some(ty),
-                    init: rhs_init,
-                }),
+                BlockItem::Stmt(lhs_stmt),
+                BlockItem::Stmt(rhs_stmt),
                 BlockItem::Expr(match_tail),
             ],
         })

@@ -21,7 +21,7 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
     ctx.enter_scope();
     for item in &block.items {
         match item {
-            BlockItem::Stmt(stmt) => lower_block_stmt(ctx, stmt),
+            BlockItem::Stmt(stmt) => lower_block_stmt(ctx, &stmt.inner),
             BlockItem::Expr(expr) => lower_expr(ctx, expr),
             BlockItem::Import(_) => {}
             _ => {}

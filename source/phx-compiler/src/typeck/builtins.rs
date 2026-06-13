@@ -179,7 +179,7 @@ pub fn is_copyable_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bo
         .defs
         .get(trait_def.index() as usize)
         .is_some_and(|d| {
-            d.kind == DefKind::Trait && resolved.interner.resolve(d.name) == "Copyable"
+            d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Copyable")
         })
 }
 
@@ -189,7 +189,7 @@ pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
     resolved
         .defs
         .get(trait_def.index() as usize)
-        .is_some_and(|d| d.kind == DefKind::Trait && resolved.interner.resolve(d.name) == "Drop")
+        .is_some_and(|d| d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Drop"))
 }
 
 /// Returns whether `def` with `args` has a `Drop` trait impl in `layout`.

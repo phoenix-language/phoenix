@@ -305,7 +305,9 @@ impl Resolver<'_> {
             return;
         };
         if def.scope_depth < self.scopes.depth() {
-            let symbol = symbol_from_def(&self.defs, id);
+            let Some(symbol) = symbol_from_def(&self.defs, id) else {
+                return;
+            };
             self.record_upvar(closure_id, symbol, id);
         }
     }
@@ -324,9 +326,8 @@ impl Resolver<'_> {
     }
 }
 
-fn symbol_from_def(defs: &[Def], id: DefId) -> Symbol {
-    defs.get(id.index() as usize)
-        .map_or_else(|| Symbol::from_raw(0), |d| d.name)
+fn symbol_from_def(defs: &[Def], id: DefId) -> Option<Symbol> {
+    defs.get(id.index() as usize).map(|d| d.name)
 }
 
 fn is_type_kind(kind: DefKind) -> bool {

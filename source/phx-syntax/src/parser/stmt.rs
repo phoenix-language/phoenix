@@ -48,14 +48,17 @@ impl Parser<'_> {
         }
         if self.is_stmt_keyword() {
             let stmt = self.parse_stmt()?;
-            return Ok(BlockItem::Stmt(stmt.inner));
+            return Ok(BlockItem::Stmt(stmt));
         }
+        let start = self.pos;
         let expr = self.parse_expr()?;
         if matches!(self.peek_kind(), TokenKind::RBrace) {
             return Ok(BlockItem::Expr(expr));
         }
         self.expect_semi()?;
-        Ok(BlockItem::Stmt(Stmt::Expr(expr)))
+        Ok(BlockItem::Stmt(
+            self.node(Stmt::Expr(expr), self.span_from(start)),
+        ))
     }
 
     /// Returns `true` when the next token starts a statement keyword or `unsafe`.

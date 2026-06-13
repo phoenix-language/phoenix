@@ -32,10 +32,11 @@ fn bundled_std_prelude_builds() {
     let resolved = resolve_loaded_program(loaded).expect("resolve");
     let typed = type_check(&resolved).expect("typecheck");
     let entry = typed.entry.expect("main entry");
-    let entry_name = typed
-        .resolved
-        .interner
-        .resolve(typed.resolved.defs[entry.index() as usize].name);
-    assert_eq!(entry_name, "main");
+    assert!(
+        typed
+            .resolved
+            .interner
+            .resolves_to(typed.resolved.defs[entry.index() as usize].name, "main")
+    );
     build_project(&config, None, BuildOptions::force(true)).expect("build std_prelude");
 }

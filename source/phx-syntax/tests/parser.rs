@@ -87,7 +87,10 @@ mod support {
 
     pub fn first_stmt_expr(block: &BlockNode) -> &Expr {
         match &block.inner.items[0] {
-            BlockItem::Stmt(Stmt::Const { init, .. } | Stmt::Expr(init)) => &init.inner,
+            BlockItem::Stmt(stmt) => match &stmt.inner {
+                Stmt::Const { init, .. } | Stmt::Expr(init) => &init.inner,
+                other => panic!("expected const or expr stmt, got {other:?}"),
+            },
             BlockItem::Expr(e) => &e.inner,
             other => panic!("expected expr item, got {other:?}"),
         }
@@ -1262,9 +1265,13 @@ fn block_trailing_expr() {
     let TopLevelDecl::Function(f) = &p.items[0].inner.decl else {
         panic!("expected function");
     };
-    let BlockItem::Stmt(Stmt::Const { init, .. }) = &f.body.inner.items[0] else {
+    let BlockItem::Stmt(stmt) = &f.body.inner.items[0] else {
         panic!("expected const");
     };
+    let Stmt::Const { init, .. } = &stmt.inner else {
+        panic!("expected const stmt");
+    };
+    assert!(stmt.span.start < stmt.span.end);
     let Expr::Block(block) = &init.inner else {
         panic!("expected block expr");
     };

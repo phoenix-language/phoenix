@@ -109,7 +109,9 @@ fn find_trait(
 ) -> Option<DefId> {
     let mod_id = module_id(resolved, module_path)?;
     for (i, def) in resolved.defs.iter().enumerate() {
-        if def.module == mod_id && def.kind == DefKind::Trait && interner.resolve(def.name) == name
+        if def.module == mod_id
+            && def.kind == DefKind::Trait
+            && interner.resolves_to(def.name, name)
         {
             return Some(DefId::from_raw(u32::try_from(i).ok()?));
         }

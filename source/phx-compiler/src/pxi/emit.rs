@@ -51,7 +51,7 @@ pub fn build_pxi_for_module(
             typed,
             interner,
             global_fn,
-            interner.resolve(*sym),
+            interner.resolve(*sym).unwrap_or("<?>"),
         );
     }
 
@@ -72,7 +72,7 @@ pub fn build_pxi_for_module(
             typed,
             interner,
             global_fn,
-            interner.resolve(def.name),
+            interner.resolve(def.name).unwrap_or("<?>"),
         );
     }
 
@@ -92,7 +92,7 @@ pub fn build_pxi_for_module(
             typed,
             interner,
             global_fn,
-            interner.resolve(def.name),
+            interner.resolve(def.name).unwrap_or("<?>"),
         );
     }
     pxi_exports.sort_by(|a, b| a.name.cmp(&b.name));
@@ -192,7 +192,10 @@ fn export_structured_type(
             .get(&def_id)
             .map(|el| enum_export_type(ty_interner, interner, defs, layout, logical_module, el)),
         DefKind::TypeAlias => Some(super::type_ast::PxiType::Named {
-            path: format!("{logical_module}::{}", interner.resolve(def.name)),
+            path: format!(
+                "{logical_module}::{}",
+                interner.resolve(def.name).unwrap_or("<?>")
+            ),
             args: vec![],
         }),
         _ => None,
@@ -224,7 +227,7 @@ fn export_signature_fallback(
                     format!("({}) => {}", params.join(", "), ret)
                 },
             ),
-        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias => names.resolve(def.name).to_owned(),
+        DefKind::Struct | DefKind::Enum | DefKind::TypeAlias => names.resolve_display(def.name),
         _ => def_kind_to_pxi(def.kind).to_owned(),
     }
 }

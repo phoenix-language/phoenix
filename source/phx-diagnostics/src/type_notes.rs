@@ -63,7 +63,7 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
             method_index,
             ..
         } => {
-            let method = names.symbol_name(*method_index);
+            let method = names.symbol_name(*method_index).unwrap_or("<?>");
             out.helps.push(format!(
                 "implement `fn {method}(...)` on `{receiver}` or check the method name"
             ));
@@ -73,7 +73,7 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
             method_index,
             ..
         } => {
-            let method = names.symbol_name(*method_index);
+            let method = names.symbol_name(*method_index).unwrap_or("<?>");
             out.helps.push(format!(
                 "disambiguate by using only one trait impl that provides `{method}` on `{receiver}`, or call the function directly"
             ));
@@ -159,13 +159,13 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
             );
         }
         TypeCheckError::UnresolvedValue { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             out.helps.push(format!(
                 "declare `{name}` before use, or import it with `#import` if it lives in another module"
             ));
         }
         TypeCheckError::UnknownType { symbol_index, .. } => {
-            let name = names.symbol_name(*symbol_index);
+            let name = names.symbol_name(*symbol_index).unwrap_or("<?>");
             out.helps.push(format!(
                 "define type `{name}` in this module, or `#import` the module that exports it"
             ));

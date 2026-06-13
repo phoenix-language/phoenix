@@ -155,11 +155,11 @@ pub fn specialized_fn_for_inst(
         if *base != base_fn {
             return None;
         }
-        let name = typed
+        typed
             .resolved
             .interner
-            .resolve(typed.resolved.defs[spec.index() as usize].name);
-        (name == expected).then_some(*spec)
+            .resolves_to(typed.resolved.defs[spec.index() as usize].name, &expected)
+            .then_some(*spec)
     })
 }
 
@@ -216,13 +216,27 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         for (param, arg) in param_defs.iter().zip(&inst.args) {
             subst.insert(*param, *arg);
         }
-        let spec_def = alloc_specialized_def(
+        let base_module = base_def.module;
+        let base_span = base_def.span;
+        let spec_def = match alloc_specialized_def(
             &mut typed.resolved,
             inst.base_fn,
             &inst.args,
             &typed.types,
             inst.owner_module,
-        );
+        ) {
+            Ok(id) => id,
+            Err(phx_syntax::InternError::TableFull) => {
+                bag.push(
+                    base_module,
+                    TypeCheckError::UnsupportedFeature {
+                        feature: "interner table full during monomorphization",
+                        span: base_span,
+                    },
+                );
+                continue;
+            }
+        };
         typed.specialized_from.insert(spec_def, inst.base_fn);
         if typed
             .fn_effective_unsafe
@@ -540,14 +554,16 @@ fn clone_specialized_function_layout(
 const IMPL_METHOD_SCRATCH_TEMPS: u32 = 4;
 
 fn reserve_impl_method_scratch_temps(typed: &mut TypedProgram, layout: &mut FunctionLayout) {
-    use phx_syntax::Symbol;
+    use phx_syntax::scratch_binding_symbol;
 
     use super::bindings::{Binding, BindingKind, LocalSlot};
     use super::builtins::unit;
 
     let scratch_ty = unit(&mut typed.types);
     for _ in 0..IMPL_METHOD_SCRATCH_TEMPS {
-        let symbol = Symbol::from_raw(0x9000_0000 | layout.match_temp_slots.len() as u32);
+        let symbol = scratch_binding_symbol(
+            u32::try_from(layout.match_temp_slots.len()).unwrap_or(u32::MAX),
+        );
         let slot = LocalSlot::from_raw(u32::try_from(layout.bindings.len()).unwrap_or(u32::MAX));
         layout.bindings.push(Binding {
             symbol,
@@ -661,13 +677,10 @@ fn alloc_specialized_def(
     args: &[TypeId],
     types: &super::types::TypeInterner,
     owner_module: u32,
-) -> DefId {
+) -> Result<DefId, phx_syntax::InternError> {
     let base_def = &resolved.defs[base.index() as usize];
     let mangled = mangle::mangle_symbol_for_specialization(resolved, base, args, types);
-    let sym = resolved
-        .interner
-        .intern(&mangled)
-        .unwrap_or_else(|_| phx_syntax::Symbol::from_raw(0));
+    let sym = resolved.interner.intern(&mangled)?;
     let def = Def::new(
         DefKind::Fn,
         sym,
@@ -678,7 +691,7 @@ fn alloc_specialized_def(
     );
     let id = DefId::from_raw(u32::try_from(resolved.defs.len()).unwrap_or(u32::MAX));
     resolved.defs.push(def);
-    id
+    Ok(id)
 }
 
 /// Cross-crate generic export requested by a consumer package build.
@@ -718,7 +731,7 @@ pub fn collect_cross_crate_mono_reqs(
             .next()
             .unwrap_or(logical.as_str())
             .to_owned();
-        let base_name = typed.resolved.interner.resolve(base_def.name).to_owned();
+        let base_name = typed.resolved.interner.resolve_display(base_def.name);
         let arg_types: Vec<_> = inst
             .args
             .iter()
@@ -813,7 +826,7 @@ fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {
         .resolved
         .defs
         .iter()
-        .any(|d| d.kind == DefKind::Fn && typed.resolved.interner.resolve(d.name) == mangled_name)
+        .any(|d| d.kind == DefKind::Fn && typed.resolved.interner.resolves_to(d.name, mangled_name))
 }
 
 /// Returns true when `def_id` is an impl method on a generic type (not a monomorphized specialization).
@@ -848,7 +861,7 @@ fn impl_type_def_for_method(typed: &TypedProgram, fn_def: DefId) -> Option<DefId
             {
                 continue;
             }
-            let name = interner.resolve(type_name.symbol);
+            let name = interner.resolve(type_name.symbol).unwrap_or("<?>");
             return find_type_def_in_module(&typed.resolved, module.id, name);
         }
     }
@@ -863,7 +876,7 @@ fn find_type_def_in_module(resolved: &ResolvedProgram, module: u32, name: &str) 
         if !matches!(def.kind, DefKind::Struct | DefKind::Enum) {
             continue;
         }
-        if resolved.interner.resolve(def.name) == name {
+        if resolved.interner.resolves_to(def.name, name) {
             return Some(DefId::from_raw(u32::try_from(i).ok()?));
         }
     }
@@ -933,7 +946,7 @@ fn find_fn_by_name(
         if log != logical_module {
             return None;
         }
-        if resolved.interner.resolve(d.name) != name {
+        if !resolved.interner.resolves_to(d.name, name) {
             return None;
         }
         Some(DefId::from_raw(u32::try_from(i).ok()?))
