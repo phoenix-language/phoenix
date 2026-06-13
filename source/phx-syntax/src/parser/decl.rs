@@ -118,9 +118,17 @@ impl Parser<'_> {
     pub(crate) fn parse_top_level_item(&mut self) -> Result<Node<TopLevelItem>, ParseError> {
         let start = self.pos;
         let attrs = self.parse_attribute_list()?;
-        let pub_ = self.eat_keyword(Keyword::Pub);
-        let decl =
-            if pub_ && (self.peek_keyword(Keyword::Reexport) || self.peek_keyword(Keyword::Mod)) {
+        let is_extern = self.peek_keyword(Keyword::Extern)
+            || (self.peek_keyword(Keyword::Pub)
+                && matches!(self.peek_at(1), TokenKind::Keyword(Keyword::Extern)));
+        let (pub_, decl) = if is_extern {
+            let (decl, extern_pub) = self.parse_extern_decl()?;
+            (extern_pub, decl)
+        } else {
+            let pub_ = self.eat_keyword(Keyword::Pub);
+            let decl = if pub_
+                && (self.peek_keyword(Keyword::Reexport) || self.peek_keyword(Keyword::Mod))
+            {
                 if self.peek_keyword(Keyword::Reexport) {
                     self.parse_reexport_decl()?
                 } else {
@@ -129,6 +137,8 @@ impl Parser<'_> {
             } else {
                 self.parse_top_level_decl()?
             };
+            (pub_, decl)
+        };
         self.expect_semi()?;
         Ok(self.node(TopLevelItem { attrs, pub_, decl }, self.span_from(start)))
     }
@@ -150,9 +160,6 @@ impl Parser<'_> {
         {
             let func = self.parse_function_decl_body(false)?;
             return Ok(TopLevelDecl::Function(func));
-        }
-        if self.peek_keyword(Keyword::Extern) {
-            return self.parse_extern_decl();
         }
         match self.peek_kind() {
             TokenKind::Keyword(Keyword::Type) => self.parse_type_alias(),
@@ -648,22 +655,24 @@ impl Parser<'_> {
         Ok(Param::Named { name, ty })
     }
 
-    /// Parses `extern "ABI" { sig; … }` or `extern "ABI" sig`.
-    fn parse_extern_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
-        self.eat_keyword(Keyword::Extern);
+    /// Parses `[pub] extern "ABI" { sig; … }` or `[pub] extern "ABI" sig`.
+    fn parse_extern_decl(&mut self) -> Result<(TopLevelDecl, bool), ParseError> {
+        let pub_ = self.eat_keyword(Keyword::Pub);
+        self.expect_keyword(Keyword::Extern)?;
         let abi = self.parse_abi_string()?;
-        if matches!(self.peek_kind(), TokenKind::LBrace) {
+        let decl = if matches!(self.peek_kind(), TokenKind::LBrace) {
             self.bump();
             let mut items = Vec::new();
             while !self.eat_kind(&TokenKind::RBrace) {
                 items.push(self.parse_extern_function_sig()?);
                 self.expect_semi()?;
             }
-            Ok(TopLevelDecl::ExternBlock { abi, items })
+            TopLevelDecl::ExternBlock { abi, items }
         } else {
             let sig = self.parse_extern_function_sig()?;
-            Ok(TopLevelDecl::ExternItem { abi, sig })
-        }
+            TopLevelDecl::ExternItem { abi, sig }
+        };
+        Ok((decl, pub_))
     }
 
     fn parse_abi_string(&mut self) -> Result<String, ParseError> {

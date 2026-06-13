@@ -134,6 +134,8 @@ impl<'src> Parser<'src> {
                     Keyword::Unsafe
                     | Keyword::Extern
                     | Keyword::Pub
+                    | Keyword::Mod
+                    | Keyword::Reexport
                     | Keyword::Type
                     | Keyword::Const
                     | Keyword::Var,

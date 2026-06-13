@@ -771,21 +771,24 @@ fn type_ident_result() {
 
 #[test]
 fn keyword_all_reserved_in_one_pass() {
-    let source = "const var if else match while for loop break continue return \
-                  struct enum type pub trait impl as in mut self Self \
-                  bool \
-                  s8 s16 s32 s64 s128 u8 u16 u32 u64 u128 f32 f64";
-    let all = tokens(source);
+    let source = Keyword::ALL
+        .iter()
+        .map(|kw| kw.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let all = tokens(&source);
     let got = without_eof(&all);
     assert_eq!(
         got.len(),
-        35,
+        Keyword::ALL.len(),
         "every Keyword variant should lex as one token"
     );
-    for token in got {
-        assert!(
-            matches!(token.kind, TokenKind::Keyword(_)),
-            "expected keyword, got {:?}",
+    for (token, kw) in got.iter().zip(Keyword::ALL) {
+        assert_eq!(
+            token.kind,
+            TokenKind::Keyword(kw),
+            "expected keyword {:?}, got {:?}",
+            kw,
             token.kind
         );
     }

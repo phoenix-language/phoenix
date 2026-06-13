@@ -201,6 +201,86 @@ fn program_pub_top_level() {
 }
 
 // -----------------------------------------------------------------------------
+// Module, reexport, and extern declarations
+// -----------------------------------------------------------------------------
+
+#[test]
+fn decl_mod() {
+    let p = parse_ok("mod child; main :: () => { };");
+    assert!(matches!(p.items[0].inner.decl, TopLevelDecl::Mod { .. }));
+    assert!(!p.items[0].inner.pub_);
+}
+
+#[test]
+fn decl_mod_pub() {
+    let p = parse_ok("pub mod child; main :: () => { };");
+    assert!(matches!(p.items[0].inner.decl, TopLevelDecl::Mod { .. }));
+    assert!(p.items[0].inner.pub_);
+}
+
+#[test]
+fn decl_reexport() {
+    let p = parse_ok("pub reexport :: foo; main :: () => { };");
+    assert!(matches!(
+        p.items[0].inner.decl,
+        TopLevelDecl::Reexport { .. }
+    ));
+    assert!(p.items[0].inner.pub_);
+}
+
+#[test]
+fn decl_reexport_qualified() {
+    let p = parse_ok("pub reexport :: child::foo; main :: () => { };");
+    let TopLevelDecl::Reexport { path, .. } = &p.items[0].inner.decl else {
+        panic!("reexport");
+    };
+    assert_eq!(path.segments.len(), 2);
+}
+
+#[test]
+fn decl_extern_block() {
+    let p = parse_ok(
+        "extern \"C\" { malloc :: (size: u64) => *mut u8; free :: (ptr: *mut u8) => (); }; main :: () => { };",
+    );
+    let TopLevelDecl::ExternBlock { abi, items } = &p.items[0].inner.decl else {
+        panic!("extern block");
+    };
+    assert_eq!(abi, "C");
+    assert_eq!(items.len(), 2);
+    assert!(!p.items[0].inner.pub_);
+}
+
+#[test]
+fn decl_extern_block_pub() {
+    let p = parse_ok("pub extern \"C\" { malloc :: (size: u64) => *mut u8; }; main :: () => { };");
+    assert!(matches!(
+        p.items[0].inner.decl,
+        TopLevelDecl::ExternBlock { .. }
+    ));
+    assert!(p.items[0].inner.pub_);
+}
+
+#[test]
+fn decl_extern_item() {
+    let p = parse_ok("extern \"C\" malloc :: (size: u64) => *mut u8; main :: () => { };");
+    assert!(matches!(
+        p.items[0].inner.decl,
+        TopLevelDecl::ExternItem { .. }
+    ));
+    assert!(!p.items[0].inner.pub_);
+}
+
+#[test]
+fn decl_extern_item_pub() {
+    let p = parse_ok("pub extern \"C\" malloc :: (size: u64) => *mut u8; main :: () => { };");
+    assert!(matches!(
+        p.items[0].inner.decl,
+        TopLevelDecl::ExternItem { .. }
+    ));
+    assert!(p.items[0].inner.pub_);
+}
+
+// -----------------------------------------------------------------------------
 // Struct declarations
 // -----------------------------------------------------------------------------
 

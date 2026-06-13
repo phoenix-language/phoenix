@@ -113,6 +113,97 @@ pub enum Keyword {
 }
 
 impl Keyword {
+    /// Every reserved keyword variant, for exhaustiveness tests and tooling.
+    pub const ALL: [Self; 40] = [
+        Self::Const,
+        Self::Var,
+        Self::If,
+        Self::Else,
+        Self::Match,
+        Self::While,
+        Self::For,
+        Self::Loop,
+        Self::Break,
+        Self::Continue,
+        Self::Return,
+        Self::Struct,
+        Self::Enum,
+        Self::Type,
+        Self::Pub,
+        Self::Trait,
+        Self::Impl,
+        Self::Mod,
+        Self::Reexport,
+        Self::As,
+        Self::In,
+        Self::Mut,
+        Self::SelfLower,
+        Self::SelfUpper,
+        Self::Bool,
+        Self::S8,
+        Self::S16,
+        Self::S32,
+        Self::S64,
+        Self::S128,
+        Self::U8,
+        Self::U16,
+        Self::U32,
+        Self::U64,
+        Self::U128,
+        Self::F32,
+        Self::F64,
+        Self::Str,
+        Self::Unsafe,
+        Self::Extern,
+    ];
+
+    /// Source spelling for this keyword.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Const => "const",
+            Self::Var => "var",
+            Self::If => "if",
+            Self::Else => "else",
+            Self::Match => "match",
+            Self::While => "while",
+            Self::For => "for",
+            Self::Loop => "loop",
+            Self::Break => "break",
+            Self::Continue => "continue",
+            Self::Return => "return",
+            Self::Struct => "struct",
+            Self::Enum => "enum",
+            Self::Type => "type",
+            Self::Pub => "pub",
+            Self::Trait => "trait",
+            Self::Impl => "impl",
+            Self::Mod => "mod",
+            Self::Reexport => "reexport",
+            Self::As => "as",
+            Self::In => "in",
+            Self::Mut => "mut",
+            Self::SelfLower => "self",
+            Self::SelfUpper => "Self",
+            Self::Bool => "bool",
+            Self::S8 => "s8",
+            Self::S16 => "s16",
+            Self::S32 => "s32",
+            Self::S64 => "s64",
+            Self::S128 => "s128",
+            Self::U8 => "u8",
+            Self::U16 => "u16",
+            Self::U32 => "u32",
+            Self::U64 => "u64",
+            Self::U128 => "u128",
+            Self::F32 => "f32",
+            Self::F64 => "f64",
+            Self::Str => "str",
+            Self::Unsafe => "unsafe",
+            Self::Extern => "extern",
+        }
+    }
+
     /// Maps a source lexeme to a [`Keyword`] when the text is reserved.
     ///
     /// Function names such as `main` are *not* keywords and do not match here.
@@ -351,6 +442,13 @@ mod tests {
         assert_eq!(Keyword::lookup("main"), None);
         assert_eq!(Keyword::lookup("my_fn"), None);
         assert_eq!(Keyword::lookup("Point"), None);
+    }
+
+    #[test]
+    fn keyword_all_matches_lookup() {
+        for kw in Keyword::ALL {
+            assert_eq!(Keyword::lookup(kw.as_str()), Some(kw));
+        }
     }
 
     #[test]
