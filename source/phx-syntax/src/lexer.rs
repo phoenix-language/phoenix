@@ -1,7 +1,8 @@
 //! Phoenix lexer — source text to token stream.
 //!
-//! Tokens borrow lexeme text from the source (`Token<'src>`). Numeric lexing may allocate when
-//! stripping underscores (`strip_underscores`); byte string payloads use `Vec<u8>`.
+//! Tokens borrow lexeme text from the source (`Token<'src>`). Numeric lexemes are parsed
+//! in-place (underscore separators are skipped without allocation); byte string payloads use
+//! `Vec<u8>`.
 
 use phx_diagnostics::{LexError, Span};
 
@@ -426,8 +427,7 @@ impl<'src> Lexer<'src> {
             FloatSuffix::F32 => lexeme.strip_suffix("f32").unwrap_or(lexeme),
             FloatSuffix::None => lexeme,
         };
-        let stripped = strip_underscores(numeric);
-        let value: f64 = stripped.parse().map_err(|_| self.invalid_float())?;
+        let value = parse_float_literal(numeric).map_err(|()| self.invalid_float())?;
         Ok(TokenKind::Float { value, suffix })
     }
 
@@ -448,28 +448,23 @@ impl<'src> Lexer<'src> {
             return Err(self.invalid_int());
         }
         let value = match base {
-            IntegerBase::Decimal => {
-                let stripped = strip_underscores(numeric_lexeme);
-                stripped.parse::<i128>()
-            }
+            IntegerBase::Decimal => parse_decimal_integer(numeric_lexeme),
             IntegerBase::Hex => {
                 let digits = numeric_lexeme
                     .strip_prefix("0x")
                     .or_else(|| numeric_lexeme.strip_prefix("0X"))
                     .unwrap_or(numeric_lexeme);
-                let stripped = strip_underscores(digits);
-                i128::from_str_radix(&stripped, 16)
+                parse_radix_integer(digits, 16, hex_digit_value)
             }
             IntegerBase::Binary => {
                 let digits = numeric_lexeme
                     .strip_prefix("0b")
                     .or_else(|| numeric_lexeme.strip_prefix("0B"))
                     .unwrap_or(numeric_lexeme);
-                let stripped = strip_underscores(digits);
-                i128::from_str_radix(&stripped, 2)
+                parse_radix_integer(digits, 2, binary_digit_value)
             }
         }
-        .map_err(|_| LexError::IntegerOverflow {
+        .map_err(|()| LexError::IntegerOverflow {
             start: self.span_start(),
             end: self.span_end(),
         })?;
@@ -900,7 +895,130 @@ fn hex_value(b: u8) -> u8 {
     }
 }
 
-/// Removes numeric separators; allocates because the result may be shorter than `s`.
-fn strip_underscores(s: &str) -> String {
-    s.chars().filter(|c| *c != '_').collect()
+fn hex_digit_value(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn binary_digit_value(b: u8) -> Option<u8> {
+    match b {
+        b'0' => Some(0),
+        b'1' => Some(1),
+        _ => None,
+    }
+}
+
+/// Parses a base-10 integer lexeme, skipping `_` separators without allocating.
+fn parse_decimal_integer(s: &str) -> Result<i128, ()> {
+    parse_radix_integer(s, 10, decimal_digit_value)
+}
+
+fn decimal_digit_value(b: u8) -> Option<u8> {
+    b.is_ascii_digit().then_some(b - b'0')
+}
+
+/// Parses an integer lexeme in the given radix, skipping `_` separators without allocating.
+fn parse_radix_integer(s: &str, radix: u32, digit_value: fn(u8) -> Option<u8>) -> Result<i128, ()> {
+    let radix = i128::from(radix);
+    let mut value: i128 = 0;
+    let mut seen_digit = false;
+    for &b in s.as_bytes() {
+        if b == b'_' {
+            continue;
+        }
+        let digit = digit_value(b).ok_or(())?;
+        seen_digit = true;
+        value = value
+            .checked_mul(radix)
+            .and_then(|v| v.checked_add(i128::from(digit)))
+            .ok_or(())?;
+    }
+    if seen_digit { Ok(value) } else { Err(()) }
+}
+
+/// Parses a float lexeme, skipping `_` separators without allocating.
+fn parse_float_literal(s: &str) -> Result<f64, ()> {
+    let exp_pos = s.bytes().position(|b| b == b'e' || b == b'E');
+    let (mantissa, exponent) = match exp_pos {
+        Some(pos) => (&s[..pos], &s[pos + 1..]),
+        None => (s, ""),
+    };
+    let mantissa = parse_float_mantissa(mantissa)?;
+    if exponent.is_empty() {
+        return Ok(mantissa);
+    }
+    let exp = parse_float_exponent(exponent)?;
+    Ok(mantissa * 10f64.powi(exp))
+}
+
+fn parse_float_mantissa(s: &str) -> Result<f64, ()> {
+    let mut value = 0.0;
+    let mut frac_divisor = 1.0;
+    let mut in_frac = false;
+    let mut seen_digit = false;
+    for &b in s.as_bytes() {
+        match b {
+            b'_' => {}
+            b'0'..=b'9' => {
+                seen_digit = true;
+                let digit = f64::from(b - b'0');
+                if in_frac {
+                    frac_divisor *= 10.0;
+                    value += digit / frac_divisor;
+                } else {
+                    value = value.mul_add(10.0, digit);
+                }
+            }
+            b'.' => {
+                if in_frac {
+                    return Err(());
+                }
+                in_frac = true;
+            }
+            _ => return Err(()),
+        }
+    }
+    if seen_digit { Ok(value) } else { Err(()) }
+}
+
+fn parse_float_exponent(s: &str) -> Result<i32, ()> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i] == b'_' {
+        i += 1;
+    }
+    let negative = if i < bytes.len() && bytes[i] == b'-' {
+        i += 1;
+        true
+    } else if i < bytes.len() && bytes[i] == b'+' {
+        i += 1;
+        false
+    } else {
+        false
+    };
+    let mut exp: i32 = 0;
+    let mut seen_digit = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'_' => {}
+            b'0'..=b'9' => {
+                seen_digit = true;
+                exp = exp
+                    .checked_mul(10)
+                    .and_then(|v| v.checked_add(i32::from(bytes[i] - b'0')))
+                    .ok_or(())?;
+            }
+            _ => return Err(()),
+        }
+        i += 1;
+    }
+    if seen_digit {
+        Ok(if negative { -exp } else { exp })
+    } else {
+        Err(())
+    }
 }

@@ -349,9 +349,6 @@ impl Parser<'_> {
                 }
                 self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
             }
-            for i in 0..types.len() {
-                let _ = self.interner.intern(&i.to_string());
-            }
             return Ok(StructBody::Tuple(types));
         }
         Ok(StructBody::Unit)
