@@ -1589,6 +1589,7 @@ fn lower_if_condition_test(
             emit_arm_condition(ctx, &pattern.inner, temp, temp_ty, then_id, else_id);
             Some((pattern.clone(), temp, temp_ty))
         }
+        _ => None,
     }
 }
 

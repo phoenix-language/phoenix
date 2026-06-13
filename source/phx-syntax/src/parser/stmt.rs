@@ -13,7 +13,7 @@ use crate::token::{Keyword, TokenKind};
 impl Parser<'_> {
     /// Parses `{ items… }` as a [`Block`].
     pub(crate) fn parse_block(&mut self) -> Result<BlockNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
         let mut items = Vec::new();
         while !self.eat_kind(&TokenKind::RBrace) {
@@ -56,7 +56,7 @@ impl Parser<'_> {
             let stmt = self.parse_stmt()?;
             return Ok(BlockItem::Stmt(stmt));
         }
-        let start = self.pos;
+        let start = self.checkpoint();
         let expr = self.parse_expr()?;
         if matches!(self.peek_kind(), TokenKind::RBrace) {
             return Ok(BlockItem::Expr(expr));
@@ -101,7 +101,7 @@ impl Parser<'_> {
     /// Parses a single statement (must include `;` where required by grammar).
     #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_stmt(&mut self) -> Result<StmtNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let stmt = match self.peek_kind() {
             TokenKind::Keyword(Keyword::Const) => {
                 self.bump();

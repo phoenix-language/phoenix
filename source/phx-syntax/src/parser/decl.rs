@@ -17,7 +17,7 @@ use crate::token::{Keyword, TokenKind};
 impl Parser<'_> {
     /// Parses `#import path [:: { items }];`.
     pub(crate) fn parse_import(&mut self) -> Result<Node<ImportDirective>, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.expect_kind(ExpectedToken::Punct("#import"), &TokenKind::HashImport)?;
         let path = self.parse_module_path()?;
         let items = if self.eat_kind(&TokenKind::ColonColon) {
@@ -116,7 +116,7 @@ impl Parser<'_> {
 
     /// Parses one `pub`? top-level declaration followed by `;`.
     pub(crate) fn parse_top_level_item(&mut self) -> Result<Node<TopLevelItem>, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let attrs = self.parse_attribute_list()?;
         let is_extern = self.peek_keyword(Keyword::Extern)
             || (self.peek_keyword(Keyword::Pub)

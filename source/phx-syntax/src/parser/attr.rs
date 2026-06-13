@@ -21,7 +21,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_attribute(&mut self) -> Result<Node<Attribute>, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.expect_kind(ExpectedToken::Punct("#["), &TokenKind::HashBracket)?;
         let name = self.parse_attr_name()?;
         let args = if self.eat_kind(&TokenKind::LParen) {

@@ -13,7 +13,7 @@ use crate::token::{Keyword, TokenKind};
 impl Parser<'_> {
     /// Parses one [`Pattern`].
     pub(crate) fn parse_pattern(&mut self) -> Result<PatternNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         match self.peek_kind() {
             TokenKind::Ident("_") => {
                 self.bump();

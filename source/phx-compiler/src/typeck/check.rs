@@ -2928,6 +2928,7 @@ impl<'a> TypeChecker<'a> {
                         });
                     }
                 }
+                _ => {}
             }
         }
         self.unit
@@ -2943,6 +2944,7 @@ impl<'a> TypeChecker<'a> {
         let method = match &path.segments[1] {
             PathSegment::Ident(ident) => *ident,
             PathSegment::Type(_) => return None,
+            _ => return None,
         };
         let target_ty = self.resolve_type_segment_for_assoc_fn(&path.segments[0])?;
         Some((target_ty, method))
@@ -3012,6 +3014,7 @@ impl<'a> TypeChecker<'a> {
                 }
                 Some(self.types.intern(&Ty::Named { def, args: vec![] }))
             }
+            _ => None,
         }
     }
 
@@ -3335,6 +3338,7 @@ impl<'a> TypeChecker<'a> {
             Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
                 PathSegment::Ident(ident) => self.lookup_resolution(ident.id),
                 PathSegment::Type(seg) => self.lookup_resolution(seg.name.id),
+                _ => None,
             },
             _ => None,
         }
@@ -4926,6 +4930,7 @@ impl<'a> TypeChecker<'a> {
                 self.check_pattern(&pattern.inner, s, pattern.span, kind);
                 self.check_block_expr(then_block)
             }
+            _ => self.poison_type(),
         }
     }
 
@@ -5726,6 +5731,7 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
         Expr::Path(path) if path.segments.len() == 1 => match &path.segments[0] {
             PathSegment::Ident(ident) => Some(ident.id),
             PathSegment::Type(seg) => Some(seg.name.id),
+            _ => None,
         },
         _ => None,
     }

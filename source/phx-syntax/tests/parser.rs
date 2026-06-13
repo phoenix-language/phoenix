@@ -1210,6 +1210,7 @@ fn expr_assoc_path_preserves_type_generics() {
                     "expected type generics on first path segment"
                 ),
                 PathSegment::Ident(_) => panic!("expected type segment, got ident"),
+                _ => panic!("unexpected path segment variant"),
             }
         }
         other => panic!("expected Path, got {other:?}"),

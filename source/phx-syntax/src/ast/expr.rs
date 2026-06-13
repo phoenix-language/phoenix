@@ -120,6 +120,7 @@ pub enum PostfixOp {
 
 /// `if` condition: boolean expression or `const` / `var` pattern binding.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum IfCondition {
     /// `if expr { … }`
     Bool(ExprNode),

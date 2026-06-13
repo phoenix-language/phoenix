@@ -27,13 +27,13 @@ const EOF_KIND: TokenKind<'static> = TokenKind::Eof;
 /// Parser over a token stream and source text.
 pub(crate) struct Parser<'src> {
     /// Original source buffer (for spans and literal text).
-    pub(crate) source: &'src str,
+    source: &'src str,
     /// Token stream from [`crate::lexer::lex`].
-    pub(crate) tokens: &'src [Token<'src>],
+    tokens: &'src [Token<'src>],
     /// Index of the current token in `tokens`.
-    pub(crate) pos: usize,
+    pos: usize,
     /// Intern table filled while parsing identifiers.
-    pub(crate) interner: Interner,
+    interner: Interner,
     /// When set, parse errors are collected and parsing continues at sync points.
     recovery: Option<ParseBag>,
     /// Next [`AstNodeId`] to assign (monotonic per parse).
@@ -72,6 +72,21 @@ impl<'src> Parser<'src> {
         Node::new(inner, span, self.alloc_node_id())
     }
 
+    /// Returns the current token index (for span bookkeeping).
+    pub(crate) fn checkpoint(&self) -> usize {
+        self.pos
+    }
+
+    /// Restores the token cursor to a prior [`Self::checkpoint`].
+    pub(crate) fn restore(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+
+    /// Returns the intern table built during this parse.
+    pub(crate) fn into_interner(self) -> Interner {
+        self.interner
+    }
+
     /// Enables error recovery for the remainder of this parse.
     pub(crate) fn enable_recovery(&mut self) {
         self.recovery = Some(ParseBag::new());
@@ -94,7 +109,7 @@ impl<'src> Parser<'src> {
 
     /// Advances until `;`, `}`, or EOF (always consumes at least one token).
     pub(crate) fn sync_stmt(&mut self) {
-        let start = self.pos;
+        let start = self.checkpoint();
         while !self.at_end() {
             match self.peek_kind() {
                 TokenKind::Semicolon => {
@@ -107,14 +122,14 @@ impl<'src> Parser<'src> {
                 }
             }
         }
-        if self.pos == start && !self.at_end() {
+        if self.checkpoint() == start && !self.at_end() {
             let _ = self.bump();
         }
     }
 
     /// Advances until a plausible top-level item start, `;`, `}`, or EOF.
     pub(crate) fn sync_top_level(&mut self) {
-        let start = self.pos;
+        let start = self.checkpoint();
         while !self.at_end() {
             match self.peek_kind() {
                 TokenKind::Semicolon => {
@@ -147,7 +162,7 @@ impl<'src> Parser<'src> {
                 }
             }
         }
-        if self.pos == start && !self.at_end() {
+        if self.checkpoint() == start && !self.at_end() {
             let _ = self.bump();
         }
     }
@@ -498,14 +513,14 @@ impl<'src> Parser<'src> {
         }
         let mut items = Vec::new();
         while !self.at_end() {
-            let at_start = self.pos;
+            let at_start = self.checkpoint();
             match self.parse_top_level_item() {
                 Ok(item) => items.push(item),
                 Err(e) => {
                     if self.in_recovery_mode() {
                         self.record_error(e);
                         self.sync_top_level();
-                        if self.at_end() || self.pos == at_start {
+                        if self.at_end() || self.checkpoint() == at_start {
                             break;
                         }
                     } else {
@@ -556,7 +571,7 @@ pub fn parse_with_interner(source: &str, interner: &mut Interner) -> ParseResult
         }
     };
     let bag = parser.take_recovery_bag();
-    *interner = parser.interner;
+    *interner = parser.into_interner();
     ParseResult::with_errors(
         SourceFile::new(program, interner.clone()),
         bag.into_errors(),

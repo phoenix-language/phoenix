@@ -52,6 +52,7 @@ impl TypePathSegment {
 
 /// A path segment in a module path.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum PathSegment {
     /// Value/module segment (`snake_case`).
     Ident(Ident),

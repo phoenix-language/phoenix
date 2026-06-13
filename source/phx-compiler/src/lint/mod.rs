@@ -242,6 +242,7 @@ impl LintWalker<'_> {
         match condition {
             IfCondition::Bool(cond) => self.walk_expr(cond),
             IfCondition::Pattern { scrutinee, .. } => self.walk_expr(scrutinee),
+            _ => {}
         }
     }
 
@@ -378,6 +379,7 @@ impl LintWalker<'_> {
         let node_id = match seg {
             PathSegment::Ident(i) => i.id,
             PathSegment::Type(t) => t.name.id,
+            _ => return None,
         };
         self.resolve_node(node_id)
     }

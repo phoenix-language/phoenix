@@ -17,7 +17,7 @@ impl Parser<'_> {
     }
 
     fn parse_type_expr(&mut self) -> Result<Node<Type>, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         if self.eat_kind(&TokenKind::ColonColon) {
             self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
             let params = self.parse_type_list()?;
@@ -59,7 +59,7 @@ impl Parser<'_> {
 
     #[allow(clippy::too_many_lines)]
     fn parse_type_primary(&mut self) -> Result<Node<Type>, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         match self.peek_kind() {
             TokenKind::Keyword(k) if is_primitive_keyword(*k) => {
                 let k = *k;
@@ -224,7 +224,7 @@ impl Parser<'_> {
 
     /// Parses a trait bound: `Clone` or `From<U>`.
     pub(crate) fn parse_trait_bound(&mut self) -> Result<Node<Type>, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let ty = self.parse_type_postfix(start)?;
         match &ty.inner {
             Type::Named { .. } => Ok(ty),

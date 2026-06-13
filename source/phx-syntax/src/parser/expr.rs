@@ -25,7 +25,7 @@ impl Parser<'_> {
 
     /// Parses assignment expressions with trailing `as Type` casts.
     fn parse_cast_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let mut expr = self.parse_assign_expr()?;
         while self.eat_keyword(Keyword::As) {
             let ty = self.parse_type()?;
@@ -43,7 +43,7 @@ impl Parser<'_> {
 
     /// Parses `=` / `+=` / … assignment (right-associative).
     fn parse_assign_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let left = self.parse_logical_or_expr()?;
         if let Some(op) = parse_assign_op(self.peek_kind()) {
             self.bump();
@@ -75,7 +75,7 @@ impl Parser<'_> {
 
     /// Parses `equality_expr` with optional `..` / `..=` range suffix.
     fn parse_range_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let left = self.parse_equality_expr()?;
         let inclusive = match self.peek_kind() {
             TokenKind::DotDot => {
@@ -236,7 +236,7 @@ impl Parser<'_> {
     }
 
     fn parse_power_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let base = self.parse_unary_expr()?;
         if self.eat_kind(&TokenKind::StarStar) {
             let exp = self.parse_unary_expr()?;
@@ -254,7 +254,7 @@ impl Parser<'_> {
     }
 
     fn parse_unary_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let op = match self.peek_kind() {
             TokenKind::Minus => Some(UnaryOp::Neg),
             TokenKind::Bang => Some(UnaryOp::Not),
@@ -281,7 +281,7 @@ impl Parser<'_> {
 
     /// Parses primary plus `.field`, calls, indexing, and `?`.
     fn parse_postfix_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let base = self.parse_primary_expr()?;
         let mut ops = Vec::new();
         loop {
@@ -348,7 +348,7 @@ impl Parser<'_> {
 
     /// Parses literals, paths, blocks, `if`/`match`, and parenthesized forms.
     fn parse_primary_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         match self.peek_kind() {
             TokenKind::Integer { .. }
             | TokenKind::Float { .. }
@@ -404,7 +404,7 @@ impl Parser<'_> {
     }
 
     fn parse_paren_or_tuple_or_lambda(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.bump();
         if self.eat_kind(&TokenKind::RParen) {
             if self.eat_kind(&TokenKind::FatArrow) {
@@ -444,7 +444,7 @@ impl Parser<'_> {
     }
 
     fn parse_array_literal(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.bump();
         let mut elems = Vec::new();
         if !self.eat_kind(&TokenKind::RBracket) {
@@ -460,7 +460,7 @@ impl Parser<'_> {
     /// Parses `Type { … }`, `a::b`, or a single-segment path/ident.
     #[allow(clippy::too_many_lines, clippy::collapsible_if)]
     fn parse_path_or_struct_literal(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let (type_name, first_segment, from_type_ident) = match self.peek_kind() {
             TokenKind::TypeIdent(n) => {
                 let n = *n;
@@ -479,7 +479,7 @@ impl Parser<'_> {
                 if matches!(self.peek_kind(), TokenKind::ColonColon)
                     && matches!(self.peek_at(1), TokenKind::Lt)
                 {
-                    let saved = self.pos;
+                    let saved = self.checkpoint();
                     self.bump();
                     self.bump();
                     if let Ok(generic_args) = self.parse_generic_args() {
@@ -501,7 +501,7 @@ impl Parser<'_> {
                             ));
                         }
                     }
-                    self.pos = saved;
+                    self.restore(saved);
                     return Ok(self.node(Expr::Ident(id), self.span_from(start)));
                 }
                 (
@@ -676,7 +676,7 @@ impl Parser<'_> {
 
     /// Parses `if` / `else if` / `else` as an expression.
     fn parse_if_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.eat_keyword(Keyword::If);
         let condition = self.parse_if_condition()?;
         let then_block = self.parse_block()?;
@@ -740,7 +740,7 @@ impl Parser<'_> {
 
     /// Parses `match scrutinee { arms… }`.
     fn parse_match_expr(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         self.eat_keyword(Keyword::Match);
         let scrutinee = self.parse_expr()?;
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
@@ -822,7 +822,7 @@ impl Parser<'_> {
 
     /// Parses `@spawn` / `@send` / `@receive` / `@reply` primary expressions.
     fn parse_runtime_directive(&mut self) -> Result<ExprNode, ParseError> {
-        let start = self.pos;
+        let start = self.checkpoint();
         let kind = match self.peek_kind() {
             TokenKind::AtSpawn => RuntimeDirectiveKind::Spawn,
             TokenKind::AtSend => RuntimeDirectiveKind::Send,

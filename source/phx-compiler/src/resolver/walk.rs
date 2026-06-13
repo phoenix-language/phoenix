@@ -901,6 +901,7 @@ impl Resolver<'_> {
             phx_syntax::ast::expr::IfCondition::Pattern { scrutinee, .. } => {
                 self.resolve_expr_node(scrutinee);
             }
+            _ => {}
         }
     }
 
@@ -1001,6 +1002,7 @@ impl Resolver<'_> {
                     }
                 }
                 PathSegment::Ident(ident) => self.resolve_type_param_in_assoc_path(ident),
+                _ => {}
             }
             for seg in path.segments.iter().skip(2) {
                 match seg {
@@ -1013,6 +1015,7 @@ impl Resolver<'_> {
                             }
                         }
                     }
+                    _ => {}
                 }
             }
             return;
@@ -1027,6 +1030,7 @@ impl Resolver<'_> {
                     }
                 }
             }
+            _ => {}
         }
         if path.segments.len() > 1 {
             for seg in &path.segments[1..] {
@@ -1040,6 +1044,7 @@ impl Resolver<'_> {
                             }
                         }
                     }
+                    _ => {}
                 }
             }
         } else {
