@@ -3,6 +3,8 @@
 //! [`compile_source`] and [`check_file`] run parse → resolve → typeck.
 //! [`compile_to_module`] continues through [`lower::lower`] and [`codegen::codegen`].
 //! Verify and VM execution are orchestrated by the `phx` CLI, not this crate.
+
+#![allow(clippy::result_large_err)] // `CompileError::TypeCheck` carries full `DiagnosticContext`.
 //!
 //! ## Modules
 //!

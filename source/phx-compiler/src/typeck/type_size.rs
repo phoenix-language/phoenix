@@ -61,7 +61,9 @@ mod tests {
         let mut types = TypeInterner::new();
         let s32 = types.intern(&Ty::Primitive(Keyword::S32));
         let layout = ProgramLayout::default();
-        let file = phx_syntax::parse("main :: () => {};").expect("parse");
+        let file = phx_syntax::parse("main :: () => {};");
+        assert!(!file.has_errors());
+        let file = file.value;
         let resolved = crate::resolver::resolve(&file).expect("resolve");
         assert_eq!(type_byte_size(&types, &layout, &resolved, s32), Some(4));
         let _ = int_literal_type(&mut types, true);

@@ -28,5 +28,5 @@ print_stderr = "deny"
 [profile.release]
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+# panic = "abort"
 strip = "symbols"

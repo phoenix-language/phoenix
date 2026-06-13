@@ -13,7 +13,7 @@ mod types;
 
 use std::borrow::Cow;
 
-use phx_diagnostics::{ExpectedToken, ParseBag, ParseError, Span};
+use phx_diagnostics::{ExpectedToken, ParseBag, ParseError, ParseResult, Span};
 
 use crate::ast::{AstNodeId, Node, Program};
 use crate::intern::Interner;
@@ -518,22 +518,31 @@ impl<'src> Parser<'src> {
 
 /// Parses `source` into a [`SourceFile`] (program + interner).
 ///
-/// # Errors
-///
-/// Returns [`ParseBag`] when lexical or syntactic errors were collected.
-pub fn parse(source: &str) -> Result<SourceFile, ParseBag> {
+/// Always returns a [`ParseResult`]: `value` holds the partial or complete AST;
+/// `errors` is non-empty when lexical or syntactic diagnostics were collected.
+#[must_use]
+pub fn parse(source: &str) -> ParseResult<SourceFile> {
     parse_with_interner(source, &mut Interner::new())
 }
 
 /// Parses `source` using `interner` for all identifiers (shared across a crate).
 ///
-/// # Errors
-///
-/// Returns [`ParseBag`] when any parse errors were collected.
-pub fn parse_with_interner(source: &str, interner: &mut Interner) -> Result<SourceFile, ParseBag> {
+/// Always returns a [`ParseResult`]: `value` holds the partial or complete AST;
+/// `errors` is non-empty when lexical or syntactic diagnostics were collected.
+#[must_use]
+pub fn parse_with_interner(source: &str, interner: &mut Interner) -> ParseResult<SourceFile> {
+    let empty_program = Program {
+        imports: Vec::new(),
+        items: Vec::new(),
+    };
     let tokens = match lex(source) {
         Ok(t) => t,
-        Err(e) => return Err(ParseBag::from_single(ParseError::Lex(e))),
+        Err(e) => {
+            return ParseResult::with_errors(
+                SourceFile::new(empty_program, interner.clone()),
+                vec![ParseError::Lex(e)],
+            );
+        }
     };
     let mut parser = Parser::with_interner(source, &tokens, std::mem::take(interner));
     parser.enable_recovery();
@@ -541,13 +550,13 @@ pub fn parse_with_interner(source: &str, interner: &mut Interner) -> Result<Sour
         Ok(p) => p,
         Err(e) => {
             parser.record_error(e);
-            return Err(parser.take_recovery_bag());
+            empty_program
         }
     };
     let bag = parser.take_recovery_bag();
     *interner = parser.interner;
-    if bag.has_errors() {
-        return Err(bag);
-    }
-    Ok(SourceFile::new(program, interner.clone()))
+    ParseResult::with_errors(
+        SourceFile::new(program, interner.clone()),
+        bag.into_errors(),
+    )
 }

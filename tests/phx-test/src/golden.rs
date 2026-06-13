@@ -85,7 +85,13 @@ pub fn format_check_with_module_root(entry: &Path, module_root: &Path) -> String
 
 /// Format diagnostics from `compile_source` failure.
 pub fn format_compile_source(source: &str) -> String {
-    let source_file = phx_syntax::parse(source).expect("parse fixture for golden");
+    let source_file = phx_syntax::parse(source);
+    assert!(
+        !source_file.has_errors(),
+        "parse fixture: {:?}",
+        source_file.errors
+    );
+    let source_file = source_file.value;
     let err = compile_source(source, None).expect_err("expected compile failure");
     err.format_with_modules(Some(source), None, None, Some(&source_file.interner))
 }

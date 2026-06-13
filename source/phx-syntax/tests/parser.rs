@@ -39,14 +39,19 @@ mod support {
     }
 
     pub fn parse_ok(source: &str) -> Program {
-        parse(source).map_or_else(
-            |e| panic!("expected parse ok for:\n{source}\nerror: {e}"),
-            |sf| sf.program,
-        )
+        let result = parse(source);
+        assert!(
+            !result.has_errors(),
+            "expected parse ok for:\n{source}\nerrors: {:?}",
+            result.errors
+        );
+        result.value.program
     }
 
     pub fn parse_err(source: &str) -> ParseBag {
-        parse(source).expect_err("expected parse error")
+        let result = parse(source);
+        assert!(result.has_errors(), "expected parse error for:\n{source}");
+        result.into_bag()
     }
 
     pub fn parse_err_first(source: &str) -> ParseError {
@@ -98,8 +103,8 @@ mod support {
 }
 
 use support::{
-    assert_ok, assert_parse_err, assert_unsupported, in_main, in_main_expr, main_fn, parse_err,
-    parse_ok, with_type_alias,
+    assert_ok, assert_parse_err, assert_unsupported, in_main, in_main_expr, main_fn, parse_ok,
+    with_type_alias,
 };
 
 // -----------------------------------------------------------------------------
@@ -1350,12 +1355,20 @@ fn pat_tuple() {
 
 #[test]
 fn parse_recovery_collects_multiple_errors() {
-    let bag = parse_err("main :: () => { const x = ; const y: s32 = ; };");
+    let source = "main :: () => { const x = ; const y: s32 = ; };";
+    let result = parse(source);
     assert!(
-        bag.errors().len() >= 2,
+        result.errors.len() >= 2,
         "expected at least two parse errors, got {:?}",
-        bag.errors()
+        result.errors
     );
+    let has_main = result
+        .value
+        .program
+        .items
+        .iter()
+        .any(|item| matches!(&item.inner.decl, TopLevelDecl::Function(_)));
+    assert!(has_main, "expected partial AST to preserve main");
 }
 
 // -----------------------------------------------------------------------------

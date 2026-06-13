@@ -6,7 +6,7 @@ use phx_syntax::parse;
 
 #[test]
 fn strip_cfg_removes_false_predicates() {
-    let mut file = parse(
+    let parsed = parse(
         r#"
 #[cfg(target_os = "linux")]
 pub linux_only :: () => s32 { 1 };
@@ -16,8 +16,9 @@ pub win_only :: () => s32 { 2 };
 
 main :: () => { };
 "#,
-    )
-    .expect("parse");
+    );
+    assert!(!parsed.has_errors(), "parse: {:?}", parsed.errors);
+    let mut file = parsed.value;
     let cfg = CompileCfg {
         target_os: "linux".to_string(),
         target_arch: "x86_64".to_string(),
@@ -42,15 +43,16 @@ main :: () => { };
 
 #[test]
 fn strip_cfg_not_predicate() {
-    let mut file = parse(
+    let parsed = parse(
         r#"
 #[cfg(not(target_os = "windows"))]
 pub not_win :: () => s32 { 1 };
 
 main :: () => { };
 "#,
-    )
-    .expect("parse");
+    );
+    assert!(!parsed.has_errors(), "parse: {:?}", parsed.errors);
+    let mut file = parsed.value;
     let cfg = CompileCfg {
         target_os: "linux".to_string(),
         target_arch: "x86_64".to_string(),

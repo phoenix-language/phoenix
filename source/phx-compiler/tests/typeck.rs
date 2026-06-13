@@ -915,7 +915,9 @@ fn generic_fn_end_to_end_compile() {
 #[test]
 fn generic_call_ast_has_args() {
     let source = "id :: <t> (x: t) => t { x }; main :: () => { const n: s32 = id :: <s32> (42); };";
-    let sf = phx_syntax::parse(source).expect("parse");
+    let sf = phx_syntax::parse(source);
+    assert!(!sf.has_errors(), "parse: {:?}", sf.errors);
+    let sf = sf.value;
     let main = sf
         .program
         .items
@@ -1141,6 +1143,29 @@ fn parse_recovery_formats_multiple_carets() {
     assert!(
         formatted.contains("aborting due to 2 previous errors"),
         "expected multi-error footer:\n{formatted}"
+    );
+}
+
+#[test]
+fn parse_recovery_merges_type_errors_in_output() {
+    let source = "main :: () => { const x = ; var bad: s32 = b\"not\"; };";
+    let err = match compile_source(source, None) {
+        Err(
+            e @ CompileError::TypeCheck {
+                prior_parse: Some(_),
+                ..
+            },
+        ) => e,
+        other => panic!("expected type error with prior parse, got {other:?}"),
+    };
+    let formatted = err.format_with_source(Some(source));
+    assert!(
+        formatted.matches('^').count() >= 2,
+        "expected parse carets in merged output:\n{formatted}"
+    );
+    assert!(
+        formatted.contains("type mismatch") || formatted.contains("expected"),
+        "expected type diagnostic in merged output:\n{formatted}"
     );
 }
 

@@ -64,16 +64,22 @@ pub fn check_standalone_unit_with_context(
     let source = std::fs::read_to_string(&opts.entry).map_err(CompileError::Io)?;
     let mut bag = DiagnosticBag::new();
     let Some(loaded) = load_program_with_context(&opts.entry, ctx, None, &mut bag) else {
-        return Err(CompileError::Resolve { bag, context: None });
+        return Err(CompileError::Resolve {
+            bag,
+            context: None,
+            prior_parse: None,
+        });
     };
     let diag_ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
     let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(diag_ctx.clone()),
+        prior_parse: None,
     })?;
     let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
         context: DiagnosticContext::from_resolved(&resolved),
+        prior_parse: None,
     })?;
     Ok(crate::unit::CompilationUnit {
         path: Some(opts.entry.clone()),

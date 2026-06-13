@@ -181,27 +181,28 @@ pub fn load_program_with_context(
                 continue;
             }
         };
-        let file = match parse_with_interner(&source, &mut interner) {
-            Ok(f) => f,
-            Err(parse_bag) => {
-                let span = parse_bag
-                    .errors()
-                    .iter()
-                    .find_map(phx_diagnostics::ParseError::span)
-                    .unwrap_or(import_span);
-                let failing_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
-                bag.push(
-                    failing_module,
-                    ResolveError::ModuleParse {
-                        span,
-                        path: fs_path.display().to_string(),
-                        message: parse_bag.to_string(),
-                    },
-                );
-                continue;
-            }
-        };
-        let mut program = file.program;
+        let parsed = parse_with_interner(&source, &mut interner);
+        if parsed.has_errors() {
+            let parse_bag = parsed.errors_bag();
+            let span = parse_bag
+                .errors()
+                .iter()
+                .find_map(phx_diagnostics::ParseError::span)
+                .unwrap_or(import_span);
+            let failing_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
+            bag.push(
+                failing_module,
+                ResolveError::ModuleParse {
+                    span,
+                    path: fs_path.display().to_string(),
+                    message: parse_bag.to_string(),
+                },
+            );
+        }
+        let mut program = parsed.value.program;
+        if program.imports.is_empty() && program.items.is_empty() {
+            continue;
+        }
         let compile_cfg = CompileCfg::host();
         if let Err(err) = strip_cfg(&mut program, &compile_cfg, &interner) {
             let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);

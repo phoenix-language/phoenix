@@ -7,7 +7,9 @@ use phx_syntax::ast::decl::TopLevelDecl;
 use phx_syntax::parse;
 
 fn expand_and_count_impls(source: &str) -> usize {
-    let mut file = parse(source).expect("parse");
+    let parsed = parse(source);
+    assert!(!parsed.has_errors(), "parse: {:?}", parsed.errors);
+    let mut file = parsed.value;
     expand_derives(&mut file.program, &file.interner).expect("expand");
     file.program
         .items
@@ -32,8 +34,9 @@ fn expand_enum_partialeq_adds_impl() {
 
 #[test]
 fn expand_unsupported_trait_errors() {
-    let mut file =
-        parse("#derive(Clone) Point :: struct { x: s32 }; main :: () => { };").expect("parse");
+    let parsed = parse("#derive(Clone) Point :: struct { x: s32 }; main :: () => { };");
+    assert!(!parsed.has_errors());
+    let mut file = parsed.value;
     let err = expand_derives(&mut file.program, &file.interner).expect_err("clone");
     assert!(err.message.contains("unsupported derive trait"));
 }
@@ -44,7 +47,9 @@ fn derive_partialeq_typechecks() {
                   #derive(PartialEq) Point :: struct { x: s32, y: s32 }; \
                   main :: () => { const p = Point { x: 1, y: 2 }; const q = Point { x: 1, y: 2 }; \
                   const _: bool = p.eq(&q); };";
-    let mut file = parse(source).expect("parse");
+    let parsed = parse(source);
+    assert!(!parsed.has_errors());
+    let mut file = parsed.value;
     expand_derives(&mut file.program, &file.interner).expect("expand");
     let resolved = resolve(&file).expect("resolve");
     type_check(&resolved).expect("typecheck");
@@ -55,7 +60,9 @@ fn derive_enum_partialeq_typechecks() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
                   #derive(PartialEq) Shape :: enum { Nil(), Point(s32, s32) }; \
                   main :: () => { const a = Nil(); const b = Nil(); const _: bool = a.eq(&b); };";
-    let mut file = parse(source).expect("parse");
+    let parsed = parse(source);
+    assert!(!parsed.has_errors());
+    let mut file = parsed.value;
     expand_derives(&mut file.program, &file.interner).expect("expand");
     let resolved = resolve(&file).expect("resolve");
     type_check(&resolved).expect("typecheck");

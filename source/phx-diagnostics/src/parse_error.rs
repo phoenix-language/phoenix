@@ -183,6 +183,24 @@ impl<T> ParseResult<T> {
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
     }
+
+    /// Creates a result carrying `value` and collected `errors`.
+    #[must_use]
+    pub fn with_errors(value: T, errors: Vec<ParseError>) -> Self {
+        Self { value, errors }
+    }
+
+    /// Moves collected errors into a [`ParseBag`].
+    #[must_use]
+    pub fn into_bag(self) -> ParseBag {
+        ParseBag::from_errors(self.errors)
+    }
+
+    /// Clones collected errors into a [`ParseBag`].
+    #[must_use]
+    pub fn errors_bag(&self) -> ParseBag {
+        ParseBag::from_errors(self.errors.clone())
+    }
 }
 
 /// Collected parse diagnostics; parsing may continue after non-fatal errors.
@@ -204,6 +222,12 @@ impl ParseBag {
         Self {
             errors: vec![error],
         }
+    }
+
+    /// Creates a bag from collected errors.
+    #[must_use]
+    pub fn from_errors(errors: Vec<ParseError>) -> Self {
+        Self { errors }
     }
 
     /// Records an error.

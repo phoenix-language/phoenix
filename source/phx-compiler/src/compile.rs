@@ -82,6 +82,8 @@ pub enum CompileError {
         bag: DiagnosticBag,
         /// Module sources when available (multi-file crate load / resolve).
         context: Option<DiagnosticContext>,
+        /// Parse errors from an earlier best-effort stage, when present.
+        prior_parse: Option<Box<ParseBag>>,
     },
     /// One or more type-check errors.
     TypeCheck {
@@ -89,6 +91,8 @@ pub enum CompileError {
         bag: TypeCheckBag,
         /// Module sources and interner from the resolved program.
         context: DiagnosticContext,
+        /// Parse errors from an earlier best-effort stage, when present.
+        prior_parse: Option<Box<ParseBag>>,
     },
     /// One or more IR lowering errors (internal invariant violations).
     Lower {
@@ -134,19 +138,43 @@ impl CompileError {
     ) -> String {
         match self {
             Self::Parse(bag) => format_parse_bag(bag, entry_source, entry_path, style),
-            Self::Resolve { bag, context } => {
+            Self::Resolve {
+                bag,
+                context,
+                prior_parse,
+            } => {
                 let mods = context.as_ref().map(|c| c.modules.as_slice()).or(modules);
                 let intern = context.as_ref().map(|c| &c.interner).or(interner);
-                format_resolve_bag(bag, entry_source, entry_path, mods, intern, style)
+                let stage = format_resolve_bag(bag, entry_source, entry_path, mods, intern, style);
+                prepend_parse_bag(
+                    prior_parse.as_deref(),
+                    &stage,
+                    entry_source,
+                    entry_path,
+                    style,
+                )
             }
-            Self::TypeCheck { bag, context } => format_typecheck_bag(
+            Self::TypeCheck {
                 bag,
-                entry_source,
-                entry_path,
-                Some(&context.modules),
-                Some(&context.interner),
-                style,
-            ),
+                context,
+                prior_parse,
+            } => {
+                let stage = format_typecheck_bag(
+                    bag,
+                    entry_source,
+                    entry_path,
+                    Some(&context.modules),
+                    Some(&context.interner),
+                    style,
+                );
+                prepend_parse_bag(
+                    prior_parse.as_deref(),
+                    &stage,
+                    entry_source,
+                    entry_path,
+                    style,
+                )
+            }
             Self::Lower { bag, context } => {
                 format_lower_bag(bag, entry_source, entry_path, Some(&context.modules), style)
             }
@@ -169,6 +197,25 @@ struct ModuleSource<'a> {
     file_path: String,
     logical_module: Option<String>,
     source: &'a str,
+}
+
+fn prepend_parse_bag(
+    prior_parse: Option<&ParseBag>,
+    stage: &str,
+    entry_source: Option<&str>,
+    entry_path: Option<&str>,
+    style: &dyn DiagnosticStyle,
+) -> String {
+    match prior_parse {
+        Some(bag) => join_diagnostics(
+            style,
+            &[
+                format_parse_bag(bag, entry_source, entry_path, style),
+                stage.to_owned(),
+            ],
+        ),
+        None => stage.to_owned(),
+    }
 }
 
 fn format_parse_bag(
@@ -413,7 +460,9 @@ impl std::error::Error for CompileError {
 ///
 /// Returns [`CompileError::Parse`] or [`CompileError::Resolve`] on failure.
 pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUnit, CompileError> {
-    let mut source_file = parse(source).map_err(CompileError::Parse)?;
+    let parsed = parse(source);
+    let prior_parse = parsed.has_errors().then(|| Box::new(parsed.errors_bag()));
+    let mut source_file = parsed.value;
     if let Err(err) = strip_cfg(
         &mut source_file.program,
         &CompileCfg::host(),
@@ -427,7 +476,11 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
                 message: err.message,
             },
         );
-        return Err(CompileError::Resolve { bag, context: None });
+        return Err(CompileError::Resolve {
+            bag,
+            context: None,
+            prior_parse,
+        });
     }
     if let Err(err) = expand_derives(&mut source_file.program, &source_file.interner) {
         let mut bag = DiagnosticBag::new();
@@ -438,13 +491,26 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
                 message: format!("invalid `#derive`: {}", err.message),
             },
         );
-        return Err(CompileError::Resolve { bag, context: None });
+        return Err(CompileError::Resolve {
+            bag,
+            context: None,
+            prior_parse,
+        });
     }
-    let resolved =
-        resolve(&source_file).map_err(|bag| CompileError::Resolve { bag, context: None })?;
+    let resolved = resolve(&source_file).map_err(|bag| CompileError::Resolve {
+        bag,
+        context: None,
+        prior_parse: prior_parse.clone(),
+    })?;
     let ctx = DiagnosticContext::from_resolved(&resolved);
-    let typed =
-        type_check(&resolved).map_err(|bag| CompileError::TypeCheck { bag, context: ctx })?;
+    let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
+        bag,
+        context: ctx,
+        prior_parse: prior_parse.clone(),
+    })?;
+    if let Some(bag) = prior_parse {
+        return Err(CompileError::Parse(*bag));
+    }
     Ok(CompilationUnit {
         path: path.map(Path::to_path_buf),
         source: source.to_owned(),
@@ -507,16 +573,22 @@ pub fn compile_source_with_module_root(
 ) -> Result<CompilationUnit, CompileError> {
     let mut bag = DiagnosticBag::new();
     let Some(loaded) = load_program(path, module_root, &mut bag) else {
-        return Err(CompileError::Resolve { bag, context: None });
+        return Err(CompileError::Resolve {
+            bag,
+            context: None,
+            prior_parse: None,
+        });
     };
     let ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
     let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(ctx.clone()),
+        prior_parse: None,
     })?;
     let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
         context: DiagnosticContext::from_resolved(&resolved),
+        prior_parse: None,
     })?;
     Ok(CompilationUnit {
         path: Some(path.to_path_buf()),
@@ -555,16 +627,22 @@ pub fn check_project_file(
     let layout = BuildLayout::new(config);
     let mut bag = DiagnosticBag::new();
     let Some(loaded) = load_program_with_context(path, &ctx, Some(&layout), &mut bag) else {
-        return Err(CompileError::Resolve { bag, context: None });
+        return Err(CompileError::Resolve {
+            bag,
+            context: None,
+            prior_parse: None,
+        });
     };
     let ctx_diag = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
     let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(ctx_diag.clone()),
+        prior_parse: None,
     })?;
     let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
         context: DiagnosticContext::from_resolved(&resolved),
+        prior_parse: None,
     })?;
     Ok(CompilationUnit {
         path: Some(path.to_path_buf()),
@@ -586,16 +664,22 @@ pub fn check_file_with_module_path(
     let mut bag = DiagnosticBag::new();
     let Some(loaded) = load_program(path, module_root, &mut bag) else {
         let context = None;
-        return Err(CompileError::Resolve { bag, context });
+        return Err(CompileError::Resolve {
+            bag,
+            context,
+            prior_parse: None,
+        });
     };
     let ctx = DiagnosticContext::from_loaded(&loaded.modules, loaded.interner.clone());
     let resolved = resolve_loaded_program(loaded).map_err(|bag| CompileError::Resolve {
         bag,
         context: Some(ctx.clone()),
+        prior_parse: None,
     })?;
     let typed = type_check(&resolved).map_err(|bag| CompileError::TypeCheck {
         bag,
         context: DiagnosticContext::from_resolved(&resolved),
+        prior_parse: None,
     })?;
     Ok(CompilationUnit {
         path: Some(path.to_path_buf()),

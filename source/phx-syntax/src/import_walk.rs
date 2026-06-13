@@ -190,8 +190,9 @@ main :: () => {
   const _ = add(1, 2);
 };
 ";
-        let file = parse(src).expect("parse");
-        let imports = all_imports(&file.program);
+        let file = parse(src);
+        assert!(!file.has_errors(), "parse: {:?}", file.errors);
+        let imports = all_imports(&file.value.program);
         assert_eq!(imports.len(), 1);
     }
 
@@ -205,8 +206,9 @@ main :: () => {
   };
 };
 ";
-        let file = parse(src).expect("parse");
-        assert_eq!(all_imports(&file.program).len(), 1);
+        let file = parse(src);
+        assert!(!file.has_errors(), "parse: {:?}", file.errors);
+        assert_eq!(all_imports(&file.value.program).len(), 1);
     }
 
     #[test]
@@ -221,7 +223,8 @@ main :: () => {
   };
 };
 ";
-        let file = parse(src).expect("parse");
-        assert_eq!(all_imports(&file.program).len(), 1);
+        let file = parse(src);
+        assert!(!file.has_errors(), "parse: {:?}", file.errors);
+        assert_eq!(all_imports(&file.value.program).len(), 1);
     }
 }

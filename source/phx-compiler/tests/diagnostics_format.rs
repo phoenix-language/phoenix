@@ -24,6 +24,7 @@ fn resolve_bag_formats_multiple_carets() {
     let formatted = CompileError::Resolve {
         bag: err,
         context: None,
+        prior_parse: None,
     }
     .format_with_source(Some(source));
     assert!(
@@ -46,6 +47,7 @@ fn missing_main_shows_caret_when_source_provided() {
     let formatted = CompileError::Resolve {
         bag: err,
         context: None,
+        prior_parse: None,
     }
     .format_with_source(Some(source));
     assert!(
@@ -63,7 +65,7 @@ fn multi_module_error_labels_short_dependency_file() {
     let root = manifest_dir().join("tests/fixtures/diag_multi");
     let entry = root.join("long_main.phx");
     let err = match check_file_with_module_path(&entry, &root) {
-        Err(CompileError::Resolve { bag, context }) => (bag, context),
+        Err(CompileError::Resolve { bag, context, .. }) => (bag, context),
         other => panic!("expected resolve error, got {other:?}"),
     };
     assert!(
@@ -76,6 +78,7 @@ fn multi_module_error_labels_short_dependency_file() {
     let formatted = CompileError::Resolve {
         bag: err.0,
         context: err.1,
+        prior_parse: None,
     }
     .format_with_source(std::fs::read_to_string(&entry).ok().as_deref());
     assert!(

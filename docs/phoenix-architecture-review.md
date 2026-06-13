@@ -71,7 +71,7 @@ A clean front end: `lexer`/`token` → `parser/` (split by construct) → plain-
 **Location:** `phx-syntax/src/parser/mod.rs:541–543` (`parse_with_interner`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Recovery builds a partial AST, but any non-empty `ParseBag` returns `Err(bag)` and discards the tree.
 **Detail:** The parser pays the full cost of error recovery and then throws away the result, so resolve/typeck can never run "best effort" on a file with one syntax error. This caps the multi-error UX at parse errors only and blocks future IDE/LSP use.
@@ -886,7 +886,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-002 | - [ ] | Major | phx-syntax | Parser peeks clone full `TokenKind` with heap payloads |
 | PHX-003 | - [x] | Major | phx-syntax | Invalid `Symbol` silently resolves to placeholder string |
 | PHX-004 | - [x] | Major | phx-syntax | Block statements strip `StmtNode` span |
-| PHX-005 | - [ ] | Major | phx-syntax | Partial AST discarded on any parse error |
+| PHX-005 | - [x] | Major | phx-syntax | Partial AST discarded on any parse error |
 | PHX-006 | - [ ] | Minor | phx-syntax | Unclosed `{` exits block loop with no diagnostic |
 | PHX-007 | - [ ] | Minor | phx-syntax | `range_pattern` fails as `InvalidPattern` instead of `UnsupportedSyntax` |
 | PHX-008 | - [ ] | Minor | phx-syntax | Attribute semantics resolved in syntax crate |

@@ -69,7 +69,11 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
     };
 
     let Some(loaded) = loaded else {
-        let err = CompileError::Resolve { bag, context: None };
+        let err = CompileError::Resolve {
+            bag,
+            context: None,
+            prior_parse: None,
+        };
         reporter.compile_error(&err, Some(&source), Some(&file));
         return CliExit::Compile;
     };
@@ -82,6 +86,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
             let err = CompileError::Resolve {
                 bag: resolve_bag,
                 context: Some(ctx_diag),
+                prior_parse: None,
             };
             reporter.compile_error(&err, Some(&source), Some(&file));
             return CliExit::Compile;
@@ -95,6 +100,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
             let err = CompileError::TypeCheck {
                 bag: type_bag,
                 context: DiagnosticContext::from_resolved(&resolved),
+                prior_parse: None,
             };
             reporter.compile_error(&err, Some(&source), Some(&file));
             return CliExit::Compile;
@@ -116,6 +122,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
             let err = CompileError::Resolve {
                 bag: reload_bag,
                 context: None,
+                prior_parse: None,
             };
             reporter.compile_error(&err, Some(&source), Some(&file));
             return CliExit::Compile;
@@ -150,6 +157,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
             let err = CompileError::Resolve {
                 bag,
                 context: Some(DiagnosticContext::from_resolved(&typed.resolved)),
+                prior_parse: None,
             };
             reporter.compile_error(&err, Some(&source), Some(&file));
             return CliExit::Compile;

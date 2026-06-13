@@ -300,7 +300,9 @@ fn lambda_closure_records_upvar() {
     use phx_syntax::parse;
 
     let src = "main :: () => { const x = 1; const _f = () => x; };";
-    let sf = parse(src).expect("parse");
+    let sf = parse(src);
+    assert!(!sf.has_errors(), "parse: {:?}", sf.errors);
+    let sf = sf.value;
     let resolved = resolve(&sf).expect("resolve");
     assert!(!resolved.closures.is_empty(), "expected closure metadata");
     let info = resolved.closures.values().next().expect("closure info");
