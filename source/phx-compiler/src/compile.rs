@@ -9,10 +9,9 @@ use std::path::Path;
 use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
-    DiagnosticBag, DiagnosticStyle, LintBag, LowerBag, ParseBag, ParseError, PlainStyle,
-    SpanContext, TypeCheckBag, format_lex_error_styled, format_lints_styled,
-    format_lower_error_styled, format_resolve_error_styled, format_typecheck_error_styled,
-    join_diagnostics, render_diagnostic,
+    DiagnosticBag, DiagnosticStyle, LintBag, LowerBag, ParseBag, PlainStyle, SpanContext,
+    TypeCheckBag, format_lints_styled, format_lower_error_styled, format_parse_bag_styled,
+    format_resolve_error_styled, format_typecheck_error_styled, join_diagnostics,
 };
 use phx_syntax::{Interner, parse};
 
@@ -137,7 +136,15 @@ impl CompileError {
         style: &dyn DiagnosticStyle,
     ) -> String {
         match self {
-            Self::Parse(bag) => format_parse_bag(bag, entry_source, entry_path, style),
+            Self::Parse(bag) => format_parse_bag_styled(
+                bag,
+                entry_source,
+                SpanContext {
+                    file_path: entry_path,
+                    logical_module: None,
+                },
+                style,
+            ),
             Self::Resolve {
                 bag,
                 context,
@@ -210,36 +217,20 @@ fn prepend_parse_bag(
         Some(bag) => join_diagnostics(
             style,
             &[
-                format_parse_bag(bag, entry_source, entry_path, style),
+                format_parse_bag_styled(
+                    bag,
+                    entry_source,
+                    SpanContext {
+                        file_path: entry_path,
+                        logical_module: None,
+                    },
+                    style,
+                ),
                 stage.to_owned(),
             ],
         ),
         None => stage.to_owned(),
     }
-}
-
-fn format_parse_bag(
-    bag: &ParseBag,
-    source: Option<&str>,
-    entry_path: Option<&str>,
-    style: &dyn DiagnosticStyle,
-) -> String {
-    let ctx = SpanContext {
-        file_path: entry_path,
-        logical_module: None,
-    };
-    let mut parts = Vec::new();
-    for err in bag.errors() {
-        let msg = match (source, err) {
-            (Some(src), ParseError::Lex(e)) => format_lex_error_styled(src, e, style, ctx),
-            (Some(src), other) if let Some(span) = other.span() => {
-                render_diagnostic(style, src, span, other.code(), &other.to_string(), ctx)
-            }
-            (_, other) => style.error_header(other.code(), &other.to_string()),
-        };
-        parts.push(msg);
-    }
-    join_diagnostics(style, &parts)
 }
 
 fn format_resolve_bag(

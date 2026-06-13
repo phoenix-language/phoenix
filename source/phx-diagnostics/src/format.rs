@@ -2,14 +2,16 @@
 
 use crate::LexError;
 use crate::LowerError;
+use crate::ParseBag;
+use crate::ParseError;
 use crate::ResolveError;
 use crate::Span;
 use crate::SymbolNames;
 use crate::TypeCheckError;
 use crate::code::DiagnosticCode;
 use crate::render::{
-    AncillaryNote, DiagnosticAncillary, PlainStyle, SpanContext, render_diagnostic,
-    render_diagnostic_enriched, render_diagnostic_with_note,
+    AncillaryNote, DiagnosticAncillary, PlainStyle, SpanContext, join_diagnostics,
+    render_diagnostic, render_diagnostic_enriched, render_diagnostic_with_note,
 };
 use crate::type_notes::{TypeCheckNote, typecheck_ancillary};
 
@@ -64,6 +66,71 @@ fn lex_message(err: &LexError) -> String {
         LexError::InvalidUtf8 { .. } => "invalid UTF-8 in string literal".to_owned(),
         LexError::LexemeTooLong { .. } => "lexeme too long".to_owned(),
     }
+}
+
+/// Human-readable message for a parse error (no caret).
+#[must_use]
+pub fn parse_message(err: &ParseError) -> String {
+    match err {
+        ParseError::Lex(e) => lex_message(e),
+        ParseError::UnexpectedToken {
+            expected, found, ..
+        } => format!("expected {expected}, found {found}"),
+        ParseError::UnexpectedEof { expected, .. } => {
+            format!("expected {expected}, found end of file")
+        }
+        ParseError::UnsupportedSyntax { feature, .. } => {
+            format!("unsupported syntax: {feature}")
+        }
+        ParseError::InvalidPattern { .. } => "invalid pattern".to_owned(),
+        ParseError::InternTableFull { .. } => "identifier intern table is full".to_owned(),
+    }
+}
+
+/// Formats a parse error with a source caret when possible.
+#[must_use]
+pub fn format_parse_error(source: &str, err: &ParseError) -> String {
+    format_parse_error_styled(Some(source), err, &PlainStyle, SpanContext::default())
+}
+
+/// Formats a parse error with styling and file context.
+#[must_use]
+pub fn format_parse_error_styled(
+    source: Option<&str>,
+    err: &ParseError,
+    style: &dyn crate::render::DiagnosticStyle,
+    ctx: SpanContext<'_>,
+) -> String {
+    match err {
+        ParseError::Lex(e) => match source {
+            Some(src) => format_lex_error_styled(src, e, style, ctx),
+            None => style.error_header(e.code(), &lex_message(e)),
+        },
+        other => {
+            let code = other.code();
+            let message = parse_message(other);
+            match (source, other.span()) {
+                (Some(src), Some(span)) => render_diagnostic(style, src, span, code, &message, ctx),
+                _ => style.error_header(code, &message),
+            }
+        }
+    }
+}
+
+/// Formats all errors in a parse bag, joined for multi-error output.
+#[must_use]
+pub fn format_parse_bag_styled(
+    bag: &ParseBag,
+    source: Option<&str>,
+    ctx: SpanContext<'_>,
+    style: &dyn crate::render::DiagnosticStyle,
+) -> String {
+    let parts: Vec<String> = bag
+        .errors()
+        .iter()
+        .map(|err| format_parse_error_styled(source, err, style, ctx))
+        .collect();
+    join_diagnostics(style, &parts)
 }
 
 /// Human-readable message for a resolve error (no caret).
@@ -307,7 +374,10 @@ pub fn format_span_message_with_note(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ExpectedToken;
+    use crate::LexError;
     use crate::ResolveError;
+    use std::borrow::Cow;
 
     struct TestNames;
 
@@ -377,5 +447,38 @@ mod tests {
         assert!(out.contains("duplicate definition"));
         assert!(out.contains("previous definition here"));
         assert!(out.contains("= note:"));
+    }
+
+    #[test]
+    fn unexpected_token_with_caret() {
+        let src = "main :: () => { x + ; };";
+        let err = ParseError::UnexpectedToken {
+            expected: ExpectedToken::Expr,
+            found: Cow::Borrowed("';'"),
+            span: Span::new(20, 21),
+        };
+        let out = format_parse_error(src, &err);
+        assert!(out.contains("expected expression, found ';'"));
+        assert!(out.contains('^'));
+    }
+
+    #[test]
+    fn unexpected_eof_message() {
+        let err = ParseError::UnexpectedEof {
+            expected: ExpectedToken::Punct("}"),
+            span: Span::new(10, 10),
+        };
+        assert_eq!(parse_message(&err), "expected }, found end of file");
+    }
+
+    #[test]
+    fn parse_lex_delegates_to_lex_formatter() {
+        let src = "main :: () => { \"unclosed };";
+        let lex_err = LexError::UnterminatedString { start: 18 };
+        let parse_err = ParseError::Lex(lex_err);
+        let from_parse = format_parse_error(src, &parse_err);
+        let from_lex = format_lex_error(src, &LexError::UnterminatedString { start: 18 });
+        assert_eq!(from_parse, from_lex);
+        assert!(!from_parse.contains("lex error:"));
     }
 }

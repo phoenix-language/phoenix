@@ -11,6 +11,7 @@ Shared compiler and VM diagnostics: source spans, structured errors, and CLI for
 - [`format_span_message`](src/format.rs) — line, column, and caret (ASCII-first: columns count Unicode scalar values; caret width uses bytes).
 - [`format_resolve_error`](src/format.rs) / [`format_typecheck_error`](src/format.rs) — interned names via [`SymbolNames`](src/symbol_names.rs) (implemented on [`Interner`](../phx-syntax/src/intern.rs)).
 - [`format_lex_error`](src/format.rs) — lex failures with carets instead of raw offsets.
+- [`format_parse_error`](src/format.rs) / [`parse_message`](src/format.rs) — parse failures (delegates lex errors to the lex formatter).
 
 Stable codes ([`DiagnosticCode`](src/code.rs)) are appended in formatters as `[E####]`; message text may change.
 
