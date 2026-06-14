@@ -132,7 +132,7 @@ The compiler does not enforce orphans in V0 beyond name resolution and duplicate
 | Layer | Responsibility |
 |-------|----------------|
 | Compiler | Lower `alloc_bytes` / `dealloc_bytes` call sites to `ALLOC` / `FREE`; require `unsafe` at call sites |
-| VM | Bump heap + `(ptr, size)` ledger; double-free and size mismatch errors |
+| VM | Bump heap + `(ptr, size)` ledger; double-free, size mismatch, and use-after-free errors (`UseAfterFree` when ledger checking is enabled — default in v0) |
 | Std | `Allocator` trait, `Layout`, `Global`, `VmHeapAllocator`; `UniquePtr` / `DynamicArray` |
 | Language | **No** allocator type in `Ty`; **no** built-in `Allocator` trait |
 

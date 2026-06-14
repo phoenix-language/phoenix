@@ -247,9 +247,9 @@ Several opcodes carry a **`prim_kind` wire byte** (`0`–`12`, see `PrimitiveKin
 | `LOAD_LOCAL`, `STORE_LOCAL` | `prim_kind` or `0xFF` | Typed scalar load/store vs aggregate slot |
 | Arithmetic, bitwise, compare | `prim_kind` | Require matching stack cell widths |
 | `NEG`, `NOT`, `BIT_NOT` | `prim_kind` | Unary primitive width |
-| `PTR_LOAD`, `PTR_STORE` | `prim_kind`, `signed` | Memory access width |
+| `PTR_LOAD`, `PTR_STORE` | `prim_kind`, `signed` | Memory access width; untagged heap pointers validate `[addr, addr+width)` against live ledger blocks before access |
 | `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address; registers `(ptr, size)` in VM allocation ledger. Heap growth is capped at **64 MiB** by default (`DEFAULT_HEAP_CAP_BYTES` on [`Machine`](../../source/phx-vm/src/frame.rs)); overflow returns `VmError::OutOfMemory` instead of aborting the process |
-| `FREE` | *(none)* | Pops runtime `size: u32`, then `ptr`; removes exact ledger entry; zeros freed bytes (no heap compaction) |
+| `FREE` | *(none)* | Pops runtime `size: u32`, then `ptr`; removes exact ledger entry; zeros freed bytes (no heap compaction). Subsequent heap accesses through that range trap with `VmError::UseAfterFree` when ledger checking is enabled (default in v0; gateable for a future `--unchecked` mode) |
 | `MAKE_SLICE` | `elem_prim_kind` | Element type of source array |
 
 ---

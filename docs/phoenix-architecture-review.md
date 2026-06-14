@@ -726,10 +726,10 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-vm/src/frame.rs:191–211` (`free_bytes`), `interpreter.rs:916–928`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `Free` removes the ledger entry and zeroes bytes, but subsequent loads through dangling pointers succeed (reading zeros) because heap loads only check `end ≤ heap.len()`.
-**Detail:** Not UB (safe Rust), but silently wrong values flow from use-after-free instead of a trap — at odds with Phoenix's ownership-as-safety story, and it will mask std `DynamicArray`/`UniquePtr` bugs during the std bootstrap, exactly when detection matters most.
+**Detail:** Fixed in PHX-054. `Machine::validate_live_heap_access` checks every untagged heap load/store against `live_heap_blocks` (default-on; `heap_check_enabled` gate for future `--unchecked`). Freed regions return `VmError::UseAfterFree` instead of silent zeros.
 **Recommendation:** Validate heap loads/stores against live ledger ranges (the ledger already exists; this is a range query), at least in a checked/debug VM mode. Flag for review whether release-mode checking is wanted.
 
 ---
@@ -920,7 +920,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-051 | - [x]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
 | PHX-052 | - [x]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
 | PHX-053 | - [x]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
-| PHX-054 | - [ ]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
+| PHX-054 | - [x]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
 | PHX-055 | - [ ]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
 | PHX-056 | - [ ]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
 | PHX-057 | - [ ]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |

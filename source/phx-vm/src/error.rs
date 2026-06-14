@@ -49,6 +49,8 @@ pub enum VmError {
     UnsupportedArithOp,
     /// Heap allocation would exceed the configured cap.
     OutOfMemory,
+    /// Load or store through a pointer to freed heap memory.
+    UseAfterFree,
 }
 
 impl std::fmt::Display for VmError {
@@ -81,6 +83,7 @@ impl std::fmt::Display for VmError {
                 write!(f, "unsupported arithmetic operator for primitive kind")
             }
             Self::OutOfMemory => write!(f, "heap allocation exceeded cap"),
+            Self::UseAfterFree => write!(f, "use after free of heap memory"),
         }
     }
 }

@@ -1,0 +1,9 @@
+[project]
+name = "heap_uaf"
+version = "0.1.0"
+description = "heap use-after-free runtime error"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

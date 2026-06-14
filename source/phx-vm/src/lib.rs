@@ -299,4 +299,102 @@ mod tests {
             Err(VmError::OutOfMemory)
         ));
     }
+
+    #[test]
+    fn ptr_load_after_free_returns_use_after_free() {
+        use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
+
+        use super::run_captured;
+
+        let u32_kind = u32::from(PrimitiveKind::U32.as_u8());
+        let u8_kind = u32::from(PrimitiveKind::U8.as_u8());
+        let u64_kind = u32::from(PrimitiveKind::U64.as_u8());
+
+        let mut code = Vec::new();
+        for inst in [
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, u32_kind],
+            },
+            Instruction {
+                opcode: Opcode::Alloc,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: Opcode::StoreLocal,
+                operands: vec![0, u64_kind],
+            },
+            Instruction {
+                opcode: Opcode::LoadLocal,
+                operands: vec![0, u64_kind],
+            },
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![1, u8_kind],
+            },
+            Instruction {
+                opcode: Opcode::PtrStore,
+                operands: vec![u8_kind, 0],
+            },
+            Instruction {
+                opcode: Opcode::LoadLocal,
+                operands: vec![0, u64_kind],
+            },
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, u32_kind],
+            },
+            Instruction {
+                opcode: Opcode::Free,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: Opcode::LoadLocal,
+                operands: vec![0, u64_kind],
+            },
+            Instruction {
+                opcode: Opcode::PtrLoad,
+                operands: vec![u8_kind, 0],
+            },
+        ] {
+            code.extend(inst.encode().expect("encode"));
+        }
+
+        let module = BytecodeModule {
+            header: FileHeader::new(5, 0),
+            constants: ConstPool {
+                entries: vec![
+                    ConstEntry {
+                        tag: ConstTag::UnsignedInt,
+                        payload: 4u32.to_le_bytes().to_vec(),
+                    },
+                    ConstEntry {
+                        tag: ConstTag::UnsignedInt,
+                        payload: 77u8.to_le_bytes().to_vec(),
+                    },
+                ],
+            },
+            types: TypeTable::default(),
+            functions: FunctionTable {
+                functions: vec![FunctionRecord {
+                    function_id: 0,
+                    name_symbol_id: 0,
+                    arity: 0,
+                    local_count: 1,
+                    stack_max: 8,
+                    flags: 0,
+                    code_offset: 0,
+                    code_len: u32::try_from(code.len()).unwrap_or(0),
+                    return_type_id: 0,
+                }],
+            },
+            code,
+            local_layouts: phx_bytecode::LocalLayoutTable::default(),
+        };
+
+        assert!(matches!(
+            run_captured(&module),
+            Err(VmError::UseAfterFree)
+        ));
+    }
 }

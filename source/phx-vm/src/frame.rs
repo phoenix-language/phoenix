@@ -117,6 +117,8 @@ pub struct Machine {
     pub live_heap_blocks: BTreeMap<u64, u32>,
     /// Maximum `heap.len()` after any successful `alloc_bytes`.
     pub heap_cap: usize,
+    /// When true, heap loads/stores validate against [`Self::live_heap_blocks`].
+    pub heap_check_enabled: bool,
 }
 
 impl Default for Machine {
@@ -128,6 +130,7 @@ impl Default for Machine {
             heap: Vec::new(),
             live_heap_blocks: BTreeMap::new(),
             heap_cap: DEFAULT_HEAP_CAP_BYTES,
+            heap_check_enabled: true,
         }
     }
 }
@@ -140,6 +143,42 @@ impl Machine {
             heap_cap,
             ..Self::default()
         }
+    }
+
+    /// Builds a machine with heap use-after-free checking enabled or disabled.
+    #[must_use]
+    pub fn with_heap_checking(heap_check_enabled: bool) -> Self {
+        Self {
+            heap_check_enabled,
+            ..Self::default()
+        }
+    }
+
+    /// Returns `Ok(())` when `addr..addr+len` lies fully inside a live ledger block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VmError::HeapOutOfBounds`] when the range extends past the physical heap.
+    /// Returns [`VmError::UseAfterFree`] when checking is enabled and the range is not live.
+    pub fn validate_live_heap_access(&self, addr: usize, len: usize) -> Result<(), VmError> {
+        let end = addr.checked_add(len).ok_or(VmError::HeapOutOfBounds)?;
+        if end > self.heap.len() {
+            return Err(VmError::HeapOutOfBounds);
+        }
+        if !self.heap_check_enabled {
+            return Ok(());
+        }
+        let ptr_key = u64::try_from(addr).map_err(|_| VmError::UseAfterFree)?;
+        if let Some((&ptr, &size)) = self.live_heap_blocks.range(..=ptr_key).next_back() {
+            let start = usize::try_from(ptr).map_err(|_| VmError::UseAfterFree)?;
+            let block_end = start
+                .checked_add(usize::try_from(size).map_err(|_| VmError::UseAfterFree)?)
+                .ok_or(VmError::UseAfterFree)?;
+            if addr >= start && end <= block_end {
+                return Ok(());
+            }
+        }
+        Err(VmError::UseAfterFree)
     }
 
     /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
@@ -331,5 +370,47 @@ mod tests {
         assert_eq!(machine.alloc_bytes(8).expect("second"), 8);
         assert_eq!(machine.alloc_bytes(1), Err(VmError::OutOfMemory));
         assert_eq!(machine.heap.len(), 16);
+    }
+
+    #[test]
+    fn live_heap_access_allowed() {
+        let mut machine = Machine::default();
+        let ptr = machine.alloc_bytes(4).expect("alloc");
+        let addr = usize::try_from(ptr).expect("ptr fits usize");
+        assert!(machine.validate_live_heap_access(addr, 1).is_ok());
+        assert!(machine.validate_live_heap_access(addr, 4).is_ok());
+    }
+
+    #[test]
+    fn freed_heap_access_returns_use_after_free() {
+        let mut machine = Machine::default();
+        let ptr = machine.alloc_bytes(4).expect("alloc");
+        let addr = usize::try_from(ptr).expect("ptr fits usize");
+        machine.free_bytes(ptr, 4).expect("free");
+        assert_eq!(
+            machine.validate_live_heap_access(addr, 1),
+            Err(VmError::UseAfterFree)
+        );
+    }
+
+    #[test]
+    fn partial_past_block_end_returns_use_after_free() {
+        let mut machine = Machine::default();
+        let ptr = machine.alloc_bytes(4).expect("first alloc");
+        let _second = machine.alloc_bytes(4).expect("second alloc");
+        let addr = usize::try_from(ptr).expect("ptr fits usize");
+        assert_eq!(
+            machine.validate_live_heap_access(addr, 5),
+            Err(VmError::UseAfterFree)
+        );
+    }
+
+    #[test]
+    fn heap_check_disabled_allows_freed_access() {
+        let mut machine = Machine::with_heap_checking(false);
+        let ptr = machine.alloc_bytes(4).expect("alloc");
+        let addr = usize::try_from(ptr).expect("ptr fits usize");
+        machine.free_bytes(ptr, 4).expect("free");
+        assert!(machine.validate_live_heap_access(addr, 1).is_ok());
     }
 }

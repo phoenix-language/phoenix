@@ -285,7 +285,7 @@ Phoenix has no GC. Heap bytes come from `#import std::core::alloc::alloc_bytes` 
 | Pairing | Every `alloc_bytes(n)` must have exactly one matching `dealloc_bytes(ptr, n)` on all paths, or the block leaks until the VM run ends |
 | `Drop` | Std owning wrappers (`Box`, buffers, growable collections) implement `Drop` to deallocate via `Allocator` (see [allocator.md](allocator.md)) |
 | Raw pointers | Copyable address values; copying the pointer does not transfer deallocation responsibility |
-| Compiler | No proof of pairing in V0-065; VM ledger catches double-free and size mismatch at runtime |
+| Compiler | No proof of pairing in V0-065; VM ledger catches double-free, size mismatch, and use-after-free at runtime |
 | Compaction | `FREE` marks bytes dead (zeroed) but does not shrink the bump heap |
 
 ### Std allocator layering (V0-066)

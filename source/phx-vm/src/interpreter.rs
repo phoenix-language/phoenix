@@ -752,6 +752,7 @@ fn ptr_load(
         return slice_elem_scalar(machine, handle, 0, kind);
     }
     let addr = usize::try_from(ptr).map_err(|_| VmError::HeapOutOfBounds)?;
+    machine.validate_live_heap_access(addr, usize::from(size))?;
     read_heap_scalar(&machine.heap, addr, size, signed, kind)
 }
 
@@ -778,6 +779,7 @@ fn ptr_store(
     }
     let addr = usize::try_from(ptr).map_err(|_| VmError::HeapOutOfBounds)?;
     let bytes = scalar_store_bytes(kind, signed, value)?;
+    machine.validate_live_heap_access(addr, usize::from(size))?;
     write_heap_scalar(&mut machine.heap, addr, size, &bytes)
 }
 
@@ -819,14 +821,11 @@ fn slice_elem_load(
     let byte_offset = index
         .checked_mul(elem_size)
         .ok_or(VmError::HeapOutOfBounds)?;
-    let scalar = read_heap_scalar(
-        &machine.heap,
-        addr.checked_add(byte_offset)
-            .ok_or(VmError::HeapOutOfBounds)?,
-        kind.byte_size(),
-        0,
-        kind,
-    )?;
+    let byte_addr = addr
+        .checked_add(byte_offset)
+        .ok_or(VmError::HeapOutOfBounds)?;
+    machine.validate_live_heap_access(byte_addr, usize::from(kind.byte_size()))?;
+    let scalar = read_heap_scalar(&machine.heap, byte_addr, kind.byte_size(), 0, kind)?;
     Ok(Value::Scalar(scalar))
 }
 
@@ -915,14 +914,12 @@ fn slice_elem_store_heap(
     let byte_offset = index
         .checked_mul(elem_size)
         .ok_or(VmError::HeapOutOfBounds)?;
+    let byte_addr = addr
+        .checked_add(byte_offset)
+        .ok_or(VmError::HeapOutOfBounds)?;
     let bytes = scalar_store_bytes(kind, signed, value)?;
-    write_heap_scalar(
-        &mut machine.heap,
-        addr.checked_add(byte_offset)
-            .ok_or(VmError::HeapOutOfBounds)?,
-        kind.byte_size(),
-        &bytes,
-    )
+    machine.validate_live_heap_access(byte_addr, usize::from(kind.byte_size()))?;
+    write_heap_scalar(&mut machine.heap, byte_addr, kind.byte_size(), &bytes)
 }
 
 fn read_heap_scalar(

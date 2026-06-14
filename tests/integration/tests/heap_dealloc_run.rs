@@ -50,6 +50,22 @@ fn heap_dealloc_double_free_fails_at_runtime() {
 }
 
 #[test]
+fn heap_uaf_read_after_free_fails_at_runtime() {
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_uaf");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let built = force_build_project("heap_uaf");
+    phx_bytecode::verify(&built.module).expect("verify heap_uaf");
+    let err = run(&built.module).expect_err("use after free should fail");
+    assert!(
+        matches!(err, VmError::UseAfterFree),
+        "expected UseAfterFree, got {err:?}"
+    );
+}
+
+#[test]
 fn heap_drop_dealloc_fixture_runs() {
     let _lock = fixture_fs_lock();
     let root = cli_project("heap_drop_dealloc");
