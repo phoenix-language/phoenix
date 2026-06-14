@@ -45,7 +45,7 @@ pub use build::{
 pub use cfg::{CompileCfg, strip_cfg};
 pub use compile::{
     CompileError, DiagnosticContext, check_file, check_file_with_module_path, check_project_file,
-    compile_source, compile_source_with_module_root, compile_to_module,
+    compile_compilation_unit, compile_source, compile_source_with_module_root, compile_to_module,
     compile_to_module_with_module_path, format_lints, lint_checked,
 };
 pub use derive::{DeriveError, expand_derives};

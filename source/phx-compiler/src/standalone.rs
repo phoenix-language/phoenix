@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::DiagnosticBag;
 
-use crate::compile::{CompileError, DiagnosticContext};
-use crate::lower::lower;
+use crate::compile::{CompileError, DiagnosticContext, compile_compilation_unit};
 use crate::modules::{ProgramLoadContext, load_program_with_context, resolve_loaded_program};
 use crate::project::ProjectError;
 use crate::typeck::type_check;
@@ -99,11 +98,5 @@ pub fn compile_standalone_with_context(
     ctx: &ProgramLoadContext,
 ) -> Result<BytecodeModule, CompileError> {
     let unit = check_standalone_unit_with_context(opts, ctx)?;
-    let ctx_diag = DiagnosticContext::from_resolved(&unit.typed.resolved);
-    let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower {
-        bag,
-        context: ctx_diag.clone(),
-    })?;
-    crate::compile::debug_validate_ir(&ir, &unit.typed, ctx_diag)?;
-    crate::codegen::codegen(&ir, &unit.typed).map_err(CompileError::Codegen)
+    compile_compilation_unit(&unit)
 }

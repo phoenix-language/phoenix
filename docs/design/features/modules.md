@@ -389,9 +389,10 @@ Transitive importers are rebuilt in reverse dependency order.
 
 | Command | Behavior |
 |---------|----------|
-| `phx build [entry.phx]` | Requires `phoenix.toml`; writes `build/` artifacts and manifest |
-| `phx run [entry.phx]` | Requires `phoenix.toml` and `type = bin`; loads `build/bin/{project.name}.phx0`. Library packages (`type = lib`) produce `build/lib/{name}.phx0` for linking only — not executed by `phx run`. |
-| `phx check [file.phx]` | Type-check only. When `phoenix.toml` is found (walk parents from the file), uses `module_src` and path deps like `phx build`. Otherwise uses the file’s parent or `--module-src`. No `build/` required. |
+| `phx check [file.phx]` | Type-check only; emits lint warnings (`#[deprecated]`, `#[must_use]`, discarded std `Result`/`Option`). When `phoenix.toml` is found (walk parents from the file), uses `module_src` and path deps like `phx build`. Otherwise uses the file’s parent or `--module-src`. No `build/` required. |
+| `phx compile <file.phx>` | Compile to `.phx0`; emits lint warnings when type-check runs. |
+| `phx build [entry.phx]` | Requires `phoenix.toml`; writes `build/` artifacts and manifest; emits lint warnings when type-check runs (skipped on incremental cache hit unless `--build`). |
+| `phx run [entry.phx]` | Requires `phoenix.toml` and `type = bin` for project mode; loads `build/bin/{project.name}.phx0`. Standalone mode compiles in-process and emits lint warnings. Library packages (`type = lib`) produce `build/lib/{name}.phx0` for linking only — not executed by `phx run`. Lint warnings are skipped when `--no-build` loads a cached artifact. |
 
 | Flag | Commands | Behavior |
 |------|----------|----------|

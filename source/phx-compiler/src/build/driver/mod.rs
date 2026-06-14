@@ -14,6 +14,9 @@ mod link_map;
 mod package;
 mod util;
 
+use crate::compile::DiagnosticContext;
+use phx_diagnostics::LintBag;
+
 /// Result of a successful project build.
 #[derive(Debug, Clone)]
 pub struct BuildResult {
@@ -21,6 +24,10 @@ pub struct BuildResult {
     pub output_path: std::path::PathBuf,
     /// Entry logical module path.
     pub entry_logical: String,
+    /// Lint warnings when type-check ran; empty on incremental cache hit.
+    pub lints: LintBag,
+    /// Formatting context for [`Self::lints`]; `None` when type-check was skipped.
+    pub lint_context: Option<DiagnosticContext>,
 }
 
 pub use package::{build_project, emit_interfaces_from_compiled, load_project_binary};

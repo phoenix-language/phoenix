@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use phx_bytecode::{BytecodeModule, ENTRY_NONE};
 
-use crate::compile::CompileError;
+use crate::compile::{CompileError, DiagnosticContext, lint_checked};
 use crate::link::link_modules;
 use crate::lower::lower;
 use crate::modules::{
@@ -92,6 +92,8 @@ pub fn emit_interfaces_from_compiled(
     Ok(BuildResult {
         output_path,
         entry_logical,
+        lints: phx_diagnostics::LintBag::new(),
+        lint_context: None,
     })
 }
 
@@ -157,6 +159,8 @@ fn build_package(
         return Ok(BuildResult {
             output_path,
             entry_logical,
+            lints: phx_diagnostics::LintBag::new(),
+            lint_context: None,
         });
     }
 
@@ -179,8 +183,15 @@ fn build_package(
         reconcile_cross_crate_mono_exports(config, &loaded, &typed, options)?;
     }
 
+    let lint_context = DiagnosticContext::from_resolved(&typed.resolved);
+    let lints = lint_checked(&typed).map_err(BuildError::Resolve)?;
+
     if options.emit_interface_only {
-        return emit_interfaces_from_compiled(config, &loaded, &typed, options, Some(layout));
+        let mut result =
+            emit_interfaces_from_compiled(config, &loaded, &typed, options, Some(layout))?;
+        result.lints = lints;
+        result.lint_context = Some(lint_context);
+        return Ok(result);
     }
 
     let full_ir = lower(&typed).map_err(BuildError::Lower)?;
@@ -230,6 +241,8 @@ fn build_package(
     Ok(BuildResult {
         output_path,
         entry_logical,
+        lints,
+        lint_context: Some(lint_context),
     })
 }
 

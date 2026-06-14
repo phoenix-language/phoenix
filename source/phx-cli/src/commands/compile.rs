@@ -3,11 +3,12 @@
 use std::fs;
 
 use phx_bytecode::verify;
-use phx_compiler::compile_standalone_with_context;
+use phx_compiler::{check_standalone_unit_with_context, compile_compilation_unit};
 
 use crate::args::CompileCommandArgs;
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
+use crate::lints::lint_typed_or_exit;
 use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_check_mode};
 
@@ -62,7 +63,19 @@ pub fn run_compile(args: CompileCommandArgs, color: ColorChoice, verbose: bool) 
     };
 
     reporter.verbose(verbose, &format!("compiling {}...", file.display()));
-    let module = match compile_standalone_with_context(&mode, &ctx) {
+    let unit = match check_standalone_unit_with_context(&mode, &ctx) {
+        Ok(u) => u,
+        Err(e) => {
+            reporter.compile_error(&e, Some(&source), Some(&file));
+            return CliExit::Compile;
+        }
+    };
+    if let Err(exit) =
+        lint_typed_or_exit(&unit.typed, &style, &reporter, Some(&source), Some(&file))
+    {
+        return exit;
+    }
+    let module = match compile_compilation_unit(&unit) {
         Ok(m) => m,
         Err(e) => {
             reporter.compile_error(&e, Some(&source), Some(&file));

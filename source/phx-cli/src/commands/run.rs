@@ -6,13 +6,16 @@ use std::path::Path;
 
 use phx_bytecode::verify;
 use phx_compiler::{
-    BuildOptions, build_project, compile_standalone_with_context, load_project_binary,
+    BuildOptions, build_project, check_standalone_unit_with_context, compile_compilation_unit,
+    load_project_binary,
 };
+use phx_diagnostics::DiagnosticStyle;
 use phx_vm::{Value, run_captured};
 
 use crate::args::RunCommandArgs;
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
+use crate::lints::{emit_lint_warnings, lint_typed_or_exit};
 use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_run_mode};
 
@@ -41,6 +44,7 @@ pub fn run_run(
     match mode {
         CompileMode::Project { config } => run_project(
             &reporter,
+            &style,
             &config,
             args.file_args.file.as_deref(),
             args.force_build,
@@ -49,14 +53,15 @@ pub fn run_run(
             dump_main,
         ),
         CompileMode::Standalone { options } => {
-            run_standalone(&reporter, &options, verbose, dump_main)
+            run_standalone(&reporter, &style, &options, verbose, dump_main)
         }
     }
 }
 
-#[allow(clippy::fn_params_excessive_bools)]
+#[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
 fn run_project(
     reporter: &Reporter<'_>,
+    style: &dyn DiagnosticStyle,
     config: &phx_compiler::ProjectConfig,
     entry: Option<&Path>,
     force: bool,
@@ -70,9 +75,16 @@ fn run_project(
             force,
             emit_interface_only: false,
         };
-        if let Err(e) = build_project(config, entry, options) {
-            reporter.build_error(&e);
-            return CliExit::Compile;
+        match build_project(config, entry, options) {
+            Ok(result) => {
+                if let Some(ctx) = &result.lint_context {
+                    emit_lint_warnings(&result.lints, ctx, style);
+                }
+            }
+            Err(e) => {
+                reporter.build_error(&e);
+                return CliExit::Compile;
+            }
         }
     }
     reporter.verbose(verbose, "loading bytecode...");
@@ -88,6 +100,7 @@ fn run_project(
 
 fn run_standalone(
     reporter: &Reporter<'_>,
+    style: &dyn DiagnosticStyle,
     options: &phx_compiler::StandaloneOptions,
     verbose: bool,
     dump_main: bool,
@@ -110,7 +123,23 @@ fn run_standalone(
         verbose,
         &format!("compiling {}...", options.entry.display()),
     );
-    let module = match compile_standalone_with_context(options, &ctx) {
+    let unit = match check_standalone_unit_with_context(options, &ctx) {
+        Ok(u) => u,
+        Err(e) => {
+            reporter.compile_error(&e, Some(&source), Some(&options.entry));
+            return CliExit::Compile;
+        }
+    };
+    if let Err(exit) = lint_typed_or_exit(
+        &unit.typed,
+        style,
+        reporter,
+        Some(&source),
+        Some(&options.entry),
+    ) {
+        return exit;
+    }
+    let module = match compile_compilation_unit(&unit) {
         Ok(m) => m,
         Err(e) => {
             reporter.compile_error(&e, Some(&source), Some(&options.entry));

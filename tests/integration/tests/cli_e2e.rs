@@ -21,6 +21,50 @@ fn check_sample_succeeds() {
     });
 }
 
+const DEPRECATED_LINT_NEEDLE: &str = "use of deprecated item";
+
+#[test]
+fn check_deprecated_warn_emits_warning() {
+    e2e(|cli| {
+        cli.run(&[
+            "check",
+            &path_to_arg(&cli_fixture("attr_deprecated_warn.phx")),
+        ])
+        .assert_success()
+        .assert_contains(DEPRECATED_LINT_NEEDLE);
+    });
+}
+
+#[test]
+fn compile_deprecated_warn_emits_warning() {
+    e2e(|cli| {
+        let path = cli_fixture("attr_deprecated_warn.phx");
+        let out = std::env::temp_dir().join("phx_test_attr_deprecated_warn.phx0");
+        let _ = std::fs::remove_file(&out);
+        cli.run(&["compile", &path_to_arg(&path), "-o", &path_to_arg(&out)])
+            .assert_success()
+            .assert_contains(DEPRECATED_LINT_NEEDLE);
+        assert!(out.is_file());
+        let _ = std::fs::remove_file(out);
+    });
+}
+
+#[test]
+fn run_deprecated_warn_emits_warning() {
+    e2e(|cli| {
+        cli.run(&[
+            "run",
+            &path_to_arg(&cli_fixture("attr_deprecated_warn.phx")),
+        ])
+        .assert_success()
+        .assert_contains(DEPRECATED_LINT_NEEDLE);
+    });
+}
+
+fn path_to_arg(path: &std::path::Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
 #[test]
 fn check_bad_type_shows_caret() {
     e2e(|cli| {

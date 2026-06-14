@@ -148,7 +148,7 @@ Warns when a function's non-unit return value or a constructed `#[must_use]` typ
 | Field-level `#[...]` | Not in v1 |
 | PXI export of attribute metadata | Cross-crate linting deferred |
 
-Warnings do not fail `phx build` / `phx check` in v1; they are printed and compilation continues.
+Warnings do not fail `phx check`, `phx compile`, `phx run`, or `phx build` in v1; they are printed and compilation continues. Lint warnings are emitted whenever the command type-checks source; incremental project builds and `phx run --no-build` may skip lints when artifacts are fresh.
 
 ---
 

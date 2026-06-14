@@ -804,10 +804,12 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-cli/src/commands/check.rs:141–158` vs `standalone.rs:90–100`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Lints (deprecation, must-use) run only on `phx check`, not on `compile`/`run`/`build` — users compiling directly never see warnings.
 **Recommendation:** Run lint on all compiling commands or document the asymmetry. Flag for review.
+
+**Resolution:** Lint pass runs on every CLI path that type-checks (`check`, `compile`, `run`, `build`). Warnings print to stderr; invalid `#[allow(...)]` names remain errors. Incremental cache hits and `phx run --no-build` skip lints when type-check is skipped. Shared helpers: `phx-cli/src/lints.rs`, `compile_compilation_unit`, `BuildResult.lints`.
 
 ---
 
@@ -941,7 +943,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
 | PHX-057 | - [x]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
 | PHX-058 | - [x]  | Minor        | phx             | ICE handler discards panic message                                       |
-| PHX-059 | - [ ]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
+| PHX-059 | - [x]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
 | PHX-060 | - [ ]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
 | PHX-061 | - [ ]  | Major        | tests           | Coverage gaps on all three Critical findings                             |
 | PHX-062 | - [ ]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing                |

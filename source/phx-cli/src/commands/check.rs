@@ -5,14 +5,15 @@ use std::time::Instant;
 
 use phx_compiler::{
     BuildLayout, BuildOptions, CompileError, DiagnosticContext, ProgramLoadContext,
-    emit_interfaces_from_compiled, format_lints, lint_checked, load_program_with_context,
-    resolve_loaded_program, unstable::type_check,
+    emit_interfaces_from_compiled, load_program_with_context, resolve_loaded_program,
+    unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
 
 use crate::args::FileCommandArgs;
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
+use crate::lints::lint_typed_or_exit;
 use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_check_mode};
 
@@ -146,24 +147,8 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
         }
     }
 
-    match lint_checked(&typed) {
-        Ok(lint_bag) if lint_bag.has_lints() => {
-            let ctx = DiagnosticContext::from_resolved(&typed.resolved);
-            let rendered = format_lints(&lint_bag, &ctx, &style);
-            if !rendered.is_empty() {
-                eprintln!("{rendered}");
-            }
-        }
-        Err(bag) => {
-            let err = CompileError::Resolve {
-                bag,
-                context: Some(DiagnosticContext::from_resolved(&typed.resolved)),
-                prior_parse: None,
-            };
-            reporter.compile_error(&err, Some(&source), Some(&file));
-            return CliExit::Compile;
-        }
-        Ok(_) => {}
+    if let Err(exit) = lint_typed_or_exit(&typed, &style, &reporter, Some(&source), Some(&file)) {
+        return exit;
     }
 
     reporter.check_finished(module_count, started.elapsed());

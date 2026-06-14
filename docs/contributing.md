@@ -174,9 +174,10 @@ just phx run path/to/main.phx --dump-main
 
 | Command | Purpose |
 |---------|---------|
-| `phx check <file>` | Type-check |
-| `phx build` | Build a `phoenix.toml` project |
-| `phx run` | Compile and execute on the VM |
+| `phx check <file>` | Type-check; emits lint warnings |
+| `phx compile <file> -o out.phx0` | Compile to bytecode; emits lint warnings |
+| `phx build` | Build a `phoenix.toml` project; emits lint warnings when type-check runs |
+| `phx run` | Compile and execute on the VM; emits lint warnings when type-check runs |
 | `phx explain E####` | Short explanation for a diagnostic code |
 
 Integration tests live in `tests/integration/tests/cli_e2e.rs` and `diagnostics.rs` (not shell scripts).

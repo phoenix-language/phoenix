@@ -727,6 +727,21 @@ pub fn check_file_with_module_path(
     })
 }
 
+/// Lowers and emits bytecode for an already type-checked [`CompilationUnit`].
+///
+/// # Errors
+///
+/// Returns [`CompileError::Lower`], [`CompileError::IrValidate`], or [`CompileError::Codegen`].
+pub fn compile_compilation_unit(unit: &CompilationUnit) -> Result<BytecodeModule, CompileError> {
+    let ctx = DiagnosticContext::from_resolved(&unit.typed.resolved);
+    let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower {
+        bag,
+        context: ctx.clone(),
+    })?;
+    debug_validate_ir(&ir, &unit.typed, ctx)?;
+    codegen(&ir, &unit.typed).map_err(CompileError::Codegen)
+}
+
 /// Reads `path`, type-checks, lowers, and emits bytecode ready for verify/run.
 ///
 /// # Errors
@@ -746,11 +761,5 @@ pub fn compile_to_module_with_module_path(
     module_root: &Path,
 ) -> Result<BytecodeModule, CompileError> {
     let unit = check_file_with_module_path(path, module_root)?;
-    let ctx = DiagnosticContext::from_resolved(&unit.typed.resolved);
-    let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower {
-        bag,
-        context: ctx.clone(),
-    })?;
-    debug_validate_ir(&ir, &unit.typed, ctx)?;
-    codegen(&ir, &unit.typed).map_err(CompileError::Codegen)
+    compile_compilation_unit(&unit)
 }
