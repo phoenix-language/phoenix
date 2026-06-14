@@ -556,6 +556,52 @@ main :: () => {
     }
 
     #[test]
+    fn emit_invalid_block_records_error() {
+        let source = "main :: () => { };";
+        let unit = compile_source(source, None).expect("compile");
+        let layout = main_layout(&unit.typed);
+        let module = main_module(&unit.typed);
+        let mut constants = Vec::new();
+        let mut bag = LowerBag::new();
+        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        ctx.current = 99;
+        ctx.emit(IrInst::Jump { target: 0 });
+        let insts_empty = ctx.blocks[0].insts.is_empty();
+        drop(ctx);
+        assert!(
+            bag.errors()
+                .iter()
+                .any(|e| { matches!(e.error, LowerError::InvalidBlockIndex { block: 99 }) }),
+            "expected InvalidBlockIndex for block 99, got {bag:?}"
+        );
+        assert!(
+            insts_empty,
+            "instruction must not be emitted to a valid block"
+        );
+    }
+
+    #[test]
+    fn set_current_invalid_block_records_error() {
+        let source = "main :: () => { };";
+        let unit = compile_source(source, None).expect("compile");
+        let layout = main_layout(&unit.typed);
+        let module = main_module(&unit.typed);
+        let mut constants = Vec::new();
+        let mut bag = LowerBag::new();
+        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        ctx.set_current(99);
+        let current = ctx.current;
+        drop(ctx);
+        assert_eq!(current, 0, "current block must remain unchanged");
+        assert!(
+            bag.errors()
+                .iter()
+                .any(|e| { matches!(e.error, LowerError::InvalidBlockIndex { block: 99 }) }),
+            "expected InvalidBlockIndex for block 99, got {bag:?}"
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "unresolved callee during lowering")]
     fn missing_method_call_site_fails_lower() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))

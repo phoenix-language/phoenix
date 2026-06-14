@@ -548,9 +548,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/codegen/const_pool.rs:56–66`; `lower/ctx.rs:112–114, 223–237`; `lower/func.rs:73`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Silent-fallback cluster: `pool_index_for_literal` docs say "panics" but it does `unwrap_or(literal_index)`; `LowerCtx::emit` drops instructions when the block index is bad; constant/block counters saturate at `u32::MAX`.
+**Detail:** Fixed in `1511bcc`: `pool_index_for_literal` returns `CodegenError::MissingLiteralIndex`; `fill_from_ir` returns `CodegenError::SectionTooLarge`; `LowerCtx::emit`/`set_current` record `LowerError::InvalidBlockIndex`; `intern_const`/`fresh_block` and function index overflow record `LowerError::LimitExceeded`; lowering aborts when `LowerBag::has_errors()`. Unit tests cover invalid-block and error display paths.
 **Recommendation:** Same policy as PHX-034: convert all to `LowerError`/`CodegenError`.
 
 ---
@@ -559,9 +560,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/lower/expr.rs:1169–1186` (`lower_try_convert_err`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `?`-with-`From` lowering uses `debug_assert!` + silent `return` on missing layout metadata — wrong codegen in release if typeck regresses.
+**Detail:** Fixed in `1511bcc`: `lower_try_convert_err` records `LowerError::MissingTryConvertLayout` when return `Result` layout metadata is missing.
 **Recommendation:** Replace with `LowerError`.
 
 ---
@@ -891,8 +893,8 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-038 | - [x]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
 | PHX-039 | - [x]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |
 | PHX-040 | - [ ]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |
-| PHX-041 | - [ ]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |
-| PHX-042 | - [ ]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |
+| PHX-041 | - [x]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |
+| PHX-042 | - [x]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |
 | PHX-043 | - [ ]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
 | PHX-044 | - [ ]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
 | PHX-045 | - [ ]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |

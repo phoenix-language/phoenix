@@ -175,6 +175,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn invalid_block_index_display_and_code() {
+        let err = LowerError::InvalidBlockIndex { block: 99 };
+        assert_eq!(err.code(), DiagnosticCode::new("E4002"));
+        assert!(err.span().is_none());
+        assert!(err.to_string().contains("block index 99"), "{}", err);
+    }
+
+    #[test]
+    fn limit_exceeded_display_and_code() {
+        let err = LowerError::LimitExceeded {
+            item: "basic_blocks",
+            len: 1_000,
+        };
+        assert_eq!(err.code(), DiagnosticCode::new("E4002"));
+        assert!(err.span().is_none());
+        assert!(err.to_string().contains("basic_blocks"), "{}", err);
+        assert!(err.to_string().contains("1000"), "{}", err);
+    }
+
+    #[test]
     fn missing_try_convert_layout_display_and_code() {
         let err = LowerError::MissingTryConvertLayout {
             detail: "return Result type",
