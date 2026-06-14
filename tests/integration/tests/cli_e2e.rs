@@ -546,6 +546,21 @@ fn panic_is_caught_without_rust_backtrace() {
     });
 }
 
+#[test]
+fn panic_ice_debug_prints_message_and_backtrace() {
+    e2e(|cli| {
+        let out = cli.run_with_env(
+            &["version"],
+            &[("PHX_TEST_FORCE_PANIC", "1"), ("PHX_ICE_DEBUG", "1")],
+        );
+        out.assert_failure();
+        out.assert_contains("internal compiler error");
+        out.assert_contains("integration test forced panic");
+        out.assert_contains("backtrace");
+        assert_eq!(out.status.code(), Some(6));
+    });
+}
+
 fn rm_example_build(project_root: &std::path::Path) {
     let _ = std::fs::remove_dir_all(project_root.join("build"));
 }

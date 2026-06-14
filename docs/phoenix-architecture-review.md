@@ -791,10 +791,12 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `source/phx/src/main.rs:13–14`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** The ICE handler installs an empty panic hook, so even the panic *message* is unavailable when reporting internal errors — debugging an ICE requires rebuilding.
 **Recommendation:** Print message + backtrace when `PHX_ICE_DEBUG=1` (or `RUST_BACKTRACE` is set).
+
+**Resolution:** `catch_unwind` extracts the panic payload when `PHX_ICE_DEBUG=1` or `RUST_BACKTRACE` is set; default mode still prints only the generic ICE line (exit 6).
 
 ---
 
@@ -938,7 +940,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-056 | - [x]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
 | PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
 | PHX-057 | - [x]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
-| PHX-058 | - [ ]  | Minor        | phx-cli         | ICE handler discards panic message                                       |
+| PHX-058 | - [x]  | Minor        | phx             | ICE handler discards panic message                                       |
 | PHX-059 | - [ ]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
 | PHX-060 | - [ ]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
 | PHX-061 | - [ ]  | Major        | tests           | Coverage gaps on all three Critical findings                             |

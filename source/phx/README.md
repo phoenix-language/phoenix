@@ -22,3 +22,7 @@ Without `phoenix.toml`, `check` and `run` require an explicit file. Use `--modul
 When `phoenix.toml` is discovered, project rules apply: `phx run` without a file runs the project entry; passing a non-entry file is an error.
 
 Implementation lives in the [`phx-cli`](../phx-cli/) library crate; this directory contains only the thin binary entry point.
+
+## Internal errors
+
+When the compiler or VM panics, `phx` exits with code 6 and prints a generic internal-error message. To aid debugging, set `PHX_ICE_DEBUG=1` (or `RUST_BACKTRACE=1`) to also print the panic message and a backtrace on stderr.
