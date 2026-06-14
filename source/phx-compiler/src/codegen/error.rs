@@ -1,6 +1,6 @@
 //! Codegen failures.
 
-use phx_bytecode::EncodeError;
+use phx_bytecode::{EncodeError, InstrError};
 
 /// IR → bytecode lowering failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +12,8 @@ pub enum CodegenError {
         /// Length or index that overflowed.
         len: usize,
     },
+    /// Instruction operand count exceeds wire-format limit.
+    InstructionEncode(InstrError),
     /// IR literal index has no entry in the constant pool mapping.
     MissingLiteralIndex {
         /// IR literal index from [`crate::ir::IrInst::Const`] or [`crate::ir::IrInst::MakeStr`].
@@ -64,6 +66,7 @@ impl std::fmt::Display for CodegenError {
             Self::InvalidJumpBlock { block } => {
                 write!(f, "codegen: no code offset for basic block {block}")
             }
+            Self::InstructionEncode(err) => write!(f, "codegen: {err}"),
         }
     }
 }
@@ -75,6 +78,12 @@ impl From<EncodeError> for CodegenError {
         match e {
             EncodeError::SectionTooLarge { section, len } => Self::SectionTooLarge { section, len },
         }
+    }
+}
+
+impl From<InstrError> for CodegenError {
+    fn from(e: InstrError) -> Self {
+        Self::InstructionEncode(e)
     }
 }
 

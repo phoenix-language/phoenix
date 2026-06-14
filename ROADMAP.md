@@ -172,7 +172,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | PHX-058 | — |
 | API surface triage: `ResolvedProgram`/IR/mono re-exports vs `facade` | PHX-022 | Documented decision |
 | Test-suite hygiene: stale keyword test, missing `mod`/`reexport`/`extern` parser tests, `extern` `pub`, golden-set expansion, dev-dep cycle decision | PHX-010, PHX-011, PHX-061, PHX-062 | — |
-| `verify` validates the in-memory module directly (no re-encode); fallible `Instruction::encode` | PHX-050 | — |
+| `verify` validates the in-memory module directly (no re-encode); fallible `Instruction::encode` | PHX-050 | done |
 | `load_project_binary` optional verify-on-load | PHX-055-adjacent | Defense in depth; documented decision |
 | Doc-truth pass: `ownership.md` (loop/partial-move rules from M0/M1), `wide-integers.md`/`type-system.md` (shift/NaN from M2), `vm-linear.md` (POP/`Trap` contract), V0 checklists | PHX-032 | Docs match code everywhere |
 

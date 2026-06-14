@@ -313,14 +313,14 @@ mod tests {
         };
 
         let mut code = Vec::new();
-        code.extend(push_true.encode());
-        code.extend(jump_if_false.encode());
+        code.extend(push_true.encode().expect("encode"));
+        code.extend(jump_if_false.encode().expect("encode"));
         let fallthrough = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode());
+        code.extend(ret.encode().expect("encode"));
         let branch = u32::try_from(code.len()).expect("offset");
-        code.extend(add.encode());
+        code.extend(add.encode().expect("encode"));
         let add_off = branch;
-        code.extend(ret.encode());
+        code.extend(ret.encode().expect("encode"));
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
@@ -358,13 +358,13 @@ mod tests {
         };
 
         let mut code = Vec::new();
-        code.extend(push_false.encode());
-        code.extend(jump_if_true.encode());
+        code.extend(push_false.encode().expect("encode"));
+        code.extend(jump_if_true.encode().expect("encode"));
         let add_off = u32::try_from(code.len()).expect("offset");
-        code.extend(add.encode());
-        code.extend(ret.encode());
+        code.extend(add.encode().expect("encode"));
+        code.extend(ret.encode().expect("encode"));
         let branch = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode());
+        code.extend(ret.encode().expect("encode"));
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
@@ -412,20 +412,20 @@ mod tests {
 
         let mut code = Vec::new();
         let a = 0u32;
-        code.extend(entry_const.encode());
+        code.extend(entry_const.encode().expect("encode"));
         let jump_if_off = u32::try_from(code.len()).expect("offset");
-        code.extend(jump_if.encode());
-        code.extend(jump_else.encode());
+        code.extend(jump_if.encode().expect("encode"));
+        code.extend(jump_else.encode().expect("encode"));
         let b = u32::try_from(code.len()).expect("offset");
-        code.extend(branch_const.encode());
+        code.extend(branch_const.encode().expect("encode"));
         let b_jump_off = u32::try_from(code.len()).expect("offset");
-        code.extend(jump_merge.encode());
+        code.extend(jump_merge.encode().expect("encode"));
         let c = u32::try_from(code.len()).expect("offset");
-        code.extend(branch_const.encode());
+        code.extend(branch_const.encode().expect("encode"));
         let c_jump_off = u32::try_from(code.len()).expect("offset");
-        code.extend(jump_merge.encode());
+        code.extend(jump_merge.encode().expect("encode"));
         let d = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode());
+        code.extend(ret.encode().expect("encode"));
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
@@ -462,9 +462,9 @@ mod tests {
             operands: vec![],
         };
         let mut code = Vec::new();
-        code.extend(push.encode());
+        code.extend(push.encode().expect("encode"));
         let ret_off = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode());
+        code.extend(ret.encode().expect("encode"));
 
         let mut instructions = Vec::new();
         let mut off = 0usize;

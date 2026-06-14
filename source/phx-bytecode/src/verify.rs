@@ -5,12 +5,12 @@ use std::collections::{HashMap, HashSet};
 use super::cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 use super::const_pool::{ConstEntry, ConstTag};
 use super::function::FunctionRecord;
-use super::header::{HEADER_SIZE, HeaderError, MAGIC};
+use super::header::HeaderError;
 use super::instr::{InstrError, Instruction};
 use super::local_layout::{FunctionLocalLayout, LocalLayoutTable};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
-use super::section::{SectionEntry, SectionError, validate_section_table};
+use super::section::{SectionError, validate_section_table};
 use super::stack_flow::{StackFlowError, analyze_stack_cfg, return_stack_depth};
 use super::types::TypeKind;
 
@@ -413,45 +413,23 @@ fn verify_header_and_sections(module: &BytecodeModule) -> Result<(), VerifyError
         HeaderError::BadMagic => VerifyError::BadMagic,
     })?;
 
-    let bytes = module
-        .encode()
-        .map_err(|_| VerifyError::SectionOutOfBounds)?;
-    if bytes.len() < HEADER_SIZE {
-        return Err(VerifyError::Truncated);
-    }
-    if bytes[0..4] != MAGIC {
-        return Err(VerifyError::BadMagic);
-    }
     if module.header.flags != 0 {
         return Err(VerifyError::NonZeroFlags);
     }
 
-    let encoded_section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-    if module.header.section_count != encoded_section_count {
+    let (entries, file_len) = module
+        .section_layout()
+        .map_err(|_| VerifyError::SectionOutOfBounds)?;
+
+    let computed_section_count = u32::try_from(entries.len()).unwrap_or(u32::MAX);
+    if module.header.section_count != computed_section_count {
         return Err(VerifyError::SectionCountMismatch {
             in_header: module.header.section_count,
-            in_file: encoded_section_count,
+            in_file: computed_section_count,
         });
     }
 
-    let table_end = HEADER_SIZE.saturating_add(
-        usize::try_from(encoded_section_count)
-            .unwrap_or(0)
-            .saturating_mul(12),
-    );
-    if bytes.len() < table_end {
-        return Err(VerifyError::Truncated);
-    }
-
-    let mut entries = Vec::with_capacity(usize::try_from(encoded_section_count).unwrap_or(0));
-    for i in 0..encoded_section_count {
-        let start = HEADER_SIZE + usize::try_from(i).unwrap_or(0).saturating_mul(12);
-        let entry_bytes: &[u8; 12] = bytes[start..start + 12]
-            .try_into()
-            .map_err(|_| VerifyError::Truncated)?;
-        entries.push(SectionEntry::decode(entry_bytes).map_err(section_error_to_verify)?);
-    }
-    validate_section_table(&entries, bytes.len()).map_err(section_error_to_verify)?;
+    validate_section_table(&entries, file_len).map_err(section_error_to_verify)?;
     Ok(())
 }
 
@@ -524,7 +502,9 @@ fn verify_function_body(
                 instructions.push((rel, inst));
                 offset = next;
             }
-            Err(InstrError::Truncated | InstrError::Opcode(_)) => {
+            Err(
+                InstrError::Truncated | InstrError::Opcode(_) | InstrError::TooManyOperands { .. },
+            ) => {
                 return Err(VerifyError::MalformedInstruction {
                     function_id: func.function_id,
                     offset: rel,
@@ -1047,14 +1027,16 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code
     }
@@ -1080,14 +1062,16 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::JumpIfTrue,
                 operands: vec![99],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1105,14 +1089,16 @@ mod tests {
                 opcode: Opcode::Jump,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1130,14 +1116,16 @@ mod tests {
                 opcode: Opcode::JumpIfTrue,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1155,14 +1143,16 @@ mod tests {
                 opcode: Opcode::JumpIfFalse,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1180,14 +1170,16 @@ mod tests {
                 opcode: Opcode::Jump,
                 operands: vec![0, 1],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1205,14 +1197,16 @@ mod tests {
                 opcode: Opcode::Call,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 8, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1230,14 +1224,16 @@ mod tests {
                 opcode: Opcode::LoadLocal,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1269,14 +1265,16 @@ mod tests {
                 opcode: Opcode::Add,
                 operands: vec![PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1317,14 +1315,16 @@ mod tests {
                 opcode: Opcode::Call,
                 operands: vec![99],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 8, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1342,14 +1342,16 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Cast,
                 operands: vec![PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1420,28 +1422,32 @@ mod tests {
                 opcode: Opcode::MakeFnPtr,
                 operands: vec![0, 1],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::CallIndirect,
                 operands: vec![1, 10],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = module_with_types(
             code,
@@ -1465,21 +1471,24 @@ mod tests {
                 opcode: Opcode::MakeFnPtr,
                 operands: vec![0, 1],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::CallIndirect,
                 operands: vec![1, 10],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = module_with_types(
             code,
@@ -1505,21 +1514,24 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::Bool.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::JumpIfTrue,
                 operands: vec![0],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Jump,
                 operands: vec![0],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let then_off = u32::try_from(code.len()).unwrap_or(0);
         code.extend(
@@ -1527,14 +1539,16 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![1, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Jump,
                 operands: vec![0],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let merge_off = u32::try_from(code.len()).unwrap_or(0);
         code.extend(
@@ -1542,7 +1556,8 @@ mod tests {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
 
         let patch_operand = |code: &mut Vec<u8>, inst_offset: usize, target: u32| {
@@ -1596,7 +1611,8 @@ mod tests {
                 opcode: Opcode::Trap,
                 operands: vec![0],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1614,7 +1630,8 @@ mod tests {
                 opcode: Opcode::Trap,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         verify(&module).expect("trap without operands");
@@ -1628,14 +1645,16 @@ mod tests {
                 opcode: Opcode::MakeStr,
                 operands: vec![0],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
@@ -1669,14 +1688,16 @@ mod tests {
                 opcode: Opcode::LoadLocal,
                 operands: vec![0, u32::from(PrimitiveKind::F32.as_u8())],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let mut module = minimal_module(code, 4, 0, 0);
         module.functions.functions[0].local_count = 1;
@@ -1705,14 +1726,16 @@ mod tests {
                 opcode: Opcode::MakeStr,
                 operands: vec![0],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let mut module = minimal_module(code, 4, 0, 1);
         module.constants.entries[0] = ConstEntry {

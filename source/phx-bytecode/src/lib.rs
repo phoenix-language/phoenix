@@ -82,7 +82,7 @@ mod tests {
             opcode: Opcode::Add,
             operands: vec![1, 2],
         };
-        let bytes = inst.encode();
+        let bytes = inst.encode().expect("encode");
         let (decoded, end) = Instruction::decode_at(&bytes, 0).expect("decode");
         assert_eq!(end, bytes.len());
         assert_eq!(decoded, inst);

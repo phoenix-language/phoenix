@@ -152,7 +152,7 @@ fn emit_inst(
             index, prim_kind, ..
         } => {
             let pool_idx = pool.pool_index_for_literal(*index)?;
-            out.extend(encode(Opcode::Const, &[pool_idx, u32::from(*prim_kind)]));
+            out.extend(encode(Opcode::Const, &[pool_idx, u32::from(*prim_kind)])?);
         }
         IrInst::LoadLocal {
             slot, prim_kind, ..
@@ -160,7 +160,7 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::LoadLocal,
                 &[slot.index(), u32::from(*prim_kind)],
-            ));
+            )?);
         }
         IrInst::StoreLocal {
             slot, prim_kind, ..
@@ -168,21 +168,21 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::StoreLocal,
                 &[slot.index(), u32::from(*prim_kind)],
-            ));
+            )?);
         }
         IrInst::BinOp { op, prim_kind, .. } => {
-            out.extend(encode(ir_binop_to_opcode(*op), &[u32::from(*prim_kind)]));
+            out.extend(encode(ir_binop_to_opcode(*op), &[u32::from(*prim_kind)])?);
         }
         IrInst::Call { callee, .. } => {
             let fn_id = function_id_for(*callee, def_to_fn)?;
-            out.extend(encode(Opcode::Call, &[fn_id]));
+            out.extend(encode(Opcode::Call, &[fn_id])?);
         }
         IrInst::MakeFnPtr {
             target_kind,
             target_id,
             ..
         } => {
-            out.extend(encode(Opcode::MakeFnPtr, &[*target_kind, *target_id]));
+            out.extend(encode(Opcode::MakeFnPtr, &[*target_kind, *target_id])?);
         }
         IrInst::CallIndirect {
             sig_type_id,
@@ -190,14 +190,14 @@ fn emit_inst(
             ..
         } => {
             let sig = map_type_id(*sig_type_id, type_remap)?;
-            out.extend(encode(Opcode::CallIndirect, &[*expected_arity, sig]));
+            out.extend(encode(Opcode::CallIndirect, &[*expected_arity, sig])?);
         }
         IrInst::Return { .. } => {
-            out.extend(encode(Opcode::Return, &[]));
+            out.extend(encode(Opcode::Return, &[])?);
         }
         IrInst::Jump { target } => {
             let off = block_offset(*target, block_starts)?;
-            out.extend(encode(Opcode::Jump, &[off]));
+            out.extend(encode(Opcode::Jump, &[off])?);
         }
         IrInst::JumpIf {
             then_block,
@@ -205,15 +205,15 @@ fn emit_inst(
         } => {
             let then_off = block_offset(*then_block, block_starts)?;
             let else_off = block_offset(*else_block, block_starts)?;
-            out.extend(encode(Opcode::JumpIfTrue, &[then_off]));
-            out.extend(encode(Opcode::Jump, &[else_off]));
+            out.extend(encode(Opcode::JumpIfTrue, &[then_off])?);
+            out.extend(encode(Opcode::Jump, &[else_off])?);
         }
         IrInst::MakeStruct {
             type_id,
             field_count,
         } => {
             let ty = map_type_id(*type_id, type_remap)?;
-            out.extend(encode(Opcode::MakeStruct, &[ty, *field_count]));
+            out.extend(encode(Opcode::MakeStruct, &[ty, *field_count])?);
         }
         IrInst::MakeEnum {
             type_id,
@@ -224,7 +224,7 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::MakeEnum,
                 &[ty, *variant_tag, *payload_count],
-            ));
+            )?);
         }
         IrInst::GetField {
             type_id,
@@ -232,45 +232,45 @@ fn emit_inst(
             ..
         } => {
             let ty = map_type_id(*type_id, type_remap)?;
-            out.extend(encode(Opcode::GetField, &[ty, *field_index]));
+            out.extend(encode(Opcode::GetField, &[ty, *field_index])?);
         }
         IrInst::SetField {
             type_id,
             field_index,
         } => {
             let ty = map_type_id(*type_id, type_remap)?;
-            out.extend(encode(Opcode::SetField, &[ty, *field_index]));
+            out.extend(encode(Opcode::SetField, &[ty, *field_index])?);
         }
         IrInst::MatchTag {
             type_id,
             variant_tag,
         } => {
             let ty = map_type_id(*type_id, type_remap)?;
-            out.extend(encode(Opcode::MatchTag, &[ty, *variant_tag]));
+            out.extend(encode(Opcode::MatchTag, &[ty, *variant_tag])?);
         }
         IrInst::Cast { from_kind, to_kind } => {
             out.extend(encode(
                 Opcode::Cast,
                 &[u32::from(*from_kind), u32::from(*to_kind)],
-            ));
+            )?);
         }
         IrInst::Neg { prim_kind, .. } => {
-            out.extend(encode(Opcode::Neg, &[u32::from(*prim_kind)]));
+            out.extend(encode(Opcode::Neg, &[u32::from(*prim_kind)])?);
         }
         IrInst::Not { prim_kind, .. } => {
-            out.extend(encode(Opcode::Not, &[u32::from(*prim_kind)]));
+            out.extend(encode(Opcode::Not, &[u32::from(*prim_kind)])?);
         }
         IrInst::BitNot { prim_kind, .. } => {
-            out.extend(encode(Opcode::BitNot, &[u32::from(*prim_kind)]));
+            out.extend(encode(Opcode::BitNot, &[u32::from(*prim_kind)])?);
         }
         IrInst::MakeTuple { arity } => {
-            out.extend(encode(Opcode::MakeTuple, &[*arity]));
+            out.extend(encode(Opcode::MakeTuple, &[*arity])?);
         }
         IrInst::MakeArray { len } => {
-            out.extend(encode(Opcode::MakeArray, &[*len]));
+            out.extend(encode(Opcode::MakeArray, &[*len])?);
         }
         IrInst::Index { .. } => {
-            out.extend(encode(Opcode::Index, &[]));
+            out.extend(encode(Opcode::Index, &[])?);
         }
         IrInst::IndexStore {
             prim_kind, signed, ..
@@ -278,7 +278,7 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::IndexStore,
                 &[u32::from(*prim_kind), u32::from(*signed)],
-            ));
+            )?);
         }
         IrInst::PtrLoad {
             prim_kind, signed, ..
@@ -286,16 +286,16 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::PtrLoad,
                 &[u32::from(*prim_kind), u32::from(*signed)],
-            ));
+            )?);
         }
         IrInst::AddressOfLocal { slot } => {
-            out.extend(encode(Opcode::AddressOfLocal, &[slot.index()]));
+            out.extend(encode(Opcode::AddressOfLocal, &[slot.index()])?);
         }
         IrInst::LoadAggViaLocalPtr => {
-            out.extend(encode(Opcode::LoadAggViaLocalPtr, &[]));
+            out.extend(encode(Opcode::LoadAggViaLocalPtr, &[])?);
         }
         IrInst::Alloc { .. } => {
-            out.extend(encode(Opcode::Alloc, &[]));
+            out.extend(encode(Opcode::Alloc, &[])?);
         }
         IrInst::PtrStore {
             prim_kind, signed, ..
@@ -303,29 +303,29 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::PtrStore,
                 &[u32::from(*prim_kind), u32::from(*signed)],
-            ));
+            )?);
         }
         IrInst::Free => {
-            out.extend(encode(Opcode::Free, &[]));
+            out.extend(encode(Opcode::Free, &[])?);
         }
         IrInst::Pop => {
-            out.extend(encode(Opcode::Pop, &[]));
+            out.extend(encode(Opcode::Pop, &[])?);
         }
         IrInst::MakeSlice { elem_kind } => {
-            out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)]));
+            out.extend(encode(Opcode::MakeSlice, &[u32::from(*elem_kind)])?);
         }
         IrInst::MakeSliceFromPtr { elem_kind } => {
-            out.extend(encode(Opcode::MakeSliceFromPtr, &[u32::from(*elem_kind)]));
+            out.extend(encode(Opcode::MakeSliceFromPtr, &[u32::from(*elem_kind)])?);
         }
         IrInst::MakeStr { pool_index } => {
             let pool_idx = pool.pool_index_for_literal(*pool_index)?;
-            out.extend(encode(Opcode::MakeStr, &[pool_idx]));
+            out.extend(encode(Opcode::MakeStr, &[pool_idx])?);
         }
         IrInst::StrAsSlice => {
-            out.extend(encode(Opcode::StrAsSlice, &[]));
+            out.extend(encode(Opcode::StrAsSlice, &[])?);
         }
         IrInst::TrapGivenMismatch => {
-            out.extend(encode(Opcode::Trap, &[]));
+            out.extend(encode(Opcode::Trap, &[])?);
         }
         IrInst::DropLocal {
             slot,
@@ -336,21 +336,22 @@ fn emit_inst(
             out.extend(encode(
                 Opcode::LoadLocal,
                 &[slot.index(), u32::from(*prim_kind)],
-            ));
+            )?);
             let fn_id = function_id_for(*drop_fn, def_to_fn)?;
-            out.extend(encode(Opcode::Call, &[fn_id]));
-            out.extend(encode(Opcode::Pop, &[]));
+            out.extend(encode(Opcode::Call, &[fn_id])?);
+            out.extend(encode(Opcode::Pop, &[])?);
         }
     }
     Ok(())
 }
 
-fn encode(opcode: Opcode, operands: &[u32]) -> Vec<u8> {
+fn encode(opcode: Opcode, operands: &[u32]) -> Result<Vec<u8>, CodegenError> {
     Instruction {
         opcode,
         operands: operands.to_vec(),
     }
     .encode()
+    .map_err(CodegenError::from)
 }
 
 #[cfg(test)]

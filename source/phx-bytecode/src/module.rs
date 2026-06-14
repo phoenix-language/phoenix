@@ -40,21 +40,20 @@ impl BytecodeModule {
         }
     }
 
-    /// Encodes the module to a PHX0 byte vector.
+    /// Computes the canonical MVP section table and total file size from in-memory payloads.
     ///
     /// # Errors
     ///
     /// Returns [`EncodeError::SectionTooLarge`] when any section or offset exceeds `u32::MAX`.
-    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
+    pub(crate) fn section_layout(&self) -> Result<(Vec<SectionEntry>, usize), EncodeError> {
         let constants = self.constants.encode();
         let types = self.types.encode();
         let functions = self.functions.encode();
-        let code = &self.code;
+        let code_len = self.code.len();
         let local_layouts = self.local_layouts.encode();
 
-        let section_count = 5u32;
-        let table_size = 5usize * 12;
-        let mut offset = HEADER_SIZE + table_size;
+        let table_size = 5usize.saturating_mul(12);
+        let mut offset = HEADER_SIZE.saturating_add(table_size);
 
         let constants_entry = SectionEntry {
             kind: SectionKind::Constants,
@@ -80,15 +79,46 @@ impl BytecodeModule {
         let code_entry = SectionEntry {
             kind: SectionKind::Code,
             offset: u32_len("code_offset", offset)?,
-            length: u32_len("code", code.len())?,
+            length: u32_len("code", code_len)?,
         };
-        offset = offset.saturating_add(code.len());
+        offset = offset.saturating_add(code_len);
 
         let local_layouts_entry = SectionEntry {
             kind: SectionKind::LocalLayouts,
             offset: u32_len("local_layouts_offset", offset)?,
             length: u32_len("local_layouts", local_layouts.len())?,
         };
+        let file_len = offset.saturating_add(local_layouts.len());
+
+        Ok((
+            vec![
+                constants_entry,
+                types_entry,
+                functions_entry,
+                code_entry,
+                local_layouts_entry,
+            ],
+            file_len,
+        ))
+    }
+
+    /// Encodes the module to a PHX0 byte vector.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError::SectionTooLarge`] when any section or offset exceeds `u32::MAX`.
+    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
+        let (entries, file_len) = self.section_layout()?;
+        let constants = self.constants.encode();
+        let types = self.types.encode();
+        let functions = self.functions.encode();
+        let local_layouts = self.local_layouts.encode();
+
+        let section_count =
+            u32::try_from(entries.len()).map_err(|_| EncodeError::SectionTooLarge {
+                section: "section_count",
+                len: entries.len(),
+            })?;
 
         let header = FileHeader {
             section_count,
@@ -96,25 +126,15 @@ impl BytecodeModule {
             ..self.header
         };
 
-        let mut out = Vec::with_capacity(
-            offset
-                .saturating_add(local_layouts.len())
-                .saturating_add(code.len()),
-        );
+        let mut out = Vec::with_capacity(file_len);
         out.extend_from_slice(&header.encode());
-        for entry in [
-            constants_entry,
-            types_entry,
-            functions_entry,
-            code_entry,
-            local_layouts_entry,
-        ] {
+        for entry in entries {
             out.extend_from_slice(&entry.encode());
         }
         out.extend_from_slice(&constants);
         out.extend_from_slice(&types);
         out.extend_from_slice(&functions);
-        out.extend_from_slice(code);
+        out.extend_from_slice(&self.code);
         out.extend_from_slice(&local_layouts);
         Ok(out)
     }

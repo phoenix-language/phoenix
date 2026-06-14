@@ -14,16 +14,22 @@ pub struct Instruction {
 
 impl Instruction {
     /// Encodes to wire form: `u8 opcode`, `u8 operand_count`, `operand_count × u32`.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
-        let count = u8::try_from(self.operands.len()).unwrap_or(u8::MAX);
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InstrError::TooManyOperands`] when `operands.len()` exceeds 255.
+    pub fn encode(&self) -> Result<Vec<u8>, InstrError> {
+        let count = u8::try_from(self.operands.len()).map_err(|_| InstrError::TooManyOperands {
+            count: self.operands.len(),
+            max: u8::MAX,
+        })?;
         let mut out = Vec::with_capacity(2 + self.operands.len() * 4);
         out.push(self.opcode.as_u8());
         out.push(count);
-        for op in self.operands.iter().take(usize::from(count)) {
+        for op in &self.operands {
             out.extend_from_slice(&op.to_le_bytes());
         }
-        out
+        Ok(out)
     }
 
     /// Decodes one instruction from `bytes` starting at `offset`; returns (instruction, new offset).
@@ -132,20 +138,57 @@ impl Instruction {
     }
 }
 
-/// Instruction decode errors.
+/// Instruction encode/decode errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstrError {
     /// Unexpected end of bytecode.
     Truncated,
     /// Invalid opcode byte.
     Opcode(super::opcode::OpcodeError),
+    /// Operand count exceeds the wire-format `u8` limit.
+    TooManyOperands {
+        /// Requested operand count.
+        count: usize,
+        /// Maximum encodable count (255).
+        max: u8,
+    },
 }
+
+impl std::fmt::Display for InstrError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated => f.write_str("truncated instruction"),
+            Self::Opcode(err) => write!(f, "invalid opcode: {err:?}"),
+            Self::TooManyOperands { count, max } => {
+                write!(f, "instruction has {count} operands; maximum is {max}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InstrError {}
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::Opcode;
+
+    #[test]
+    fn instruction_encode_rejects_too_many_operands() {
+        let inst = Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0; 256],
+        };
+        let err = inst.encode().unwrap_err();
+        assert_eq!(
+            err,
+            InstrError::TooManyOperands {
+                count: 256,
+                max: u8::MAX,
+            }
+        );
+    }
 
     #[test]
     fn apply_link_bases_rebases_const_and_type_operands() {

@@ -3,7 +3,8 @@
     clippy::cast_lossless,
     dead_code,
     clippy::expect_used,
-    clippy::unwrap_used
+    clippy::unwrap_used,
+    clippy::missing_panics_doc
 )]
 
 use phx_bytecode::{
@@ -55,14 +56,16 @@ pub fn const_return_code() -> Vec<u8> {
             opcode: Opcode::Const,
             operands: vec![0, u32::from(PrimitiveKind::S32.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code
 }
@@ -85,70 +88,80 @@ pub fn heap_alloc_roundtrip_module() -> BytecodeModule {
             opcode: Opcode::Const,
             operands: vec![0, u32::from(PrimitiveKind::U32.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Alloc,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::StoreLocal,
             operands: vec![0, u32::from(PrimitiveKind::U64.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::LoadLocal,
             operands: vec![0, u32::from(PrimitiveKind::U64.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Const,
             operands: vec![1, u32::from(PrimitiveKind::U8.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::PtrStore,
             operands: vec![u32::from(PrimitiveKind::U8.as_u8()), 0],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::LoadLocal,
             operands: vec![0, u32::from(PrimitiveKind::U64.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::PtrLoad,
             operands: vec![u32::from(PrimitiveKind::U8.as_u8()), 0],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::StoreLocal,
             operands: vec![1, u32::from(PrimitiveKind::U8.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
 
     BytecodeModule {

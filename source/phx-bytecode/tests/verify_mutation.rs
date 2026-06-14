@@ -47,21 +47,24 @@ fn mutate_jump_target_out_of_range_rejected_by_verifier() {
             opcode: Opcode::Const,
             operands: vec![0, u32::from(PrimitiveKind::S32.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::JumpIfTrue,
             operands: vec![99],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
@@ -77,14 +80,16 @@ fn mutate_jump_zero_operands_rejected() {
             opcode: Opcode::Jump,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
@@ -99,14 +104,16 @@ fn mutate_invalid_call_target_rejected() {
             opcode: Opcode::Call,
             operands: vec![99],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     let module = minimal_module(code, 8, 0, 0);
     assert_verify_rejects(&module);
@@ -121,14 +128,16 @@ fn mutate_local_count_zero_with_load_rejected() {
             opcode: Opcode::LoadLocal,
             operands: vec![0, u32::from(PrimitiveKind::S32.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
@@ -161,21 +170,24 @@ fn mutate_jump_if_false_branch_underflow_rejected() {
             opcode: Opcode::Const,
             operands: vec![0, u32::from(PrimitiveKind::Bool.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::JumpIfFalse,
             operands: vec![0],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     let branch_off = u32::try_from(code.len()).expect("offset");
     code.extend(
@@ -183,14 +195,16 @@ fn mutate_jump_if_false_branch_underflow_rejected() {
             opcode: Opcode::Add,
             operands: vec![u32::from(PrimitiveKind::S32.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
 
     let mut instructions = Vec::new();
@@ -203,7 +217,7 @@ fn mutate_jump_if_false_branch_underflow_rejected() {
     instructions[1].1.operands[0] = branch_off;
     let mut patched = Vec::new();
     for (_, inst) in &instructions {
-        patched.extend(inst.encode());
+        patched.extend(inst.encode().expect("encode"));
     }
 
     let module = jump_if_false_underflow_module(patched);
@@ -247,14 +261,16 @@ fn mutate_stack_underflow_rejected() {
             opcode: Opcode::Add,
             operands: vec![u32::from(PrimitiveKind::S32.as_u8())],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);

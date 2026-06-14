@@ -671,10 +671,12 @@ Owns the PHX0 contract: header/section encode-decode, single `Opcode` enum (corr
 **Location:** `phx-bytecode/src/verify.rs:328–331`; `instr.rs:18`
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Section bounds are validated by *re-encoding* the module (coupling verify correctness to encoder correctness), and `Instruction::encode` silently truncates operand counts > 255.
 **Recommendation:** Validate the in-memory structure directly; make `encode` fallible.
+
+**Resolution:** Added `BytecodeModule::section_layout()` for direct section-table validation in `verify`; `Instruction::encode` returns `Result` with `InstrError::TooManyOperands` when operand count exceeds 255.
 
 ---
 
@@ -914,7 +916,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-047 | - [x]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
 | PHX-048 | - [x]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
 | PHX-049 | - [x]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
-| PHX-050 | - [ ]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
+| PHX-050 | - [x]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
 | PHX-051 | - [ ]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
 | PHX-052 | - [ ]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
 | PHX-053 | - [ ]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |

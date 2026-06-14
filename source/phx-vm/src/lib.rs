@@ -55,14 +55,16 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, 2],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
 
         let module = BytecodeModule {
@@ -122,7 +124,8 @@ mod tests {
             opcode: Opcode::Add,
             operands: vec![],
         }
-        .encode();
+        .encode()
+        .expect("encode");
         let module = minimal_module(code, 0, 4);
         assert_eq!(run(&module), Err(VmError::StackUnderflow));
     }
@@ -140,7 +143,7 @@ mod tests {
             },
         ]
         .into_iter()
-        .flat_map(|i| i.encode())
+        .flat_map(|i| i.encode().expect("encode"))
         .collect::<Vec<_>>();
         let module = minimal_module(code, 1, 4);
         assert!(matches!(run(&module), Err(VmError::InvalidLocalSlot(99))));
@@ -159,7 +162,7 @@ mod tests {
             },
         ]
         .into_iter()
-        .flat_map(|i| i.encode())
+        .flat_map(|i| i.encode().expect("encode"))
         .collect::<Vec<_>>();
         let module = minimal_module(code, 0, 4);
         assert!(matches!(run(&module), Err(VmError::InvalidFunctionId(99))));
@@ -171,7 +174,8 @@ mod tests {
             opcode: Opcode::Trap,
             operands: vec![],
         }
-        .encode();
+        .encode()
+        .expect("encode");
         let module = minimal_module(code, 0, 4);
         phx_bytecode::verify(&module).expect("trap module verifies");
         assert_eq!(run(&module), Err(VmError::GivenMismatch));
@@ -185,14 +189,16 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, 2],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode(),
+            .encode()
+            .expect("encode"),
         );
         let module = BytecodeModule {
             header: FileHeader::new(5, 0),

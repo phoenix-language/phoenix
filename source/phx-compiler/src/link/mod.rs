@@ -1,8 +1,8 @@
 //! PHX0 linker — merge per-module object files into one executable image.
 
 use phx_bytecode::{
-    BytecodeModule, ConstPool, ENTRY_NONE, FileHeader, FunctionRecord, FunctionTable, Instruction,
-    LocalLayoutTable, TypeTable,
+    BytecodeModule, ConstPool, ENTRY_NONE, FileHeader, FunctionRecord, FunctionTable, InstrError,
+    Instruction, LocalLayoutTable, TypeTable,
 };
 use std::collections::HashMap;
 
@@ -41,6 +41,8 @@ pub enum LinkError {
         /// Second module path.
         second: String,
     },
+    /// Malformed instruction while patching linked bytecode.
+    Instruction(InstrError),
 }
 
 fn u32_link(section: &'static str, len: usize) -> Result<u32, LinkError> {
@@ -63,6 +65,7 @@ impl std::fmt::Display for LinkError {
                     "linker: duplicate function id {id} in `{first}` and `{second}`"
                 )
             }
+            Self::Instruction(err) => write!(f, "linker: {err}"),
         }
     }
 }
@@ -151,7 +154,8 @@ pub fn link_modules(
             }
             let code_offset = u32_link("code_offset", merged_code.len())?;
             let body = slice_code(&m.code, f.code_offset, f.code_len);
-            let patched = patch_code(body, const_base, type_base, f.function_id, &m.functions);
+            let patched = patch_code(body, const_base, type_base, f.function_id, &m.functions)
+                .map_err(LinkError::Instruction)?;
             let code_len = u32_link("code_len", patched.len())?;
             merged_code.extend_from_slice(&patched);
             merged_functions.push(FunctionRecord {
@@ -226,16 +230,14 @@ fn patch_code(
     type_base: u32,
     _self_fn: u32,
     _functions: &FunctionTable,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, InstrError> {
     let mut out = Vec::new();
     let mut pos = 0usize;
     while pos < body.len() {
-        let Ok((inst, next)) = Instruction::decode_at(body, pos) else {
-            break;
-        };
+        let (inst, next) = Instruction::decode_at(body, pos)?;
         let patched = inst.apply_link_bases(const_base, type_base);
-        out.extend(patched.encode());
+        out.extend(patched.encode()?);
         pos = next;
     }
-    out
+    Ok(out)
 }

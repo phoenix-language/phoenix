@@ -54,6 +54,7 @@ fn return_only() -> Vec<u8> {
         operands: vec![],
     }
     .encode()
+    .expect("encode")
 }
 
 fn call_then_return(callee: u32) -> Vec<u8> {
@@ -61,13 +62,15 @@ fn call_then_return(callee: u32) -> Vec<u8> {
         opcode: Opcode::Call,
         operands: vec![callee],
     }
-    .encode();
+    .encode()
+    .expect("encode");
     code.extend(
         Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code
 }
@@ -150,20 +153,23 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
         opcode: Opcode::Const,
         operands: vec![0, s32_kind],
     }
-    .encode();
+    .encode()
+    .expect("encode");
     code_a.extend(
         Instruction {
             opcode: Opcode::MakeStruct,
             operands: vec![0, 1],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code_a.extend(
         Instruction {
             opcode: Opcode::GetField,
             operands: vec![0, 0],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code_a.extend(return_only());
 
@@ -171,20 +177,23 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
         opcode: Opcode::Const,
         operands: vec![0, s32_kind],
     }
-    .encode();
+    .encode()
+    .expect("encode");
     code_b.extend(
         Instruction {
             opcode: Opcode::MakeEnum,
             operands: vec![0, 0, 1],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code_b.extend(
         Instruction {
             opcode: Opcode::MatchTag,
             operands: vec![0, 0],
         }
-        .encode(),
+        .encode()
+        .expect("encode"),
     );
     code_b.extend(return_only());
 
@@ -251,12 +260,14 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
                     operands: vec![0, s32_kind],
                 }
                 .encode()
+                .expect("encode")
                 .len()
                     + Instruction {
                         opcode: Opcode::MakeStruct,
                         operands: vec![0, 1],
                     }
                     .encode()
+                    .expect("encode")
                     .len(),
             )
             .unwrap_or(0),
@@ -274,12 +285,14 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
                     operands: vec![0, s32_kind],
                 }
                 .encode()
+                .expect("encode")
                 .len()
                     + Instruction {
                         opcode: Opcode::MakeEnum,
                         operands: vec![0, 0, 1],
                     }
                     .encode()
+                    .expect("encode")
                     .len(),
             )
             .unwrap_or(0),
@@ -301,7 +314,8 @@ fn link_rebases_make_str_const_operand() {
         opcode: Opcode::MakeStr,
         operands: vec![0],
     }
-    .encode();
+    .encode()
+    .expect("encode");
     let mut code_b = make_str;
     code_b.extend(return_only());
 

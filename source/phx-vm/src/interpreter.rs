@@ -92,7 +92,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
         }
 
         let (inst, next_pc) = Instruction::decode_at(code, pc_usize).map_err(|e| match e {
-            InstrError::Truncated => VmError::TruncatedCode,
+            InstrError::Truncated | InstrError::TooManyOperands { .. } => VmError::TruncatedCode,
             InstrError::Opcode(phx_bytecode::OpcodeError::Unknown(op)) => {
                 VmError::UnsupportedOpcode(op)
             }
