@@ -1,5 +1,7 @@
 //! Types section records (metadata for verifier / debug).
 
+use crate::decode::checked_entry_count;
+
 /// Primitive type kind for MVP metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -68,6 +70,8 @@ impl TypeTable {
             return Err(TypeTableError::Truncated);
         }
         let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        let remaining = bytes.len().saturating_sub(4);
+        let count = checked_entry_count(remaining, 8, count).ok_or(TypeTableError::Truncated)?;
         let mut records = Vec::with_capacity(count);
         let mut pos = 4;
         for _ in 0..count {

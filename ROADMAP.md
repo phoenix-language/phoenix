@@ -72,7 +72,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 |---|---|---|
 | Validate operand arity for all opcodes (jumps, calls) | PHX-046 | Done — jump group arity guard + mutation test |
 | Verify header version; reject overlapping/duplicate sections | PHX-047 | Done — `validate_section_table`; decode rejects bad layouts |
-| Clamp untrusted `with_capacity` counts at decode | PHX-048 | Cap against remaining section bytes (DoS) |
+| Clamp untrusted `with_capacity` counts at decode | PHX-048 | Done — `checked_entry_count` before alloc/loop |
 | Fix `DropLocal` stack leak; verifier enforces canonical stack depth at `Return` | PHX-035 | **Decided:** depth at `RETURN` must equal return arity (Resolved Design Decisions #3); spec in `vm-linear.md`, update POP note |
 | Split signed/unsigned arithmetic; fix u128 div/mod/compare; float `Mod` = IEEE truncated remainder; cut `Pow` from v0 | PHX-051 | **Decided:** Resolved Design Decisions #4; width-accurate execution per `wide-integers.md` |
 | Shift masking and NaN comparison semantics | PHX-052 | **Decided:** mask shift amounts to width; IEEE 754 NaN (`NaN != NaN`, ordered comparisons false) (Resolved Design Decisions #4); spec in `wide-integers.md`/`type-system.md`, then implement |

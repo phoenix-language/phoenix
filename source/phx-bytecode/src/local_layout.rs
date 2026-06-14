@@ -1,6 +1,7 @@
 //! Per-function local slot layout metadata for typed load/store.
 
 use crate::cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
+use crate::decode::checked_entry_count;
 
 /// One local slot descriptor (`0xFF` = aggregate, else [`PrimitiveKind`] wire byte).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +93,8 @@ impl LocalLayoutTable {
             return Err(LocalLayoutError::Truncated);
         }
         let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        let remaining = bytes.len().saturating_sub(4);
+        let count = checked_entry_count(remaining, 6, count).ok_or(LocalLayoutError::Truncated)?;
         let mut layouts = Vec::with_capacity(count);
         let mut pos = 4;
         for _ in 0..count {

@@ -1,5 +1,7 @@
 //! Function metadata records.
 
+use crate::decode::checked_entry_count;
+
 /// One function entry in the functions section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionRecord {
@@ -62,10 +64,9 @@ impl FunctionTable {
             return Err(FunctionTableError::Truncated);
         }
         let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-        let needed = 4usize.saturating_add(count.saturating_mul(RECORD_SIZE));
-        if bytes.len() < needed {
-            return Err(FunctionTableError::Truncated);
-        }
+        let remaining = bytes.len().saturating_sub(4);
+        let count = checked_entry_count(remaining, RECORD_SIZE, count)
+            .ok_or(FunctionTableError::Truncated)?;
         let mut functions = Vec::with_capacity(count);
         let mut pos = 4;
         for _ in 0..count {

@@ -1,5 +1,10 @@
 //! Shared bytecode test helpers for integration-style tests.
-#![allow(clippy::cast_lossless, clippy::expect_used, clippy::unwrap_used)]
+#![allow(
+    clippy::cast_lossless,
+    dead_code,
+    clippy::expect_used,
+    clippy::unwrap_used
+)]
 
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,

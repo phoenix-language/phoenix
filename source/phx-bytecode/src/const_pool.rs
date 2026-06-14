@@ -1,5 +1,7 @@
 //! Constants section payload.
 
+use crate::decode::checked_entry_count;
+
 /// Constant entry tag (wire `u8`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -61,6 +63,8 @@ impl ConstPool {
             return Err(ConstPoolError::Truncated);
         }
         let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        let remaining = bytes.len().saturating_sub(4);
+        let count = checked_entry_count(remaining, 4, count).ok_or(ConstPoolError::Truncated)?;
         let mut entries = Vec::with_capacity(count);
         let mut pos = 4;
         for _ in 0..count {

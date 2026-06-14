@@ -644,11 +644,13 @@ Owns the PHX0 contract: header/section encode-decode, single `Opcode` enum (corr
 **Location:** `phx-bytecode/src/const_pool.rs:64`, `function.rs:69`, `types.rs:71`, `local_layout.rs:95`, `instr.rs:38`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Decode pre-allocates `Vec::with_capacity(count)` from untrusted `u32` counts before validating against remaining section bytes.
 **Detail:** A 16-byte hostile file can declare `count = 0xFFFF_FFFF` and force a multi-GB allocation at *decode* time — before the verifier ever runs. With `panic = "abort"` in release, allocation failure kills the process.
 **Recommendation:** Clamp capacity to `remaining_bytes / min_entry_size` before pre-sizing.
+
+**Resolution:** Added `decode::checked_entry_count` and applied it before `with_capacity` and decode loops in `const_pool`, `types`, `local_layout`, `function`, and `instr`. Declared counts exceeding `remaining / min_entry_size` return existing `Truncated` errors without huge allocation or iteration. Regression tests in `decode_limits.rs`.
 
 ---
 
@@ -908,7 +910,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-045 | - [x]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
 | PHX-046 | - [x]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
 | PHX-047 | - [x]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
-| PHX-048 | - [ ]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
+| PHX-048 | - [x]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
 | PHX-049 | - [ ]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
 | PHX-050 | - [ ]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
 | PHX-051 | - [ ]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |

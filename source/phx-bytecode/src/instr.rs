@@ -1,5 +1,6 @@
 //! Variable-length logical instructions (`opcode` + `operand_count` + operands).
 
+use super::decode::checked_entry_count;
 use super::opcode::Opcode;
 
 /// One decoded instruction (operands are `u32` indices only).
@@ -35,6 +36,8 @@ impl Instruction {
         let opcode = Opcode::from_u8(opcode_byte).map_err(InstrError::Opcode)?;
         let count_offset = offset + 1;
         let count = usize::from(*bytes.get(count_offset).ok_or(InstrError::Truncated)?);
+        let remaining = bytes.len().saturating_sub(count_offset + 1);
+        let count = checked_entry_count(remaining, 4, count).ok_or(InstrError::Truncated)?;
         let mut operands = Vec::with_capacity(count);
         let mut pos = count_offset + 1;
         for _ in 0..count {

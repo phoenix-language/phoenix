@@ -7,6 +7,7 @@
 
 mod cast;
 mod const_pool;
+mod decode;
 mod encode;
 mod function;
 mod header;
@@ -23,6 +24,7 @@ mod verify;
 
 pub use cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 pub use const_pool::{ConstEntry, ConstPool, ConstTag};
+pub use decode::{checked_entry_count, max_entries_for_remaining};
 pub use encode::{EncodeError, u32_len};
 pub use function::{FunctionRecord, FunctionTable};
 pub use header::{ENTRY_NONE, FileHeader, HeaderError, MAGIC, VERSION_MAJOR, VERSION_MINOR};
