@@ -421,14 +421,16 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 ---
 
 **[PHX-031] Severity: Major**
-**Location:** `phx-compiler/src/typeck/check.rs` (entire file, 6,030 lines)
+**Location:** `phx-compiler/src/typeck/check/` (formerly single 6,340-line `check.rs`)
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `TypeChecker` is a single ~90-method impl covering decls, impls/traits, exprs, stmts, patterns, generics, intrinsics, drops, and unsafe tracking.
 **Detail:** This is the workspace's biggest onboarding liability and the file where PHX-023/024 hid. The `lower/` directory demonstrates the intended layout (ctx/expr/stmt/func split); typeck never got the same treatment.
 **Recommendation:** Split into `check/{decl,impl,expr,stmt,pattern,intrinsic}.rs` sharing the `TypeChecker` struct. Mechanical, no behavior change; do it after the Critical ownership fixes land to avoid churn.
+
+**Resolution:** Split into `check/{mod,ctx,decl,impls,stmt,expr,pattern,intrinsic}.rs` — one shared `TypeChecker` struct with methods spread across sibling `impl` blocks (mirrors `lower/` module map). No behavior change; same 172/179 typeck tests pass (7 pre-existing failures unchanged).
 
 ---
 
@@ -879,7 +881,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-028 | - [x]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |
 | PHX-029 | - [x]  | Minor        | phx-compiler    | Lint pass has no type information                                        |
 | PHX-030 | - [x]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |
-| PHX-031 | - [ ]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |
+| PHX-031 | - [x]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |
 | PHX-032 | - [ ]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
 | PHX-033 | - [ ]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |
 | PHX-034 | - [ ]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
