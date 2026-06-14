@@ -34,5 +34,5 @@ Portable `PHX0` bytecode and the MVP interpreter execute **width-faithful** prim
 - **Unsigned integers (`u8`…`u128`):** arithmetic and comparison use native **unsigned** semantics at the operand width (zero-extended to `u128` internally for `u128` ops). `/` and `%` are truncating; division by zero traps.
 - **Floats (`f32`, `f64`):** `+`, `-`, `*`, `/` follow IEEE 754. Float `%` is the **IEEE truncated remainder** (same sign as the dividend; Rust/C `fmod` behavior). Division by zero traps.
 - **Integer power (`**`):** **not in v0** — the parser accepts the syntax for forward compatibility, but the MVP type checker rejects it and the VM returns `UnsupportedArithOp` if the opcode appears in hostile bytecode.
-
-Shift masking and NaN comparison rules are specified separately in [type-system.md](type-system.md) (PHX-052).
+- **Integer shifts (`<<`, `>>`):** the shift count is masked to the operand width (`n & (W - 1)` / `n % W` where `W` is the declared bit width). The operation is a **wrapping** shift at that width (Rust/Wasm `wrapping_shl` / `wrapping_shr` semantics).
+- **Float comparisons:** IEEE 754 ordered comparisons. `NaN` is unordered: `NaN == NaN` and `NaN != NaN` follow `==` / `!=`; all ordered comparisons (`<`, `<=`, `>`, `>=`) involving `NaN` are **false**. There is no language-level total order on floats.

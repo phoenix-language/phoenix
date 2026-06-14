@@ -336,6 +336,19 @@ pub fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
     }
 }
 
+/// Masks a shift amount to the operand bit width (Rust/Wasm `wrapping_shl` on declared width).
+///
+/// Equivalent to `amount & (W - 1)` when `W` is a power of two.
+#[must_use]
+pub fn mask_shift_amount(amount: u128, kind: PrimitiveKind) -> u32 {
+    let width = u128::from(kind.bit_width());
+    debug_assert!(
+        width > 0,
+        "shift masking requires an integer primitive kind"
+    );
+    (amount % width) as u32
+}
+
 /// Narrows an `f64` to `kind`.
 #[must_use]
 pub fn scalar_from_f64(value: f64, kind: PrimitiveKind) -> ScalarValue {
@@ -344,6 +357,21 @@ pub fn scalar_from_f64(value: f64, kind: PrimitiveKind) -> ScalarValue {
         PrimitiveKind::F64 => ScalarValue::F64(value),
         _ if kind.is_unsigned_int() => scalar_from_u128(value as u128, kind),
         _ => scalar_from_i128(value as i128, kind),
+    }
+}
+
+#[cfg(test)]
+mod shift_mask_tests {
+    use super::*;
+
+    #[test]
+    fn mask_u8_shift_9() {
+        assert_eq!(mask_shift_amount(9, PrimitiveKind::U8), 1);
+    }
+
+    #[test]
+    fn mask_u32_shift_32() {
+        assert_eq!(mask_shift_amount(32, PrimitiveKind::U32), 0);
     }
 }
 

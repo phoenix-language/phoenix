@@ -3,8 +3,8 @@
 use phx_bytecode::{
     BytecodeModule, ConstTag, ENTRY_NONE, FunctionRecord, InstrError, Instruction, Opcode,
     PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue, decode_fn_ptr,
-    fn_ptr_from_id, is_fn_ptr, scalar_from_f64, scalar_from_i128, scalar_from_u128, scalar_to_f64,
-    scalar_to_i128, scalar_to_u128,
+    fn_ptr_from_id, is_fn_ptr, mask_shift_amount, scalar_from_f64, scalar_from_i128,
+    scalar_from_u128, scalar_to_f64, scalar_to_i128, scalar_to_u128,
 };
 
 use crate::VmError;
@@ -1139,24 +1139,35 @@ enum CmpOp {
     Ge,
 }
 
+#[allow(clippy::float_cmp)]
+fn float_cmp(op: CmpOp, a: f64, b: f64) -> bool {
+    match op {
+        CmpOp::Eq => a == b,
+        CmpOp::Ne => a != b,
+        CmpOp::Lt => a < b,
+        CmpOp::Le => a <= b,
+        CmpOp::Ge => a >= b,
+    }
+}
+
 fn binop_cmp(stack: &mut Vec<Value>, kind: PrimitiveKind, op: CmpOp) -> Result<(), VmError> {
     let b = pop_scalar(stack)?;
     let a = pop_scalar(stack)?;
-    let ord = if kind.is_float() {
-        scalar_to_f64(a, kind)
-            .partial_cmp(&scalar_to_f64(b, kind))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    } else if kind.is_unsigned_int() {
-        scalar_to_u128(a, kind).cmp(&scalar_to_u128(b, kind))
+    let result = if kind.is_float() {
+        float_cmp(op, scalar_to_f64(a, kind), scalar_to_f64(b, kind))
     } else {
-        scalar_to_i128(a, kind).cmp(&scalar_to_i128(b, kind))
-    };
-    let result = match op {
-        CmpOp::Eq => ord == std::cmp::Ordering::Equal,
-        CmpOp::Lt => ord == std::cmp::Ordering::Less,
-        CmpOp::Ne => ord != std::cmp::Ordering::Equal,
-        CmpOp::Le => ord != std::cmp::Ordering::Greater,
-        CmpOp::Ge => ord != std::cmp::Ordering::Less,
+        let ord = if kind.is_unsigned_int() {
+            scalar_to_u128(a, kind).cmp(&scalar_to_u128(b, kind))
+        } else {
+            scalar_to_i128(a, kind).cmp(&scalar_to_i128(b, kind))
+        };
+        match op {
+            CmpOp::Eq => ord == std::cmp::Ordering::Equal,
+            CmpOp::Lt => ord == std::cmp::Ordering::Less,
+            CmpOp::Ne => ord != std::cmp::Ordering::Equal,
+            CmpOp::Le => ord != std::cmp::Ordering::Greater,
+            CmpOp::Ge => ord != std::cmp::Ordering::Less,
+        }
     };
     stack.push(Value::Scalar(ScalarValue::Bool(result)));
     Ok(())
@@ -1174,6 +1185,7 @@ enum BitOp {
 fn binop_bit(stack: &mut Vec<Value>, kind: PrimitiveKind, op: BitOp) -> Result<(), VmError> {
     let b = pop_scalar(stack)?;
     let a = pop_scalar(stack)?;
+    let shift = mask_shift_amount(scalar_to_u128(b, kind), kind);
     if kind.is_unsigned_int() {
         let au = scalar_to_u128(a, kind);
         let bu = scalar_to_u128(b, kind);
@@ -1181,8 +1193,8 @@ fn binop_bit(stack: &mut Vec<Value>, kind: PrimitiveKind, op: BitOp) -> Result<(
             BitOp::And => au & bu,
             BitOp::Or => au | bu,
             BitOp::Xor => au ^ bu,
-            BitOp::Shl => au.wrapping_shl(bu as u32),
-            BitOp::Shr => au.wrapping_shr(bu as u32),
+            BitOp::Shl => au.wrapping_shl(shift),
+            BitOp::Shr => au.wrapping_shr(shift),
         };
         stack.push(Value::Scalar(scalar_from_u128(out, kind)));
     } else {
@@ -1192,8 +1204,8 @@ fn binop_bit(stack: &mut Vec<Value>, kind: PrimitiveKind, op: BitOp) -> Result<(
             BitOp::And => ai & bi,
             BitOp::Or => ai | bi,
             BitOp::Xor => ai ^ bi,
-            BitOp::Shl => ai.wrapping_shl(bi as u32),
-            BitOp::Shr => ai.wrapping_shr(bi as u32),
+            BitOp::Shl => ai.wrapping_shl(shift),
+            BitOp::Shr => ai.wrapping_shr(shift),
         };
         stack.push(Value::Scalar(scalar_from_i128(out, kind)));
     }
@@ -1255,6 +1267,69 @@ mod scalar_tests {
         )
         .expect("mod");
         assert_eq!(out, ScalarValue::F64(1.5));
+    }
+
+    #[test]
+    fn u8_shift_masks_amount_to_width() {
+        let mut stack = vec![
+            Value::Scalar(ScalarValue::U8(1)),
+            Value::Scalar(ScalarValue::U8(9)),
+        ];
+        binop_bit(&mut stack, PrimitiveKind::U8, BitOp::Shl).expect("shl");
+        let Value::Scalar(ScalarValue::U8(v)) = stack.pop().expect("u8") else {
+            panic!("expected u8");
+        };
+        assert_eq!(v, 2);
+    }
+
+    #[test]
+    fn u32_shift_masks_full_width_to_zero() {
+        let mut stack = vec![
+            Value::Scalar(ScalarValue::U32(1)),
+            Value::Scalar(ScalarValue::U32(32)),
+        ];
+        binop_bit(&mut stack, PrimitiveKind::U32, BitOp::Shl).expect("shl");
+        let Value::Scalar(ScalarValue::U32(v)) = stack.pop().expect("u32") else {
+            panic!("expected u32");
+        };
+        assert_eq!(v, 1);
+    }
+
+    #[test]
+    fn nan_eq_nan_is_false() {
+        let nan = ScalarValue::F64(f64::NAN);
+        let mut stack = vec![Value::Scalar(nan), Value::Scalar(nan)];
+        binop_cmp(&mut stack, PrimitiveKind::F64, CmpOp::Eq).expect("eq");
+        let Value::Scalar(ScalarValue::Bool(v)) = stack.pop().expect("bool") else {
+            panic!("expected bool");
+        };
+        assert!(!v);
+    }
+
+    #[test]
+    fn nan_lt_one_is_false() {
+        let mut stack = vec![
+            Value::Scalar(ScalarValue::F64(f64::NAN)),
+            Value::Scalar(ScalarValue::F64(1.0)),
+        ];
+        binop_cmp(&mut stack, PrimitiveKind::F64, CmpOp::Lt).expect("lt");
+        let Value::Scalar(ScalarValue::Bool(v)) = stack.pop().expect("bool") else {
+            panic!("expected bool");
+        };
+        assert!(!v);
+    }
+
+    #[test]
+    fn nan_le_one_is_false() {
+        let mut stack = vec![
+            Value::Scalar(ScalarValue::F64(f64::NAN)),
+            Value::Scalar(ScalarValue::F64(1.0)),
+        ];
+        binop_cmp(&mut stack, PrimitiveKind::F64, CmpOp::Le).expect("le");
+        let Value::Scalar(ScalarValue::Bool(v)) = stack.pop().expect("bool") else {
+            panic!("expected bool");
+        };
+        assert!(!v);
     }
 
     #[test]

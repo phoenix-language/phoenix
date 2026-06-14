@@ -702,10 +702,10 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-vm/src/interpreter.rs:1149–1155` (shifts), `1118–1121` (float compare)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Shift amounts are not masked to the operand width (`wrapping_shl(bi as u32)` — `1_u8 << 9` zeroes instead of width-masked behavior, and `bi as u32` truncates arbitrarily), and NaN comparisons use `partial_cmp(..).unwrap_or(Equal)`, making `NaN == NaN` true and `NaN < x` follow Equal-ordering — non-IEEE behavior.
-**Detail:** Verified. Neither shift semantics nor NaN ordering is pinned down in the design docs — the implementation chose silently.
+**Detail:** Fixed in PHX-052. `mask_shift_amount` in `phx-bytecode` masks shift counts to operand width before `wrapping_shl`/`shr`; float compares use native IEEE ordered operators (`==`, `!=`, `<`, `<=`, `>=`). Documented in `wide-integers.md` and `type-system.md`.
 **Recommendation:** Requires a design decision (document Phoenix shift/NaN semantics in `type-system.md`/`wide-integers.md`), then implement to spec with width-edge tests. Flag for the author; IEEE-754 NaN inequality is the strongly recommended default.
 
 ---
@@ -918,7 +918,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-049 | - [x]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
 | PHX-050 | - [x]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
 | PHX-051 | - [x]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
-| PHX-052 | - [ ]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
+| PHX-052 | - [x]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
 | PHX-053 | - [ ]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
 | PHX-054 | - [ ]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
 | PHX-055 | - [ ]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |

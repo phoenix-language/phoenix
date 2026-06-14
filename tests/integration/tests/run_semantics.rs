@@ -206,6 +206,14 @@ fn primitives_u128_div_mod_above_i128_max() {
 }
 
 #[test]
+fn shift_width_mask_wrapping_shl() {
+    assert_main_locals(
+        &compile_fixture("shift_width_mask.phx"),
+        &[(0, ExpectedLocal::U8(2)), (1, ExpectedLocal::U32(1))],
+    );
+}
+
+#[test]
 fn compare_unary_and_relations_score() {
     assert_main_locals(
         &compile_fixture("compare_unary.phx"),

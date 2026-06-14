@@ -40,6 +40,7 @@ pub const SMOKE_FIXTURES: &[&str] = &[
     "primitives_width.phx",
     "primitives_i128.phx",
     "primitives_u128.phx",
+    "shift_width_mask.phx",
     "byte_string.phx",
     "string_literal.phx",
     "byte_string_as_str.phx",

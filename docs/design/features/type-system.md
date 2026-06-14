@@ -66,7 +66,7 @@ Each numeric primitive occupies **its declared width** in constants, local slots
 | `+` `-` `*` `/` | yes (wrapping / truncating div) | yes (wrapping / truncating div) | yes (IEEE 754) |
 | `%` | yes | yes | yes (IEEE truncated remainder) |
 | `**` | **no (v0)** | **no (v0)** | **no (v0)** |
-| Comparisons | yes | yes (unsigned order) | yes (IEEE; NaN rules in PHX-052) |
+| Comparisons | yes | yes (unsigned order) | yes (IEEE 754 ordered; `NaN` unordered — `==` false, `!=` true for `NaN` vs `NaN`; `<` `<=` `>` `>=` false when either operand is `NaN`) |
 
 Width-accurate execution through `u128` is normative; see [wide-integers.md](wide-integers.md).
 

@@ -18,6 +18,8 @@ pub enum ExpectedLocal {
     S64(i64),
     /// 64-bit float (`f64`, compared with `f64::EPSILON`).
     F64(f64),
+    /// Unsigned 32-bit integer (`u32`).
+    U32(u32),
     /// Unsigned 128-bit integer (`u128`).
     U128(u128),
 }
@@ -77,6 +79,13 @@ pub fn assert_main_locals(module: &BytecodeModule, slots: &[(usize, ExpectedLoca
                     "slot {slot}: expected {v}, got {actual}"
                 );
             }
+            ExpectedLocal::U32(v) => {
+                let actual = capture
+                    .main_local(slot)
+                    .and_then(scalar_u32)
+                    .unwrap_or_else(|| panic!("slot {slot} not u32: {:?}", capture.main_locals));
+                assert_eq!(actual, v, "slot {slot}");
+            }
             ExpectedLocal::U128(v) => {
                 let actual = capture
                     .main_local(slot)
@@ -126,6 +135,13 @@ fn scalar_i64(value: Value) -> Option<i64> {
 fn scalar_f64(value: Value) -> Option<f64> {
     match value {
         Value::Scalar(ScalarValue::F64(v)) => Some(v),
+        _ => None,
+    }
+}
+
+fn scalar_u32(value: Value) -> Option<u32> {
+    match value {
+        Value::Scalar(ScalarValue::U32(v)) => Some(v),
         _ => None,
     }
 }
