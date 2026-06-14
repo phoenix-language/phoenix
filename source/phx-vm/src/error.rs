@@ -1,8 +1,8 @@
 //! VM runtime errors.
 
-/// Failure during bytecode execution.
+/// Failure kind during bytecode execution (no bytecode site).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VmError {
+pub enum VmErrorKind {
     /// `entry_function_id` not found in the function table.
     MissingEntry,
     /// Entry function must have zero arity for MVP `main`.
@@ -53,7 +53,7 @@ pub enum VmError {
     UseAfterFree,
 }
 
-impl std::fmt::Display for VmError {
+impl std::fmt::Display for VmErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingEntry => write!(f, "missing entry function"),
@@ -87,5 +87,50 @@ impl std::fmt::Display for VmError {
         }
     }
 }
+
+/// Failure during bytecode execution with optional coarse bytecode site.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VmError {
+    /// Underlying failure kind.
+    pub kind: VmErrorKind,
+    /// Function id at the faulting instruction, when known.
+    pub function_id: Option<u32>,
+    /// Byte offset of the faulting instruction in that function's code, when known.
+    pub pc: Option<u32>,
+}
+
+impl VmError {
+    /// Builds an error attributed to `function_id` and `pc`.
+    #[must_use]
+    pub const fn at(function_id: u32, pc: u32, kind: VmErrorKind) -> Self {
+        Self {
+            kind,
+            function_id: Some(function_id),
+            pc: Some(pc),
+        }
+    }
+
+    /// Builds an error with no bytecode site (module-level or non-dispatch failures).
+    #[must_use]
+    pub const fn without_site(kind: VmErrorKind) -> Self {
+        Self {
+            kind,
+            function_id: None,
+            pc: None,
+        }
+    }
+}
+
+impl std::fmt::Display for VmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind)?;
+        if let (Some(function_id), Some(pc)) = (self.function_id, self.pc) {
+            write!(f, " (function {function_id}, pc {pc})")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for VmErrorKind {}
 
 impl std::error::Error for VmError {}

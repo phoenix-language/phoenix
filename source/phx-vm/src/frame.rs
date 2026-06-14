@@ -7,7 +7,7 @@ use phx_bytecode::{
     ScalarValue,
 };
 
-use crate::VmError;
+use crate::VmErrorKind;
 
 /// Runtime value: scalar primitive or handle into the aggregate arena.
 ///
@@ -158,27 +158,27 @@ impl Machine {
     ///
     /// # Errors
     ///
-    /// Returns [`VmError::HeapOutOfBounds`] when the range extends past the physical heap.
-    /// Returns [`VmError::UseAfterFree`] when checking is enabled and the range is not live.
-    pub fn validate_live_heap_access(&self, addr: usize, len: usize) -> Result<(), VmError> {
-        let end = addr.checked_add(len).ok_or(VmError::HeapOutOfBounds)?;
+    /// Returns [`VmErrorKind::HeapOutOfBounds`] when the range extends past the physical heap.
+    /// Returns [`VmErrorKind::UseAfterFree`] when checking is enabled and the range is not live.
+    pub fn validate_live_heap_access(&self, addr: usize, len: usize) -> Result<(), VmErrorKind> {
+        let end = addr.checked_add(len).ok_or(VmErrorKind::HeapOutOfBounds)?;
         if end > self.heap.len() {
-            return Err(VmError::HeapOutOfBounds);
+            return Err(VmErrorKind::HeapOutOfBounds);
         }
         if !self.heap_check_enabled {
             return Ok(());
         }
-        let ptr_key = u64::try_from(addr).map_err(|_| VmError::UseAfterFree)?;
+        let ptr_key = u64::try_from(addr).map_err(|_| VmErrorKind::UseAfterFree)?;
         if let Some((&ptr, &size)) = self.live_heap_blocks.range(..=ptr_key).next_back() {
-            let start = usize::try_from(ptr).map_err(|_| VmError::UseAfterFree)?;
+            let start = usize::try_from(ptr).map_err(|_| VmErrorKind::UseAfterFree)?;
             let block_end = start
-                .checked_add(usize::try_from(size).map_err(|_| VmError::UseAfterFree)?)
-                .ok_or(VmError::UseAfterFree)?;
+                .checked_add(usize::try_from(size).map_err(|_| VmErrorKind::UseAfterFree)?)
+                .ok_or(VmErrorKind::UseAfterFree)?;
             if addr >= start && end <= block_end {
                 return Ok(());
             }
         }
-        Err(VmError::UseAfterFree)
+        Err(VmErrorKind::UseAfterFree)
     }
 
     /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
@@ -235,16 +235,16 @@ impl Machine {
     ///
     /// # Errors
     ///
-    /// Returns [`VmError::OutOfMemory`] when `size` or cumulative heap growth would exceed
+    /// Returns [`VmErrorKind::OutOfMemory`] when `size` or cumulative heap growth would exceed
     /// [`Self::heap_cap`], or when the start offset does not fit in `u64`.
-    pub fn alloc_bytes(&mut self, size: usize) -> Result<u64, VmError> {
+    pub fn alloc_bytes(&mut self, size: usize) -> Result<u64, VmErrorKind> {
         let start = self.heap.len();
-        let new_len = start.checked_add(size).ok_or(VmError::OutOfMemory)?;
+        let new_len = start.checked_add(size).ok_or(VmErrorKind::OutOfMemory)?;
         if new_len > self.heap_cap {
-            return Err(VmError::OutOfMemory);
+            return Err(VmErrorKind::OutOfMemory);
         }
         self.heap.resize(new_len, 0);
-        let ptr = u64::try_from(start).map_err(|_| VmError::OutOfMemory)?;
+        let ptr = u64::try_from(start).map_err(|_| VmErrorKind::OutOfMemory)?;
         if let Ok(reg_size) = u32::try_from(size) {
             self.live_heap_blocks.insert(ptr, reg_size);
         }
@@ -261,26 +261,26 @@ impl Machine {
     ///
     /// # Errors
     ///
-    /// Returns [`VmError::DoubleFree`] when `(ptr, size)` is not in the ledger.
-    /// Returns [`VmError::InvalidFree`] for tagged pointers, out-of-bounds ranges, or size mismatch.
-    pub fn free_bytes(&mut self, ptr: u64, size: u32) -> Result<(), VmError> {
+    /// Returns [`VmErrorKind::DoubleFree`] when `(ptr, size)` is not in the ledger.
+    /// Returns [`VmErrorKind::InvalidFree`] for tagged pointers, out-of-bounds ranges, or size mismatch.
+    pub fn free_bytes(&mut self, ptr: u64, size: u32) -> Result<(), VmErrorKind> {
         if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG
             || ptr & PTR_AGG_TAG == PTR_AGG_TAG
             || ptr & PTR_CONST_TAG == PTR_CONST_TAG
             || ptr & PTR_FN_TAG == PTR_FN_TAG
         {
-            return Err(VmError::InvalidFree);
+            return Err(VmErrorKind::InvalidFree);
         }
-        let addr = usize::try_from(ptr).map_err(|_| VmError::InvalidFree)?;
-        let byte_len = usize::try_from(size).map_err(|_| VmError::InvalidFree)?;
-        let end = addr.checked_add(byte_len).ok_or(VmError::InvalidFree)?;
+        let addr = usize::try_from(ptr).map_err(|_| VmErrorKind::InvalidFree)?;
+        let byte_len = usize::try_from(size).map_err(|_| VmErrorKind::InvalidFree)?;
+        let end = addr.checked_add(byte_len).ok_or(VmErrorKind::InvalidFree)?;
         if end > self.heap.len() {
-            return Err(VmError::InvalidFree);
+            return Err(VmErrorKind::InvalidFree);
         }
         match self.live_heap_blocks.remove(&ptr) {
             Some(registered) if registered == size => {}
-            Some(_) => return Err(VmError::InvalidFree),
-            None => return Err(VmError::DoubleFree),
+            Some(_) => return Err(VmErrorKind::InvalidFree),
+            None => return Err(VmErrorKind::DoubleFree),
         }
         self.heap[addr..end].fill(0);
         Ok(())
@@ -291,18 +291,20 @@ impl Machine {
 ///
 /// # Errors
 ///
-/// Returns [`crate::VmError::InvalidLocalSlot`] when `slot` is out of range or not a scalar.
+/// Returns [`crate::VmErrorKind::InvalidLocalSlot`] when `slot` is out of range or not a scalar.
 pub fn local_scalar_bytes(
     frame: &Frame,
     slot: u32,
     kind: PrimitiveKind,
-) -> Result<Vec<u8>, crate::VmError> {
-    let idx = usize::try_from(slot).map_err(|_| crate::VmError::InvalidLocalSlot(slot))?;
+) -> Result<Vec<u8>, crate::VmErrorKind> {
+    let idx = usize::try_from(slot).map_err(|_| crate::VmErrorKind::InvalidLocalSlot(slot))?;
     let local = frame
         .locals
         .get(idx)
-        .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
-    let scalar = local.as_scalar().ok_or(crate::VmError::ExpectedScalar)?;
+        .ok_or(crate::VmErrorKind::InvalidLocalSlot(slot))?;
+    let scalar = local
+        .as_scalar()
+        .ok_or(crate::VmErrorKind::ExpectedScalar)?;
     Ok(scalar.to_le_bytes(kind))
 }
 
@@ -312,14 +314,14 @@ pub fn store_local_scalar_bytes(
     slot: u32,
     kind: PrimitiveKind,
     bytes: &[u8],
-) -> Result<(), crate::VmError> {
-    let idx = usize::try_from(slot).map_err(|_| crate::VmError::InvalidLocalSlot(slot))?;
+) -> Result<(), crate::VmErrorKind> {
+    let idx = usize::try_from(slot).map_err(|_| crate::VmErrorKind::InvalidLocalSlot(slot))?;
     let local = frame
         .locals
         .get_mut(idx)
-        .ok_or(crate::VmError::InvalidLocalSlot(slot))?;
+        .ok_or(crate::VmErrorKind::InvalidLocalSlot(slot))?;
     let decoded =
-        ScalarValue::from_le_bytes(kind, bytes).ok_or(crate::VmError::InvalidConstPayload)?;
+        ScalarValue::from_le_bytes(kind, bytes).ok_or(crate::VmErrorKind::InvalidConstPayload)?;
     *local = Value::Scalar(decoded);
     Ok(())
 }
@@ -328,7 +330,7 @@ pub fn store_local_scalar_bytes(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::Machine;
-    use crate::VmError;
+    use crate::VmErrorKind;
 
     #[test]
     fn alloc_then_free_clears_ledger() {
@@ -345,7 +347,7 @@ mod tests {
         let ptr = machine.alloc_bytes(4).expect("alloc");
         assert!(machine.free_bytes(ptr, 4).is_ok());
         let err = machine.free_bytes(ptr, 4);
-        assert_eq!(err, Err(VmError::DoubleFree));
+        assert_eq!(err, Err(VmErrorKind::DoubleFree));
     }
 
     #[test]
@@ -353,13 +355,13 @@ mod tests {
         let mut machine = Machine::default();
         let ptr = machine.alloc_bytes(4).expect("alloc");
         let err = machine.free_bytes(ptr, 8);
-        assert_eq!(err, Err(VmError::InvalidFree));
+        assert_eq!(err, Err(VmErrorKind::InvalidFree));
     }
 
     #[test]
     fn alloc_exceeding_cap_returns_out_of_memory() {
         let mut machine = Machine::with_heap_cap(8);
-        assert_eq!(machine.alloc_bytes(16), Err(VmError::OutOfMemory));
+        assert_eq!(machine.alloc_bytes(16), Err(VmErrorKind::OutOfMemory));
         assert_eq!(machine.heap.len(), 0);
     }
 
@@ -368,7 +370,7 @@ mod tests {
         let mut machine = Machine::with_heap_cap(16);
         assert_eq!(machine.alloc_bytes(8).expect("first"), 0);
         assert_eq!(machine.alloc_bytes(8).expect("second"), 8);
-        assert_eq!(machine.alloc_bytes(1), Err(VmError::OutOfMemory));
+        assert_eq!(machine.alloc_bytes(1), Err(VmErrorKind::OutOfMemory));
         assert_eq!(machine.heap.len(), 16);
     }
 
@@ -389,7 +391,7 @@ mod tests {
         machine.free_bytes(ptr, 4).expect("free");
         assert_eq!(
             machine.validate_live_heap_access(addr, 1),
-            Err(VmError::UseAfterFree)
+            Err(VmErrorKind::UseAfterFree)
         );
     }
 
@@ -401,7 +403,7 @@ mod tests {
         let addr = usize::try_from(ptr).expect("ptr fits usize");
         assert_eq!(
             machine.validate_live_heap_access(addr, 5),
-            Err(VmError::UseAfterFree)
+            Err(VmErrorKind::UseAfterFree)
         );
     }
 

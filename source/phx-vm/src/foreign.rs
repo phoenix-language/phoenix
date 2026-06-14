@@ -8,11 +8,11 @@ use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use phx_bytecode::BytecodeModule;
 
-use crate::VmError;
+use crate::VmErrorKind;
 use crate::frame::Machine;
 
 /// Foreign stub signature: receives the live machine and module; pops args and pushes return.
-pub type ForeignStubFn = fn(&mut Machine, &BytecodeModule) -> Result<(), VmError>;
+pub type ForeignStubFn = fn(&mut Machine, &BytecodeModule) -> Result<(), VmErrorKind>;
 
 static FOREIGN_STUBS: OnceLock<Mutex<ForeignStubRegistry>> = OnceLock::new();
 
@@ -57,13 +57,13 @@ pub fn dispatch_foreign(
     id: u32,
     machine: &mut Machine,
     module: &BytecodeModule,
-) -> Result<(), VmError> {
+) -> Result<(), VmErrorKind> {
     let reg = lock_registry();
     let stub = reg
         .by_id
         .get(&id)
         .copied()
-        .ok_or(VmError::InvalidForeignStub(id))?;
+        .ok_or(VmErrorKind::InvalidForeignStub(id))?;
     drop(reg);
     stub(machine, module)
 }

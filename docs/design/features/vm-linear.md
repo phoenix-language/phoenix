@@ -81,7 +81,7 @@ Section kinds (MVP):
 - `2`: types
 - `3`: functions
 - `4`: code
-- `5`: symbols (optional debug names; **not written** by the MVP compiler — reserved for future tooling; see [debug.md](debug.md))
+- `5`: symbols (optional debug names; **not written** by the MVP compiler — reserved for future tooling; implementation tracked as **PHX-070**; see [debug.md](debug.md))
 - `6`: local layouts (format minor 1+; verifier cross-checks slot kinds)
 
 **Compiler-only notes (MVP):**
@@ -281,6 +281,7 @@ Loader must reject bytecode when:
 - Production entry is `phx_vm::run(verified)` where `verified` is a [`VerifiedModule`](../../source/phx-bytecode/src/verified.rs) from [`phx_bytecode::verify`](../../source/phx-bytecode/src/verify.rs). The type system carries the verify-before-execute invariant (Wasm model: validate once at load, execute trusting static checks). `#[doc(hidden)] run_unverified` exists for mutation and VM error-path tests only.
 - `run_captured` is `#[doc(hidden)]` for integration tests that assert `main` local slots via [`VmRunCapture::main_local`](../../source/phx-vm/src/interpreter.rs) or the optional stack `return_value` after return.
 - Falling off the end of a function body (PC past `code_len`) returns `VmError::TruncatedCode` instead of a silent successful return.
+- Dispatch-time runtime failures return [`VmError`](../../source/phx-vm/src/error.rs) with optional coarse bytecode site `(function_id, pc)` — the byte offset of the faulting instruction before PC advance. Module-level failures (`NoEntryPoint`, `MissingEntry`, `EntryArityNotZero`) omit the site. `Display` appends ` (function {id}, pc {pc})` when present. `Trap` maps to `VmErrorKind::GivenMismatch` with site at the trap instruction; embedded trap payloads and Phoenix source mapping are **PHX-070** (section 5 symbols + PHX-063 IR spans).
 - **MVP debug channel (D0):** `phx run --dump-main` prints `main[N]: …` lines to stderr after a successful run (uses `run_captured` internally). Full layered debug (symbols, trace, breakpoints, DAP) is specified in [debug.md](debug.md). There is no std I/O until the schedulable runtime ships; see [`examples/hello`](../../../examples/hello/src/main.phx).
 - Header `entry_function_id` must name a zero-arity `main` for executables. Library objects use `ENTRY_NONE` (`0xFFFF_FFFF`); the VM returns an error if execution is attempted.
 - `ConstTag::Bytes` pool entries are not loadable via generic `Const` (operand pushes scalars only). UTF-8 string literals `"…"` lower to `ConstTag::Bytes` in the pool plus opcode **`MakeStr`** (pool index → rodata `str` view). Byte string literals `b"…"` still lower to per-byte `Const` + `MakeArray`.

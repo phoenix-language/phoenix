@@ -24,7 +24,7 @@ mod foreign;
 mod frame;
 mod interpreter;
 
-pub use error::VmError;
+pub use error::{VmError, VmErrorKind};
 pub use foreign::{ForeignStubFn, clear_foreign_stubs, dispatch_foreign, register_foreign_stub};
 pub use frame::{Aggregate, DEFAULT_HEAP_CAP_BYTES, Machine, Value};
 pub use interpreter::{
@@ -61,7 +61,8 @@ mod tests {
     };
 
     use super::{
-        VmError, run, run_captured, run_captured_unverified_with_heap_cap, run_unverified,
+        VmError, VmErrorKind, run, run_captured, run_captured_unverified_with_heap_cap,
+        run_unverified,
     };
 
     #[test]
@@ -129,7 +130,10 @@ mod tests {
         .encode()
         .expect("encode");
         let module = minimal_module(code, 0, 4);
-        assert_eq!(run_unverified(&module), Err(VmError::StackUnderflow));
+        let err = run_unverified(&module).expect_err("stack underflow");
+        assert_eq!(err.kind, VmErrorKind::StackUnderflow);
+        assert_eq!(err.function_id, Some(0));
+        assert_eq!(err.pc, Some(0));
     }
 
     #[test]
@@ -149,8 +153,13 @@ mod tests {
         .collect::<Vec<_>>();
         let module = minimal_module(code, 1, 4);
         assert!(matches!(
-            run_unverified(&module),
-            Err(VmError::InvalidLocalSlot(99))
+            run_unverified(&module).expect_err("invalid local"),
+            VmError {
+                kind: VmErrorKind::InvalidLocalSlot(99),
+                function_id: Some(0),
+                pc: Some(0),
+                ..
+            }
         ));
     }
 
@@ -171,8 +180,13 @@ mod tests {
         .collect::<Vec<_>>();
         let module = minimal_module(code, 0, 4);
         assert!(matches!(
-            run_unverified(&module),
-            Err(VmError::InvalidFunctionId(99))
+            run_unverified(&module).expect_err("invalid call"),
+            VmError {
+                kind: VmErrorKind::InvalidFunctionId(99),
+                function_id: Some(0),
+                pc: Some(0),
+                ..
+            }
         ));
     }
 
@@ -186,7 +200,10 @@ mod tests {
         .expect("encode");
         let module = minimal_module(code, 0, 4);
         let verified = verify(&module).expect("trap module verifies");
-        assert_eq!(run(verified), Err(VmError::GivenMismatch));
+        let err = run(verified).expect_err("trap");
+        assert_eq!(err.kind, VmErrorKind::GivenMismatch);
+        assert_eq!(err.function_id, Some(0));
+        assert_eq!(err.pc, Some(0));
     }
 
     #[test]
@@ -233,13 +250,19 @@ mod tests {
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
         };
-        assert_eq!(run_unverified(&module), Err(VmError::UnsupportedConst));
+        let err = run_unverified(&module).expect_err("unsupported const");
+        assert_eq!(err.kind, VmErrorKind::UnsupportedConst);
+        assert_eq!(err.function_id, Some(0));
+        assert_eq!(err.pc, Some(0));
     }
 
     #[test]
     fn run_fallthrough_without_return_returns_truncated_code() {
         let module = minimal_module(Vec::new(), 0, 4);
-        assert_eq!(run_unverified(&module), Err(VmError::TruncatedCode));
+        let err = run_unverified(&module).expect_err("truncated");
+        assert_eq!(err.kind, VmErrorKind::TruncatedCode);
+        assert_eq!(err.function_id, Some(0));
+        assert_eq!(err.pc, Some(0));
     }
 
     #[test]
@@ -306,10 +329,10 @@ mod tests {
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
         };
 
-        assert!(matches!(
-            run_captured_unverified_with_heap_cap(&module, 32),
-            Err(VmError::OutOfMemory)
-        ));
+        let err = run_captured_unverified_with_heap_cap(&module, 32).expect_err("oom");
+        assert_eq!(err.kind, VmErrorKind::OutOfMemory);
+        assert!(err.function_id.is_some());
+        assert!(err.pc.is_some());
     }
 
     #[test]
@@ -411,6 +434,9 @@ mod tests {
         };
 
         let verified = verify(&module).expect("verify heap uaf bytecode");
-        assert!(matches!(run_captured(verified), Err(VmError::UseAfterFree)));
+        let err = run_captured(verified).expect_err("uaf");
+        assert_eq!(err.kind, VmErrorKind::UseAfterFree);
+        assert!(err.function_id.is_some());
+        assert!(err.pc.is_some());
     }
 }

@@ -6,16 +6,18 @@ use phx_compiler::{BuildOptions, ProjectConfig, build_project};
 use phx_test::{
     ExpectedLocal, assert_main_locals, cli_project, fixture_fs_lock, load_built_binary,
 };
-use phx_vm::{ForeignStubFn, Machine, Value, VmError, clear_foreign_stubs, register_foreign_stub};
+use phx_vm::{
+    ForeignStubFn, Machine, Value, VmErrorKind, clear_foreign_stubs, register_foreign_stub,
+};
 
-fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmError> {
-    let b = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
-    let a = machine.stack.pop().ok_or(VmError::StackUnderflow)?;
+fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmErrorKind> {
+    let b = machine.stack.pop().ok_or(VmErrorKind::StackUnderflow)?;
+    let a = machine.stack.pop().ok_or(VmErrorKind::StackUnderflow)?;
     let Value::Scalar(ScalarValue::I32(x)) = a else {
-        return Err(VmError::ExpectedScalar);
+        return Err(VmErrorKind::ExpectedScalar);
     };
     let Value::Scalar(ScalarValue::I32(y)) = b else {
-        return Err(VmError::ExpectedScalar);
+        return Err(VmErrorKind::ExpectedScalar);
     };
     machine
         .stack

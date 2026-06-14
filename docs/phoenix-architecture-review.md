@@ -750,10 +750,23 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-vm/src/error.rs:5–48`; `phx-bytecode/src/opcode.rs:84`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
-**Issue:** `VmError` carries no `(function_id, pc)` and `Trap` carries no payload metadata, so runtime failures cannot be attributed to source even coarsely.
-**Recommendation:** Record `(function_id, pc)` in `VmError` at dispatch; full source maps are deferred (see PHX-070, Deferred Work).
+**Issue:** `VmError` carried no `(function_id, pc)` and `Trap` carries no payload metadata, so runtime failures could not be attributed to source even coarsely.
+**Detail:** Fixed in PHX-056. `VmError` is a site-carrying wrapper over `VmErrorKind`; the interpreter attaches `(function_id, pc)` at dispatch. `Display` surfaces the site for CLI output. Full source maps remain **PHX-070** (deferred).
+**Recommendation:** Record `(function_id, pc)` in `VmError` at dispatch; full source maps are deferred (see **PHX-070**).
+
+---
+
+**[PHX-070] Severity: Deferred**
+**Location:** `docs/design/features/vm-linear.md` section 5; `phx-compiler` codegen/link; `phx-vm` CLI attribution
+**Reviewer:** Language Designer
+
+**Status:** - [ ] Deferred (post-beta)
+
+**Issue:** No PHX0 section 5 symbols payload; `VmError` sites are bytecode offsets only — CLI/debugger cannot cite Phoenix source spans.
+**Prerequisites:** PHX-063 (IR spans for codegen) + PHX-056 (runtime `(function_id, pc)`).
+**Recommendation:** Encode `(function_id, pc) → file/span` tables at link time; map runtime errors to source in CLI/debugger; optional `Trap` diagnostic payload once symbols exist.
 
 ---
 
@@ -922,7 +935,8 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-053 | - [x]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
 | PHX-054 | - [x]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
 | PHX-055 | - [x]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
-| PHX-056 | - [ ]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
+| PHX-056 | - [x]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
+| PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
 | PHX-057 | - [ ]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
 | PHX-058 | - [ ]  | Minor        | phx-cli         | ICE handler discards panic message                                       |
 | PHX-059 | - [ ]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |

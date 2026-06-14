@@ -3,7 +3,7 @@
 #![allow(clippy::expect_used)]
 
 use phx_test::{cli_project, fixture_fs_lock, force_build_project};
-use phx_vm::{VmError, run};
+use phx_vm::{VmErrorKind, run};
 
 #[test]
 fn heap_dealloc_fixture_runs() {
@@ -45,7 +45,7 @@ fn heap_dealloc_double_free_fails_at_runtime() {
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_dealloc_double");
     let err = run(verified).expect_err("double free should fail");
     assert!(
-        matches!(err, VmError::DoubleFree),
+        matches!(err.kind, VmErrorKind::DoubleFree),
         "expected DoubleFree, got {err:?}"
     );
 }
@@ -61,7 +61,7 @@ fn heap_uaf_read_after_free_fails_at_runtime() {
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_uaf");
     let err = run(verified).expect_err("use after free should fail");
     assert!(
-        matches!(err, VmError::UseAfterFree),
+        matches!(err.kind, VmErrorKind::UseAfterFree),
         "expected UseAfterFree, got {err:?}"
     );
 }

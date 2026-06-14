@@ -79,7 +79,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Heap allocation cap; remove pointer sentinel | PHX-053 | `VmError::OutOfMemory` instead of abort |
 | Use-after-free detection against the live ledger, on by default | PHX-054 | **Decided:** always-checked in v0 behind a single gateable function (Resolved Design Decisions #5); protects the std bootstrap (M6) |
 | Verifier fidelity cluster: join-mismatch error kind, `Trap` operand contract, `MakeStr` tag, layouts required at minor ≥ 1 | PHX-049 | done |
-| Carry `(function_id, pc)` on `VmError` | PHX-056 | Coarse runtime attribution (full source maps deferred) |
+| Carry `(function_id, pc)` on `VmError` | PHX-056 | Done — coarse runtime attribution; full source maps → PHX-070 |
 | `run_verified()` / `VerifiedModule` so the verify-before-run invariant is type-enforced; PC-past-end is an error | PHX-055 | **Decided:** VM assumes verified input; `VerifiedModule` constructible only via the verifier (Resolved Design Decisions #7) |
 | `[INFRA]` Mutation-test expansion: `JumpIfFalse` underflow, join mismatch, section overlap, oversized alloc, non-boundary jump | PHX-061 | Pairs with the fixes above |
 
@@ -187,7 +187,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | **Actors, mailboxes, supervision** (`@spawn`/`@send`/`@receive`) | Scheduler work above; format versioning in PHX0 header already reserves room |
 | **Std I/O** (`File.read`, networking) | Explicitly gated on scheduler + schedulable I/O per `mvp.md` shipping order |
 | **JIT / hot reload** | M2 verifier completeness (a sound verifier is the JIT's trust anchor) |
-| **Bytecode source maps / debugger** (section 5 symbols) | M8's IR span work (PHX-063) + M2's `(function_id, pc)` errors (PHX-056) |
+| **Bytecode source maps / debugger** (section 5 symbols) — **PHX-070** | M8's IR span work (PHX-063) + M2's `(function_id, pc)` errors (PHX-056, done) |
 | **Stable FFI symbol identity** (replace registration-order foreign ids) | M3's link hardening; `ffi.md` Phase B |
 | **IDE/LSP mode** | M1's partial-AST recovery (PHX-005) and statement spans (PHX-004) |
 | **Generic `#derive`** | M4 derive alignment (PHX-029); needed before std types derive `PartialEq`/`Debug` |
