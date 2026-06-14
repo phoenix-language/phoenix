@@ -45,6 +45,8 @@ pub enum VmError {
     InvalidFnPtr,
     /// Foreign stub id was not registered.
     InvalidForeignStub(u32),
+    /// Arithmetic operator is not defined for this primitive kind (e.g. `**` cut from v0).
+    UnsupportedArithOp,
 }
 
 impl std::fmt::Display for VmError {
@@ -73,6 +75,9 @@ impl std::fmt::Display for VmError {
             Self::NoEntryPoint => write!(f, "module has no entry function"),
             Self::InvalidFnPtr => write!(f, "invalid function pointer value"),
             Self::InvalidForeignStub(id) => write!(f, "invalid foreign stub id {id}"),
+            Self::UnsupportedArithOp => {
+                write!(f, "unsupported arithmetic operator for primitive kind")
+            }
         }
     }
 }

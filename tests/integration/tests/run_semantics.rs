@@ -191,6 +191,21 @@ fn primitives_i128_truncates_to_s8() {
 }
 
 #[test]
+fn primitives_u128_div_mod_above_i128_max() {
+    const TOP: u128 = 1u128 << 127;
+    const HALF: u128 = TOP / 2;
+    const REM: u128 = TOP % 3;
+    assert_main_locals(
+        &compile_fixture("primitives_u128.phx"),
+        &[
+            (2, ExpectedLocal::U128(HALF)),
+            (3, ExpectedLocal::U128(REM)),
+            (4, ExpectedLocal::U128(HALF + REM)),
+        ],
+    );
+}
+
+#[test]
 fn compare_unary_and_relations_score() {
     assert_main_locals(
         &compile_fixture("compare_unary.phx"),

@@ -1,5 +1,12 @@
 //! Width-faithful runtime scalar payloads for the MVP stack machine.
 
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+
 use crate::cast::PrimitiveKind;
 
 /// Address tag in the high bits of a raw pointer value.
@@ -234,6 +241,110 @@ pub fn decode_fn_ptr(ptr: u64) -> (u32, u32) {
 #[must_use]
 pub fn is_fn_ptr(ptr: u64) -> bool {
     ptr & PTR_FN_TAG == PTR_FN_TAG
+}
+
+/// Widens a scalar to `i128` using sign extension for signed storage variants.
+#[must_use]
+pub fn scalar_to_i128(value: ScalarValue, _from: PrimitiveKind) -> i128 {
+    match value {
+        ScalarValue::I8(v) => i128::from(v),
+        ScalarValue::I16(v) => i128::from(v),
+        ScalarValue::I32(v) => i128::from(v),
+        ScalarValue::I64(v) => i128::from(v),
+        ScalarValue::I128(v) => v,
+        ScalarValue::U8(v) => i128::from(v),
+        ScalarValue::U16(v) => i128::from(v),
+        ScalarValue::U32(v) => i128::from(v),
+        ScalarValue::U64(v) => i128::from(v),
+        ScalarValue::U128(v) => v as i128,
+        ScalarValue::Bool(b) => i128::from(b),
+        ScalarValue::F32(v) => f64::from(v) as i128,
+        ScalarValue::F64(v) => v as i128,
+        ScalarValue::Ptr(p) => i128::from(p),
+    }
+}
+
+/// Widens a scalar to `u128` using zero extension for unsigned storage variants.
+#[must_use]
+pub fn scalar_to_u128(value: ScalarValue, _from: PrimitiveKind) -> u128 {
+    match value {
+        ScalarValue::U8(v) => u128::from(v),
+        ScalarValue::U16(v) => u128::from(v),
+        ScalarValue::U32(v) => u128::from(v),
+        ScalarValue::U64(v) => u128::from(v),
+        ScalarValue::U128(v) => v,
+        ScalarValue::I8(v) => u128::from(v.cast_unsigned()),
+        ScalarValue::I16(v) => u128::from(v.cast_unsigned()),
+        ScalarValue::I32(v) => u128::from(v.cast_unsigned()),
+        ScalarValue::I64(v) => u128::from(v.cast_unsigned()),
+        ScalarValue::I128(v) => v.cast_unsigned(),
+        ScalarValue::Bool(b) => u128::from(b),
+        ScalarValue::F32(v) => f64::from(v) as u128,
+        ScalarValue::F64(v) => v as u128,
+        ScalarValue::Ptr(p) => u128::from(p),
+    }
+}
+
+/// Narrows an `i128` to `kind` with truncating/wrapping casts.
+#[must_use]
+pub fn scalar_from_i128(value: i128, kind: PrimitiveKind) -> ScalarValue {
+    match kind {
+        PrimitiveKind::S8 => ScalarValue::I8(value as i8),
+        PrimitiveKind::S16 => ScalarValue::I16(value as i16),
+        PrimitiveKind::S32 => ScalarValue::I32(value as i32),
+        PrimitiveKind::S64 => ScalarValue::I64(value as i64),
+        PrimitiveKind::S128 => ScalarValue::I128(value),
+        PrimitiveKind::U8 => ScalarValue::U8(value as u8),
+        PrimitiveKind::U16 => ScalarValue::U16(value as u16),
+        PrimitiveKind::U32 => ScalarValue::U32(value as u32),
+        PrimitiveKind::U64 => ScalarValue::U64(value as u64),
+        PrimitiveKind::U128 => ScalarValue::U128(value as u128),
+        PrimitiveKind::Bool => ScalarValue::Bool(value != 0),
+        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
+        PrimitiveKind::F64 => ScalarValue::F64(value as f64),
+    }
+}
+
+/// Narrows a `u128` to `kind` with truncating/wrapping casts.
+#[must_use]
+pub fn scalar_from_u128(value: u128, kind: PrimitiveKind) -> ScalarValue {
+    match kind {
+        PrimitiveKind::S8 => ScalarValue::I8(value as i8),
+        PrimitiveKind::S16 => ScalarValue::I16(value as i16),
+        PrimitiveKind::S32 => ScalarValue::I32(value as i32),
+        PrimitiveKind::S64 => ScalarValue::I64(value as i64),
+        PrimitiveKind::S128 => ScalarValue::I128(value as i128),
+        PrimitiveKind::U8 => ScalarValue::U8(value as u8),
+        PrimitiveKind::U16 => ScalarValue::U16(value as u16),
+        PrimitiveKind::U32 => ScalarValue::U32(value as u32),
+        PrimitiveKind::U64 => ScalarValue::U64(value as u64),
+        PrimitiveKind::U128 => ScalarValue::U128(value),
+        PrimitiveKind::Bool => ScalarValue::Bool(value != 0),
+        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
+        PrimitiveKind::F64 => ScalarValue::F64(value as f64),
+    }
+}
+
+/// Widens a scalar to `f64` for float casts and arithmetic.
+#[must_use]
+pub fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
+    match value {
+        ScalarValue::F32(v) => f64::from(v),
+        ScalarValue::F64(v) => v,
+        other if from.is_unsigned_int() => scalar_to_u128(other, from) as f64,
+        other => scalar_to_i128(other, from) as f64,
+    }
+}
+
+/// Narrows an `f64` to `kind`.
+#[must_use]
+pub fn scalar_from_f64(value: f64, kind: PrimitiveKind) -> ScalarValue {
+    match kind {
+        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
+        PrimitiveKind::F64 => ScalarValue::F64(value),
+        _ if kind.is_unsigned_int() => scalar_from_u128(value as u128, kind),
+        _ => scalar_from_i128(value as i128, kind),
+    }
 }
 
 #[cfg(test)]

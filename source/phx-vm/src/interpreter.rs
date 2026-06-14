@@ -3,7 +3,8 @@
 use phx_bytecode::{
     BytecodeModule, ConstTag, ENTRY_NONE, FunctionRecord, InstrError, Instruction, Opcode,
     PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue, decode_fn_ptr,
-    fn_ptr_from_id, is_fn_ptr,
+    fn_ptr_from_id, is_fn_ptr, scalar_from_f64, scalar_from_i128, scalar_from_u128, scalar_to_f64,
+    scalar_to_i128, scalar_to_u128,
 };
 
 use crate::VmError;
@@ -1057,9 +1058,12 @@ fn arith_scalar(
     kind: PrimitiveKind,
     op: ArithOp,
 ) -> Result<ScalarValue, VmError> {
+    if matches!(op, ArithOp::Pow) {
+        return Err(VmError::UnsupportedArithOp);
+    }
     if kind.is_float() {
-        let af = scalar_as_f64(a, kind);
-        let bf = scalar_as_f64(b, kind);
+        let af = scalar_to_f64(a, kind);
+        let bf = scalar_to_f64(b, kind);
         let out = match op {
             ArithOp::Add => af + bf,
             ArithOp::Sub => af - bf,
@@ -1070,12 +1074,41 @@ fn arith_scalar(
                 }
                 af / bf
             }
-            ArithOp::Mod | ArithOp::Pow => return Err(VmError::InvalidConstPayload),
+            ArithOp::Mod => {
+                if bf == 0.0 {
+                    return Err(VmError::DivisionByZero);
+                }
+                af % bf
+            }
+            ArithOp::Pow => return Err(VmError::UnsupportedArithOp),
         };
         return Ok(scalar_from_f64(out, kind));
     }
-    let ai = scalar_as_i128(a, kind);
-    let bi = scalar_as_i128(b, kind);
+    if kind.is_unsigned_int() {
+        let au = scalar_to_u128(a, kind);
+        let bu = scalar_to_u128(b, kind);
+        let out = match op {
+            ArithOp::Add => au.wrapping_add(bu),
+            ArithOp::Sub => au.wrapping_sub(bu),
+            ArithOp::Mul => au.wrapping_mul(bu),
+            ArithOp::Div => {
+                if bu == 0 {
+                    return Err(VmError::DivisionByZero);
+                }
+                au / bu
+            }
+            ArithOp::Mod => {
+                if bu == 0 {
+                    return Err(VmError::DivisionByZero);
+                }
+                au % bu
+            }
+            ArithOp::Pow => return Err(VmError::UnsupportedArithOp),
+        };
+        return Ok(scalar_from_u128(out, kind));
+    }
+    let ai = scalar_to_i128(a, kind);
+    let bi = scalar_to_i128(b, kind);
     let out = match op {
         ArithOp::Add => ai.wrapping_add(bi),
         ArithOp::Sub => ai.wrapping_sub(bi),
@@ -1092,7 +1125,7 @@ fn arith_scalar(
             }
             ai % bi
         }
-        ArithOp::Pow => int_pow_i128(ai, bi),
+        ArithOp::Pow => return Err(VmError::UnsupportedArithOp),
     };
     Ok(scalar_from_i128(out, kind))
 }
@@ -1110,11 +1143,13 @@ fn binop_cmp(stack: &mut Vec<Value>, kind: PrimitiveKind, op: CmpOp) -> Result<(
     let b = pop_scalar(stack)?;
     let a = pop_scalar(stack)?;
     let ord = if kind.is_float() {
-        scalar_as_f64(a, kind)
-            .partial_cmp(&scalar_as_f64(b, kind))
+        scalar_to_f64(a, kind)
+            .partial_cmp(&scalar_to_f64(b, kind))
             .unwrap_or(std::cmp::Ordering::Equal)
+    } else if kind.is_unsigned_int() {
+        scalar_to_u128(a, kind).cmp(&scalar_to_u128(b, kind))
     } else {
-        scalar_as_i128(a, kind).cmp(&scalar_as_i128(b, kind))
+        scalar_to_i128(a, kind).cmp(&scalar_to_i128(b, kind))
     };
     let result = match op {
         CmpOp::Eq => ord == std::cmp::Ordering::Equal,
@@ -1139,101 +1174,98 @@ enum BitOp {
 fn binop_bit(stack: &mut Vec<Value>, kind: PrimitiveKind, op: BitOp) -> Result<(), VmError> {
     let b = pop_scalar(stack)?;
     let a = pop_scalar(stack)?;
-    let ai = scalar_as_i128(a, kind);
-    let bi = scalar_as_i128(b, kind);
-    let out = match op {
-        BitOp::And => ai & bi,
-        BitOp::Or => ai | bi,
-        BitOp::Xor => ai ^ bi,
-        BitOp::Shl => ai.wrapping_shl(bi as u32),
-        BitOp::Shr => ai.wrapping_shr(bi as u32),
-    };
-    stack.push(Value::Scalar(scalar_from_i128(out, kind)));
+    if kind.is_unsigned_int() {
+        let au = scalar_to_u128(a, kind);
+        let bu = scalar_to_u128(b, kind);
+        let out = match op {
+            BitOp::And => au & bu,
+            BitOp::Or => au | bu,
+            BitOp::Xor => au ^ bu,
+            BitOp::Shl => au.wrapping_shl(bu as u32),
+            BitOp::Shr => au.wrapping_shr(bu as u32),
+        };
+        stack.push(Value::Scalar(scalar_from_u128(out, kind)));
+    } else {
+        let ai = scalar_to_i128(a, kind);
+        let bi = scalar_to_i128(b, kind);
+        let out = match op {
+            BitOp::And => ai & bi,
+            BitOp::Or => ai | bi,
+            BitOp::Xor => ai ^ bi,
+            BitOp::Shl => ai.wrapping_shl(bi as u32),
+            BitOp::Shr => ai.wrapping_shr(bi as u32),
+        };
+        stack.push(Value::Scalar(scalar_from_i128(out, kind)));
+    }
     Ok(())
 }
 
 fn neg_scalar(v: ScalarValue, kind: PrimitiveKind) -> ScalarValue {
     if kind.is_float() {
-        return scalar_from_f64(-scalar_as_f64(v, kind), kind);
+        return scalar_from_f64(-scalar_to_f64(v, kind), kind);
     }
-    scalar_from_i128(-scalar_as_i128(v, kind), kind)
+    if kind.is_unsigned_int() {
+        return scalar_from_u128(0u128.wrapping_sub(scalar_to_u128(v, kind)), kind);
+    }
+    scalar_from_i128(-scalar_to_i128(v, kind), kind)
 }
 
 fn bitnot_scalar(v: ScalarValue, kind: PrimitiveKind) -> ScalarValue {
-    scalar_from_i128(!scalar_as_i128(v, kind), kind)
-}
-
-fn scalar_as_i128(v: ScalarValue, kind: PrimitiveKind) -> i128 {
-    match (kind, v) {
-        (_, ScalarValue::I8(x)) => i128::from(x),
-        (_, ScalarValue::I16(x)) => i128::from(x),
-        (_, ScalarValue::I32(x)) => i128::from(x),
-        (_, ScalarValue::I64(x)) => i128::from(x),
-        (_, ScalarValue::I128(x)) => x,
-        (_, ScalarValue::U8(x)) => i128::from(x),
-        (_, ScalarValue::U16(x)) => i128::from(x),
-        (_, ScalarValue::U32(x)) => i128::from(x),
-        (_, ScalarValue::U64(x)) => i128::from(x),
-        (_, ScalarValue::U128(x)) => x as i128,
-        (_, ScalarValue::Bool(b)) => i128::from(b),
-        (_, ScalarValue::F32(x)) => f64::from(x) as i128,
-        (_, ScalarValue::F64(x)) => x as i128,
-        (_, ScalarValue::Ptr(p)) => i128::from(p),
+    if kind.is_unsigned_int() {
+        scalar_from_u128(!scalar_to_u128(v, kind), kind)
+    } else {
+        scalar_from_i128(!scalar_to_i128(v, kind), kind)
     }
 }
 
-fn scalar_as_f64(v: ScalarValue, kind: PrimitiveKind) -> f64 {
-    match (kind, v) {
-        (_, ScalarValue::F32(x)) => f64::from(x),
-        (_, ScalarValue::F64(x)) => x,
-        (k, other) => scalar_as_i128(other, k) as f64,
-    }
-}
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod scalar_tests {
+    use super::*;
+    use phx_bytecode::PrimitiveKind;
 
-fn scalar_from_i128(value: i128, kind: PrimitiveKind) -> ScalarValue {
-    match kind {
-        PrimitiveKind::S8 => ScalarValue::I8(value as i8),
-        PrimitiveKind::S16 => ScalarValue::I16(value as i16),
-        PrimitiveKind::S32 => ScalarValue::I32(value as i32),
-        PrimitiveKind::S64 => ScalarValue::I64(value as i64),
-        PrimitiveKind::S128 => ScalarValue::I128(value),
-        PrimitiveKind::U8 => ScalarValue::U8(value as u8),
-        PrimitiveKind::U16 => ScalarValue::U16(value as u16),
-        PrimitiveKind::U32 => ScalarValue::U32(value as u32),
-        PrimitiveKind::U64 => ScalarValue::U64(value as u64),
-        PrimitiveKind::U128 => ScalarValue::U128(value as u128),
-        PrimitiveKind::Bool => ScalarValue::Bool(value != 0),
-        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
-        PrimitiveKind::F64 => ScalarValue::F64(value as f64),
+    #[test]
+    fn u128_div_above_i128_max() {
+        let top = ScalarValue::U128(1u128 << 127);
+        let two = ScalarValue::U128(2);
+        let half = arith_scalar(top, two, PrimitiveKind::U128, ArithOp::Div).expect("div");
+        assert_eq!(half, ScalarValue::U128(1u128 << 126));
     }
-}
 
-fn scalar_from_f64(value: f64, kind: PrimitiveKind) -> ScalarValue {
-    match kind {
-        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
-        PrimitiveKind::F64 => ScalarValue::F64(value),
-        _ => scalar_from_i128(value as i128, kind),
+    #[test]
+    fn u128_cmp_above_i128_max() {
+        let mut stack = vec![
+            Value::Scalar(ScalarValue::U128(1u128 << 127)),
+            Value::Scalar(ScalarValue::U128(1)),
+        ];
+        binop_cmp(&mut stack, PrimitiveKind::U128, CmpOp::Ge).expect("cmp");
+        let Value::Scalar(ScalarValue::Bool(gt)) = stack.pop().expect("bool") else {
+            panic!("expected bool");
+        };
+        assert!(gt);
     }
-}
 
-fn int_pow_i128(base: i128, exp: i128) -> i128 {
-    if exp < 0 {
-        return 0;
+    #[test]
+    fn float_mod_truncated_remainder() {
+        let out = arith_scalar(
+            ScalarValue::F64(5.5),
+            ScalarValue::F64(2.0),
+            PrimitiveKind::F64,
+            ArithOp::Mod,
+        )
+        .expect("mod");
+        assert_eq!(out, ScalarValue::F64(1.5));
     }
-    if exp == 0 {
-        return 1;
+
+    #[test]
+    fn pow_returns_unsupported() {
+        let err = arith_scalar(
+            ScalarValue::I32(2),
+            ScalarValue::I32(3),
+            PrimitiveKind::S32,
+            ArithOp::Pow,
+        )
+        .expect_err("pow");
+        assert_eq!(err, VmError::UnsupportedArithOp);
     }
-    let mut result = 1i128;
-    let mut b = base;
-    let mut e = exp;
-    while e > 0 {
-        if e & 1 != 0 {
-            result = result.wrapping_mul(b);
-        }
-        e >>= 1;
-        if e > 0 {
-            b = b.wrapping_mul(b);
-        }
-    }
-    result
 }

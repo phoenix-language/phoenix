@@ -1,0 +1,8 @@
+main :: () => {
+    const base: u128 = (1u as u128) << (126 as u128);
+    const top: u128 = base * (2 as u128);
+    const half: u128 = top / (2 as u128);
+    const rem: u128 = top % (3 as u128);
+    const sum: u128 = half + rem;
+    const _ = sum;
+};

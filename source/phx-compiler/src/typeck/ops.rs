@@ -58,13 +58,14 @@ pub fn check_binary(
                 None
             }
         }
-        phx_syntax::ast::expr::BinOp::Mod | phx_syntax::ast::expr::BinOp::Pow => {
+        phx_syntax::ast::expr::BinOp::Mod => {
             if is_int_numeric_primitive(ty) {
                 Some(BinOpResult { result: lhs })
             } else {
                 None
             }
         }
+        phx_syntax::ast::expr::BinOp::Pow => None,
         phx_syntax::ast::expr::BinOp::BitOr
         | phx_syntax::ast::expr::BinOp::BitXor
         | phx_syntax::ast::expr::BinOp::BitAnd

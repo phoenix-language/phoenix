@@ -690,7 +690,7 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-vm/src/interpreter.rs:1172–1189` (`scalar_as_i128`), `1052–1104` (`arith_scalar`), `1115–1134` (`binop_cmp`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** All integer arithmetic and comparison funnels through `i128` — `U128(x) => x as i128` mis-signs values above `i128::MAX`, breaking `u128` div/mod/comparison; float `Mod`/`Pow` return the unrelated error `VmError::InvalidConstPayload`.
 **Detail:** Verified. Add/sub/mul survive via two's-complement truncation, but `u128::MAX / 2` computes as `-1 / 2`, and `binop_cmp` orders large `u128` values negative. `wide-integers.md` promises width-accurate execution through `u128`.
@@ -917,7 +917,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-048 | - [x]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
 | PHX-049 | - [x]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
 | PHX-050 | - [x]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
-| PHX-051 | - [ ]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
+| PHX-051 | - [x]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
 | PHX-052 | - [ ]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
 | PHX-053 | - [ ]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
 | PHX-054 | - [ ]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |

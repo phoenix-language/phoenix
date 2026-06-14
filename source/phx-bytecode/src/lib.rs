@@ -34,7 +34,8 @@ pub use module::{BytecodeModule, ModuleError};
 pub use opcode::{Opcode, OpcodeError};
 pub use scalar::{
     PTR_AGG_TAG, PTR_CONST_TAG, PTR_FN_TAG, PTR_LOCAL_TAG, ScalarValue, decode_fn_ptr,
-    fn_ptr_from_id, is_fn_ptr,
+    fn_ptr_from_id, is_fn_ptr, scalar_from_f64, scalar_from_i128, scalar_from_u128, scalar_to_f64,
+    scalar_to_i128, scalar_to_u128,
 };
 pub use section::{SectionEntry, SectionError, SectionKind, validate_section_table};
 pub use stack_effect::{StackEffectError, apply_stack_effect};

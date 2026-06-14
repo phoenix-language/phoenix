@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::decl::{Function, ImplMember, Param, TopLevelDecl, TraitItem};
-use phx_syntax::ast::expr::{Expr, IfCondition, PostfixOp, UnaryOp};
+use phx_syntax::ast::expr::{BinOp, Expr, IfCondition, PostfixOp, UnaryOp};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment, TypeName};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::ast::types::GenericParam;
@@ -272,6 +272,16 @@ impl TypeChecker<'_> {
                 })
             }
             Expr::Binary { op, left, right } => {
+                if matches!(op, BinOp::Pow) {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::UnsupportedFeature {
+                            feature: "integer power (`**`)",
+                            span,
+                        },
+                    );
+                    return self.unit;
+                }
                 let l = self.check_expr_node(left);
                 let r = self.check_expr_node(right);
                 check_binary(&mut self.types, *op, l, r)

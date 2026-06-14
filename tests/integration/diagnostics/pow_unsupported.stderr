@@ -1,0 +1,6 @@
+error[E2016]: integer power (`**`) is not available in MVP
+  --> tests/integration/diagnostics/pow_unsupported.phx:2:15
+  |
+2 |     const _ = 2 ** 3;
+  |               ^^^^^^
+   = help: `integer power (`**`)` is not implemented in the MVP compiler yet

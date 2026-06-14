@@ -72,11 +72,11 @@ fn golden_return_local_str() {
 }
 
 #[test]
-fn golden_invalid_utf8_string() {
-    let path = diagnostics_dir().join("invalid_utf8_string.phx");
+fn golden_pow_unsupported() {
+    let path = diagnostics_dir().join("pow_unsupported.phx");
     assert_golden(
         &diagnostics_dir(),
-        "invalid_utf8_string",
+        "pow_unsupported",
         &format_check_file(&path),
     );
 }

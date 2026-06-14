@@ -24,3 +24,15 @@ When needed (crypto, hashing, fixed-width SIMD):
 - Or introduce new primitives in a **breaking language edition** with explicit migration notes
 
 Until then, use `u128` / `s128` in application code or FFI to native libraries for wide arithmetic.
+
+## v1 execution contract (MVP VM)
+
+Portable `PHX0` bytecode and the MVP interpreter execute **width-faithful** primitives through `s128` / `u128`:
+
+- **Storage:** each primitive occupies its declared width on the stack and in locals (`u128` is a 16-byte cell, not a widened `i64` lane).
+- **Signed integers (`s8`…`s128`):** arithmetic uses two's-complement **wrapping** (`wrapping_add`, `wrapping_sub`, `wrapping_mul`); `/` and `%` use truncating division toward zero; division by zero is a VM trap (`DivisionByZero`).
+- **Unsigned integers (`u8`…`u128`):** arithmetic and comparison use native **unsigned** semantics at the operand width (zero-extended to `u128` internally for `u128` ops). `/` and `%` are truncating; division by zero traps.
+- **Floats (`f32`, `f64`):** `+`, `-`, `*`, `/` follow IEEE 754. Float `%` is the **IEEE truncated remainder** (same sign as the dividend; Rust/C `fmod` behavior). Division by zero traps.
+- **Integer power (`**`):** **not in v0** — the parser accepts the syntax for forward compatibility, but the MVP type checker rejects it and the VM returns `UnsupportedArithOp` if the opcode appears in hostile bytecode.
+
+Shift masking and NaN comparison rules are specified separately in [type-system.md](type-system.md) (PHX-052).

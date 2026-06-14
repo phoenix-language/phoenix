@@ -59,6 +59,17 @@ Explicit `@spawn` actors are an opt-in layer on top of runtime primitives, not a
 
 Each numeric primitive occupies **its declared width** in constants, local slots, and on the operand stack. There is no shared `i64` lane: `s32` values are 4-byte cells, `s128`/`u128` are 16-byte cells, and binary operators require **identical** primitive kinds unless an explicit `expr as Type` cast appears in source.
 
+**Operator availability (MVP VM):**
+
+| Operator | Signed ints | Unsigned ints | Floats |
+|---|---|---|---|
+| `+` `-` `*` `/` | yes (wrapping / truncating div) | yes (wrapping / truncating div) | yes (IEEE 754) |
+| `%` | yes | yes | yes (IEEE truncated remainder) |
+| `**` | **no (v0)** | **no (v0)** | **no (v0)** |
+| Comparisons | yes | yes (unsigned order) | yes (IEEE; NaN rules in PHX-052) |
+
+Width-accurate execution through `u128` is normative; see [wide-integers.md](wide-integers.md).
+
 `bool` is a 1-byte cell, not an integer alias. Raw pointers and borrow references are `u64` addresses at runtime; MVP does not enforce borrow exclusivity (see [ownership.md](ownership.md)).
 
 UTF-8 string literals `"…"` have type `str` and lower to a `(ptr, len)` view over module constant-pool rodata (no heap allocation).

@@ -3,14 +3,10 @@
 //! Conversions use truncating/wrapping Rust casts on purpose — Phoenix `as` is explicit
 //! and may narrow or change representation (see design type-system.md).
 
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
-
-use crate::scalar::ScalarValue;
+use crate::scalar::{
+    ScalarValue, scalar_from_f64, scalar_from_i128, scalar_from_u128, scalar_to_f64,
+    scalar_to_i128, scalar_to_u128,
+};
 
 /// Wire encoding for explicit `as` cast operands (stable per format version).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -144,61 +140,12 @@ impl PrimitiveKind {
             let f = scalar_to_f64(value, from);
             return scalar_from_f64(f, to);
         }
+        if from.is_unsigned_int() || to.is_unsigned_int() {
+            let wide = scalar_to_u128(value, from);
+            return scalar_from_u128(wide, to);
+        }
         let wide = scalar_to_i128(value, from);
         scalar_from_i128(wide, to)
-    }
-}
-
-fn scalar_to_i128(value: ScalarValue, _from: PrimitiveKind) -> i128 {
-    match value {
-        ScalarValue::I8(v) => i128::from(v),
-        ScalarValue::I16(v) => i128::from(v),
-        ScalarValue::I32(v) => i128::from(v),
-        ScalarValue::I64(v) => i128::from(v),
-        ScalarValue::I128(v) => v,
-        ScalarValue::U8(v) => i128::from(v),
-        ScalarValue::U16(v) => i128::from(v),
-        ScalarValue::U32(v) => i128::from(v),
-        ScalarValue::U64(v) => i128::from(v),
-        ScalarValue::U128(v) => v as i128,
-        ScalarValue::Bool(b) => i128::from(b),
-        ScalarValue::F32(v) => f64::from(v) as i128,
-        ScalarValue::F64(v) => v as i128,
-        ScalarValue::Ptr(p) => i128::from(p),
-    }
-}
-
-fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
-    match value {
-        ScalarValue::F32(v) => f64::from(v),
-        ScalarValue::F64(v) => v,
-        other => scalar_to_i128(other, from) as f64,
-    }
-}
-
-fn scalar_from_i128(value: i128, to: PrimitiveKind) -> ScalarValue {
-    match to {
-        PrimitiveKind::S8 => ScalarValue::I8(value as i8),
-        PrimitiveKind::S16 => ScalarValue::I16(value as i16),
-        PrimitiveKind::S32 => ScalarValue::I32(value as i32),
-        PrimitiveKind::S64 => ScalarValue::I64(value as i64),
-        PrimitiveKind::S128 => ScalarValue::I128(value),
-        PrimitiveKind::U8 => ScalarValue::U8(value as u8),
-        PrimitiveKind::U16 => ScalarValue::U16(value as u16),
-        PrimitiveKind::U32 => ScalarValue::U32(value as u32),
-        PrimitiveKind::U64 => ScalarValue::U64(value as u64),
-        PrimitiveKind::U128 => ScalarValue::U128(value as u128),
-        PrimitiveKind::Bool => ScalarValue::Bool(value != 0),
-        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
-        PrimitiveKind::F64 => ScalarValue::F64(value as f64),
-    }
-}
-
-fn scalar_from_f64(value: f64, to: PrimitiveKind) -> ScalarValue {
-    match to {
-        PrimitiveKind::F32 => ScalarValue::F32(value as f32),
-        PrimitiveKind::F64 => ScalarValue::F64(value),
-        _ => scalar_from_i128(value as i128, to),
     }
 }
 
@@ -227,5 +174,12 @@ mod tests {
         let v = ScalarValue::I128(1_000_000_000_000_000_000);
         let narrowed = PrimitiveKind::apply_cast(v, PrimitiveKind::S128, PrimitiveKind::S64);
         assert_eq!(narrowed, ScalarValue::I64(1_000_000_000_000_000_000));
+    }
+
+    #[test]
+    fn cast_u128_above_i128_max_narrows_to_u64() {
+        let high = ScalarValue::U128((1u128 << 127) | 0x2a);
+        let narrowed = PrimitiveKind::apply_cast(high, PrimitiveKind::U128, PrimitiveKind::U64);
+        assert_eq!(narrowed, ScalarValue::U64(0x2a));
     }
 }
