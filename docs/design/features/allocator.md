@@ -90,7 +90,7 @@ pub Allocator :: unsafe trait {
 
 | Method | Contract |
 |--------|----------|
-| `alloc` | Returns a pointer to at least `layout.size` bytes, or a null pointer on failure (Std v0: VM bump heap does not report failure — document as future `Result`) |
+| `alloc` | Returns a pointer to at least `layout.size` bytes. When the VM heap cap is exceeded, `phx_vm::run` fails with `VmError::OutOfMemory` (no null pointer in v0). Std-level null-on-failure remains post-MVP |
 | `dealloc` | Releases the block previously obtained with the **same** `layout.size`; must not be called on pointers not allocated through this allocator instance |
 
 Methods take `&mut Self` so stateful allocators (arenas, pools) can update bookkeeping. `Global` / `VmHeapAllocator` are zero-sized; mutation is a no-op but keeps a uniform trait surface for generic collections.
@@ -109,6 +109,8 @@ Methods take `&mut Self` so stateful allocators (arenas, pools) can update bookk
 | `Global` | Public default name; **type alias** for `VmHeapAllocator` (trait bound checks resolve aliases to the underlying impl) |
 
 Application and library code should import `Global` (or a custom `Allocator`), not `std::core::alloc` intrinsics. Direct intrinsic use remains legal for low-level tests and compiler fixtures but is discouraged outside `std::core::memory`.
+
+**Heap cap and configuration:** The VM linear heap is capped by default (see [vm-linear.md](vm-linear.md) — VM resource limits). Application authors will eventually configure this via project settings or CLI; v0 relies on the built-in default until that surface ships.
 
 ---
 

@@ -9,7 +9,7 @@ use phx_bytecode::{
 
 use crate::VmError;
 use crate::foreign::dispatch_foreign;
-use crate::frame::{Aggregate, Machine, Value};
+use crate::frame::{Aggregate, DEFAULT_HEAP_CAP_BYTES, Machine, Value};
 
 /// Captured VM state when the entry function returns (integration tests only).
 #[doc(hidden)]
@@ -49,12 +49,29 @@ fn operand_prim_kind(inst: &Instruction, operand_index: usize) -> Result<Primiti
     PrimitiveKind::from_u8(byte).ok_or(VmError::InvalidConstPayload)
 }
 
+/// Runs `module` and returns `main` local slots captured at entry return.
+///
+/// Integration-test harness only; production callers use [`interpret`].
+///
 /// # Errors
 ///
 /// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
 #[doc(hidden)]
-#[allow(clippy::too_many_lines)]
 pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
+    run_captured_with_heap_cap(module, DEFAULT_HEAP_CAP_BYTES)
+}
+
+/// Runs `module` with a custom heap byte cap (integration / stress tests only).
+///
+/// # Errors
+///
+/// Returns [`VmError`] on invalid bytecode, unsupported opcodes, or heap cap exhaustion.
+#[doc(hidden)]
+#[allow(clippy::too_many_lines)]
+pub fn run_captured_with_heap_cap(
+    module: &BytecodeModule,
+    heap_cap: usize,
+) -> Result<VmRunCapture, VmError> {
     let entry_id = module.header.entry_function_id;
     if entry_id == ENTRY_NONE {
         return Err(VmError::NoEntryPoint);
@@ -64,7 +81,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
         return Err(VmError::EntryArityNotZero);
     }
 
-    let mut machine = Machine::default();
+    let mut machine = Machine::with_heap_cap(heap_cap);
     machine.push_frame(entry_id, entry.local_count, &module.local_layouts);
 
     while let Some(frame) = machine.frames.last() {
@@ -373,7 +390,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                 let ScalarValue::U32(size) = size_val else {
                     return Err(VmError::ExpectedScalar);
                 };
-                let addr = machine.alloc_bytes(size as usize);
+                let addr = machine.alloc_bytes(size as usize)?;
                 machine.stack.push(Value::Scalar(ScalarValue::Ptr(addr)));
             }
             Opcode::Free => {

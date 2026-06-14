@@ -47,6 +47,8 @@ pub enum VmError {
     InvalidForeignStub(u32),
     /// Arithmetic operator is not defined for this primitive kind (e.g. `**` cut from v0).
     UnsupportedArithOp,
+    /// Heap allocation would exceed the configured cap.
+    OutOfMemory,
 }
 
 impl std::fmt::Display for VmError {
@@ -78,6 +80,7 @@ impl std::fmt::Display for VmError {
             Self::UnsupportedArithOp => {
                 write!(f, "unsupported arithmetic operator for primitive kind")
             }
+            Self::OutOfMemory => write!(f, "heap allocation exceeded cap"),
         }
     }
 }

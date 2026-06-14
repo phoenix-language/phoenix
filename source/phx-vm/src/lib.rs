@@ -24,8 +24,8 @@ mod interpreter;
 
 pub use error::VmError;
 pub use foreign::{ForeignStubFn, clear_foreign_stubs, dispatch_foreign, register_foreign_stub};
-pub use frame::{Aggregate, Machine, Value};
-pub use interpreter::{VmRunCapture, run_captured};
+pub use frame::{Aggregate, DEFAULT_HEAP_CAP_BYTES, Machine, Value};
+pub use interpreter::{VmRunCapture, run_captured, run_captured_with_heap_cap};
 pub use phx_bytecode::BytecodeModule;
 
 /// Runs `module` from its entry function until `main` returns.
@@ -226,5 +226,77 @@ mod tests {
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
         };
         assert_eq!(run(&module), Err(VmError::UnsupportedConst));
+    }
+
+    #[test]
+    fn alloc_loop_hits_heap_cap_with_out_of_memory() {
+        use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
+
+        use super::run_captured_with_heap_cap;
+
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, u32::from(PrimitiveKind::U32.as_u8())],
+            }
+            .encode()
+            .expect("encode"),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Alloc,
+                operands: vec![],
+            }
+            .encode()
+            .expect("encode"),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Pop,
+                operands: vec![],
+            }
+            .encode()
+            .expect("encode"),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Jump,
+                operands: vec![0],
+            }
+            .encode()
+            .expect("encode"),
+        );
+
+        let module = BytecodeModule {
+            header: FileHeader::new(5, 0),
+            constants: ConstPool {
+                entries: vec![ConstEntry {
+                    tag: ConstTag::UnsignedInt,
+                    payload: 8u32.to_le_bytes().to_vec(),
+                }],
+            },
+            types: TypeTable::default(),
+            functions: FunctionTable {
+                functions: vec![FunctionRecord {
+                    function_id: 0,
+                    name_symbol_id: 0,
+                    arity: 0,
+                    local_count: 0,
+                    stack_max: 8,
+                    flags: 0,
+                    code_offset: 0,
+                    code_len: u32::try_from(code.len()).unwrap_or(0),
+                    return_type_id: 0,
+                }],
+            },
+            code,
+            local_layouts: phx_bytecode::LocalLayoutTable::default(),
+        };
+
+        assert!(matches!(
+            run_captured_with_heap_cap(&module, 32),
+            Err(VmError::OutOfMemory)
+        ));
     }
 }

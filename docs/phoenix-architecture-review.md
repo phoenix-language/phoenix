@@ -714,10 +714,10 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-vm/src/frame.rs:168–177` (`alloc_bytes`), `interpreter.rs:375–376`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `Alloc` resizes the heap by an unchecked runtime `u32` size — verified bytecode can demand 4 GB per instruction in a loop; allocation failure aborts the process (`panic = "abort"`).
-**Detail:** Also note `u64::try_from(start).unwrap_or(u64::MAX)` returns a garbage pointer on (unreachable today) overflow rather than erroring.
+**Detail:** Fixed in PHX-053. `Machine` carries a configurable `heap_cap` (default 64 MiB); `alloc_bytes` returns `VmError::OutOfMemory` before resize when the cap would be exceeded; `u64::try_from(start)` errors instead of `u64::MAX` sentinel.
 **Recommendation:** Impose a configurable heap cap returning `VmError::OutOfMemory`; remove the `unwrap_or(u64::MAX)` sentinel.
 
 ---
@@ -919,7 +919,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-050 | - [x]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
 | PHX-051 | - [x]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
 | PHX-052 | - [x]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
-| PHX-053 | - [ ]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
+| PHX-053 | - [x]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
 | PHX-054 | - [ ]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
 | PHX-055 | - [ ]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
 | PHX-056 | - [ ]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |

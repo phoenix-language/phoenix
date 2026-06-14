@@ -135,7 +135,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 
 | Item | Finding | Work |
 |---|---|---|
-| Heap cap + OOM error (from M2, validated under std workloads) | PHX-053 | Stress fixture: growth loop hits cap cleanly |
+| Heap cap + OOM error (from M2, validated under std workloads) | PHX-053 | Stress fixture: growth loop hits cap cleanly; **follow-up:** raise/revisit default cap and expose project/CLI configuration (see `vm-linear.md` VM resource limits) |
 | UAF detection exercised by std tests | PHX-054 | `DynamicArray` misuse fixtures (dangling index after free) |
 | `[INFRA]` `DynamicArray` semantics suite: push-grow-realloc, index bounds, nested drop, move-into/out | PHX-061 | Std-level guarantee tests on `run_captured` |
 | `[FEATURE]` `slice_from_raw_parts` + heap-slice interop validated against V0-062 | — | Bridges M5 slices and std collections |

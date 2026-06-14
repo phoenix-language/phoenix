@@ -99,8 +99,11 @@ pub struct Frame {
     pub locals: Vec<Value>,
 }
 
+/// Default byte cap for the MVP VM linear heap (`64` MiB).
+pub const DEFAULT_HEAP_CAP_BYTES: usize = 64 * 1024 * 1024;
+
 /// Operand stack + call stack + aggregate arena + linear heap for pointers.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Machine {
     /// Evaluation stack.
     pub stack: Vec<Value>,
@@ -112,9 +115,33 @@ pub struct Machine {
     pub heap: Vec<u8>,
     /// Live `(ptr, size)` blocks registered by `Alloc` and removed by `Free`.
     pub live_heap_blocks: BTreeMap<u64, u32>,
+    /// Maximum `heap.len()` after any successful `alloc_bytes`.
+    pub heap_cap: usize,
+}
+
+impl Default for Machine {
+    fn default() -> Self {
+        Self {
+            stack: Vec::new(),
+            frames: Vec::new(),
+            aggregates: Vec::new(),
+            heap: Vec::new(),
+            live_heap_blocks: BTreeMap::new(),
+            heap_cap: DEFAULT_HEAP_CAP_BYTES,
+        }
+    }
 }
 
 impl Machine {
+    /// Builds a machine with a custom heap byte cap (for tests and future CLI wiring).
+    #[must_use]
+    pub fn with_heap_cap(heap_cap: usize) -> Self {
+        Self {
+            heap_cap,
+            ..Self::default()
+        }
+    }
+
     /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
     pub fn push_frame(&mut self, function_id: u32, local_count: u16, layouts: &LocalLayoutTable) {
         let n = usize::from(local_count);
@@ -166,14 +193,23 @@ impl Machine {
     }
 
     /// Allocates `size` zeroed bytes on the heap; returns the start offset.
-    pub fn alloc_bytes(&mut self, size: usize) -> u64 {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VmError::OutOfMemory`] when `size` or cumulative heap growth would exceed
+    /// [`Self::heap_cap`], or when the start offset does not fit in `u64`.
+    pub fn alloc_bytes(&mut self, size: usize) -> Result<u64, VmError> {
         let start = self.heap.len();
-        self.heap.resize(start.saturating_add(size), 0);
-        let ptr = u64::try_from(start).unwrap_or(u64::MAX);
-        if let Ok(reg_size) = u32::try_from(size) {
-            let _ = self.live_heap_blocks.insert(ptr, reg_size);
+        let new_len = start.checked_add(size).ok_or(VmError::OutOfMemory)?;
+        if new_len > self.heap_cap {
+            return Err(VmError::OutOfMemory);
         }
-        ptr
+        self.heap.resize(new_len, 0);
+        let ptr = u64::try_from(start).map_err(|_| VmError::OutOfMemory)?;
+        if let Ok(reg_size) = u32::try_from(size) {
+            self.live_heap_blocks.insert(ptr, reg_size);
+        }
+        Ok(ptr)
     }
 
     /// Returns the number of live heap blocks tracked by the allocation ledger.
@@ -250,6 +286,7 @@ pub fn store_local_scalar_bytes(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::Machine;
     use crate::VmError;
@@ -257,7 +294,7 @@ mod tests {
     #[test]
     fn alloc_then_free_clears_ledger() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(8);
+        let ptr = machine.alloc_bytes(8).expect("alloc");
         assert_eq!(machine.live_heap_block_count(), 1);
         assert!(machine.free_bytes(ptr, 8).is_ok());
         assert_eq!(machine.live_heap_block_count(), 0);
@@ -266,7 +303,7 @@ mod tests {
     #[test]
     fn double_free_returns_error() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4);
+        let ptr = machine.alloc_bytes(4).expect("alloc");
         assert!(machine.free_bytes(ptr, 4).is_ok());
         let err = machine.free_bytes(ptr, 4);
         assert_eq!(err, Err(VmError::DoubleFree));
@@ -275,8 +312,24 @@ mod tests {
     #[test]
     fn wrong_size_free_returns_invalid_free() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4);
+        let ptr = machine.alloc_bytes(4).expect("alloc");
         let err = machine.free_bytes(ptr, 8);
         assert_eq!(err, Err(VmError::InvalidFree));
+    }
+
+    #[test]
+    fn alloc_exceeding_cap_returns_out_of_memory() {
+        let mut machine = Machine::with_heap_cap(8);
+        assert_eq!(machine.alloc_bytes(16), Err(VmError::OutOfMemory));
+        assert_eq!(machine.heap.len(), 0);
+    }
+
+    #[test]
+    fn cumulative_alloc_hits_cap() {
+        let mut machine = Machine::with_heap_cap(16);
+        assert_eq!(machine.alloc_bytes(8).expect("first"), 0);
+        assert_eq!(machine.alloc_bytes(8).expect("second"), 8);
+        assert_eq!(machine.alloc_bytes(1), Err(VmError::OutOfMemory));
+        assert_eq!(machine.heap.len(), 16);
     }
 }

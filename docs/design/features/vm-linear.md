@@ -248,7 +248,7 @@ Several opcodes carry a **`prim_kind` wire byte** (`0`–`12`, see `PrimitiveKin
 | Arithmetic, bitwise, compare | `prim_kind` | Require matching stack cell widths |
 | `NEG`, `NOT`, `BIT_NOT` | `prim_kind` | Unary primitive width |
 | `PTR_LOAD`, `PTR_STORE` | `prim_kind`, `signed` | Memory access width |
-| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address; registers `(ptr, size)` in VM allocation ledger |
+| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address; registers `(ptr, size)` in VM allocation ledger. Heap growth is capped at **64 MiB** by default (`DEFAULT_HEAP_CAP_BYTES` on [`Machine`](../../source/phx-vm/src/frame.rs)); overflow returns `VmError::OutOfMemory` instead of aborting the process |
 | `FREE` | *(none)* | Pops runtime `size: u32`, then `ptr`; removes exact ledger entry; zeros freed bytes (no heap compaction) |
 | `MAKE_SLICE` | `elem_prim_kind` | Element type of source array |
 
@@ -283,6 +283,20 @@ Loader must reject bytecode when:
 - Header `entry_function_id` must name a zero-arity `main` for executables. Library objects use `ENTRY_NONE` (`0xFFFF_FFFF`); the VM returns an error if execution is attempted.
 - `ConstTag::Bytes` pool entries are not loadable via generic `Const` (operand pushes scalars only). UTF-8 string literals `"…"` lower to `ConstTag::Bytes` in the pool plus opcode **`MakeStr`** (pool index → rodata `str` view). Byte string literals `b"…"` still lower to per-byte `Const` + `MakeArray`.
 - Typeck rejects returning `&T`, `&mut T`, `[T]` slice views, or **`str`** views formed from function-local bindings; see [`ownership.md`](ownership.md).
+
+#### VM resource limits (v0)
+
+The MVP interpreter enforces **bounded** VM heap growth so hostile or buggy bytecode cannot exhaust host memory:
+
+| Limit | v0 default | Notes |
+|---|---|---|
+| VM byte heap (`ALLOC` / `alloc_bytes`) | **64 MiB** (`DEFAULT_HEAP_CAP_BYTES`) | Cumulative `heap.len()` cap; overflow → `VmError::OutOfMemory` |
+| Single allocation size | `u32` (~4 GiB max per call) | Language and `ALLOC` operand width; cap applies before this ceiling |
+| Heap pointer values | `u64` | Offsets into the VM linear heap, not host addresses |
+
+**64 MiB is a bootstrap default**, not a long-term product ceiling — it is enough for early std fixtures but will be tight for large buffers, parsers, and growable collections. Before std workloads ship at scale, revisit the default (e.g. raise to hundreds of MiB or tie to host RAM) and **expose user configuration**: project-level settings (e.g. `phx.toml` / build manifest) and/or CLI flags (`phx run --heap-cap=…`) that wire into `Machine::heap_cap`. Until that ships, embedders and tests may use `Machine::with_heap_cap` / `run_captured_with_heap_cap` (`#[doc(hidden)]`).
+
+`u32` in bytecode operands and `alloc_bytes(size: u32)` index portable file layout and per-call size — they do **not** make Phoenix a 32-bit platform; the host VM runs on 64-bit Rust with `usize`/`u64` internally.
 
 ---
 
