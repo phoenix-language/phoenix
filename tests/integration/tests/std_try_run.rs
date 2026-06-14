@@ -17,7 +17,7 @@ fn std_try_fixture_runs() {
     let config = discover_cli_project(&root);
     build_project(&config, None, BuildOptions::force(true)).expect("build std_try");
     let module = load_project_binary(&config).expect("load bytecode");
-    verify(&module).expect("verify");
+    let verified = verify(&module).expect("verify");
 
     let entry_id = module.header.entry_function_id;
     let read_config = module
@@ -43,5 +43,5 @@ fn std_try_fixture_runs() {
         off = next;
     }
 
-    run(&module).expect("run std_try");
+    run(verified).expect("run std_try");
 }

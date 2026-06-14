@@ -3,7 +3,8 @@
 //! Portable output of the compiler; consumed by the `phx_vm` crate after the verifier pass.
 //! Format contract: `docs/design/features/vm-linear.md`.
 //!
-//! Call [`verify`] on every image before execution; the MVP VM assumes invariants checked there.
+//! Call [`verify`] on every image before execution; production VM entry points require the
+//! returned [`VerifiedModule`] token.
 
 mod cast;
 mod const_pool;
@@ -20,6 +21,7 @@ mod section;
 mod stack_effect;
 mod stack_flow;
 mod types;
+mod verified;
 mod verify;
 
 pub use cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
@@ -41,6 +43,7 @@ pub use section::{SectionEntry, SectionError, SectionKind, validate_section_tabl
 pub use stack_effect::{StackEffectError, apply_stack_effect};
 pub use stack_flow::{StackFlowError, StackFlowSummary, analyze_stack_cfg, return_stack_depth};
 pub use types::{TypeKind, TypeRecord, TypeTable};
+pub use verified::VerifiedModule;
 pub use verify::{VerifyError, verify};
 
 #[cfg(test)]

@@ -13,8 +13,9 @@ fn heap_dealloc_fixture_runs() {
         return;
     }
     let built = force_build_project("heap_dealloc");
-    phx_bytecode::verify(&built.module).expect("verify heap_dealloc");
-    run(&built.module).expect("run heap_dealloc");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_dealloc");
+
+    run(verified).expect("run heap_dealloc");
 }
 
 #[test]
@@ -41,8 +42,8 @@ fn heap_dealloc_double_free_fails_at_runtime() {
         return;
     }
     let built = force_build_project("heap_dealloc_double");
-    phx_bytecode::verify(&built.module).expect("verify heap_dealloc_double");
-    let err = run(&built.module).expect_err("double free should fail");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_dealloc_double");
+    let err = run(verified).expect_err("double free should fail");
     assert!(
         matches!(err, VmError::DoubleFree),
         "expected DoubleFree, got {err:?}"
@@ -57,8 +58,8 @@ fn heap_uaf_read_after_free_fails_at_runtime() {
         return;
     }
     let built = force_build_project("heap_uaf");
-    phx_bytecode::verify(&built.module).expect("verify heap_uaf");
-    let err = run(&built.module).expect_err("use after free should fail");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_uaf");
+    let err = run(verified).expect_err("use after free should fail");
     assert!(
         matches!(err, VmError::UseAfterFree),
         "expected UseAfterFree, got {err:?}"
@@ -73,6 +74,7 @@ fn heap_drop_dealloc_fixture_runs() {
         return;
     }
     let built = force_build_project("heap_drop_dealloc");
-    phx_bytecode::verify(&built.module).expect("verify heap_drop_dealloc");
-    run(&built.module).expect("run heap_drop_dealloc");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_drop_dealloc");
+
+    run(verified).expect("run heap_drop_dealloc");
 }

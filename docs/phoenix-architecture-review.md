@@ -738,10 +738,10 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 **Location:** `phx-vm/src/lib.rs:36–38` (`run`), `interpreter.rs:656–659` (`function_code`)
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** The verify-before-execute invariant is enforced only by CLI convention — `phx_vm::run` executes whatever it is given (and the in-crate mutation tests document that unverified invalid modules run "successfully"); separately, `function_code` returns `&[]` on bad offsets so `main` falling off the end returns `Ok`.
-**Detail:** All CLI paths verify (confirmed: `run.rs:129–133`, `compile.rs:73–76`, `build/driver.rs:226`), so this is a library-boundary hazard, not a product bug.
+**Detail:** Fixed in PHX-055. `phx_bytecode::verify` returns a `VerifiedModule` token; `phx_vm::run` / `run_captured` require it. `#[doc(hidden)] run_unverified` remains for mutation tests. PC past `code_len` returns `VmError::TruncatedCode` for all frames.
 **Recommendation:** Add `run_verified()` (or a `VerifiedModule` newtype that is the only thing `run` accepts) so the type system carries the invariant; treat PC-past-end as an error.
 
 ---
@@ -856,7 +856,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 
 **Crate dependency graph.** Verified clean and acyclic in production: `phx-diagnostics` ← `phx-syntax` ← `phx-compiler` (also ← `phx-bytecode`); `phx-vm` ← {`phx-bytecode`, `phx-diagnostics`} — `**phx-vm` correctly does not depend on `phx-compiler`**; `phx-cli` links all; `phx` ← `phx-cli`. Zero external crates anywhere, enforced by `tests/ci/check-deps.sh`. Only dev-time wrinkles: `phx-compiler` ↔ `phx-test` cycle and `phx-bytecode` dev-depending on `phx-vm` (PHX-062).
 
-**Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" holds on every CLI path but is convention-only at the `phx_vm::run` library boundary (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 resolved for `terminators_successors` opcode match in `stack_flow.rs`. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
+**Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" is type-enforced at the `phx_vm::run` library boundary via `VerifiedModule` (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 resolved for `terminators_successors` opcode match in `stack_flow.rs`. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
 
 **Post-MVP readiness.** Honest assessment: the **typeck side-table architecture** and **PHX0 versioned format** are good extension points. Three things will need surgery, none of which is stubbed: (1) the ownership tracker has no CFG notion at all — the full borrow checker cannot grow out of a linear `Vec<BindingEntry>`; expect replacement, which makes fixing PHX-023/024 with a properly shaped fork/join model doubly valuable; (2) the VM has no execution-context abstraction — scheduler work means refactoring `Machine`/frame ownership first (PHX-057); (3) lowering's order-coupled `ExprId` cursor (PHX-037) is fragile under any future reordering optimization; a keyed map or explicit typed-IR would be sturdier. The std bootstrap substrate, by contrast, is largely *done*: `Option`/`Result`/`?`/`Drop`/`DynamicArray`/allocator traits exist as std-authored Phoenix code with a path-scoped kernel — the remaining risk there is PHX-026's name-based fallbacks.
 
@@ -898,7 +898,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-029 | - [x]  | Minor        | phx-compiler    | Lint pass has no type information                                        |
 | PHX-030 | - [x]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |
 | PHX-031 | - [x]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |
-| PHX-032 | - [ ]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
+| PHX-032 | - [x]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
 | PHX-033 | - [x]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |
 | PHX-034 | - [x]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
 | PHX-035 | - [x]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
@@ -906,7 +906,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-037 | - [x]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
 | PHX-038 | - [x]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
 | PHX-039 | - [x]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |
-| PHX-040 | - [ ]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |
+| PHX-040 | - [x]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |
 | PHX-041 | - [x]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |
 | PHX-042 | - [x]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |
 | PHX-043 | - [x]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
@@ -921,7 +921,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-052 | - [x]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |
 | PHX-053 | - [x]  | Major        | phx-vm          | Unchecked `u32` alloc size; no heap cap                                  |
 | PHX-054 | - [x]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
-| PHX-055 | - [ ]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
+| PHX-055 | - [x]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
 | PHX-056 | - [ ]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
 | PHX-057 | - [ ]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
 | PHX-058 | - [ ]  | Minor        | phx-cli         | ICE handler discards panic message                                       |

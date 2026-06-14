@@ -9,14 +9,18 @@ use phx_vm::run;
 fn block_import_main_compiles_and_runs() {
     let root = cli_modules_dir();
     let module = compile_fixture_module("block_import_main.phx", &root);
-    run(&module).expect("run block_import_main");
+    let verified = phx_bytecode::verify(&module).expect("verify");
+
+    run(verified).expect("run block_import_main");
 }
 
 #[test]
 fn block_import_nested_glob_compiles_and_runs() {
     let root = cli_modules_dir();
     let module = compile_fixture_module("block_import_nested.phx", &root);
-    run(&module).expect("run block_import_nested");
+    let verified = phx_bytecode::verify(&module).expect("verify");
+
+    run(verified).expect("run block_import_nested");
 }
 
 #[test]

@@ -16,6 +16,7 @@ fn link_rebase_cross_module_struct_field_and_enum_match() {
     let bin_path = root.join("build/bin/link_rebase.phx0");
     let bytes = std::fs::read(&bin_path).expect("read linked binary");
     let module = phx_bytecode::BytecodeModule::decode(&bytes).expect("decode");
-    verify(&module).expect("verify linked binary");
-    run(&module).expect("run cross-module struct field + enum match");
+    let verified = verify(&module).expect("verify linked binary");
+
+    run(verified).expect("run cross-module struct field + enum match");
 }

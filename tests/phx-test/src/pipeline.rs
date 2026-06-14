@@ -47,11 +47,13 @@ pub fn check_fixture_module_ok(entry: &str, module_root: &Path) {
 /// Compile, verify, and run a fixture without inspecting VM output.
 pub fn run_fixture_smoke(name: &str) {
     let module = compile_fixture(name);
-    run(&module).unwrap_or_else(|e| panic!("run {name}: {e}"));
+    let verified = verify(&module).unwrap_or_else(|e| panic!("verify {name}: {e}"));
+    run(verified).unwrap_or_else(|e| panic!("run {name}: {e}"));
 }
 
 /// Compile, verify, and run a fixture returning captured `main` locals.
 pub fn run_fixture_captured(name: &str) -> VmRunCapture {
     let module = compile_fixture(name);
-    run_captured(&module).unwrap_or_else(|e| panic!("run {name}: {e}"))
+    let verified = verify(&module).unwrap_or_else(|e| panic!("verify {name}: {e}"));
+    run_captured(verified).unwrap_or_else(|e| panic!("run {name}: {e}"))
 }

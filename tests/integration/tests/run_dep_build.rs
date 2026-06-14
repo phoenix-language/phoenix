@@ -65,8 +65,9 @@ fn path_dep_linked_binary_runs() {
     let root = build_app_dep();
     let bytes = std::fs::read(root.join("build/bin/app_dep.phx0")).expect("read linked bin");
     let module = phx_bytecode::BytecodeModule::decode(&bytes).expect("decode");
-    verify(&module).expect("verify linked bin");
-    run(&module).expect("run cross-package binary");
+    let verified = verify(&module).expect("verify linked bin");
+
+    run(verified).expect("run cross-package binary");
 }
 
 #[test]
@@ -160,8 +161,9 @@ fn path_dep_std_smoke_builds_and_runs() {
     );
     let bytes = std::fs::read(root.join("build/bin/std_smoke.phx0")).expect("read bin");
     let module = phx_bytecode::BytecodeModule::decode(&bytes).expect("decode");
-    verify(&module).expect("verify linked bin");
-    run(&module).expect("run std_smoke binary");
+    let verified = verify(&module).expect("verify linked bin");
+
+    run(verified).expect("run std_smoke binary");
 }
 
 #[test]

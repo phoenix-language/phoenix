@@ -13,6 +13,7 @@ fn allocator_smoke_fixture_runs() {
         return;
     }
     let built = force_build_project("allocator_smoke");
-    phx_bytecode::verify(&built.module).expect("verify allocator_smoke");
-    run(&built.module).expect("run allocator_smoke");
+    let verified = phx_bytecode::verify(&built.module).expect("verify allocator_smoke");
+
+    run(verified).expect("run allocator_smoke");
 }

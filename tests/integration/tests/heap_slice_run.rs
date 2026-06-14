@@ -15,8 +15,9 @@ fn heap_slice_fixture_runs() {
         return;
     }
     let built = force_build_project("heap_slice");
-    phx_bytecode::verify(&built.module).expect("verify heap_slice");
-    run(&built.module).expect("run heap_slice");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice");
+
+    run(verified).expect("run heap_slice");
 }
 
 #[test]
@@ -55,8 +56,8 @@ fn heap_slice_oob_index_fails_at_runtime() {
         return;
     }
     let built = force_build_project("heap_slice_oob");
-    phx_bytecode::verify(&built.module).expect("verify heap_slice_oob");
-    let err = run(&built.module).expect_err("OOB slice index");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice_oob");
+    let err = run(verified).expect_err("OOB slice index");
     let msg = format!("{err}");
     assert!(
         msg.contains("FieldOutOfRange") || msg.contains("out of range"),

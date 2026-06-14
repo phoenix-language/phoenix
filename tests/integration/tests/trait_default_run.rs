@@ -15,8 +15,9 @@ fn trait_default_fixture_runs() {
         return;
     }
     let built = force_build_project("trait_default");
-    phx_bytecode::verify(&built.module).expect("verify trait_default");
-    run(&built.module).expect("run trait_default");
+    let verified = phx_bytecode::verify(&built.module).expect("verify trait_default");
+
+    run(verified).expect("run trait_default");
 }
 
 #[test]
@@ -39,8 +40,9 @@ fn trait_default_override_fixture_runs() {
         return;
     }
     let built = force_build_project("trait_default_override");
-    phx_bytecode::verify(&built.module).expect("verify trait_default_override");
-    run(&built.module).expect("run trait_default_override");
+    let verified = phx_bytecode::verify(&built.module).expect("verify trait_default_override");
+
+    run(verified).expect("run trait_default_override");
 }
 
 #[test]
@@ -51,8 +53,9 @@ fn trait_into_from_default_fixture_runs() {
         return;
     }
     let built = force_build_project("trait_into_from_default");
-    phx_bytecode::verify(&built.module).expect("verify trait_into_from_default");
-    run(&built.module).expect("run trait_into_from_default");
+    let verified = phx_bytecode::verify(&built.module).expect("verify trait_into_from_default");
+
+    run(verified).expect("run trait_into_from_default");
 }
 
 #[test]

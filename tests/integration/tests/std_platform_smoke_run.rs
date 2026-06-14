@@ -19,8 +19,9 @@ fn std_platform_smoke_fixture_runs() {
     let config = discover_cli_project(&root);
     build_project(&config, None, BuildOptions::force(true)).expect("build std_platform_smoke");
     let module = load_project_binary(&config).expect("load bytecode");
-    verify(&module).expect("verify");
-    run(&module).expect("run std_platform_smoke");
+    let verified = verify(&module).expect("verify");
+
+    run(verified).expect("run std_platform_smoke");
 }
 
 #[test]

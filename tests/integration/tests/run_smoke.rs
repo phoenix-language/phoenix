@@ -15,5 +15,7 @@ fn positive_fixtures_run_without_panic() {
 fn modules_main_runs_without_panic() {
     let root = cli_modules_dir();
     let module = compile_fixture_module("main.phx", &root);
-    run(&module).expect("run modules/main.phx");
+    let verified = phx_bytecode::verify(&module).expect("verify");
+
+    run(verified).expect("run modules/main.phx");
 }

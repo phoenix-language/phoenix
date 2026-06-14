@@ -8,9 +8,11 @@
 //!
 //! Executes verified [`phx_bytecode::BytecodeModule`] images with a single-process stack machine.
 //!
-//! [`run`] is the production entry point. [`run_captured`] is `#[doc(hidden)]` and exists only for
-//! integration tests that inspect `main` locals (via [`VmRunCapture::main_local`]) or the stack
-//! return value after execution.
+//! Production callers obtain a [`VerifiedModule`] via [`phx_bytecode::verify`] and pass it to
+//! [`run`]. [`run_unverified`] is `#[doc(hidden)]` for mutation and VM error-path tests only.
+//!
+//! [`run_captured`] is `#[doc(hidden)]` and exists only for integration tests that inspect `main`
+//! locals (via [`VmRunCapture::main_local`]) or the stack return value after execution.
 //!
 //! ## Stack convention
 //!
@@ -25,16 +27,29 @@ mod interpreter;
 pub use error::VmError;
 pub use foreign::{ForeignStubFn, clear_foreign_stubs, dispatch_foreign, register_foreign_stub};
 pub use frame::{Aggregate, DEFAULT_HEAP_CAP_BYTES, Machine, Value};
-pub use interpreter::{VmRunCapture, run_captured, run_captured_with_heap_cap};
-pub use phx_bytecode::BytecodeModule;
+pub use interpreter::{
+    VmRunCapture, interpret_unverified, run_captured, run_captured_unverified,
+    run_captured_unverified_with_heap_cap, run_captured_with_heap_cap,
+};
+pub use phx_bytecode::{BytecodeModule, VerifiedModule};
 
-/// Runs `module` from its entry function until `main` returns.
+/// Runs a verified `module` from its entry function until `main` returns.
 ///
 /// # Errors
 ///
 /// Returns [`VmError`] when execution fails.
-pub fn run(module: &BytecodeModule) -> Result<(), VmError> {
-    interpreter::interpret(module)
+pub fn run(verified: VerifiedModule<'_>) -> Result<(), VmError> {
+    interpreter::interpret(verified)
+}
+
+/// Runs `module` without a verification token (mutation / VM error-path tests only).
+///
+/// # Errors
+///
+/// Returns [`VmError`] when execution fails.
+#[doc(hidden)]
+pub fn run_unverified(module: &BytecodeModule) -> Result<(), VmError> {
+    interpreter::interpret_unverified(module)
 }
 
 #[cfg(test)]
@@ -42,39 +57,25 @@ pub fn run(module: &BytecodeModule) -> Result<(), VmError> {
 mod tests {
     use phx_bytecode::{
         BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-        Instruction, Opcode, TypeTable,
+        Instruction, Opcode, TypeTable, verify,
     };
 
-    use super::{VmError, run};
+    use super::{
+        VmError, run, run_captured, run_captured_unverified_with_heap_cap, run_unverified,
+    };
 
     #[test]
     fn run_const_return() {
-        let mut code = Vec::new();
-        code.extend(
-            Instruction {
-                opcode: Opcode::Const,
-                operands: vec![0, 2],
-            }
-            .encode()
-            .expect("encode"),
-        );
-        code.extend(
-            Instruction {
-                opcode: Opcode::Return,
-                operands: vec![],
-            }
-            .encode()
-            .expect("encode"),
-        );
+        let code = Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode");
 
         let module = BytecodeModule {
             header: FileHeader::new(5, 0),
-            constants: ConstPool {
-                entries: vec![ConstEntry {
-                    tag: ConstTag::SignedInt,
-                    payload: 1i64.to_le_bytes().to_vec(),
-                }],
-            },
+            constants: ConstPool::default(),
             types: TypeTable::default(),
             functions: FunctionTable {
                 functions: vec![FunctionRecord {
@@ -92,7 +93,8 @@ mod tests {
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
         };
-        run(&module).expect("run");
+        let verified = verify(&module).expect("verify");
+        run(verified).expect("run");
     }
 
     fn minimal_module(code: Vec<u8>, local_count: u16, stack_max: u16) -> BytecodeModule {
@@ -127,7 +129,7 @@ mod tests {
         .encode()
         .expect("encode");
         let module = minimal_module(code, 0, 4);
-        assert_eq!(run(&module), Err(VmError::StackUnderflow));
+        assert_eq!(run_unverified(&module), Err(VmError::StackUnderflow));
     }
 
     #[test]
@@ -146,7 +148,10 @@ mod tests {
         .flat_map(|i| i.encode().expect("encode"))
         .collect::<Vec<_>>();
         let module = minimal_module(code, 1, 4);
-        assert!(matches!(run(&module), Err(VmError::InvalidLocalSlot(99))));
+        assert!(matches!(
+            run_unverified(&module),
+            Err(VmError::InvalidLocalSlot(99))
+        ));
     }
 
     #[test]
@@ -165,7 +170,10 @@ mod tests {
         .flat_map(|i| i.encode().expect("encode"))
         .collect::<Vec<_>>();
         let module = minimal_module(code, 0, 4);
-        assert!(matches!(run(&module), Err(VmError::InvalidFunctionId(99))));
+        assert!(matches!(
+            run_unverified(&module),
+            Err(VmError::InvalidFunctionId(99))
+        ));
     }
 
     #[test]
@@ -177,8 +185,8 @@ mod tests {
         .encode()
         .expect("encode");
         let module = minimal_module(code, 0, 4);
-        phx_bytecode::verify(&module).expect("trap module verifies");
-        assert_eq!(run(&module), Err(VmError::GivenMismatch));
+        let verified = verify(&module).expect("trap module verifies");
+        assert_eq!(run(verified), Err(VmError::GivenMismatch));
     }
 
     #[test]
@@ -225,14 +233,18 @@ mod tests {
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
         };
-        assert_eq!(run(&module), Err(VmError::UnsupportedConst));
+        assert_eq!(run_unverified(&module), Err(VmError::UnsupportedConst));
+    }
+
+    #[test]
+    fn run_fallthrough_without_return_returns_truncated_code() {
+        let module = minimal_module(Vec::new(), 0, 4);
+        assert_eq!(run_unverified(&module), Err(VmError::TruncatedCode));
     }
 
     #[test]
     fn alloc_loop_hits_heap_cap_with_out_of_memory() {
         use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
-
-        use super::run_captured_with_heap_cap;
 
         let mut code = Vec::new();
         code.extend(
@@ -295,16 +307,17 @@ mod tests {
         };
 
         assert!(matches!(
-            run_captured_with_heap_cap(&module, 32),
+            run_captured_unverified_with_heap_cap(&module, 32),
             Err(VmError::OutOfMemory)
         ));
     }
 
     #[test]
     fn ptr_load_after_free_returns_use_after_free() {
-        use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
-
-        use super::run_captured;
+        use phx_bytecode::{
+            ConstEntry, ConstPool, ConstTag, FunctionLocalLayout, LocalLayoutTable, LocalSlotKind,
+            PrimitiveKind,
+        };
 
         let u32_kind = u32::from(PrimitiveKind::U32.as_u8());
         let u8_kind = u32::from(PrimitiveKind::U8.as_u8());
@@ -389,12 +402,15 @@ mod tests {
                 }],
             },
             code,
-            local_layouts: phx_bytecode::LocalLayoutTable::default(),
+            local_layouts: LocalLayoutTable {
+                layouts: vec![FunctionLocalLayout {
+                    function_id: 0,
+                    slots: vec![LocalSlotKind::primitive(PrimitiveKind::U64)],
+                }],
+            },
         };
 
-        assert!(matches!(
-            run_captured(&module),
-            Err(VmError::UseAfterFree)
-        ));
+        let verified = verify(&module).expect("verify heap uaf bytecode");
+        assert!(matches!(run_captured(verified), Err(VmError::UseAfterFree)));
     }
 }

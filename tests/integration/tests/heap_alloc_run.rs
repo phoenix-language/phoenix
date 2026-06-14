@@ -15,8 +15,9 @@ fn heap_alloc_fixture_runs() {
         return;
     }
     let built = force_build_project("heap_alloc");
-    phx_bytecode::verify(&built.module).expect("verify heap_alloc");
-    run(&built.module).expect("run heap_alloc");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_alloc");
+
+    run(verified).expect("run heap_alloc");
 }
 
 #[test]

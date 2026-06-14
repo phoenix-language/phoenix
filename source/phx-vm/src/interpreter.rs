@@ -2,8 +2,8 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstTag, ENTRY_NONE, FunctionRecord, InstrError, Instruction, Opcode,
-    PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue, decode_fn_ptr,
-    fn_ptr_from_id, is_fn_ptr, mask_shift_amount, scalar_from_f64, scalar_from_i128,
+    PTR_AGG_TAG, PTR_CONST_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue, VerifiedModule,
+    decode_fn_ptr, fn_ptr_from_id, is_fn_ptr, mask_shift_amount, scalar_from_f64, scalar_from_i128,
     scalar_from_u128, scalar_to_f64, scalar_to_i128, scalar_to_u128,
 };
 
@@ -31,44 +31,73 @@ impl VmRunCapture {
     }
 }
 
-/// Runs `module` starting at `entry` until `main` returns.
+/// Runs a verified `module` starting at `entry` until `main` returns.
 ///
 /// # Errors
 ///
-/// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
-pub fn interpret(module: &BytecodeModule) -> Result<(), VmError> {
-    run_captured(module).map(|_| ())
+/// Returns [`VmError`] on runtime failure.
+pub fn interpret(verified: VerifiedModule<'_>) -> Result<(), VmError> {
+    run_captured(verified).map(|_| ())
 }
 
-/// Runs `module` and returns `main` local slots captured at entry return.
+/// Runs a verified `module` and returns `main` local slots captured at entry return.
 ///
 /// Integration-test harness only; production callers use [`interpret`].
 ///
+/// # Errors
+///
+/// Returns [`VmError`] on runtime failure.
+#[doc(hidden)]
+pub fn run_captured(verified: VerifiedModule<'_>) -> Result<VmRunCapture, VmError> {
+    run_captured_with_heap_cap(verified, DEFAULT_HEAP_CAP_BYTES)
+}
+
+/// Runs a verified `module` with a custom heap byte cap (integration / stress tests only).
+///
+/// # Errors
+///
+/// Returns [`VmError`] on runtime failure or heap cap exhaustion.
+#[doc(hidden)]
+pub fn run_captured_with_heap_cap(
+    verified: VerifiedModule<'_>,
+    heap_cap: usize,
+) -> Result<VmRunCapture, VmError> {
+    run_captured_unverified_with_heap_cap(verified.module(), heap_cap)
+}
+
 fn operand_prim_kind(inst: &Instruction, operand_index: usize) -> Result<PrimitiveKind, VmError> {
     let byte = inst.operands.get(operand_index).copied().unwrap_or(0) as u8;
     PrimitiveKind::from_u8(byte).ok_or(VmError::InvalidConstPayload)
 }
 
-/// Runs `module` and returns `main` local slots captured at entry return.
-///
-/// Integration-test harness only; production callers use [`interpret`].
+/// Runs `module` without a verification token (mutation / VM error-path tests only).
 ///
 /// # Errors
 ///
 /// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
 #[doc(hidden)]
-pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
-    run_captured_with_heap_cap(module, DEFAULT_HEAP_CAP_BYTES)
+pub fn interpret_unverified(module: &BytecodeModule) -> Result<(), VmError> {
+    run_captured_unverified(module).map(|_| ())
 }
 
-/// Runs `module` with a custom heap byte cap (integration / stress tests only).
+/// Runs `module` without a verification token (mutation / VM error-path tests only).
+///
+/// # Errors
+///
+/// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
+#[doc(hidden)]
+pub fn run_captured_unverified(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
+    run_captured_unverified_with_heap_cap(module, DEFAULT_HEAP_CAP_BYTES)
+}
+
+/// Runs `module` without a verification token and with a custom heap cap (tests only).
 ///
 /// # Errors
 ///
 /// Returns [`VmError`] on invalid bytecode, unsupported opcodes, or heap cap exhaustion.
 #[doc(hidden)]
 #[allow(clippy::too_many_lines)]
-pub fn run_captured_with_heap_cap(
+pub fn run_captured_unverified_with_heap_cap(
     module: &BytecodeModule,
     heap_cap: usize,
 ) -> Result<VmRunCapture, VmError> {
@@ -94,18 +123,6 @@ pub fn run_captured_with_heap_cap(
         let code = function_code(module, rec);
         let pc_usize = usize::try_from(pc).unwrap_or(0);
         if pc_usize >= code.len() {
-            if machine.frames.len() == 1 {
-                let main_locals = machine
-                    .frames
-                    .last()
-                    .map(|f| f.locals.clone())
-                    .unwrap_or_default();
-                return Ok(VmRunCapture {
-                    main_locals,
-                    aggregates: std::mem::take(&mut machine.aggregates),
-                    return_value: None,
-                });
-            }
             return Err(VmError::TruncatedCode);
         }
 

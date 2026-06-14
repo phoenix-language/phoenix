@@ -392,10 +392,17 @@ impl std::error::Error for VerifyError {}
 
 /// Verifies `module` invariants required before execution (MVP subset).
 ///
+/// On success, returns a [`super::VerifiedModule`] token required by production VM entry points.
+///
 /// # Errors
 ///
 /// Returns [`VerifyError`] when layout, control flow, or stack limits are invalid.
-pub fn verify(module: &BytecodeModule) -> Result<(), VerifyError> {
+pub fn verify(module: &BytecodeModule) -> Result<super::VerifiedModule<'_>, VerifyError> {
+    verify_inner(module)?;
+    Ok(super::VerifiedModule::new(module))
+}
+
+fn verify_inner(module: &BytecodeModule) -> Result<(), VerifyError> {
     verify_header_and_sections(module)?;
     verify_entry_function(module)?;
     let fn_arity = function_arity_map(module);

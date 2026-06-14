@@ -127,13 +127,16 @@ fn execute_module(
     dump_main: bool,
 ) -> CliExit {
     reporter.verbose(verbose, "verifying bytecode...");
-    if let Err(e) = verify(module) {
-        reporter.verify_error(&e.to_string());
-        return CliExit::Verify;
-    }
+    let verified = match verify(module) {
+        Ok(verified) => verified,
+        Err(e) => {
+            reporter.verify_error(&e.to_string());
+            return CliExit::Verify;
+        }
+    };
     reporter.verbose(verbose, "running...");
     if dump_main {
-        match run_captured(module) {
+        match run_captured(verified) {
             Ok(capture) => {
                 dump_main_locals(capture.main_locals.as_slice());
                 CliExit::Ok
@@ -143,7 +146,7 @@ fn execute_module(
                 CliExit::Runtime
             }
         }
-    } else if let Err(e) = phx_vm::run(module) {
+    } else if let Err(e) = phx_vm::run(verified) {
         reporter.runtime_error(&e.to_string());
         CliExit::Runtime
     } else {

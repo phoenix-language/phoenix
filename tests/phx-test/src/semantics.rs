@@ -1,6 +1,6 @@
 //! Assert computed values in `main` local slots after VM execution.
 
-use phx_bytecode::{BytecodeModule, ScalarValue};
+use phx_bytecode::{BytecodeModule, ScalarValue, verify};
 use phx_vm::{Value, run_captured};
 
 /// Expected scalar value at a `main` local slot.
@@ -31,7 +31,8 @@ pub fn assert_main_local(module: &BytecodeModule, slot: usize, expected: Expecte
 
 /// Assert multiple `main` local slots match `expected` values.
 pub fn assert_main_locals(module: &BytecodeModule, slots: &[(usize, ExpectedLocal)]) {
-    let capture = run_captured(module).unwrap_or_else(|e| panic!("run: {e}"));
+    let verified = verify(module).unwrap_or_else(|e| panic!("verify: {e}"));
+    let capture = run_captured(verified).unwrap_or_else(|e| panic!("run: {e}"));
     for &(slot, expected) in slots {
         match expected {
             ExpectedLocal::S32(v) => {

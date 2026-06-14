@@ -8,7 +8,7 @@ use phx_bytecode::{
     Instruction, LocalLayoutTable, ModuleError, Opcode, PrimitiveKind, SectionError, SectionKind,
     TypeTable, verify,
 };
-use phx_vm::run;
+use phx_vm::run_unverified;
 use support::{const_return_code, minimal_module, valid_const_return_module};
 
 fn assert_verify_rejects(module: &BytecodeModule) {
@@ -21,13 +21,13 @@ fn assert_verify_rejects(module: &BytecodeModule) {
 /// Defense-in-depth: malformed bytecode must return [`Err`], never panic.
 fn assert_run_returns_err(module: &BytecodeModule) {
     assert!(
-        run(module).is_err(),
+        run_unverified(module).is_err(),
         "expected VM run to return Err on malformed bytecode"
     );
 }
 
 fn assert_run_does_not_panic(module: &BytecodeModule) {
-    let _ = run(module);
+    let _ = run_unverified(module);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn mutate_jump_target_out_of_range_rejected_by_verifier() {
     );
     let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
-    // MVP VM treats falling off the end of `main` as normal return; invalid jumps are verify-only.
+    // Invalid jumps are verify-only; unverified execution must not panic.
     assert_run_does_not_panic(&module);
 }
 
@@ -283,8 +283,8 @@ fn heap_alloc_ptr_store_load_roundtrip() {
     use phx_vm::{Value, run_captured};
 
     let module = support::heap_alloc_roundtrip_module();
-    verify(&module).expect("verify heap alloc roundtrip");
-    let capture = run_captured(&module).expect("run heap alloc roundtrip");
+    let verified = verify(&module).expect("verify heap alloc roundtrip");
+    let capture = run_captured(verified).expect("run heap alloc roundtrip");
     let loaded = capture
         .main_local(1)
         .and_then(|v| match v {

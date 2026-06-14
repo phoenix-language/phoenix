@@ -13,8 +13,9 @@ fn dynamic_array_smoke_fixture_runs() {
         return;
     }
     let built = force_build_project("dynamic_array_smoke");
-    phx_bytecode::verify(&built.module).expect("verify dynamic_array_smoke");
-    run(&built.module).expect("run dynamic_array_smoke");
+    let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_smoke");
+
+    run(verified).expect("run dynamic_array_smoke");
 }
 
 #[test]
@@ -25,6 +26,7 @@ fn dynamic_array_drop_smoke_fixture_runs() {
         return;
     }
     let built = force_build_project("dynamic_array_drop_smoke");
-    phx_bytecode::verify(&built.module).expect("verify dynamic_array_drop_smoke");
-    run(&built.module).expect("run dynamic_array_drop_smoke");
+    let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_drop_smoke");
+
+    run(verified).expect("run dynamic_array_drop_smoke");
 }

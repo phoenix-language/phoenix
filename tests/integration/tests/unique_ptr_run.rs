@@ -13,8 +13,9 @@ fn unique_ptr_smoke_fixture_runs() {
         return;
     }
     let built = force_build_project("unique_ptr_smoke");
-    phx_bytecode::verify(&built.module).expect("verify unique_ptr_smoke");
-    run(&built.module).expect("run unique_ptr_smoke");
+    let verified = phx_bytecode::verify(&built.module).expect("verify unique_ptr_smoke");
+
+    run(verified).expect("run unique_ptr_smoke");
 }
 
 #[test]
@@ -25,6 +26,7 @@ fn unique_ptr_drop_smoke_fixture_runs() {
         return;
     }
     let built = force_build_project("unique_ptr_drop_smoke");
-    phx_bytecode::verify(&built.module).expect("verify unique_ptr_drop_smoke");
-    run(&built.module).expect("run unique_ptr_drop_smoke");
+    let verified = phx_bytecode::verify(&built.module).expect("verify unique_ptr_drop_smoke");
+
+    run(verified).expect("run unique_ptr_drop_smoke");
 }
