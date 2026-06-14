@@ -603,11 +603,13 @@ Owns the PHX0 contract: header/section encode-decode, single `Opcode` enum (corr
 **Location:** `phx-bytecode/src/stack_flow.rs:182–204` (`terminators_successors`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** The stack-depth CFG never models `JumpIfFalse` — its targets fall into the `_ => Vec::new()` wildcard, so neither the branch target nor the fall-through is analyzed; `JumpIfTrue` without an immediately following `Jump` likewise loses its fall-through edge.
 **Detail:** Verified directly. Phoenix codegen only emits the `JumpIfTrue`+`Jump` idiom, so compiler output is analyzed correctly — but the verifier's job is *hostile* bytecode. A hand-crafted module using `JumpIfFalse` (a documented, decoded, interpreted opcode) gets no stack-depth verification on that path and can reach the interpreter with an underflowing branch. The interpreter's runtime checks make this an error-not-UB today, but the documented invariant "stack depth consistency per basic block" is not enforced. Note the cause: a `_` wildcard on an `Opcode` match, which the coding standard explicitly forbids.
 **Recommendation:** Model `JumpIfFalse` (target + fall-through) and `JumpIfTrue` fall-through symmetrically; remove the `_` arm in favor of exhaustive opcode matching; add mutation tests for a `JumpIfFalse` program with an underflowing false-branch.
+
+**Resolution:** Added `conditional_branch_successors` in [`stack_flow.rs`](source/phx-bytecode/src/stack_flow.rs) for both `JumpIfTrue` and `JumpIfFalse` (branch operand + alternate via fall-through or following `Jump` idiom). Replaced `_` wildcard with exhaustive `Opcode` match in `terminators_successors`. Regression tests: `jump_if_false_branch_underflow_rejected`, `jump_if_true_fallthrough_underflow_rejected` (unit), `mutate_jump_if_false_branch_underflow_rejected` (mutation).
 
 ---
 
@@ -844,7 +846,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 
 **Crate dependency graph.** Verified clean and acyclic in production: `phx-diagnostics` ← `phx-syntax` ← `phx-compiler` (also ← `phx-bytecode`); `phx-vm` ← {`phx-bytecode`, `phx-diagnostics`} — `**phx-vm` correctly does not depend on `phx-compiler`**; `phx-cli` links all; `phx` ← `phx-cli`. Zero external crates anywhere, enforced by `tests/ci/check-deps.sh`. Only dev-time wrinkles: `phx-compiler` ↔ `phx-test` cycle and `phx-bytecode` dev-depending on `phx-vm` (PHX-062).
 
-**Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" holds on every CLI path but is convention-only at the `phx_vm::run` library boundary (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 (opcodes) remains open. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
+**Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" holds on every CLI path but is convention-only at the `phx_vm::run` library boundary (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 resolved for `terminators_successors` opcode match in `stack_flow.rs`. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
 
 **Post-MVP readiness.** Honest assessment: the **typeck side-table architecture** and **PHX0 versioned format** are good extension points. Three things will need surgery, none of which is stubbed: (1) the ownership tracker has no CFG notion at all — the full borrow checker cannot grow out of a linear `Vec<BindingEntry>`; expect replacement, which makes fixing PHX-023/024 with a properly shaped fork/join model doubly valuable; (2) the VM has no execution-context abstraction — scheduler work means refactoring `Machine`/frame ownership first (PHX-057); (3) lowering's order-coupled `ExprId` cursor (PHX-037) is fragile under any future reordering optimization; a keyed map or explicit typed-IR would be sturdier. The std bootstrap substrate, by contrast, is largely *done*: `Option`/`Result`/`?`/`Drop`/`DynamicArray`/allocator traits exist as std-authored Phoenix code with a path-scoped kernel — the remaining risk there is PHX-026's name-based fallbacks.
 
@@ -899,7 +901,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-042 | - [x]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |
 | PHX-043 | - [x]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
 | PHX-044 | - [x]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
-| PHX-045 | - [ ]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
+| PHX-045 | - [x]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
 | PHX-046 | - [ ]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
 | PHX-047 | - [ ]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
 | PHX-048 | - [ ]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |

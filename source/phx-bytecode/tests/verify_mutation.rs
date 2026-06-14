@@ -3,7 +3,10 @@
 
 mod support;
 
-use phx_bytecode::{BytecodeModule, Instruction, ModuleError, Opcode, PrimitiveKind, verify};
+use phx_bytecode::{
+    BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
+    Instruction, LocalLayoutTable, ModuleError, Opcode, PrimitiveKind, TypeTable, verify,
+};
 use phx_vm::run;
 use support::{const_return_code, minimal_module, valid_const_return_module};
 
@@ -125,6 +128,92 @@ fn mutate_truncated_code_length_rejected_by_verifier() {
     assert_verify_rejects(&module);
     // Metadata/code length mismatch is caught at verify; VM executes the bytes present.
     assert_run_does_not_panic(&module);
+}
+
+#[test]
+fn mutate_jump_if_false_branch_underflow_rejected() {
+    let mut code = Vec::new();
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, u32::from(PrimitiveKind::Bool.as_u8())],
+        }
+        .encode(),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::JumpIfFalse,
+            operands: vec![0],
+        }
+        .encode(),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode(),
+    );
+    let branch_off = u32::try_from(code.len()).expect("offset");
+    code.extend(
+        Instruction {
+            opcode: Opcode::Add,
+            operands: vec![u32::from(PrimitiveKind::S32.as_u8())],
+        }
+        .encode(),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode(),
+    );
+
+    let mut instructions = Vec::new();
+    let mut off = 0usize;
+    while off < code.len() {
+        let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
+        instructions.push((u32::try_from(off).expect("offset"), inst));
+        off = next;
+    }
+    instructions[1].1.operands[0] = branch_off;
+    let mut patched = Vec::new();
+    for (_, inst) in &instructions {
+        patched.extend(inst.encode());
+    }
+
+    let module = jump_if_false_underflow_module(patched);
+    assert_verify_rejects(&module);
+    assert_run_returns_err(&module);
+}
+
+fn jump_if_false_underflow_module(code: Vec<u8>) -> BytecodeModule {
+    BytecodeModule {
+        header: FileHeader::new(5, 0),
+        constants: ConstPool {
+            entries: vec![ConstEntry {
+                tag: ConstTag::Bool,
+                payload: vec![0],
+            }],
+        },
+        types: TypeTable::default(),
+        functions: FunctionTable {
+            functions: vec![FunctionRecord {
+                function_id: 0,
+                name_symbol_id: 0,
+                arity: 0,
+                local_count: 0,
+                stack_max: 4,
+                flags: 0,
+                code_offset: 0,
+                code_len: u32::try_from(code.len()).unwrap_or(0),
+                return_type_id: 0,
+            }],
+        },
+        code,
+        local_layouts: LocalLayoutTable::default(),
+    }
 }
 
 #[test]

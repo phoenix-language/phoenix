@@ -31,7 +31,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 |---|---|---|
 | Fork/join ownership state across `if`/`match` arms | **PHX-023 (Critical)** | Snapshot per arm, join at merge; kills false `UseAfterMove` from sibling branches |
 | Loop back-edge move detection | **PHX-024 (Critical)** | **Decided:** move-in-loop of an outer binding is always an error (Resolved Design Decisions #1); implement + spec in `ownership.md`, test `loop { use(x); consume(x); }` |
-| Model `JumpIfFalse` (and `JumpIfTrue` fall-through) in stack-flow CFG; remove `_` wildcard on `Opcode` | **PHX-045 (Critical)** | Verifier soundness; add `JumpIfFalse` underflow mutation test |
+| Model `JumpIfFalse` (and `JumpIfTrue` fall-through) in stack-flow CFG; remove `_` wildcard on `Opcode` | **PHX-045 (Critical)** | Done — `conditional_branch_successors` + mutation test |
 | Codegen map misses must error, never encode `0` | PHX-034 | `CodegenError` on missing callee/jump/drop-fn targets |
 | Lowering `ExprId` cursor drift must error, never fall back to `()` | PHX-037 | `LowerError` on miss; document ordering invariant on `TypedProgram::expr_types` |
 | `TypeInterner::get` OOB must not return `Ty::Unit` | PHX-016 | Poison `Ty::Error` or ICE diagnostic |

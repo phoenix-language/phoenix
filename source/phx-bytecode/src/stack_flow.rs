@@ -211,27 +211,78 @@ fn enqueue_entry(
     Ok(())
 }
 
+fn conditional_branch_successors(
+    inst: &Instruction,
+    next: Option<&(u32, Instruction)>,
+) -> Vec<u32> {
+    let Some(branch) = inst.operands.first().copied() else {
+        return Vec::new();
+    };
+    let alternate = next.and_then(|(fallthrough_rel, n)| {
+        if n.opcode == Opcode::Jump {
+            n.operands.first().copied()
+        } else {
+            Some(*fallthrough_rel)
+        }
+    });
+    match alternate {
+        Some(alt) => vec![branch, alt],
+        None => vec![branch],
+    }
+}
+
 fn terminators_successors(inst: &Instruction, next: Option<&(u32, Instruction)>) -> Vec<u32> {
     match inst.opcode {
         Opcode::Jump => inst.operands.first().copied().into_iter().collect(),
-        Opcode::JumpIfTrue => {
-            let then = inst.operands.first().copied();
-            let else_target = next.and_then(|(_, n)| {
-                if n.opcode == Opcode::Jump {
-                    n.operands.first().copied()
-                } else {
-                    None
-                }
-            });
-            match (then, else_target) {
-                (Some(t), Some(e)) => vec![t, e],
-                (Some(t), None) => vec![t],
-                _ => Vec::new(),
-            }
-        }
-        Opcode::Return | Opcode::Trap => Vec::new(),
-        #[allow(clippy::match_same_arms)]
-        _ => Vec::new(),
+        Opcode::JumpIfTrue | Opcode::JumpIfFalse => conditional_branch_successors(inst, next),
+        Opcode::Const
+        | Opcode::LoadLocal
+        | Opcode::StoreLocal
+        | Opcode::Pop
+        | Opcode::Add
+        | Opcode::Sub
+        | Opcode::Mul
+        | Opcode::Div
+        | Opcode::Eq
+        | Opcode::Lt
+        | Opcode::Return
+        | Opcode::Call
+        | Opcode::MakeStruct
+        | Opcode::MakeEnum
+        | Opcode::GetField
+        | Opcode::SetField
+        | Opcode::MatchTag
+        | Opcode::Cast
+        | Opcode::Mod
+        | Opcode::Pow
+        | Opcode::Neg
+        | Opcode::Not
+        | Opcode::BitNot
+        | Opcode::BitAnd
+        | Opcode::BitOr
+        | Opcode::BitXor
+        | Opcode::Shl
+        | Opcode::Shr
+        | Opcode::Ne
+        | Opcode::Le
+        | Opcode::Ge
+        | Opcode::MakeTuple
+        | Opcode::MakeArray
+        | Opcode::Index
+        | Opcode::Trap
+        | Opcode::Alloc
+        | Opcode::PtrLoad
+        | Opcode::PtrStore
+        | Opcode::MakeSlice
+        | Opcode::AddressOfLocal
+        | Opcode::MakeStr
+        | Opcode::StrAsSlice
+        | Opcode::MakeFnPtr
+        | Opcode::CallIndirect
+        | Opcode::LoadAggViaLocalPtr
+        | Opcode::MakeSliceFromPtr
+        | Opcode::Free
+        | Opcode::IndexStore => Vec::new(),
     }
 }
 
@@ -241,6 +292,95 @@ mod tests {
     use super::*;
     use crate::cast::PrimitiveKind;
     use crate::instr::Instruction;
+
+    #[test]
+    fn jump_if_false_branch_underflow_rejected() {
+        let push_true = Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, PrimitiveKind::Bool.as_u8() as u32],
+        };
+        let jump_if_false = Instruction {
+            opcode: Opcode::JumpIfFalse,
+            operands: vec![0],
+        };
+        let ret = Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        };
+        let add = Instruction {
+            opcode: Opcode::Add,
+            operands: vec![u32::from(PrimitiveKind::S32.as_u8())],
+        };
+
+        let mut code = Vec::new();
+        code.extend(push_true.encode());
+        code.extend(jump_if_false.encode());
+        let fallthrough = u32::try_from(code.len()).expect("offset");
+        code.extend(ret.encode());
+        let branch = u32::try_from(code.len()).expect("offset");
+        code.extend(add.encode());
+        let add_off = branch;
+        code.extend(ret.encode());
+
+        let mut instructions = Vec::new();
+        let mut off = 0usize;
+        while off < code.len() {
+            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
+            instructions.push((u32::try_from(off).expect("offset"), inst));
+            off = next;
+        }
+        instructions[1].1.operands[0] = branch;
+
+        let inst_starts: HashSet<u32> = [0, branch, fallthrough].into_iter().collect();
+        match analyze_stack_cfg(&instructions, &inst_starts, &HashMap::new(), 0) {
+            Err(StackFlowError::Underflow { offset }) if offset == add_off => {}
+            other => panic!("expected Underflow at {add_off}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn jump_if_true_fallthrough_underflow_rejected() {
+        let push_false = Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, PrimitiveKind::Bool.as_u8() as u32],
+        };
+        let jump_if_true = Instruction {
+            opcode: Opcode::JumpIfTrue,
+            operands: vec![0],
+        };
+        let add = Instruction {
+            opcode: Opcode::Add,
+            operands: vec![u32::from(PrimitiveKind::S32.as_u8())],
+        };
+        let ret = Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        };
+
+        let mut code = Vec::new();
+        code.extend(push_false.encode());
+        code.extend(jump_if_true.encode());
+        let add_off = u32::try_from(code.len()).expect("offset");
+        code.extend(add.encode());
+        code.extend(ret.encode());
+        let branch = u32::try_from(code.len()).expect("offset");
+        code.extend(ret.encode());
+
+        let mut instructions = Vec::new();
+        let mut off = 0usize;
+        while off < code.len() {
+            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
+            instructions.push((u32::try_from(off).expect("offset"), inst));
+            off = next;
+        }
+        instructions[1].1.operands[0] = branch;
+
+        let inst_starts: HashSet<u32> = instructions.iter().map(|(rel, _)| *rel).collect();
+        match analyze_stack_cfg(&instructions, &inst_starts, &HashMap::new(), 0) {
+            Err(StackFlowError::Underflow { offset }) if offset == add_off => {}
+            other => panic!("expected Underflow at {add_off}, got {other:?}"),
+        }
+    }
 
     #[test]
     fn short_circuit_paths_use_independent_entry_depth() {
