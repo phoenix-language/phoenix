@@ -631,10 +631,12 @@ Owns the PHX0 contract: header/section encode-decode, single `Opcode` enum (corr
 **Location:** `phx-bytecode/src/verify.rs:328–368` (`verify_header_and_sections`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `verify` never checks `header.version_major/minor`; only `Header::decode` gates versions, so in-memory modules (the linker output path) bypass version validation. Additionally, sections are validated only for `offset+length ≤ file_len` — overlapping sections and duplicate section kinds (decode is last-wins, `module.rs:161–177`) are accepted, contrary to `vm-linear.md`.
 **Recommendation:** Validate version fields and pairwise section ranges in `verify`; reject duplicate kinds.
+
+**Resolution:** Added `FileHeader::validate_version` and `validate_section_table` (bounds, unique kinds, pairwise non-overlap). `verify_header_and_sections` checks version on in-memory headers, `section_count` consistency with encoded bytes, and the full section table. `BytecodeModule::decode` validates the section table before payload decode (no last-wins on invalid layouts). Regression tests in `verify.rs` and `verify_mutation.rs`.
 
 ---
 
@@ -905,7 +907,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-044 | - [x]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
 | PHX-045 | - [x]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
 | PHX-046 | - [x]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
-| PHX-047 | - [ ]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
+| PHX-047 | - [x]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
 | PHX-048 | - [ ]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
 | PHX-049 | - [ ]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
 | PHX-050 | - [ ]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |

@@ -5,11 +5,12 @@ use std::collections::{HashMap, HashSet};
 use super::cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 use super::const_pool::{ConstEntry, ConstTag};
 use super::function::FunctionRecord;
-use super::header::MAGIC;
+use super::header::{HEADER_SIZE, HeaderError, MAGIC};
 use super::instr::{InstrError, Instruction};
 use super::local_layout::{FunctionLocalLayout, LocalLayoutTable};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
+use super::section::{SectionEntry, SectionError, validate_section_table};
 use super::stack_flow::{StackFlowError, analyze_stack_cfg, return_stack_depth};
 use super::types::TypeKind;
 
@@ -24,6 +25,32 @@ pub enum VerifyError {
     SectionOutOfBounds,
     /// MVP flags field must be zero.
     NonZeroFlags,
+    /// Header major/minor version is not supported.
+    UnsupportedVersion {
+        /// Major version read from header.
+        major: u16,
+        /// Minor version read from header.
+        minor: u16,
+    },
+    /// In-memory `section_count` does not match the encoded file header.
+    SectionCountMismatch {
+        /// Value stored on [`BytecodeModule::header`].
+        in_header: u32,
+        /// Value read from re-encoded file bytes.
+        in_file: u32,
+    },
+    /// Two section table rows share the same `section_kind`.
+    DuplicateSectionKind {
+        /// Duplicated section kind.
+        kind: super::section::SectionKind,
+    },
+    /// Two section payloads overlap in byte range.
+    OverlappingSections {
+        /// First overlapping section kind.
+        first: super::section::SectionKind,
+        /// Second overlapping section kind.
+        second: super::section::SectionKind,
+    },
     /// `entry_function_id` missing or has non-zero arity.
     InvalidEntryFunction,
     /// Function `code_offset`/`code_len` out of code section bounds.
@@ -198,6 +225,19 @@ impl std::fmt::Display for VerifyError {
             Self::BadMagic => write!(f, "invalid magic (expected PHX0)"),
             Self::SectionOutOfBounds => write!(f, "section extends past file end"),
             Self::NonZeroFlags => write!(f, "non-zero header flags"),
+            Self::UnsupportedVersion { major, minor } => {
+                write!(f, "unsupported bytecode version {major}.{minor}")
+            }
+            Self::SectionCountMismatch { in_header, in_file } => write!(
+                f,
+                "section_count mismatch: header has {in_header}, file has {in_file}"
+            ),
+            Self::DuplicateSectionKind { kind } => {
+                write!(f, "duplicate section kind {kind:?}")
+            }
+            Self::OverlappingSections { first, second } => {
+                write!(f, "overlapping sections {first:?} and {second:?}")
+            }
             Self::InvalidEntryFunction => {
                 write!(f, "entry function missing or has non-zero arity")
             }
@@ -366,10 +406,17 @@ pub fn verify(module: &BytecodeModule) -> Result<(), VerifyError> {
 }
 
 fn verify_header_and_sections(module: &BytecodeModule) -> Result<(), VerifyError> {
+    module.header.validate_version().map_err(|err| match err {
+        HeaderError::UnsupportedVersion { major, minor } => {
+            VerifyError::UnsupportedVersion { major, minor }
+        }
+        HeaderError::BadMagic => VerifyError::BadMagic,
+    })?;
+
     let bytes = module
         .encode()
         .map_err(|_| VerifyError::SectionOutOfBounds)?;
-    if bytes.len() < 24 {
+    if bytes.len() < HEADER_SIZE {
         return Err(VerifyError::Truncated);
     }
     if bytes[0..4] != MAGIC {
@@ -378,34 +425,44 @@ fn verify_header_and_sections(module: &BytecodeModule) -> Result<(), VerifyError
     if module.header.flags != 0 {
         return Err(VerifyError::NonZeroFlags);
     }
-    let table_end = 24usize.saturating_add(
-        usize::try_from(module.header.section_count)
+
+    let encoded_section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
+    if module.header.section_count != encoded_section_count {
+        return Err(VerifyError::SectionCountMismatch {
+            in_header: module.header.section_count,
+            in_file: encoded_section_count,
+        });
+    }
+
+    let table_end = HEADER_SIZE.saturating_add(
+        usize::try_from(encoded_section_count)
             .unwrap_or(0)
             .saturating_mul(12),
     );
     if bytes.len() < table_end {
         return Err(VerifyError::Truncated);
     }
-    for i in 0..module.header.section_count {
-        let start = 24 + usize::try_from(i).unwrap_or(0).saturating_mul(12);
-        let offset = u32::from_le_bytes([
-            bytes[start + 4],
-            bytes[start + 5],
-            bytes[start + 6],
-            bytes[start + 7],
-        ]);
-        let length = u32::from_le_bytes([
-            bytes[start + 8],
-            bytes[start + 9],
-            bytes[start + 10],
-            bytes[start + 11],
-        ]);
-        let end = u64::from(offset).saturating_add(u64::from(length));
-        if end > bytes.len() as u64 {
-            return Err(VerifyError::SectionOutOfBounds);
+
+    let mut entries = Vec::with_capacity(usize::try_from(encoded_section_count).unwrap_or(0));
+    for i in 0..encoded_section_count {
+        let start = HEADER_SIZE + usize::try_from(i).unwrap_or(0).saturating_mul(12);
+        let entry_bytes: &[u8; 12] = bytes[start..start + 12]
+            .try_into()
+            .map_err(|_| VerifyError::Truncated)?;
+        entries.push(SectionEntry::decode(entry_bytes).map_err(section_error_to_verify)?);
+    }
+    validate_section_table(&entries, bytes.len()).map_err(section_error_to_verify)?;
+    Ok(())
+}
+
+fn section_error_to_verify(err: SectionError) -> VerifyError {
+    match err {
+        SectionError::OutOfBounds | SectionError::UnknownKind(_) => VerifyError::SectionOutOfBounds,
+        SectionError::DuplicateKind(kind) => VerifyError::DuplicateSectionKind { kind },
+        SectionError::OverlappingSections { first, second } => {
+            VerifyError::OverlappingSections { first, second }
         }
     }
-    Ok(())
 }
 
 fn verify_entry_function(module: &BytecodeModule) -> Result<(), VerifyError> {
@@ -1614,5 +1671,47 @@ mod tests {
             payload: b"hi".to_vec(),
         };
         verify(&module).expect("make str bytes const");
+    }
+
+    #[test]
+    fn reject_unsupported_version_major() {
+        let mut module = minimal_module(const_return_code(), 4, 0, 1);
+        module.header.version_major = 99;
+        let err = verify(&module).unwrap_err();
+        assert_eq!(
+            err,
+            VerifyError::UnsupportedVersion {
+                major: 99,
+                minor: crate::VERSION_MINOR,
+            }
+        );
+    }
+
+    #[test]
+    fn reject_unsupported_version_minor() {
+        let mut module = minimal_module(const_return_code(), 4, 0, 1);
+        module.header.version_minor = crate::VERSION_MINOR + 1;
+        let err = verify(&module).unwrap_err();
+        assert_eq!(
+            err,
+            VerifyError::UnsupportedVersion {
+                major: crate::VERSION_MAJOR,
+                minor: crate::VERSION_MINOR + 1,
+            }
+        );
+    }
+
+    #[test]
+    fn reject_section_count_mismatch() {
+        let mut module = minimal_module(const_return_code(), 4, 0, 1);
+        module.header.section_count = 3;
+        let err = verify(&module).unwrap_err();
+        assert_eq!(
+            err,
+            VerifyError::SectionCountMismatch {
+                in_header: 3,
+                in_file: 5,
+            }
+        );
     }
 }

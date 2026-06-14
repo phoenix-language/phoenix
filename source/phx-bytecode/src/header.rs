@@ -57,6 +57,21 @@ impl FileHeader {
         out
     }
 
+    /// Returns an error when major/minor are not supported by this loader.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HeaderError::UnsupportedVersion`] when the version is out of range.
+    pub fn validate_version(&self) -> Result<(), HeaderError> {
+        if self.version_major != VERSION_MAJOR || self.version_minor > VERSION_MINOR {
+            return Err(HeaderError::UnsupportedVersion {
+                major: self.version_major,
+                minor: self.version_minor,
+            });
+        }
+        Ok(())
+    }
+
     /// Decodes a header from exactly 24 bytes.
     ///
     /// # Errors
@@ -66,21 +81,15 @@ impl FileHeader {
         if bytes[0..4] != MAGIC {
             return Err(HeaderError::BadMagic);
         }
-        let version_major = u16::from_le_bytes([bytes[4], bytes[5]]);
-        let version_minor = u16::from_le_bytes([bytes[6], bytes[7]]);
-        if version_major != VERSION_MAJOR || version_minor > VERSION_MINOR {
-            return Err(HeaderError::UnsupportedVersion {
-                major: version_major,
-                minor: version_minor,
-            });
-        }
-        Ok(Self {
-            version_major,
-            version_minor,
+        let header = Self {
+            version_major: u16::from_le_bytes([bytes[4], bytes[5]]),
+            version_minor: u16::from_le_bytes([bytes[6], bytes[7]]),
             flags: u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
             section_count: u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
             entry_function_id: u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]),
-        })
+        };
+        header.validate_version()?;
+        Ok(header)
     }
 }
 

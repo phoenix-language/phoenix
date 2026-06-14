@@ -6,7 +6,7 @@ use super::function::FunctionTable;
 use super::header::{FileHeader, HEADER_SIZE, HeaderError};
 use super::instr::Instruction;
 use super::local_layout::{LocalLayoutError, LocalLayoutTable};
-use super::section::{SectionEntry, SectionError, SectionKind};
+use super::section::{SectionEntry, SectionError, SectionKind, validate_section_table};
 use super::types::TypeTable;
 
 /// Decoded Phoenix bytecode module (MVP).
@@ -140,23 +140,29 @@ impl BytecodeModule {
         if bytes.len() < table_end {
             return Err(ModuleError::Truncated);
         }
-        let mut constants = ConstPool::default();
-        let mut types = TypeTable::default();
-        let mut functions = FunctionTable::default();
-        let mut code = Vec::new();
-        let mut local_layouts = LocalLayoutTable::default();
+        let mut section_entries =
+            Vec::with_capacity(usize::try_from(header.section_count).unwrap_or(0));
         for i in 0..header.section_count {
             let start = HEADER_SIZE + usize::try_from(i).unwrap_or(0).saturating_mul(12);
             let entry_bytes: &[u8; 12] = bytes[start..start + 12]
                 .try_into()
                 .map_err(|_| ModuleError::Truncated)?;
-            let entry = SectionEntry::decode(entry_bytes).map_err(ModuleError::Section)?;
+            section_entries.push(SectionEntry::decode(entry_bytes).map_err(ModuleError::Section)?);
+        }
+        validate_section_table(&section_entries, bytes.len()).map_err(|err| match err {
+            SectionError::OutOfBounds => ModuleError::SectionOutOfBounds,
+            other => ModuleError::Section(other),
+        })?;
+
+        let mut constants = ConstPool::default();
+        let mut types = TypeTable::default();
+        let mut functions = FunctionTable::default();
+        let mut code = Vec::new();
+        let mut local_layouts = LocalLayoutTable::default();
+        for entry in section_entries {
             let off = usize::try_from(entry.offset).unwrap_or(0);
             let len = usize::try_from(entry.length).unwrap_or(0);
             let end = off.saturating_add(len);
-            if end > bytes.len() {
-                return Err(ModuleError::SectionOutOfBounds);
-            }
             let payload = &bytes[off..end];
             match entry.kind {
                 SectionKind::Constants => {

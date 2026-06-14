@@ -1,7 +1,9 @@
 //! Section table entries for PHX0 modules.
 
+use std::collections::HashSet;
+
 /// Section kind tags (MVP).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u16)]
 pub enum SectionKind {
     /// Constants pool.
@@ -85,4 +87,56 @@ impl SectionEntry {
 pub enum SectionError {
     /// Unrecognized `section_kind` tag.
     UnknownKind(u16),
+    /// Section payload extends past file end.
+    OutOfBounds,
+    /// Two section table rows share the same `section_kind`.
+    DuplicateKind(SectionKind),
+    /// Two section payloads overlap in byte range.
+    OverlappingSections {
+        /// First overlapping section kind.
+        first: SectionKind,
+        /// Second overlapping section kind.
+        second: SectionKind,
+    },
+}
+
+/// Validates section table layout: bounds, unique kinds, and non-overlapping ranges.
+///
+/// # Errors
+///
+/// Returns [`SectionError`] when any entry is out of bounds, duplicated, or overlaps another.
+pub fn validate_section_table(
+    entries: &[SectionEntry],
+    file_len: usize,
+) -> Result<(), SectionError> {
+    let file_len_u64 = u64::try_from(file_len).unwrap_or(u64::MAX);
+    let mut seen_kinds = HashSet::new();
+    for entry in entries {
+        let end = u64::from(entry.offset).saturating_add(u64::from(entry.length));
+        if end > file_len_u64 {
+            return Err(SectionError::OutOfBounds);
+        }
+        if !seen_kinds.insert(entry.kind) {
+            return Err(SectionError::DuplicateKind(entry.kind));
+        }
+    }
+    for (i, left) in entries.iter().enumerate() {
+        let left_start = u64::from(left.offset);
+        let left_end = left_start.saturating_add(u64::from(left.length));
+        for right in entries.iter().skip(i + 1) {
+            let right_start = u64::from(right.offset);
+            let right_end = right_start.saturating_add(u64::from(right.length));
+            if ranges_overlap(left_start, left_end, right_start, right_end) {
+                return Err(SectionError::OverlappingSections {
+                    first: left.kind,
+                    second: right.kind,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ranges_overlap(a_start: u64, a_end: u64, b_start: u64, b_end: u64) -> bool {
+    a_start < b_end && b_start < a_end
 }

@@ -34,7 +34,7 @@ pub use scalar::{
     PTR_AGG_TAG, PTR_CONST_TAG, PTR_FN_TAG, PTR_LOCAL_TAG, ScalarValue, decode_fn_ptr,
     fn_ptr_from_id, is_fn_ptr,
 };
-pub use section::{SectionEntry, SectionError, SectionKind};
+pub use section::{SectionEntry, SectionError, SectionKind, validate_section_table};
 pub use stack_effect::{StackEffectError, apply_stack_effect};
 pub use stack_flow::{StackFlowError, StackFlowSummary, analyze_stack_cfg, return_stack_depth};
 pub use types::{TypeKind, TypeRecord, TypeTable};

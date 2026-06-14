@@ -5,7 +5,8 @@ mod support;
 
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-    Instruction, LocalLayoutTable, ModuleError, Opcode, PrimitiveKind, TypeTable, verify,
+    Instruction, LocalLayoutTable, ModuleError, Opcode, PrimitiveKind, SectionError, SectionKind,
+    TypeTable, verify,
 };
 use phx_vm::run;
 use support::{const_return_code, minimal_module, valid_const_return_module};
@@ -296,4 +297,43 @@ fn round_trip_valid_module_passes_verify() {
     let bytes = module.encode().expect("encode");
     let decoded = BytecodeModule::decode(&bytes).expect("decode");
     verify(&decoded).expect("verify round-trip");
+}
+
+#[test]
+fn mutate_unsupported_version_rejected() {
+    let mut module = valid_const_return_module();
+    module.header.version_major = 99;
+    assert_verify_rejects(&module);
+}
+
+#[test]
+fn mutate_duplicate_section_kind_rejected_at_decode() {
+    let module = valid_const_return_module();
+    let mut bytes = module.encode().expect("encode");
+    // Second section table row (Types) — patch kind tag to Constants (1).
+    bytes[36] = 1;
+    bytes[37] = 0;
+    let err = BytecodeModule::decode(&bytes).unwrap_err();
+    assert!(matches!(
+        err,
+        ModuleError::Section(SectionError::DuplicateKind(SectionKind::Constants))
+    ));
+}
+
+#[test]
+fn mutate_overlapping_sections_rejected_at_decode() {
+    let module = valid_const_return_module();
+    let mut bytes = module.encode().expect("encode");
+    // First section row (Constants): read offset at bytes[28..32].
+    let constants_offset = u32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]);
+    // Second section row (Types): set same offset so payloads overlap.
+    bytes[40..44].copy_from_slice(&constants_offset.to_le_bytes());
+    let err = BytecodeModule::decode(&bytes).unwrap_err();
+    assert!(matches!(
+        err,
+        ModuleError::Section(SectionError::OverlappingSections {
+            first: SectionKind::Constants,
+            second: SectionKind::Types,
+        })
+    ));
 }
