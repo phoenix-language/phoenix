@@ -380,11 +380,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/infer.rs:34–63` (`InferenceCtx::unify`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Unification handles var↔var and var↔concrete, but does not recurse structurally — `Option<T>` cannot unify against `Option<s32>` to bind `T`.
 **Detail:** Verified: after `same_type_readonly` (exact equality) the match covers only `Ty::Var` combinations; `(Named, Named)` with differing args hits `_ => false`. Call-site inference therefore works only when a generic param appears as a bare `T`. This will bite immediately when std generics (`DynamicArray<T>`, `Result<T,E>` helpers) are used through wrapper types.
 **Recommendation:** Recurse through `Named`/`Tuple`/`Ptr`/`Ref`/`Slice` argument lists in `unify`. Add tests inferring `T` from nested positions.
+
+**Resolution:** `InferenceCtx::unify` now recurses through `Named`, `Tuple`, `Array`, `Slice`, `Ref`, `Ptr`, and `Fn` shapes via `unify_concrete`; unit tests in `infer.rs` and integration tests in `typeck.rs` cover nested struct/enum inference and ambiguous conflicts.
 
 ---
 
@@ -870,7 +872,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-025 | - [x]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
 | PHX-026 | - [x]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
 | PHX-027 | - [x]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |
-| PHX-028 | - [ ]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |
+| PHX-028 | - [x]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |
 | PHX-029 | - [ ]  | Minor        | phx-compiler    | Lint pass has no type information                                        |
 | PHX-030 | - [ ]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |
 | PHX-031 | - [ ]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |

@@ -1214,6 +1214,34 @@ fn generic_fn_infer_from_args_compile_ok() {
 }
 
 #[test]
+fn generic_fn_infer_nested_named_compile_ok() {
+    compile_ok(
+        "Box :: <t> struct { v: t }; unwrap :: <t> (b: Box<t>) => t { b.v }; main :: () => { const b = Box :: <s32> { v: 1 }; const _: s32 = unwrap(b); };",
+    );
+}
+
+#[test]
+fn generic_fn_infer_nested_enum_named_compile_ok() {
+    compile_ok(
+        "Opt :: <t> enum { None, Some(t), }; payload :: <t> (o: Opt<t>) => t { match o { None => 0; Some(v) => v; } }; main :: () => { const o = Some :: <s32>(1); const _: s32 = payload(o); };",
+    );
+}
+
+#[test]
+fn generic_fn_infer_nested_named_ambiguous_errors() {
+    let bag = typeck_err(
+        "Box :: <t> struct { v: t }; pair :: <t> (a: Box<t>, b: t) => t { b }; main :: () => { const b = Box :: <bool> { v: true }; const _ = pair(b, 1); };",
+    );
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::InferenceAmbiguous { .. })),
+        "expected InferenceAmbiguous: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
 fn generic_fn_unconstrained_type_param_errors() {
     let bag = typeck_err("id :: <t> (x: s32) => s32 { x }; main :: () => { const _ = id(1); };");
     assert!(
