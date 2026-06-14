@@ -75,6 +75,17 @@ pub enum VerifyError {
         /// Offset of the offending instruction.
         offset: u32,
     },
+    /// Control-flow predecessors require different stack depths at the same block entry.
+    JoinDepthMismatch {
+        /// Function containing the merge point.
+        function_id: u32,
+        /// Block entry offset where depths disagree.
+        offset: u32,
+        /// Depth already recorded from another predecessor.
+        expected: u32,
+        /// Depth from the conflicting predecessor.
+        found: u32,
+    },
     /// Simulated max stack depth exceeds declared `stack_max`.
     StackExceedsMax {
         /// Function whose body exceeds its limit.
@@ -226,6 +237,15 @@ impl std::fmt::Display for VerifyError {
                     "stack underflow in function {function_id} at offset {offset}"
                 )
             }
+            Self::JoinDepthMismatch {
+                function_id,
+                offset,
+                expected,
+                found,
+            } => write!(
+                f,
+                "join stack depth mismatch in function {function_id} at offset {offset}: expected {expected}, found {found}"
+            ),
             Self::StackExceedsMax {
                 function_id,
                 observed,
@@ -405,7 +425,7 @@ fn verify_function_body(
     module: &BytecodeModule,
     fn_arity: &HashMap<u32, u16>,
 ) -> Result<(), VerifyError> {
-    verify_function_layout(func, &module.local_layouts)?;
+    verify_function_layout(func, &module.local_layouts, module.header.version_minor)?;
 
     let code = function_code(module, func).ok_or(VerifyError::FunctionCodeOutOfBounds {
         function_id: func.function_id,
@@ -453,10 +473,19 @@ fn verify_function_body(
 
     let summary =
         analyze_stack_cfg(&instructions, &inst_starts, fn_arity).map_err(|e| match e {
-            StackFlowError::Underflow { offset }
-            | StackFlowError::JoinDepthMismatch { offset, .. } => VerifyError::StackUnderflow {
+            StackFlowError::Underflow { offset } => VerifyError::StackUnderflow {
                 function_id: func.function_id,
                 offset,
+            },
+            StackFlowError::JoinDepthMismatch {
+                offset,
+                expected,
+                found,
+            } => VerifyError::JoinDepthMismatch {
+                function_id: func.function_id,
+                offset,
+                expected,
+                found,
             },
             StackFlowError::InvalidCallTarget { callee, .. } => VerifyError::InvalidCallTarget {
                 function_id: func.function_id,
@@ -479,8 +508,9 @@ fn verify_function_body(
 fn verify_function_layout(
     func: &FunctionRecord,
     layouts: &LocalLayoutTable,
+    version_minor: u16,
 ) -> Result<(), VerifyError> {
-    if layouts.layouts.is_empty() {
+    if version_minor < 1 || func.local_count == 0 {
         return Ok(());
     }
     let Some(layout) = layouts.for_function(func.function_id) else {
@@ -717,7 +747,6 @@ fn verify_operands(
         | Opcode::BitNot
         | Opcode::MakeTuple
         | Opcode::MakeArray
-        | Opcode::Trap
         | Opcode::MakeSlice
         | Opcode::MakeSliceFromPtr => {
             if inst.operands.len() != 1 {
@@ -738,11 +767,16 @@ fn verify_operands(
             if index >= const_count {
                 return Err(VerifyError::InvalidConstIndex { function_id, index });
             }
+            let entry = &module.constants.entries[index as usize];
+            if entry.tag != ConstTag::Bytes {
+                return Err(VerifyError::ConstTagMismatch { function_id, index });
+            }
         }
         Opcode::StrAsSlice
         | Opcode::Index
         | Opcode::Pop
         | Opcode::Return
+        | Opcode::Trap
         | Opcode::LoadAggViaLocalPtr
         | Opcode::Alloc
         | Opcode::Free => {
@@ -862,8 +896,9 @@ fn fn_sig_param_count(aux: &[u8]) -> u32 {
 mod tests {
     use super::*;
     use crate::{
-        ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable, Instruction,
-        LocalLayoutTable, Opcode, PrimitiveKind, TypeKind, TypeRecord, TypeTable,
+        ConstEntry, ConstPool, ConstTag, FileHeader, FunctionLocalLayout, FunctionRecord,
+        FunctionTable, Instruction, LocalLayoutTable, Opcode, PrimitiveKind, TypeKind, TypeRecord,
+        TypeTable,
     };
 
     fn minimal_module(code: Vec<u8>, stack_max: u16, entry_arity: u16) -> BytecodeModule {
@@ -1074,6 +1109,8 @@ mod tests {
     }
 
     fn module_with_types(code: Vec<u8>, types: TypeTable) -> BytecodeModule {
+        use crate::LocalSlotKind;
+
         BytecodeModule {
             header: FileHeader::new(5, 0),
             constants: ConstPool {
@@ -1110,7 +1147,12 @@ mod tests {
                 ],
             },
             code,
-            local_layouts: LocalLayoutTable::default(),
+            local_layouts: LocalLayoutTable {
+                layouts: vec![FunctionLocalLayout {
+                    function_id: 1,
+                    slots: vec![LocalSlotKind::primitive(PrimitiveKind::S32)],
+                }],
+            },
         }
     }
 
@@ -1203,5 +1245,191 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    fn join_depth_mismatch_code() -> (Vec<u8>, u32) {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, PrimitiveKind::Bool.as_u8() as u32],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::JumpIfTrue,
+                operands: vec![0],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Jump,
+                operands: vec![0],
+            }
+            .encode(),
+        );
+        let then_off = u32::try_from(code.len()).unwrap_or(0);
+        code.extend(
+            Instruction {
+                opcode: Opcode::Const,
+                operands: vec![1, PrimitiveKind::S32.as_u8() as u32],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Jump,
+                operands: vec![0],
+            }
+            .encode(),
+        );
+        let merge_off = u32::try_from(code.len()).unwrap_or(0);
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+
+        let patch_operand = |code: &mut Vec<u8>, inst_offset: usize, target: u32| {
+            let start = inst_offset + 2;
+            code[start..start + 4].copy_from_slice(&target.to_le_bytes());
+        };
+        patch_operand(&mut code, 10, then_off);
+        patch_operand(&mut code, 16, merge_off);
+        patch_operand(
+            &mut code,
+            usize::try_from(then_off).unwrap_or(0) + 10,
+            merge_off,
+        );
+        (code, merge_off)
+    }
+
+    #[test]
+    fn reject_join_depth_mismatch() {
+        let (code, merge_off) = join_depth_mismatch_code();
+        let mut module = minimal_module(code, 4, 0);
+        module.constants.entries = vec![
+            ConstEntry {
+                tag: ConstTag::Bool,
+                payload: vec![1],
+            },
+            ConstEntry {
+                tag: ConstTag::SignedInt,
+                payload: 1i32.to_le_bytes().to_vec(),
+            },
+        ];
+        let err = verify(&module).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                VerifyError::JoinDepthMismatch {
+                    function_id: 0,
+                    offset,
+                    expected: 0,
+                    found: 1,
+                } if offset == merge_off
+            ),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
+    fn reject_trap_with_operands() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Trap,
+                operands: vec![0],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn valid_trap_without_operands_passes() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Trap,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0);
+        verify(&module).expect("trap without operands");
+    }
+
+    #[test]
+    fn reject_make_str_non_bytes_const() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::MakeStr,
+                operands: vec![0],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::ConstTagMismatch {
+                function_id: 0,
+                index: 0,
+            }
+        ));
+    }
+
+    #[test]
+    fn reject_missing_local_layout_when_required() {
+        let mut module = minimal_module(const_return_code(), 4, 0);
+        module.functions.functions[0].local_count = 1;
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MissingLocalLayout { function_id: 0 }
+        ));
+    }
+
+    #[test]
+    fn valid_make_str_bytes_const_passes() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::MakeStr,
+                operands: vec![0],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let mut module = minimal_module(code, 4, 0);
+        module.constants.entries[0] = ConstEntry {
+            tag: ConstTag::Bytes,
+            payload: b"hi".to_vec(),
+        };
+        verify(&module).expect("make str bytes const");
     }
 }

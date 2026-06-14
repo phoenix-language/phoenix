@@ -546,7 +546,7 @@ fn emit_inst(
             out.extend(encode(Opcode::StrAsSlice, &[]));
         }
         IrInst::TrapGivenMismatch => {
-            out.extend(encode(Opcode::Trap, &[0]));
+            out.extend(encode(Opcode::Trap, &[]));
         }
         IrInst::DropLocal {
             slot,
