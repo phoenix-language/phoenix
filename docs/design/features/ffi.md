@@ -92,6 +92,8 @@ C interop treats callbacks as raw function pointers — for example `void (*cb)(
 
 Foreign stubs use `MakeFnPtr` / `CallIndirect` with `target_kind = foreign`.
 
+**Stub id stability (Phase A):** ids are assigned in VM registration order (`register_foreign_stub`). This is sufficient for test harnesses and Phase A VM-hosted calls; **linker-stable symbol ids** are deferred to post-beta link hardening (see ROADMAP). The [`ForeignRegistry`](../../source/phx-vm/src/foreign.rs) type supports future per-runtime registries; MVP uses a process-global registry for tests.
+
 ---
 
 ## Phased rollout

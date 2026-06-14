@@ -19,14 +19,19 @@
 //! Matches codegen: binary ops pop `b` then `a` and push `op(a, b)`; call pops arguments with the
 //! first parameter taken from the lower stack position.
 
+mod context;
 mod error;
 mod foreign;
 mod frame;
 mod interpreter;
 
+pub use context::{DEFAULT_HEAP_CAP_BYTES, ExecutionContext, Machine, VmRuntime};
 pub use error::{VmError, VmErrorKind};
-pub use foreign::{ForeignStubFn, clear_foreign_stubs, dispatch_foreign, register_foreign_stub};
-pub use frame::{Aggregate, DEFAULT_HEAP_CAP_BYTES, Machine, Value};
+pub use foreign::{
+    ForeignRegistry, ForeignStubFn, clear_foreign_stubs, dispatch_foreign, dispatch_foreign_in,
+    register_foreign_stub,
+};
+pub use frame::{Aggregate, Value};
 pub use interpreter::{
     VmRunCapture, interpret_unverified, run_captured, run_captured_unverified,
     run_captured_unverified_with_heap_cap, run_captured_with_heap_cap,

@@ -248,7 +248,7 @@ Several opcodes carry a **`prim_kind` wire byte** (`0`–`12`, see `PrimitiveKin
 | Arithmetic, bitwise, compare | `prim_kind` | Require matching stack cell widths |
 | `NEG`, `NOT`, `BIT_NOT` | `prim_kind` | Unary primitive width |
 | `PTR_LOAD`, `PTR_STORE` | `prim_kind`, `signed` | Memory access width; untagged heap pointers validate `[addr, addr+width)` against live ledger blocks before access |
-| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address; registers `(ptr, size)` in VM allocation ledger. Heap growth is capped at **64 MiB** by default (`DEFAULT_HEAP_CAP_BYTES` on [`Machine`](../../source/phx-vm/src/frame.rs)); overflow returns `VmError::OutOfMemory` instead of aborting the process |
+| `ALLOC` | *(none)* | Pops runtime `size: u32` from stack; pushes heap address; registers `(ptr, size)` in VM allocation ledger. Heap growth is capped at **64 MiB** by default (`DEFAULT_HEAP_CAP_BYTES` on [`VmRuntime`](../../source/phx-vm/src/context.rs)); overflow returns `VmError::OutOfMemory` instead of aborting the process |
 | `FREE` | *(none)* | Pops runtime `size: u32`, then `ptr`; removes exact ledger entry; zeros freed bytes (no heap compaction). Subsequent heap accesses through that range trap with `VmError::UseAfterFree` when ledger checking is enabled (default in v0; gateable for a future `--unchecked` mode) |
 | `MAKE_SLICE` | `elem_prim_kind` | Element type of source array |
 
@@ -279,7 +279,7 @@ Loader must reject bytecode when:
 ### MVP interpreter contract (`phx-vm`)
 
 - Production entry is `phx_vm::run(verified)` where `verified` is a [`VerifiedModule`](../../source/phx-bytecode/src/verified.rs) from [`phx_bytecode::verify`](../../source/phx-bytecode/src/verify.rs). The type system carries the verify-before-execute invariant (Wasm model: validate once at load, execute trusting static checks). `#[doc(hidden)] run_unverified` exists for mutation and VM error-path tests only.
-- `run_captured` is `#[doc(hidden)]` for integration tests that assert `main` local slots via [`VmRunCapture::main_local`](../../source/phx-vm/src/interpreter.rs) or the optional stack `return_value` after return.
+- `run_captured` is `#[doc(hidden)]` for integration tests that assert `main` local slots via [`VmRunCapture::main_local`](../../source/phx-vm/src/interpreter/mod.rs) or the optional stack `return_value` after return.
 - Falling off the end of a function body (PC past `code_len`) returns `VmError::TruncatedCode` instead of a silent successful return.
 - Dispatch-time runtime failures return [`VmError`](../../source/phx-vm/src/error.rs) with optional coarse bytecode site `(function_id, pc)` — the byte offset of the faulting instruction before PC advance. Module-level failures (`NoEntryPoint`, `MissingEntry`, `EntryArityNotZero`) omit the site. `Display` appends ` (function {id}, pc {pc})` when present. `Trap` maps to `VmErrorKind::GivenMismatch` with site at the trap instruction; embedded trap payloads and Phoenix source mapping are **PHX-070** (section 5 symbols + PHX-063 IR spans).
 - **MVP debug channel (D0):** `phx run --dump-main` prints `main[N]: …` lines to stderr after a successful run (uses `run_captured` internally). Full layered debug (symbols, trace, breakpoints, DAP) is specified in [debug.md](debug.md). There is no std I/O until the schedulable runtime ships; see [`examples/hello`](../../../examples/hello/src/main.phx).
@@ -297,7 +297,7 @@ The MVP interpreter enforces **bounded** VM heap growth so hostile or buggy byte
 | Single allocation size | `u32` (~4 GiB max per call) | Language and `ALLOC` operand width; cap applies before this ceiling |
 | Heap pointer values | `u64` | Offsets into the VM linear heap, not host addresses |
 
-**64 MiB is a bootstrap default**, not a long-term product ceiling — it is enough for early std fixtures but will be tight for large buffers, parsers, and growable collections. Before std workloads ship at scale, revisit the default (e.g. raise to hundreds of MiB or tie to host RAM) and **expose user configuration**: project-level settings (e.g. `phx.toml` / build manifest) and/or CLI flags (`phx run --heap-cap=…`) that wire into `Machine::heap_cap`. Until that ships, embedders and tests may use `Machine::with_heap_cap` / `run_captured_with_heap_cap` (`#[doc(hidden)]`).
+**64 MiB is a bootstrap default**, not a long-term product ceiling — it is enough for early std fixtures but will be tight for large buffers, parsers, and growable collections. Before std workloads ship at scale, revisit the default (e.g. raise to hundreds of MiB or tie to host RAM) and **expose user configuration**: project-level settings (e.g. `phx.toml` / build manifest) and/or CLI flags (`phx run --heap-cap=…`) that wire into [`VmRuntime::heap_cap`](../../source/phx-vm/src/context.rs). Until that ships, embedders and tests may use `Machine::with_heap_cap` / `run_captured_with_heap_cap` (`#[doc(hidden)]`).
 
 `u32` in bytecode operands and `alloc_bytes(size: u32)` index portable file layout and per-call size — they do **not** make Phoenix a 32-bit platform; the host VM runs on 64-bit Rust with `usize`/`u64` internally.
 
@@ -341,6 +341,16 @@ These are design targets and not MVP implementation requirements.
 - scheduler receives readiness signals and resumes parked contexts
 - raw blocking syscalls are forbidden on safe I/O paths
 - `AWAIT_IO` and related opcodes implement what **schedulable-I/O types** promise at the language layer — see [runtime-transparency.md](runtime-transparency.md)
+
+#### MVP execution-context split (scheduler prep)
+
+Language v0 introduces a structural boundary in `phx-vm` before the M:N scheduler ships:
+
+- **[`ExecutionContext`](../../source/phx-vm/src/context.rs)** — per schedulable unit: operand stack + call stack (`Vec`s). MVP constructs one context per `run()`.
+- **[`VmRuntime`](../../source/phx-vm/src/context.rs)** — shared resources for one run: aggregate arena, linear heap, allocation ledger, heap cap.
+- **[`Machine`](../../source/phx-vm/src/context.rs)** — thin facade combining one context + one runtime for MVP and foreign-stub calls.
+
+Post-MVP the scheduler owns a **pool** of `ExecutionContext` values (state machine below), multiplexed on worker threads; heap/aggregate ownership rules follow actor-isolation design in [concurrency.md](concurrency.md).
 
 #### Execution context state machine
 

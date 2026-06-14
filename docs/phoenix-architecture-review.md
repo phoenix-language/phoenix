@@ -771,13 +771,13 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 ---
 
 **[PHX-057] Severity: Suggestion**
-**Location:** `phx-vm/src/interpreter.rs` (1,245 lines); `foreign.rs:38–68`
+**Location:** `phx-vm/src/interpreter/` (split from monolithic `interpreter.rs`); `foreign.rs`; `context.rs`
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Interpreter is a single God module; foreign-stub ids are process-global and registration-order-dependent (fine for the documented FFI Phase A, unstable for real linking). The frame/heap model is single-threaded `Vec`s with no execution-context abstraction — adding the scheduler will be invasive.
-**Recommendation:** Flag for review — split dispatch/arith/memory/aggregates; introduce an `ExecutionContext`-style boundary before scheduler work begins (post-beta).
+**Resolution:** Split interpreter into `control`/`locals`/`arith`/`memory`/`aggregates`/`indirect` submodules; introduced `ExecutionContext` + `VmRuntime` with `Machine` facade; documented Phase A foreign stub contract and added `ForeignRegistry` for future per-runtime linking. Stable linker ids remain deferred post-beta.
 
 ---
 
@@ -937,7 +937,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-055 | - [x]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
 | PHX-056 | - [x]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
 | PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
-| PHX-057 | - [ ]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
+| PHX-057 | - [x]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
 | PHX-058 | - [ ]  | Minor        | phx-cli         | ICE handler discards panic message                                       |
 | PHX-059 | - [ ]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
 | PHX-060 | - [ ]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |

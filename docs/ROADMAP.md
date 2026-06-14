@@ -162,7 +162,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Item | Finding | Work |
 |---|---|---|
 | Split `typeck/check.rs` (6,030 lines) into `check/{decl,impl,expr,stmt,pattern,intrinsic}.rs` | PHX-031 | After M0/M1 fixes land, to avoid churn |
-| Split backend God modules (`lower/expr.rs`, `build/driver.rs`) and `phx-vm/interpreter.rs` | PHX-044, PHX-057 | Triage: split what M5–M7 touched |
+| Split backend God modules (`lower/expr.rs`, `build/driver.rs`) and `phx-vm/interpreter/` | PHX-044, PHX-057 | PHX-057 done; PHX-044 triage with M5–M7 |
 | IR validator (terminator-last, target-in-range, optional depth simulation) in debug builds | PHX-039 | Catches lowering bugs before they become verify mysteries |
 | Span hygiene: spans (or side table) on `IrInst`; eliminate `Span::new(0,0)` synthesis | PHX-063 | Backend diagnostics cite source |
 | Parse-error formatting moves into `phx-diagnostics`; complete `phx explain` coverage (E3002–E3005, E2033) | PHX-012, PHX-013 | — |

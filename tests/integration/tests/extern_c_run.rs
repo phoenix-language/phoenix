@@ -11,8 +11,8 @@ use phx_vm::{
 };
 
 fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmErrorKind> {
-    let b = machine.stack.pop().ok_or(VmErrorKind::StackUnderflow)?;
-    let a = machine.stack.pop().ok_or(VmErrorKind::StackUnderflow)?;
+    let b = machine.stack().pop().ok_or(VmErrorKind::StackUnderflow)?;
+    let a = machine.stack().pop().ok_or(VmErrorKind::StackUnderflow)?;
     let Value::Scalar(ScalarValue::I32(x)) = a else {
         return Err(VmErrorKind::ExpectedScalar);
     };
@@ -20,7 +20,7 @@ fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmE
         return Err(VmErrorKind::ExpectedScalar);
     };
     machine
-        .stack
+        .stack()
         .push(Value::Scalar(ScalarValue::I32(x.saturating_add(y))));
     Ok(())
 }
