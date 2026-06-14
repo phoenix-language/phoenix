@@ -22,6 +22,16 @@ pub enum CodegenError {
         /// Program-global layout type id.
         type_id: u32,
     },
+    /// IR call or drop references a definition with no function id mapping.
+    MissingCallee {
+        /// Raw [`crate::resolver::DefId`] index.
+        def_index: u32,
+    },
+    /// Jump target basic block has no computed code offset.
+    InvalidJumpBlock {
+        /// Basic block index from IR control flow.
+        block: u32,
+    },
 }
 
 impl std::fmt::Display for CodegenError {
@@ -44,6 +54,15 @@ impl std::fmt::Display for CodegenError {
                     f,
                     "codegen: module type table has no entry for layout type id {type_id}"
                 )
+            }
+            Self::MissingCallee { def_index } => {
+                write!(
+                    f,
+                    "codegen: no function id mapping for definition {def_index}"
+                )
+            }
+            Self::InvalidJumpBlock { block } => {
+                write!(f, "codegen: no code offset for basic block {block}")
             }
         }
     }

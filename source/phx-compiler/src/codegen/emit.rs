@@ -5,6 +5,8 @@
 //! Operands are evaluated left-to-right (bottom = left, top = right). Binary ops pop `b`,
 //! then `a`, and push `op(a, b)`. Call leaves `arity` arguments on the stack (bottom = first param).
 
+use std::collections::HashMap;
+
 use phx_bytecode::{Instruction, Opcode, apply_stack_effect};
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
@@ -26,13 +28,15 @@ pub struct EmittedFunction {
 ///
 /// # Errors
 ///
-/// Returns [`CodegenError`] when a constant pool lookup fails.
+/// Returns [`CodegenError`] when a constant pool lookup fails, a callee or drop function
+/// has no function id mapping, a jump target block has no code offset, or a type id is
+/// missing from the module-local remap.
 pub fn emit_function(
     func: &IrFunction,
     pool: &mut ConstPoolBuilder,
-    def_to_fn: &std::collections::HashMap<DefId, u32>,
-    fn_arity: &std::collections::HashMap<u32, u16>,
-    type_remap: Option<&std::collections::HashMap<u32, u32>>,
+    def_to_fn: &HashMap<DefId, u32>,
+    fn_arity: &HashMap<u32, u16>,
+    type_remap: Option<&HashMap<u32, u32>>,
 ) -> Result<EmittedFunction, CodegenError> {
     let block_starts = compute_block_starts(func, pool, def_to_fn, type_remap)?;
     let (code, stack_max) =
@@ -40,10 +44,7 @@ pub fn emit_function(
     Ok(EmittedFunction { code, stack_max })
 }
 
-fn map_type_id(
-    global: u32,
-    type_remap: Option<&std::collections::HashMap<u32, u32>>,
-) -> Result<u32, CodegenError> {
+fn map_type_id(global: u32, type_remap: Option<&HashMap<u32, u32>>) -> Result<u32, CodegenError> {
     match type_remap {
         None => Ok(global),
         Some(map) => map
@@ -53,11 +54,27 @@ fn map_type_id(
     }
 }
 
+fn function_id_for(def: DefId, def_to_fn: &HashMap<DefId, u32>) -> Result<u32, CodegenError> {
+    def_to_fn
+        .get(&def)
+        .copied()
+        .ok_or(CodegenError::MissingCallee {
+            def_index: def.index(),
+        })
+}
+
+fn block_offset(block: u32, starts: &[u32]) -> Result<u32, CodegenError> {
+    starts
+        .get(block as usize)
+        .copied()
+        .ok_or(CodegenError::InvalidJumpBlock { block })
+}
+
 fn compute_block_starts(
     func: &IrFunction,
     pool: &ConstPoolBuilder,
-    def_to_fn: &std::collections::HashMap<DefId, u32>,
-    type_remap: Option<&std::collections::HashMap<u32, u32>>,
+    def_to_fn: &HashMap<DefId, u32>,
+    type_remap: Option<&HashMap<u32, u32>>,
 ) -> Result<Vec<u32>, CodegenError> {
     let n = func.blocks.len();
     let mut starts = vec![0u32; n];
@@ -78,9 +95,9 @@ fn compute_block_starts(
 fn apply_ir_stack_effect(
     inst: &IrInst,
     stack: &mut u32,
-    def_to_fn: &std::collections::HashMap<DefId, u32>,
-    fn_arity: &std::collections::HashMap<u32, u16>,
-) {
+    def_to_fn: &HashMap<DefId, u32>,
+    fn_arity: &HashMap<u32, u16>,
+) -> Result<(), CodegenError> {
     let none = None::<u32>;
     match inst {
         IrInst::Const { .. } => {
@@ -97,13 +114,13 @@ fn apply_ir_stack_effect(
             let _ = apply_stack_effect(opcode, stack, None, none);
         }
         IrInst::Call { callee, .. } => {
-            let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
+            let fn_id = function_id_for(*callee, def_to_fn)?;
             let arity = *fn_arity.get(&fn_id).unwrap_or(&0);
             let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
         }
         IrInst::DropLocal { drop_fn, .. } => {
             let _ = apply_stack_effect(Opcode::LoadLocal, stack, None, none);
-            let fn_id = def_to_fn.get(drop_fn).copied().unwrap_or(0);
+            let fn_id = function_id_for(*drop_fn, def_to_fn)?;
             let arity = *fn_arity.get(&fn_id).unwrap_or(&1);
             let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
         }
@@ -194,6 +211,7 @@ fn apply_ir_stack_effect(
         }
         IrInst::Return { .. } | IrInst::Jump { .. } => {}
     }
+    Ok(())
 }
 
 fn ir_binop_to_opcode(op: IrBinOp) -> Opcode {
@@ -220,10 +238,10 @@ fn ir_binop_to_opcode(op: IrBinOp) -> Opcode {
 fn emit_blocks(
     func: &IrFunction,
     pool: &mut ConstPoolBuilder,
-    def_to_fn: &std::collections::HashMap<DefId, u32>,
-    fn_arity: &std::collections::HashMap<u32, u16>,
+    def_to_fn: &HashMap<DefId, u32>,
+    fn_arity: &HashMap<u32, u16>,
     block_starts: &[u32],
-    type_remap: Option<&std::collections::HashMap<u32, u32>>,
+    type_remap: Option<&HashMap<u32, u32>>,
 ) -> Result<(Vec<u8>, u16), CodegenError> {
     let mut out = Vec::new();
     for block in &func.blocks {
@@ -231,7 +249,7 @@ fn emit_blocks(
             emit_inst(&mut out, inst, pool, def_to_fn, block_starts, type_remap)?;
         }
     }
-    let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity);
+    let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity)?;
     let stack_max = u16::try_from(max_stack).unwrap_or(u16::MAX);
     Ok((out, stack_max))
 }
@@ -239,13 +257,13 @@ fn emit_blocks(
 /// CFG-aware max stack depth for IR (short-circuit paths are not linear in block order).
 fn compute_ir_stack_max(
     func: &IrFunction,
-    def_to_fn: &std::collections::HashMap<DefId, u32>,
-    fn_arity: &std::collections::HashMap<u32, u16>,
-) -> u32 {
-    use std::collections::{HashMap, VecDeque};
+    def_to_fn: &HashMap<DefId, u32>,
+    fn_arity: &HashMap<u32, u16>,
+) -> Result<u32, CodegenError> {
+    use std::collections::VecDeque;
 
     if func.blocks.is_empty() {
-        return 0;
+        return Ok(0);
     }
 
     let mut entry_depth: HashMap<u32, u32> = HashMap::new();
@@ -271,7 +289,7 @@ fn compute_ir_stack_max(
 
         let mut block_terminates = false;
         for inst in &block.insts {
-            apply_ir_stack_effect(inst, &mut depth, def_to_fn, fn_arity);
+            apply_ir_stack_effect(inst, &mut depth, def_to_fn, fn_arity)?;
             max_stack = max_stack.max(depth);
 
             match inst {
@@ -335,7 +353,7 @@ fn compute_ir_stack_max(
         .unwrap_or(0)
         .saturating_add(func.local_count)
         .saturating_add(16);
-    max_stack.max(conservative_floor)
+    Ok(max_stack.max(conservative_floor))
 }
 
 /// Enqueues a CFG edge for stack-depth fixpoint. Back-edges merge depth without re-walking
@@ -385,9 +403,9 @@ fn emit_inst(
     out: &mut Vec<u8>,
     inst: &IrInst,
     pool: &ConstPoolBuilder,
-    def_to_fn: &std::collections::HashMap<DefId, u32>,
+    def_to_fn: &HashMap<DefId, u32>,
     block_starts: &[u32],
-    type_remap: Option<&std::collections::HashMap<u32, u32>>,
+    type_remap: Option<&HashMap<u32, u32>>,
 ) -> Result<(), CodegenError> {
     match inst {
         IrInst::Const {
@@ -416,7 +434,7 @@ fn emit_inst(
             out.extend(encode(ir_binop_to_opcode(*op), &[u32::from(*prim_kind)]));
         }
         IrInst::Call { callee, .. } => {
-            let fn_id = def_to_fn.get(callee).copied().unwrap_or(0);
+            let fn_id = function_id_for(*callee, def_to_fn)?;
             out.extend(encode(Opcode::Call, &[fn_id]));
         }
         IrInst::MakeFnPtr {
@@ -438,15 +456,15 @@ fn emit_inst(
             out.extend(encode(Opcode::Return, &[]));
         }
         IrInst::Jump { target } => {
-            let off = block_starts.get(*target as usize).copied().unwrap_or(0);
+            let off = block_offset(*target, block_starts)?;
             out.extend(encode(Opcode::Jump, &[off]));
         }
         IrInst::JumpIf {
             then_block,
             else_block,
         } => {
-            let then_off = block_starts.get(*then_block as usize).copied().unwrap_or(0);
-            let else_off = block_starts.get(*else_block as usize).copied().unwrap_or(0);
+            let then_off = block_offset(*then_block, block_starts)?;
+            let else_off = block_offset(*else_block, block_starts)?;
             out.extend(encode(Opcode::JumpIfTrue, &[then_off]));
             out.extend(encode(Opcode::Jump, &[else_off]));
         }
@@ -579,7 +597,7 @@ fn emit_inst(
                 Opcode::LoadLocal,
                 &[slot.index(), u32::from(*prim_kind)],
             ));
-            let fn_id = def_to_fn.get(drop_fn).copied().unwrap_or(0);
+            let fn_id = function_id_for(*drop_fn, def_to_fn)?;
             out.extend(encode(Opcode::Call, &[fn_id]));
         }
     }
@@ -592,4 +610,66 @@ fn encode(opcode: Opcode, operands: &[u32]) -> Vec<u8> {
         operands: operands.to_vec(),
     }
     .encode()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::{IrBasicBlock, IrFunction, IrFunctionId, IrInst, LocalSlot};
+    use crate::typeck::TypeId;
+
+    fn minimal_func(insts: Vec<IrInst>) -> IrFunction {
+        IrFunction {
+            id: IrFunctionId::from_raw(0),
+            def: DefId::from_raw(0),
+            params: Vec::new(),
+            return_type: TypeId::from_raw(0),
+            local_count: 0,
+            blocks: vec![IrBasicBlock { insts }],
+        }
+    }
+
+    #[test]
+    fn emit_fails_on_invalid_jump_block() {
+        let func = minimal_func(vec![IrInst::Jump { target: 99 }]);
+        let mut pool = ConstPoolBuilder::new();
+        let def_to_fn = HashMap::new();
+        let fn_arity = HashMap::new();
+        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None) {
+            Err(CodegenError::InvalidJumpBlock { block: 99 }) => {}
+            other => panic!("expected InvalidJumpBlock {{ block: 99 }}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn emit_fails_on_missing_callee() {
+        let func = minimal_func(vec![IrInst::Call {
+            callee: DefId::from_raw(42),
+            ret: TypeId::from_raw(0),
+        }]);
+        let mut pool = ConstPoolBuilder::new();
+        let def_to_fn = HashMap::new();
+        let fn_arity = HashMap::new();
+        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None) {
+            Err(CodegenError::MissingCallee { def_index: 42 }) => {}
+            other => panic!("expected MissingCallee {{ def_index: 42 }}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn emit_fails_on_missing_drop_fn() {
+        let func = minimal_func(vec![IrInst::DropLocal {
+            slot: LocalSlot::from_raw(0),
+            ty: TypeId::from_raw(0),
+            drop_fn: DefId::from_raw(7),
+            prim_kind: 0,
+        }]);
+        let mut pool = ConstPoolBuilder::new();
+        let def_to_fn = HashMap::new();
+        let fn_arity = HashMap::new();
+        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None) {
+            Err(CodegenError::MissingCallee { def_index: 7 }) => {}
+            other => panic!("expected MissingCallee {{ def_index: 7 }}, got {other:?}"),
+        }
+    }
 }

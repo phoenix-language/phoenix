@@ -464,7 +464,7 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/codegen/emit.rs:404–406, 429–430, 565–566`
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Missing callee/jump/drop-fn map entries silently encode operand `0` (`def_to_fn.get(...).unwrap_or(0)`, `block_starts.get(...).unwrap_or(0)`).
 **Detail:** Verified for the `DropLocal` path. A codegen-internal inconsistency becomes structurally valid bytecode that calls function 0 or jumps to offset 0 — the verifier cannot catch it because it is well-formed. This converts ICEs into wrong-execution, the worst possible failure mode for a compiler.
@@ -884,7 +884,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-031 | - [x]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |
 | PHX-032 | - [ ]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
 | PHX-033 | - [x]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |
-| PHX-034 | - [ ]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
+| PHX-034 | - [x]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
 | PHX-035 | - [ ]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
 | PHX-036 | - [x]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
 | PHX-037 | - [ ]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
