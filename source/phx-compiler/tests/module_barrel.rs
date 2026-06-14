@@ -92,6 +92,33 @@ fn std_error_import_path_flattened() {
 }
 
 #[test]
+fn std_iter_for_in_has_plan() {
+    let _lock = fixture_fs_lock();
+    let root = fixture_root("std_iter");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let resolved = load_project("std_iter").expect("resolve std_iter");
+    let typed = type_check(resolved).expect("typecheck std_iter");
+    let main_layout = typed
+        .functions
+        .iter()
+        .find(|f| {
+            typed
+                .resolved
+                .defs
+                .get(f.def.index() as usize)
+                .is_some_and(|d| typed.resolved.interner.resolves_to(d.name, "main"))
+        })
+        .expect("main layout");
+    assert_eq!(
+        main_layout.for_in_plans.len(),
+        1,
+        "expected one ForInPlan on main"
+    );
+}
+
+#[test]
 fn modules_bin_barrel_builds() {
     let _lock = fixture_fs_lock();
     let root = fixture_root("modules_bin_barrel");

@@ -5,7 +5,7 @@ use phx_syntax::token::Keyword;
 use super::layout::{ProgramLayout, TraitInstKey};
 use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
-use crate::resolver::{DefId, DefKind, ResolvedProgram};
+use crate::resolver::{DefId, ResolvedProgram};
 
 /// Returns the interned unit type.
 #[must_use]
@@ -172,47 +172,20 @@ fn enum_is_copyable(
     true
 }
 
-/// Returns whether `trait_def` is a trait named `Copyable`.
-#[must_use]
-pub fn is_copyable_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
-    resolved
-        .defs
-        .get(trait_def.index() as usize)
-        .is_some_and(|d| {
-            d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Copyable")
-        })
-}
-
-/// Returns whether `trait_def` is a trait named `Drop`.
-#[must_use]
-pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
-    resolved
-        .defs
-        .get(trait_def.index() as usize)
-        .is_some_and(|d| d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Drop"))
-}
-
 /// Returns whether `def` with `args` has a `Drop` trait impl in `layout`.
 #[must_use]
 pub fn implements_drop_for_def(
     layout: &ProgramLayout,
-    resolved: &ResolvedProgram,
+    _resolved: &ResolvedProgram,
     std_traits: &StdTraitKernel,
     def: DefId,
     args: &[TypeId],
 ) -> bool {
-    if let Some(drop_trait) = std_traits.drop_trait {
-        if layout_has_trait_impl(layout, def, args, drop_trait, &[])
-            || (!args.is_empty() && layout_has_trait_impl(layout, def, &[], drop_trait, &[]))
-        {
-            return true;
-        }
-    }
-    layout.trait_methods.keys().any(|(key, _)| {
-        key.implementer == def
-            && implementer_args_match(&key.implementer_args, args)
-            && is_drop_trait_def(resolved, key.trait_def)
-    })
+    let Some(drop_trait) = std_traits.drop_trait else {
+        return false;
+    };
+    layout_has_trait_impl(layout, def, args, drop_trait, &[])
+        || (!args.is_empty() && layout_has_trait_impl(layout, def, &[], drop_trait, &[]))
 }
 
 /// Returns whether `id` implements `Drop`.
@@ -236,18 +209,19 @@ pub fn implements_drop(
 #[must_use]
 pub fn resolve_drop_fn(
     layout: &ProgramLayout,
-    resolved: &ResolvedProgram,
-    _std_traits: &StdTraitKernel,
+    _resolved: &ResolvedProgram,
+    std_traits: &StdTraitKernel,
     type_def: DefId,
     type_args: &[TypeId],
 ) -> Option<DefId> {
+    let drop_trait = std_traits.drop_trait?;
     let mut matches: Vec<DefId> = layout
         .trait_methods
         .iter()
         .filter(|((key, _), _)| {
             key.implementer == type_def
+                && key.trait_def == drop_trait
                 && implementer_args_match(&key.implementer_args, type_args)
-                && is_drop_trait_def(resolved, key.trait_def)
         })
         .map(|(_, f)| *f)
         .collect();

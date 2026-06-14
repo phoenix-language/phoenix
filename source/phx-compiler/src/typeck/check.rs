@@ -25,8 +25,7 @@ use super::bounds::{
 };
 use super::builtins::{
     bool_type, float_literal_type, implements_drop, implements_drop_for_def, int_literal_type,
-    is_copyable, is_copyable_trait_def, is_drop_trait_def, resolve_drop_fn, str_type, u8_type,
-    unit,
+    is_copyable, resolve_drop_fn, str_type, u8_type, unit,
 };
 use super::display::{format_type, format_type_diagnostic};
 use super::infer::InferenceCtx;
@@ -932,13 +931,13 @@ impl<'a> TypeChecker<'a> {
             .iter()
             .any(|((key, method), &def)| {
                 def == fn_def
-                    && is_drop_trait_def(self.resolved, key.trait_def)
+                    && self.std_trait_kernel.is_drop_trait(key.trait_def)
                     && self.resolved.interner.resolves_to(*method, "drop")
             })
     }
 
     fn check_copyable_drop_conflict(&mut self, type_def: DefId, trait_def: DefId, span: Span) {
-        let conflicts = if is_copyable_trait_def(self.resolved, trait_def) {
+        let conflicts = if self.std_trait_kernel.is_copyable_trait(trait_def) {
             implements_drop_for_def(
                 &self.program_layout,
                 self.resolved,
@@ -946,11 +945,13 @@ impl<'a> TypeChecker<'a> {
                 type_def,
                 &[],
             )
-        } else if is_drop_trait_def(self.resolved, trait_def) {
+        } else if self.std_trait_kernel.is_drop_trait(trait_def) {
             self.program_layout.trait_impls.iter().any(|key| {
-                key.implementer == type_def && is_copyable_trait_def(self.resolved, key.trait_def)
+                key.implementer == type_def
+                    && self.std_trait_kernel.is_copyable_trait(key.trait_def)
             }) || self.program_layout.trait_methods.keys().any(|(key, _)| {
-                key.implementer == type_def && is_copyable_trait_def(self.resolved, key.trait_def)
+                key.implementer == type_def
+                    && self.std_trait_kernel.is_copyable_trait(key.trait_def)
             })
         } else {
             false
@@ -2763,7 +2764,10 @@ impl<'a> TypeChecker<'a> {
             return;
         };
         let Some(option_ty) = self.option_ty_for_item(item_ty) else {
-            self.push_unsupported("Option type for for-loop", span);
+            self.push_unsupported(
+                "for-in requires std Option (import std::core::option)",
+                span,
+            );
             self.with_loop_body(body, |this| this.check_block(body));
             return;
         };
@@ -2833,56 +2837,21 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn resolve_trait_def_by_name(&self, name: &str) -> Option<DefId> {
-        if let Some(def) = self
-            .std_trait_kernel
+        self.std_trait_kernel
             .trait_def_for_name(&self.resolved.interner, name)
-        {
-            return Some(def);
-        }
-        self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
-            if d.kind == DefKind::Trait && self.resolved.interner.resolves_to(d.name, name) {
-                u32::try_from(i).ok().map(DefId::from_raw)
-            } else {
-                None
-            }
-        })
     }
 
     fn option_ty_for_item(&mut self, item_ty: TypeId) -> Option<TypeId> {
-        let option_def = self
-            .std_kernel
-            .option_enum
-            .or_else(|| self.find_enum_def_by_name("Option"))?;
+        let option_def = self.std_kernel.option_enum?;
         Some(self.types.intern(&Ty::Named {
             def: option_def,
             args: vec![item_ty],
         }))
     }
 
-    fn find_enum_def_by_name(&self, name: &str) -> Option<DefId> {
-        self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
-            if d.kind == DefKind::Enum && self.resolved.interner.resolves_to(d.name, name) {
-                u32::try_from(i).ok().map(DefId::from_raw)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn some_variant_symbol(&self, option_ty: TypeId) -> Option<Symbol> {
-        if let Some(v) = self.std_kernel.some_variant {
-            return Some(self.resolved.defs.get(v.index() as usize)?.name);
-        }
-        let Ty::Named { def, .. } = self.types.get(option_ty).clone() else {
-            return None;
-        };
-        self.program_layout
-            .enums
-            .get(&def)?
-            .variants
-            .iter()
-            .find(|v| self.resolved.interner.resolves_to(v.name, "Some"))
-            .map(|v| v.name)
+    fn some_variant_symbol(&self, _option_ty: TypeId) -> Option<Symbol> {
+        let v = self.std_kernel.some_variant?;
+        Some(self.resolved.defs.get(v.index() as usize)?.name)
     }
 
     fn check_assign_expr(&mut self, target: &ExprNode, value: &ExprNode, span: Span) -> TypeId {

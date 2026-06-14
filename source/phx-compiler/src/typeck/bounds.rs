@@ -73,7 +73,10 @@ pub fn validate_instantiation_bounds(
                 ok = false;
                 continue;
             };
-            if resolved.interner.resolves_to(trait_symbol, "Copyable") && trait_arg_nodes.is_none()
+            if std_traits
+                .trait_def_for_symbol(&resolved.interner, trait_symbol)
+                .is_some_and(|def| std_traits.is_copyable_trait(def))
+                && trait_arg_nodes.is_none()
             {
                 if !type_satisfies_copyable(types, layout, std_traits, concrete) {
                     let type_name = format_type_name(resolved, types, concrete);
@@ -165,9 +168,7 @@ fn resolve_trait_def(
     std_traits: &StdTraitKernel,
     trait_symbol: phx_syntax::Symbol,
 ) -> Option<DefId> {
-    if let Some(name) = resolved.interner.resolve(trait_symbol)
-        && let Some(def) = std_traits.trait_def_for_name(&resolved.interner, name)
-    {
+    if let Some(def) = std_traits.trait_def_for_symbol(&resolved.interner, trait_symbol) {
         return Some(def);
     }
     resolved.defs.iter().enumerate().find_map(|(i, d)| {
@@ -270,7 +271,7 @@ pub fn resolve_from_fn_for_error(
     err_out: TypeId,
     err_in: TypeId,
 ) -> Option<DefId> {
-    let from_trait_def = resolve_trait_def_by_name(resolved, std_traits, "From")?;
+    let from_trait_def = std_traits.from_trait?;
     let Ty::Named {
         def: implementer,
         args: implementer_args,
@@ -295,23 +296,6 @@ pub fn resolve_from_fn_for_error(
         .iter()
         .find(|((k, method), _)| k == &key && resolved.interner.resolves_to(*method, "from"))
         .map(|(_, fn_def)| *fn_def)
-}
-
-fn resolve_trait_def_by_name(
-    resolved: &ResolvedProgram,
-    std_traits: &StdTraitKernel,
-    trait_name: &str,
-) -> Option<DefId> {
-    if let Some(def) = std_traits.trait_def_for_name(&resolved.interner, trait_name) {
-        return Some(def);
-    }
-    resolved.defs.iter().enumerate().find_map(|(i, d)| {
-        if d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, trait_name) {
-            Some(DefId::from_raw(u32::try_from(i).ok()?))
-        } else {
-            None
-        }
-    })
 }
 
 fn format_type_name(resolved: &ResolvedProgram, types: &TypeInterner, id: TypeId) -> String {

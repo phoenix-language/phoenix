@@ -836,7 +836,7 @@ fn match_unreachable_duplicate_enum_variant() {
 }
 
 #[test]
-fn typeck_for_in_loop_ok() {
+fn for_in_user_option_not_hijacked() {
     let source = r"
 Option :: <t> enum { None, Some(t) };
 IntoIter :: trait {
@@ -861,22 +861,72 @@ S :: impl :: Iterator {
 };
 main :: () => { for x in R { n: 0 } { const _ = x; }; };
 ";
-    let typed = typed_program(source);
-    let main_layout = typed
-        .functions
-        .iter()
-        .find(|f| {
-            typed
-                .resolved
-                .defs
-                .get(f.def.index() as usize)
-                .is_some_and(|d| typed.resolved.interner.resolves_to(d.name, "main"))
-        })
-        .expect("main layout");
-    assert_eq!(
-        main_layout.for_in_plans.len(),
-        1,
-        "expected one ForInPlan on main"
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::UnsupportedFeature { feature, .. }
+                    if feature.contains("std Option")
+                    || feature.contains("std::core::iter")
+            )
+        }),
+        "expected for-in to require linked std, not user homonyms: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn for_in_without_std_option_errors() {
+    let source = r"
+IntoIter :: trait {
+    type Item;
+    type IntoIter;
+    into_iter :: (self) => Self::IntoIter;
+};
+Iterator :: trait {
+    type Item;
+    next :: (self: &mut Self) => s32;
+};
+R :: struct { n: s32 };
+S :: struct {};
+R :: impl :: IntoIter {
+    type Item = s32;
+    type IntoIter = S;
+    into_iter :: (self) => S { S {} };
+};
+S :: impl :: Iterator {
+    type Item = s32;
+    next :: (self: &mut Self) => s32 { 0 };
+};
+main :: () => { for x in R { n: 0 } { const _ = x; }; };
+";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::UnsupportedFeature { feature, .. }
+                    if feature.contains("std Option")
+            ) || matches!(
+                &e.error,
+                TypeCheckError::UnsupportedFeature { feature, .. }
+                    if feature.contains("std::core::iter")
+            )
+        }),
+        "expected for-in to require linked std traits/types: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn user_from_trait_not_in_std_kernel() {
+    let typed = typed_program(
+        "From :: <source> trait { from :: (value: source) => Self; }; main :: () => { };",
+    );
+    assert!(
+        typed.std_trait_kernel.from_trait.is_none(),
+        "user-defined From must not populate std trait kernel"
     );
 }
 

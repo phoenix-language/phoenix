@@ -352,11 +352,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/check.rs:2550–2569` (`option_ty_for_item`, `find_enum_def_by_name`); also `check.rs:2312` (`"Iterator"`), `bounds.rs:292` (`"From"`), `builtins.rs:192` (`"Drop"`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Beside the path-scoped `StdKernel`, ad-hoc *name-only* lookups locate std types — `find_enum_def_by_name("Option")` matches **any** enum named `Option` in **any** module.
 **Detail:** Verified: `option_ty_for_item` falls back from `std_kernel.option_enum` to a whole-`defs` scan by bare name. A user-defined `Option` enum can be silently adopted by `for-in` desugaring. The trait lookups (`Iterator`, `From`, `Drop`) have the same shape. This is exactly the "compiler special-casing by name" the design forbids — `StdKernel`'s module-path anchoring is the right pattern; the fallbacks undermine it.
 **Recommendation:** Delete the name-based fallbacks; if std isn't linked, the features that need these types should error ("`for-in` requires std `Option`"), not guess. Centralize all std-item lookup in `StdKernel`/`StdTraitKernel`.
+
+**Resolution:** Removed name-based fallbacks from `check.rs`, `bounds.rs`, and `builtins.rs`. Extended `StdTraitKernel` with path-scoped `Iterator`, `IntoIter`, and `From` from `std::core::iter` / `std::core::convert`. For-in and `?` now require linked std types via kernel only; regression tests in `typeck.rs` and `module_barrel.rs` (`std_iter`).
 
 ---
 
@@ -864,7 +866,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-023 | - [x]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
 | PHX-024 | - [x]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
 | PHX-025 | - [x]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
-| PHX-026 | - [ ]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
+| PHX-026 | - [x]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
 | PHX-027 | - [ ]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |
 | PHX-028 | - [ ]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |
 | PHX-029 | - [ ]  | Minor        | phx-compiler    | Lint pass has no type information                                        |

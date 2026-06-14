@@ -11,6 +11,8 @@ const STD_CLONE_MODULE: &str = "std::core::clone";
 const STD_DROP_MODULE: &str = "std::core::drop";
 const STD_CMP_MODULE: &str = "std::core::cmp";
 const STD_FMT_MODULE: &str = "std::core::fmt";
+const STD_ITER_MODULE: &str = "std::core::iter";
+const STD_CONVERT_MODULE: &str = "std::core::convert";
 
 /// Canonical std core trait definition ids.
 #[allow(clippy::struct_field_names)]
@@ -28,6 +30,12 @@ pub struct StdTraitKernel {
     pub eq_trait: Option<DefId>,
     /// `std::core::fmt::Debug`.
     pub debug_trait: Option<DefId>,
+    /// `std::core::iter::Iterator`.
+    pub iterator_trait: Option<DefId>,
+    /// `std::core::iter::IntoIter`.
+    pub into_iter_trait: Option<DefId>,
+    /// `std::core::convert::From`.
+    pub from_trait: Option<DefId>,
 }
 
 impl StdTraitKernel {
@@ -42,6 +50,9 @@ impl StdTraitKernel {
             partial_eq_trait: find_trait(resolved, interner, STD_CMP_MODULE, "PartialEq"),
             eq_trait: find_trait(resolved, interner, STD_CMP_MODULE, "Eq"),
             debug_trait: find_trait(resolved, interner, STD_FMT_MODULE, "Debug"),
+            iterator_trait: find_trait(resolved, interner, STD_ITER_MODULE, "Iterator"),
+            into_iter_trait: find_trait(resolved, interner, STD_ITER_MODULE, "IntoIter"),
+            from_trait: find_trait(resolved, interner, STD_CONVERT_MODULE, "From"),
         }
     }
 
@@ -55,8 +66,22 @@ impl StdTraitKernel {
             "PartialEq" => self.partial_eq_trait,
             "Eq" => self.eq_trait,
             "Debug" => self.debug_trait,
+            "Iterator" => self.iterator_trait,
+            "IntoIter" => self.into_iter_trait,
+            "From" => self.from_trait,
             _ => None,
         }
+    }
+
+    /// Returns the std trait `DefId` for an interned trait symbol, if linked.
+    #[must_use]
+    pub fn trait_def_for_symbol(
+        &self,
+        interner: &Interner,
+        trait_symbol: phx_syntax::Symbol,
+    ) -> Option<DefId> {
+        let name = interner.resolve(trait_symbol)?;
+        self.trait_def_for_name(interner, name)
     }
 
     /// Returns `true` when `trait_def` is the std `Copyable` marker.
@@ -69,6 +94,24 @@ impl StdTraitKernel {
     #[must_use]
     pub fn is_drop_trait(&self, trait_def: DefId) -> bool {
         self.drop_trait == Some(trait_def)
+    }
+
+    /// Returns `true` when `trait_def` is the std `Iterator` trait.
+    #[must_use]
+    pub fn is_iterator_trait(&self, trait_def: DefId) -> bool {
+        self.iterator_trait == Some(trait_def)
+    }
+
+    /// Returns `true` when `trait_def` is the std `IntoIter` trait.
+    #[must_use]
+    pub fn is_into_iter_trait(&self, trait_def: DefId) -> bool {
+        self.into_iter_trait == Some(trait_def)
+    }
+
+    /// Returns `true` when `trait_def` is the std `From` trait.
+    #[must_use]
+    pub fn is_from_trait(&self, trait_def: DefId) -> bool {
+        self.from_trait == Some(trait_def)
     }
 
     /// Returns whether a primitive satisfies a std trait bound.
