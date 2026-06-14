@@ -70,7 +70,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 
 | Item | Finding | Work |
 |---|---|---|
-| Validate operand arity for all opcodes (jumps, calls) | PHX-046 | `MalformedInstruction` on wrong arity |
+| Validate operand arity for all opcodes (jumps, calls) | PHX-046 | Done — jump group arity guard + mutation test |
 | Verify header version; reject overlapping/duplicate sections | PHX-047 | Pairwise section range checks; no last-wins decode |
 | Clamp untrusted `with_capacity` counts at decode | PHX-048 | Cap against remaining section bytes (DoS) |
 | Fix `DropLocal` stack leak; verifier enforces canonical stack depth at `Return` | PHX-035 | **Decided:** depth at `RETURN` must equal return arity (Resolved Design Decisions #3); spec in `vm-linear.md`, update POP note |

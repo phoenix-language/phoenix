@@ -69,6 +69,28 @@ fn mutate_jump_target_out_of_range_rejected_by_verifier() {
 }
 
 #[test]
+fn mutate_jump_zero_operands_rejected() {
+    let mut code = Vec::new();
+    code.extend(
+        Instruction {
+            opcode: Opcode::Jump,
+            operands: vec![],
+        }
+        .encode(),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode(),
+    );
+    let module = minimal_module(code, 4, 0, 0);
+    assert_verify_rejects(&module);
+    // Do not run the VM: zero-operand `Jump` defaults target to 0 and loops forever.
+}
+
+#[test]
 fn mutate_invalid_call_target_rejected() {
     let mut code = Vec::new();
     code.extend(

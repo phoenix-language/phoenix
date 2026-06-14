@@ -749,7 +749,13 @@ fn verify_operands(
             }
         }
         Opcode::Jump | Opcode::JumpIfTrue | Opcode::JumpIfFalse => {
-            let target = inst.operands.first().copied().unwrap_or(0);
+            if inst.operands.len() != 1 {
+                return Err(VerifyError::MalformedInstruction {
+                    function_id,
+                    offset,
+                });
+            }
+            let target = inst.operands[0];
             if target >= code_len || !inst_starts.contains(&target) {
                 return Err(VerifyError::InvalidJumpTarget {
                     function_id,
@@ -1020,6 +1026,131 @@ mod tests {
         assert!(matches!(
             err,
             VerifyError::InvalidJumpTarget { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_zero_operand_jump() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Jump,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_zero_operand_jump_if_true() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::JumpIfTrue,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_zero_operand_jump_if_false() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::JumpIfFalse,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_extra_operand_jump() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Jump,
+                operands: vec![0, 1],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 4, 0, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn reject_zero_operand_call() {
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::Call,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let module = minimal_module(code, 8, 0, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::MalformedInstruction { function_id: 0, .. }
         ));
     }
 

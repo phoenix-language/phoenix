@@ -617,11 +617,13 @@ Owns the PHX0 contract: header/section encode-decode, single `Opcode` enum (corr
 **Location:** `phx-bytecode/src/verify.rs:689–697`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Jump opcodes don't validate operand count — a zero-operand `Jump` gets target `0` via `unwrap_or(0)` and verifies if offset 0 is an instruction boundary (it always is).
 **Detail:** Verified. Same pattern exists for `Call`'s callee operand (`verify.rs:681`).
 **Recommendation:** Reject wrong-arity instructions as `MalformedInstruction` for every opcode with a defined operand contract.
+
+**Resolution:** Added `operands.len() != 1` guard for `Jump` / `JumpIfTrue` / `JumpIfFalse` in `verify_operands` (replacing `unwrap_or(0)` default). Audited remaining opcodes — all other families already reject wrong arity; `Call` was already guarded. Regression tests: `reject_zero_operand_jump`, `reject_zero_operand_jump_if_true`, `reject_zero_operand_jump_if_false`, `reject_extra_operand_jump`, `reject_zero_operand_call`, `mutate_jump_zero_operands_rejected`.
 
 ---
 
@@ -902,7 +904,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-043 | - [x]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
 | PHX-044 | - [x]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
 | PHX-045 | - [x]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
-| PHX-046 | - [ ]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
+| PHX-046 | - [x]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
 | PHX-047 | - [ ]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
 | PHX-048 | - [ ]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
 | PHX-049 | - [ ]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
