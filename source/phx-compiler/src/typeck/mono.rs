@@ -13,7 +13,7 @@ use super::mangle;
 use super::subst::Substitution;
 use super::types::TypeId;
 use crate::resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram};
-use crate::typeck::TypedProgram;
+use crate::typeck::{MethodCallSiteMeta, TypedProgram};
 
 /// One explicit generic function instantiation from a call site.
 #[derive(Debug, Clone)]
@@ -71,21 +71,20 @@ pub(crate) fn monomorphize(
 fn patch_method_call_sites(typed: &mut TypedProgram) {
     let sites: Vec<_> = typed.method_call_sites.keys().copied().collect();
     for site in sites {
-        let template = match typed.method_call_sites.get(&site) {
-            Some(def) => *def,
-            None => continue,
+        let Some(meta) = typed.method_call_sites.get(&site).cloned() else {
+            continue;
         };
-        if typed.specialized_from.contains_key(&template) {
+        if typed.specialized_from.contains_key(&meta.template) {
             continue;
         }
-        for inst in &typed.mono_insts {
-            if inst.base_fn != template {
-                continue;
-            }
-            if let Some(spec) = specialized_fn_for_inst(typed, template, &inst.args) {
-                typed.method_call_sites.insert(site, spec);
-                break;
-            }
+        if let Some(spec) = specialized_fn_for_inst(typed, meta.template, &meta.mono_args) {
+            typed.method_call_sites.insert(
+                site,
+                MethodCallSiteMeta {
+                    template: spec,
+                    mono_args: meta.mono_args,
+                },
+            );
         }
     }
 }
@@ -313,9 +312,9 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
                 *def = spec_def;
             }
         }
-        for def in typed.method_call_sites.values_mut() {
-            if *def == inst.base_fn {
-                *def = spec_def;
+        for meta in typed.method_call_sites.values_mut() {
+            if meta.template == inst.base_fn && meta.mono_args == inst.args {
+                meta.template = spec_def;
             }
         }
     }

@@ -512,10 +512,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/lower/expr.rs:774–788, 1344–1370` (`resolve_method_callee_for_ty`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Lowering re-implements method/trait resolution (walking `Ty::Named`, refs, aliases to find impl methods) instead of consuming typeck's answer.
-**Detail:** Typeck already resolved every call; duplicating the logic guarantees eventual divergence as trait dispatch grows (generics + defaults + `Self` handling). The crate already has the right pattern — `try_sites`, `intrinsic_call_sites` — method calls just never got a side table.
+**Detail:** Fixed: `MethodCallSiteMeta` records template callee and per-site mono args during typeck; monomorphization patches each site independently. Lowering reads `method_call_sites` only (plus `primitive_method_sites`); duplicate resolver deleted; missing entries emit `UnresolvedCallee`.
 **Recommendation:** Record resolved callee `DefId` + mono args in a `method_call_sites`-style table during typeck; delete the lowering-side resolver.
 
 ---
@@ -888,7 +888,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-035 | - [x]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
 | PHX-036 | - [x]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
 | PHX-037 | - [x]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
-| PHX-038 | - [ ]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
+| PHX-038 | - [x]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
 | PHX-039 | - [ ]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |
 | PHX-040 | - [ ]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |
 | PHX-041 | - [ ]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |

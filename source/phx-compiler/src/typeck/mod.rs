@@ -33,7 +33,7 @@ mod unify;
 
 pub(crate) use mono::{
     CrossCrateMonoReq, MonoInst, apply_mono_worklist, collect_cross_crate_mono_reqs,
-    is_generic_fn_template, is_generic_impl_method_template, specialized_fn_for_inst,
+    is_generic_fn_template, is_generic_impl_method_template,
 };
 
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};
@@ -101,8 +101,11 @@ pub struct TypedProgram {
     pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → callee fn def.
     pub associated_fn_sites: std::collections::HashMap<ExprId, DefId>,
-    /// Method call sites (`recv.method`) → callee fn def (template or monomorphized).
-    pub method_call_sites: std::collections::HashMap<ExprId, DefId>,
+    /// Method call sites (`recv.method`) keyed by postfix expression id.
+    ///
+    /// Typeck records the resolved template and mono args; monomorphization patches `template`
+    /// to the specialized callee. Lowering must consume this table and must not re-resolve methods.
+    pub method_call_sites: std::collections::HashMap<ExprId, MethodCallSiteMeta>,
     /// Value types for defs (functions, types, consts) from the template pass; used when re-checking mono bodies.
     pub value_types: std::collections::HashMap<crate::resolver::DefId, TypeId>,
     /// Trait default methods synthesized for empty/partial impl blocks.
@@ -122,6 +125,15 @@ pub struct IndirectCallMeta {
     pub foreign: bool,
 }
 
+/// Resolved method call metadata keyed by postfix expression [`ExprId`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MethodCallSiteMeta {
+    /// Generic template or monomorphized callee `DefId` after specialization.
+    pub template: DefId,
+    /// Type arguments for monomorphization (impl + method generics), in parameter order.
+    pub mono_args: Vec<TypeId>,
+}
+
 /// Lowering hint for trait method calls on primitive receivers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimitiveMethodSite {
@@ -129,12 +141,4 @@ pub enum PrimitiveMethodSite {
     Eq,
     /// `Clone::clone` — identity (value already on stack).
     Clone,
-}
-
-/// Generic parameter defs for a function template (impl or fn generics).
-pub(crate) fn generic_param_defs_for_fn_base(
-    resolved: &crate::resolver::ResolvedProgram,
-    base: crate::resolver::DefId,
-) -> Option<Vec<crate::resolver::DefId>> {
-    mono::generic_param_defs_for_fn_base(resolved, base)
 }

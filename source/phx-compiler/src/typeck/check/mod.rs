@@ -25,6 +25,7 @@ use phx_syntax::Symbol;
 
 use crate::resolver::{DefId, ResolvedProgram};
 use crate::typeck::IndirectCallMeta;
+use crate::typeck::MethodCallSiteMeta;
 use crate::typeck::PrimitiveMethodSite;
 use crate::typeck::bindings::{FunctionLayout, FunctionLayoutBuilder};
 use crate::typeck::intrinsic_kernel::{IntrinsicKernel, IntrinsicSite};
@@ -102,8 +103,8 @@ pub struct TypeChecker<'a> {
     primitive_method_sites: HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → monomorphized or template fn def.
     associated_fn_sites: HashMap<ExprId, DefId>,
-    /// Method call sites (`recv.method`) → monomorphized or template fn def.
-    method_call_sites: HashMap<ExprId, DefId>,
+    /// Method call sites (`recv.method`) → resolved callee and mono args.
+    method_call_sites: HashMap<ExprId, MethodCallSiteMeta>,
     /// Indirect fn pointer call sites for lowering.
     indirect_call_sites: HashMap<ExprId, IndirectCallMeta>,
     /// VM intrinsic call sites (`alloc_bytes`, …).

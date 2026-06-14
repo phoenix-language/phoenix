@@ -424,7 +424,7 @@ mod tests {
     use phx_diagnostics::LowerError;
     use std::path::Path;
 
-    fn main_layout<'a>(typed: &'a TypedProgram) -> &'a FunctionLayout {
+    fn main_layout(typed: &TypedProgram) -> &FunctionLayout {
         typed
             .functions
             .iter()
@@ -511,5 +511,57 @@ mod tests {
             }),
             "expected specialized function with typechecked expression range"
         );
+    }
+
+    #[test]
+    fn method_call_sites_specialize_per_receiver_type() {
+        const SOURCE: &str = r"
+Box :: <t> struct { v: t };
+
+Box :: <t> impl {
+  get :: () => t { self.v };
+};
+
+main :: () => {
+  const a = Box :: <s32> { v: 1 };
+  const b = Box :: <u32> { v: 2u };
+  const x = a.get();
+  const y = b.get();
+  const _x = x;
+  const _y = y;
+};
+";
+        let unit = compile_source(SOURCE, None).expect("compile");
+        let callees: Vec<_> = unit
+            .typed
+            .method_call_sites
+            .values()
+            .map(|meta| meta.template)
+            .collect();
+        assert_eq!(
+            callees.len(),
+            2,
+            "expected two method call sites, got {callees:?}"
+        );
+        assert_ne!(
+            callees[0], callees[1],
+            "s32 and u32 calls must monomorphize to distinct callees"
+        );
+        assert!(
+            callees
+                .iter()
+                .all(|def| unit.typed.specialized_from.contains_key(def)),
+            "expected specialized callees, got {callees:?}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "unresolved callee during lowering")]
+    fn missing_method_call_site_fails_lower() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/cli/fixtures/generic_impl_method.phx");
+        let mut unit = crate::check_file(&path).expect("check");
+        unit.typed.method_call_sites.clear();
+        let _ = crate::lower::lower(&unit.typed);
     }
 }

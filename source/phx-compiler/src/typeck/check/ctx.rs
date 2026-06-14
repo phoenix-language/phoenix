@@ -12,6 +12,7 @@ use super::StructFields;
 use super::TypeChecker;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 use crate::typeck::IndirectCallMeta;
+use crate::typeck::MethodCallSiteMeta;
 use crate::typeck::PrimitiveMethodSite;
 use crate::typeck::bindings::{BindingKind, FunctionLayout};
 use crate::typeck::builtins::{bool_type, implements_drop, is_copyable, unit};
@@ -353,7 +354,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, PrimitiveMethodSite>,
         HashMap<ExprId, DefId>,
-        HashMap<ExprId, DefId>,
+        HashMap<ExprId, MethodCallSiteMeta>,
         HashMap<DefId, TypeId>,
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
@@ -401,7 +402,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<TypeMonoKey, TypeId>,
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, DefId>,
-        HashMap<ExprId, DefId>,
+        HashMap<ExprId, MethodCallSiteMeta>,
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
         HashMap<ExprId, u32>,

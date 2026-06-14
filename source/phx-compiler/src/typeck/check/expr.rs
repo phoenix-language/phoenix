@@ -16,6 +16,7 @@ use super::TypeChecker;
 use super::decl::generic_bounds_in_decl;
 use super::impls::find_trait_method_def;
 use crate::resolver::{DefId, DefKind};
+use crate::typeck::MethodCallSiteMeta;
 use crate::typeck::PrimitiveMethodSite;
 use crate::typeck::bindings::BindingKind;
 use crate::typeck::bounds::{
@@ -2230,7 +2231,6 @@ impl TypeChecker<'_> {
         let Some(fn_def) = fn_def else {
             return self.emit_ambiguous_or_unresolved_method(receiver, type_def, name, span);
         };
-        self.method_call_sites.insert(site_id, fn_def);
         self.check_unsafe_fn_call(fn_def, span);
         let Some(&fn_ty) = self.value_types.get(&fn_def) else {
             return self.emit_unresolved_method(receiver, name, span);
@@ -2320,7 +2320,14 @@ impl TypeChecker<'_> {
             }
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
-            self.record_mono_inst(fn_def, mono_args, name.id);
+            self.record_mono_inst(fn_def, mono_args.clone(), name.id);
+            self.method_call_sites.insert(
+                site_id,
+                MethodCallSiteMeta {
+                    template: fn_def,
+                    mono_args,
+                },
+            );
             let out = Substitution::apply(&mut self.types, ret, &subst);
             if let Some(expr) = receiver_expr {
                 self.mark_method_receiver_moved(expr, receiver, fn_def);
@@ -2355,6 +2362,13 @@ impl TypeChecker<'_> {
         if let Some(expr) = receiver_expr {
             self.mark_method_receiver_moved(expr, receiver, fn_def);
         }
+        self.method_call_sites.insert(
+            site_id,
+            MethodCallSiteMeta {
+                template: fn_def,
+                mono_args: Vec::new(),
+            },
+        );
         ret
     }
 

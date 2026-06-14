@@ -726,6 +726,10 @@ fn function_layout(typed: &TypedProgram, def: DefId) -> Option<&FunctionLayout> 
     typed.functions.iter().find(|f| f.def == def)
 }
 
+fn method_callee_from_site(typed: &TypedProgram, site: ExprId) -> Option<DefId> {
+    typed.method_call_sites.get(&site).map(|meta| meta.template)
+}
+
 fn method_ref_receiver_ty(ctx: &LowerCtx<'_>, callee: DefId) -> Option<TypeId> {
     let layout = function_layout(ctx.typed, callee)?;
     let first_param = layout
@@ -738,71 +742,20 @@ fn method_ref_receiver_ty(ctx: &LowerCtx<'_>, callee: DefId) -> Option<TypeId> {
     }
 }
 
-fn resolve_method_callee(ctx: &LowerCtx<'_>, base: &ExprNode, name: &Ident) -> Option<DefId> {
-    let receiver_ty = match &base.inner {
-        Expr::Ident(ident) => ctx.layout.binding(ident.symbol).map(|b| b.ty)?,
-        _ => return None,
-    };
-    resolve_method_callee_for_ty(ctx, receiver_ty, name.symbol)
-}
-
-fn resolve_method_callee_for_ty(
+fn single_method_with_ref_receiver(
     ctx: &LowerCtx<'_>,
-    receiver_ty: TypeId,
-    method: Symbol,
-) -> Option<DefId> {
-    let receiver_ty = concrete_method_receiver_ty(ctx, receiver_ty);
-    let (type_def, implementer_args) = named_type_parts(ctx.typed, receiver_ty)?;
-    let template = ctx
-        .typed
-        .layout
-        .inherent_methods
-        .get(&(type_def, method))
-        .copied()
-        .or_else(|| find_trait_method(ctx, type_def, &implementer_args, method))?;
-    let mono_args = mono_args_for_current_fn(ctx).unwrap_or(implementer_args);
-    Some(
-        crate::typeck::specialized_fn_for_inst(ctx.typed, template, &mono_args).unwrap_or(template),
-    )
-}
-
-fn concrete_method_receiver_ty(ctx: &LowerCtx<'_>, receiver_ty: TypeId) -> TypeId {
-    let Ty::Named { def, .. } = ctx.typed.types.get(receiver_ty).clone() else {
-        return receiver_ty;
-    };
-    if !ctx
-        .typed
-        .resolved
-        .defs
-        .get(def.index() as usize)
-        .is_some_and(|d| d.kind == DefKind::GenericParam)
-    {
-        return receiver_ty;
+    ops: &[PostfixOp],
+    postfix_expr_id: ExprId,
+) -> Option<(DefId, TypeId)> {
+    if ops.len() != 1 {
+        return None;
     }
-    concrete_type_for_generic_param(ctx, def).unwrap_or(receiver_ty)
-}
-
-fn concrete_type_for_generic_param(ctx: &LowerCtx<'_>, param_def: DefId) -> Option<TypeId> {
-    let base_fn = ctx.typed.specialized_from.get(&ctx.layout.def)?;
-    let inst = ctx
-        .typed
-        .mono_insts
-        .iter()
-        .find(|i| i.base_fn == *base_fn)?;
-    let param_defs = crate::typeck::generic_param_defs_for_fn_base(&ctx.typed.resolved, *base_fn)?;
-    param_defs
-        .iter()
-        .zip(inst.args.iter())
-        .find_map(|(p, ty)| (*p == param_def).then_some(*ty))
-}
-
-fn mono_args_for_current_fn(ctx: &LowerCtx<'_>) -> Option<Vec<TypeId>> {
-    let base_fn = ctx.typed.specialized_from.get(&ctx.layout.def)?;
-    ctx.typed
-        .mono_insts
-        .iter()
-        .find(|i| i.base_fn == *base_fn)
-        .map(|i| i.args.clone())
+    let PostfixOp::Method { .. } = &ops[0] else {
+        return None;
+    };
+    let callee = method_callee_from_site(ctx.typed, postfix_expr_id)?;
+    let ref_ty = method_ref_receiver_ty(ctx, callee)?;
+    Some((callee, ref_ty))
 }
 
 fn emit_ref_method_receiver(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
@@ -825,22 +778,6 @@ fn emit_ref_receiver_from_stack_value(ctx: &mut LowerCtx<'_>, callee: DefId, val
         prim_kind: prim_kind_byte(ctx.typed, value_ty),
     });
     ctx.emit(IrInst::AddressOfLocal { slot });
-}
-
-fn single_method_with_ref_receiver(
-    ctx: &LowerCtx<'_>,
-    base: &ExprNode,
-    ops: &[PostfixOp],
-) -> Option<(DefId, TypeId)> {
-    if ops.len() != 1 {
-        return None;
-    }
-    let PostfixOp::Method { name, .. } = &ops[0] else {
-        return None;
-    };
-    let callee = resolve_method_callee(ctx, base, name)?;
-    let ref_ty = method_ref_receiver_ty(ctx, callee)?;
-    Some((callee, ref_ty))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -870,7 +807,7 @@ fn lower_postfix_inner(
         return;
     }
 
-    let ref_method = single_method_with_ref_receiver(ctx, base, ops);
+    let ref_method = single_method_with_ref_receiver(ctx, ops, postfix_expr_id);
     let mut receiver_ty = if let Some((_, ref_ty)) = ref_method {
         let _ = ctx.expr_ty();
         emit_ref_method_receiver(ctx, base);
@@ -925,9 +862,7 @@ fn lower_postfix_inner(
                 let callee = ref_method
                     .as_ref()
                     .map(|(c, _)| *c)
-                    .or_else(|| ctx.typed.method_call_sites.get(&postfix_expr_id).copied())
-                    .or_else(|| resolve_method_callee_for_ty(ctx, receiver_ty, name.symbol))
-                    .or_else(|| resolve_method_callee(ctx, base, name));
+                    .or_else(|| method_callee_from_site(ctx.typed, postfix_expr_id));
                 if let Some(callee) = callee {
                     if ref_method.is_none() {
                         emit_ref_receiver_from_stack_value(ctx, callee, receiver_ty);
@@ -936,6 +871,11 @@ fn lower_postfix_inner(
                         lower_expr(ctx, arg);
                     }
                     emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
+                } else {
+                    for arg in args {
+                        lower_expr(ctx, arg);
+                    }
+                    ctx.error_unresolved_callee(name.span);
                 }
             }
             PostfixOp::Call { args, .. } => {
@@ -1305,33 +1245,6 @@ fn lower_primitive_method(
             // Receiver value already on stack; clone is identity for Copyable primitives.
             let _ = result_ty;
         }
-    }
-}
-
-fn find_trait_method(
-    ctx: &LowerCtx<'_>,
-    type_def: DefId,
-    implementer_args: &[TypeId],
-    method: Symbol,
-) -> Option<DefId> {
-    let mut matches: Vec<DefId> = ctx
-        .typed
-        .layout
-        .trait_methods
-        .iter()
-        .filter(|((key, m), _)| {
-            key.implementer == type_def
-                && key.implementer_args.as_slice() == implementer_args
-                && *m == method
-        })
-        .map(|(_, f)| *f)
-        .collect();
-    matches.sort_by_key(|d| d.index());
-    matches.dedup();
-    if matches.len() == 1 {
-        Some(matches[0])
-    } else {
-        None
     }
 }
 
