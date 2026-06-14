@@ -49,6 +49,84 @@ impl Instruction {
         }
         Ok((Self { opcode, operands }, pos))
     }
+
+    /// Rebases constant-pool and type-table operand indices when merging module object files.
+    ///
+    /// [`Opcode::Call`] and [`Opcode::MakeFnPtr`] operands are globally assigned function ids
+    /// and are intentionally unchanged. Jump targets, local slots, and primitive-kind operands
+    /// are function-local or wire bytes and are also unchanged.
+    #[must_use]
+    pub fn apply_link_bases(&self, const_base: u32, type_base: u32) -> Self {
+        let mut ops = self.operands.clone();
+        match self.opcode {
+            Opcode::Const | Opcode::MakeStr => {
+                if let Some(slot) = ops.first_mut() {
+                    *slot = slot.saturating_add(const_base);
+                }
+            }
+            Opcode::MakeStruct
+            | Opcode::MakeEnum
+            | Opcode::GetField
+            | Opcode::SetField
+            | Opcode::MatchTag => {
+                if let Some(slot) = ops.first_mut() {
+                    *slot = slot.saturating_add(type_base);
+                }
+            }
+            Opcode::CallIndirect => {
+                if let Some(slot) = ops.get_mut(1) {
+                    *slot = slot.saturating_add(type_base);
+                }
+            }
+            Opcode::LoadLocal
+            | Opcode::StoreLocal
+            | Opcode::Pop
+            | Opcode::Add
+            | Opcode::Sub
+            | Opcode::Mul
+            | Opcode::Div
+            | Opcode::Eq
+            | Opcode::Lt
+            | Opcode::Jump
+            | Opcode::JumpIfTrue
+            | Opcode::JumpIfFalse
+            | Opcode::Return
+            | Opcode::Call
+            | Opcode::Cast
+            | Opcode::Mod
+            | Opcode::Pow
+            | Opcode::Neg
+            | Opcode::Not
+            | Opcode::BitNot
+            | Opcode::BitAnd
+            | Opcode::BitOr
+            | Opcode::BitXor
+            | Opcode::Shl
+            | Opcode::Shr
+            | Opcode::Ne
+            | Opcode::Le
+            | Opcode::Ge
+            | Opcode::MakeTuple
+            | Opcode::MakeArray
+            | Opcode::Index
+            | Opcode::Trap
+            | Opcode::Alloc
+            | Opcode::PtrLoad
+            | Opcode::PtrStore
+            | Opcode::MakeSlice
+            | Opcode::AddressOfLocal
+            | Opcode::StrAsSlice
+            | Opcode::MakeFnPtr
+            | Opcode::LoadAggViaLocalPtr
+            | Opcode::MakeSliceFromPtr
+            | Opcode::Free
+            | Opcode::IndexStore => {}
+        }
+        Self {
+            opcode: self.opcode,
+            operands: ops,
+        }
+    }
 }
 
 /// Instruction decode errors.
@@ -58,4 +136,83 @@ pub enum InstrError {
     Truncated,
     /// Invalid opcode byte.
     Opcode(super::opcode::OpcodeError),
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::Opcode;
+
+    #[test]
+    fn apply_link_bases_rebases_const_and_type_operands() {
+        let cases = [
+            (
+                Instruction {
+                    opcode: Opcode::Const,
+                    operands: vec![2, 0],
+                },
+                vec![7, 0],
+            ),
+            (
+                Instruction {
+                    opcode: Opcode::MakeStr,
+                    operands: vec![1],
+                },
+                vec![6],
+            ),
+            (
+                Instruction {
+                    opcode: Opcode::GetField,
+                    operands: vec![0, 1],
+                },
+                vec![3, 1],
+            ),
+            (
+                Instruction {
+                    opcode: Opcode::MatchTag,
+                    operands: vec![0, 2],
+                },
+                vec![3, 2],
+            ),
+            (
+                Instruction {
+                    opcode: Opcode::CallIndirect,
+                    operands: vec![1, 4],
+                },
+                vec![1, 7],
+            ),
+        ];
+        for (inst, expected) in cases {
+            let patched = inst.apply_link_bases(5, 3);
+            assert_eq!(patched.operands, expected, "{:?}", inst.opcode);
+        }
+    }
+
+    #[test]
+    fn apply_link_bases_leaves_non_pool_operands_unchanged() {
+        let cases = [
+            Instruction {
+                opcode: Opcode::MakeTuple,
+                operands: vec![2],
+            },
+            Instruction {
+                opcode: Opcode::MakeArray,
+                operands: vec![4],
+            },
+            Instruction {
+                opcode: Opcode::Call,
+                operands: vec![9],
+            },
+            Instruction {
+                opcode: Opcode::Cast,
+                operands: vec![1, 2],
+            },
+        ];
+        for inst in cases {
+            let expected = inst.operands.clone();
+            let patched = inst.apply_link_bases(5, 3);
+            assert_eq!(patched.operands, expected, "{:?}", inst.opcode);
+        }
+    }
 }

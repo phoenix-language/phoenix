@@ -1,0 +1,10 @@
+[project]
+name = "link_rebase"
+version = "0.1.0"
+description = "Cross-module link rebase: GetField and MatchTag"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"

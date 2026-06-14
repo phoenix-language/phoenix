@@ -2,7 +2,7 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstPool, ENTRY_NONE, FileHeader, FunctionRecord, FunctionTable, Instruction,
-    LocalLayoutTable, Opcode, TypeTable,
+    LocalLayoutTable, TypeTable,
 };
 use std::collections::HashMap;
 
@@ -74,9 +74,15 @@ impl std::error::Error for LinkError {}
 /// ## Function ids and `Call` operands
 ///
 /// Per-module codegen assigns **globally unique** `function_id` values before link (see
-/// `build_global_fn_map` in the build driver). [`Opcode::Call`] operands are those ids; the
-/// linker does **not** rewrite them. It only rebases constant and type indices in each module's
-/// code during instruction patching. Duplicate `function_id` across inputs is [`LinkError::DuplicateFunctionId`].
+/// `build_global_fn_map` in the build driver). [`phx_bytecode::Opcode::Call`] and
+/// [`phx_bytecode::Opcode::MakeFnPtr`] operands are those ids; the linker does **not** rewrite
+/// them. It rebases constant-pool indices on [`phx_bytecode::Opcode::Const`] and
+/// [`phx_bytecode::Opcode::MakeStr`], and type-table indices on
+/// [`phx_bytecode::Opcode::MakeStruct`], [`phx_bytecode::Opcode::MakeEnum`],
+/// [`phx_bytecode::Opcode::GetField`], [`phx_bytecode::Opcode::SetField`],
+/// [`phx_bytecode::Opcode::MatchTag`], and the `sig_type_id` operand of
+/// [`phx_bytecode::Opcode::CallIndirect`].
+/// Duplicate `function_id` across inputs is [`LinkError::DuplicateFunctionId`].
 ///
 /// `entry_function_id` is the global id of `main` (or [`ENTRY_NONE`] for libraries).
 ///
@@ -215,28 +221,9 @@ fn patch_code(
         let Ok((inst, next)) = Instruction::decode_at(body, pos) else {
             break;
         };
-        let patched = patch_instruction(&inst, const_base, type_base);
+        let patched = inst.apply_link_bases(const_base, type_base);
         out.extend(patched.encode());
         pos = next;
     }
     out
-}
-
-fn patch_instruction(inst: &Instruction, const_base: u32, type_base: u32) -> Instruction {
-    let mut ops = inst.operands.clone();
-    match inst.opcode {
-        Opcode::Const if !ops.is_empty() => {
-            ops[0] = ops[0].saturating_add(const_base);
-        }
-        Opcode::MakeStruct | Opcode::MakeEnum | Opcode::MakeArray | Opcode::MakeTuple
-            if !ops.is_empty() =>
-        {
-            ops[0] = ops[0].saturating_add(type_base);
-        }
-        _ => {}
-    }
-    Instruction {
-        opcode: inst.opcode,
-        operands: ops,
-    }
 }

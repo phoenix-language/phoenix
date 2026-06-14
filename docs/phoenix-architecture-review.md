@@ -452,7 +452,7 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/link/mod.rs:225–241` (`patch_instruction`)
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** The linker rebases only `Const` (const_base) and `MakeStruct`/`MakeEnum`/`MakeArray`/`MakeTuple` (type_base); `GetField`, `SetField`, `MatchTag`, `MakeStr`, and `CallIndirect`-adjacent operands keep their module-local indices.
 **Detail:** Verified: merged type tables *are* rebased (`r.type_id += type_base`, `link/mod.rs:122–136`), but instructions referencing them are not patched, so after linking they index the first module's region. This is masked today only because every module artifact embeds the *whole-program* type/constant tables (see PHX-036) — the unpatched operands accidentally hit identical entries. The moment tables become module-local, every cross-module field access or enum match miscompiles.
@@ -488,7 +488,7 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/lower/mod.rs:57–82` (`lower_module`); `codegen/mod.rs` (`codegen_module`)
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Per-module artifacts embed the whole-program literal pool (and effectively whole-program tables); per-module lowering is a filter over a full-program lowering.
 **Detail:** Object files are bloated, "incremental" artifacts are not module-local, and — critically — this is the accident that masks PHX-033.
@@ -883,10 +883,10 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-030 | - [x]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |
 | PHX-031 | - [x]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |
 | PHX-032 | - [ ]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
-| PHX-033 | - [ ]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |
+| PHX-033 | - [x]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |
 | PHX-034 | - [ ]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
 | PHX-035 | - [ ]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
-| PHX-036 | - [ ]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
+| PHX-036 | - [x]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
 | PHX-037 | - [ ]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
 | PHX-038 | - [ ]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
 | PHX-039 | - [ ]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |

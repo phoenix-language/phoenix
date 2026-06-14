@@ -17,6 +17,11 @@ pub enum CodegenError {
         /// IR literal index from [`crate::ir::IrInst::Const`] or [`crate::ir::IrInst::MakeStr`].
         literal_index: u32,
     },
+    /// IR references a layout type id missing from the module-local type remap.
+    MissingTypeId {
+        /// Program-global layout type id.
+        type_id: u32,
+    },
 }
 
 impl std::fmt::Display for CodegenError {
@@ -32,6 +37,12 @@ impl std::fmt::Display for CodegenError {
                 write!(
                     f,
                     "codegen: constant pool has no entry for IR literal index {literal_index}"
+                )
+            }
+            Self::MissingTypeId { type_id } => {
+                write!(
+                    f,
+                    "codegen: module type table has no entry for layout type id {type_id}"
                 )
             }
         }

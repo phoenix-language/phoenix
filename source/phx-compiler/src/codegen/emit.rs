@@ -32,16 +32,32 @@ pub fn emit_function(
     pool: &mut ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
+    type_remap: Option<&std::collections::HashMap<u32, u32>>,
 ) -> Result<EmittedFunction, CodegenError> {
-    let block_starts = compute_block_starts(func, pool, def_to_fn)?;
-    let (code, stack_max) = emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts)?;
+    let block_starts = compute_block_starts(func, pool, def_to_fn, type_remap)?;
+    let (code, stack_max) =
+        emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts, type_remap)?;
     Ok(EmittedFunction { code, stack_max })
+}
+
+fn map_type_id(
+    global: u32,
+    type_remap: Option<&std::collections::HashMap<u32, u32>>,
+) -> Result<u32, CodegenError> {
+    match type_remap {
+        None => Ok(global),
+        Some(map) => map
+            .get(&global)
+            .copied()
+            .ok_or(CodegenError::MissingTypeId { type_id: global }),
+    }
 }
 
 fn compute_block_starts(
     func: &IrFunction,
     pool: &ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
+    type_remap: Option<&std::collections::HashMap<u32, u32>>,
 ) -> Result<Vec<u32>, CodegenError> {
     let n = func.blocks.len();
     let mut starts = vec![0u32; n];
@@ -51,7 +67,7 @@ fn compute_block_starts(
         starts[block_id] = offset;
         for inst in &block.insts {
             scratch.clear();
-            emit_inst(&mut scratch, inst, pool, def_to_fn, &starts)?;
+            emit_inst(&mut scratch, inst, pool, def_to_fn, &starts, type_remap)?;
             offset = offset.saturating_add(u32::try_from(scratch.len()).unwrap_or(u32::MAX));
         }
     }
@@ -207,11 +223,12 @@ fn emit_blocks(
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
     block_starts: &[u32],
+    type_remap: Option<&std::collections::HashMap<u32, u32>>,
 ) -> Result<(Vec<u8>, u16), CodegenError> {
     let mut out = Vec::new();
     for block in &func.blocks {
         for inst in &block.insts {
-            emit_inst(&mut out, inst, pool, def_to_fn, block_starts)?;
+            emit_inst(&mut out, inst, pool, def_to_fn, block_starts, type_remap)?;
         }
     }
     let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity);
@@ -370,6 +387,7 @@ fn emit_inst(
     pool: &ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     block_starts: &[u32],
+    type_remap: Option<&std::collections::HashMap<u32, u32>>,
 ) -> Result<(), CodegenError> {
     match inst {
         IrInst::Const {
@@ -413,10 +431,8 @@ fn emit_inst(
             expected_arity,
             ..
         } => {
-            out.extend(encode(
-                Opcode::CallIndirect,
-                &[*expected_arity, *sig_type_id],
-            ));
+            let sig = map_type_id(*sig_type_id, type_remap)?;
+            out.extend(encode(Opcode::CallIndirect, &[*expected_arity, sig]));
         }
         IrInst::Return { .. } => {
             out.extend(encode(Opcode::Return, &[]));
@@ -438,16 +454,18 @@ fn emit_inst(
             type_id,
             field_count,
         } => {
-            out.extend(encode(Opcode::MakeStruct, &[*type_id, *field_count]));
+            let ty = map_type_id(*type_id, type_remap)?;
+            out.extend(encode(Opcode::MakeStruct, &[ty, *field_count]));
         }
         IrInst::MakeEnum {
             type_id,
             variant_tag,
             payload_count,
         } => {
+            let ty = map_type_id(*type_id, type_remap)?;
             out.extend(encode(
                 Opcode::MakeEnum,
-                &[*type_id, *variant_tag, *payload_count],
+                &[ty, *variant_tag, *payload_count],
             ));
         }
         IrInst::GetField {
@@ -455,19 +473,22 @@ fn emit_inst(
             field_index,
             ..
         } => {
-            out.extend(encode(Opcode::GetField, &[*type_id, *field_index]));
+            let ty = map_type_id(*type_id, type_remap)?;
+            out.extend(encode(Opcode::GetField, &[ty, *field_index]));
         }
         IrInst::SetField {
             type_id,
             field_index,
         } => {
-            out.extend(encode(Opcode::SetField, &[*type_id, *field_index]));
+            let ty = map_type_id(*type_id, type_remap)?;
+            out.extend(encode(Opcode::SetField, &[ty, *field_index]));
         }
         IrInst::MatchTag {
             type_id,
             variant_tag,
         } => {
-            out.extend(encode(Opcode::MatchTag, &[*type_id, *variant_tag]));
+            let ty = map_type_id(*type_id, type_remap)?;
+            out.extend(encode(Opcode::MatchTag, &[ty, *variant_tag]));
         }
         IrInst::Cast { from_kind, to_kind } => {
             out.extend(encode(

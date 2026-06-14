@@ -11,10 +11,10 @@ use phx_bytecode::{
     BytecodeModule, ENTRY_NONE, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable,
     LocalLayoutTable, LocalSlotKind, TypeKind, TypeRecord, TypeTable,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::PxiType;
-use crate::ir::IrModule;
+use crate::ir::{IrFunction, IrInst, IrModule};
 use crate::resolver::DefId;
 use crate::typeck::{
     BindingKind, ProgramLayout, Ty, TypeInterner, TypedProgram, slot_kind_for_binding,
@@ -81,6 +81,162 @@ pub fn build_type_table(layout: &ProgramLayout, types: &TypeInterner) -> TypeTab
     TypeTable { records }
 }
 
+/// Collects layout type ids referenced by aggregate and indirect-call IR in `ir`.
+#[must_use]
+pub fn collect_type_ids_from_ir(ir: &IrModule) -> HashSet<u32> {
+    let mut used = HashSet::new();
+    for func in &ir.functions {
+        collect_type_ids_from_function(func, &mut used);
+    }
+    used
+}
+
+fn collect_type_ids_from_function(func: &IrFunction, used: &mut HashSet<u32>) {
+    for block in &func.blocks {
+        for inst in &block.insts {
+            match inst {
+                IrInst::MakeStruct { type_id, .. }
+                | IrInst::MakeEnum { type_id, .. }
+                | IrInst::GetField { type_id, .. }
+                | IrInst::SetField { type_id, .. }
+                | IrInst::MatchTag { type_id, .. } => {
+                    used.insert(*type_id);
+                }
+                IrInst::CallIndirect { sig_type_id, .. } => {
+                    used.insert(*sig_type_id);
+                }
+                IrInst::Const { .. }
+                | IrInst::LoadLocal { .. }
+                | IrInst::StoreLocal { .. }
+                | IrInst::BinOp { .. }
+                | IrInst::Call { .. }
+                | IrInst::MakeFnPtr { .. }
+                | IrInst::Return { .. }
+                | IrInst::Jump { .. }
+                | IrInst::JumpIf { .. }
+                | IrInst::Cast { .. }
+                | IrInst::Neg { .. }
+                | IrInst::Not { .. }
+                | IrInst::BitNot { .. }
+                | IrInst::MakeTuple { .. }
+                | IrInst::MakeArray { .. }
+                | IrInst::Index { .. }
+                | IrInst::IndexStore { .. }
+                | IrInst::PtrLoad { .. }
+                | IrInst::AddressOfLocal { .. }
+                | IrInst::LoadAggViaLocalPtr
+                | IrInst::Alloc { .. }
+                | IrInst::PtrStore { .. }
+                | IrInst::Free
+                | IrInst::Pop
+                | IrInst::MakeStr { .. }
+                | IrInst::StrAsSlice
+                | IrInst::TrapGivenMismatch
+                | IrInst::DropLocal { .. }
+                | IrInst::MakeSlice { .. }
+                | IrInst::MakeSliceFromPtr { .. } => {}
+            }
+        }
+    }
+}
+
+/// Builds a module-local type table containing only ids in `used`, with dense local ids.
+#[must_use]
+pub fn build_module_type_table(
+    layout: &ProgramLayout,
+    types: &TypeInterner,
+    used: &HashSet<u32>,
+) -> (TypeTable, HashMap<u32, u32>) {
+    let mut records = Vec::new();
+    let mut remap = HashMap::new();
+
+    let mut push = |global_id: u32, kind: TypeKind, aux: Vec<u8>| {
+        if !used.contains(&global_id) {
+            return;
+        }
+        if remap.contains_key(&global_id) {
+            return;
+        }
+        let local_id = u32::try_from(records.len()).unwrap_or(u32::MAX);
+        remap.insert(global_id, local_id);
+        records.push(TypeRecord {
+            type_id: local_id,
+            kind,
+            aux,
+        });
+    };
+
+    for (&def, sl) in &layout.structs {
+        let Some(type_id) = layout.type_id(def) else {
+            continue;
+        };
+        let mut aux = Vec::new();
+        let field_count = u32::try_from(sl.fields.len()).unwrap_or(u32::MAX);
+        aux.extend_from_slice(&field_count.to_le_bytes());
+        for (name, _ty) in &sl.fields {
+            aux.extend_from_slice(&name.index().to_le_bytes());
+            aux.extend_from_slice(&0u32.to_le_bytes());
+        }
+        push(type_id, TypeKind::Struct, aux);
+    }
+
+    for (&def, el) in &layout.enums {
+        let Some(type_id) = layout.type_id(def) else {
+            continue;
+        };
+        let mut aux = Vec::new();
+        let variant_count = u32::try_from(el.variants.len()).unwrap_or(u32::MAX);
+        aux.extend_from_slice(&variant_count.to_le_bytes());
+        for v in &el.variants {
+            aux.extend_from_slice(&v.name.index().to_le_bytes());
+            aux.extend_from_slice(&v.tag.to_le_bytes());
+            let payload_len = u32::try_from(v.kind.payload_len()).unwrap_or(u32::MAX);
+            aux.extend_from_slice(&payload_len.to_le_bytes());
+        }
+        push(type_id, TypeKind::Enum, aux);
+    }
+
+    for (&fn_ty, &type_id) in &layout.fn_sig_ids {
+        let param_count = match types.get(fn_ty) {
+            Ty::Fn { params, .. } => u32::try_from(params.len()).unwrap_or(u32::MAX),
+            _ => 0,
+        };
+        push(type_id, TypeKind::FnSig, param_count.to_le_bytes().to_vec());
+    }
+
+    for (key, sl) in &layout.specialized_structs {
+        let Some(type_id) = layout.specialized_type_ids.get(key).copied() else {
+            continue;
+        };
+        let mut aux = Vec::new();
+        let field_count = u32::try_from(sl.fields.len()).unwrap_or(u32::MAX);
+        aux.extend_from_slice(&field_count.to_le_bytes());
+        for (name, _ty) in &sl.fields {
+            aux.extend_from_slice(&name.index().to_le_bytes());
+            aux.extend_from_slice(&0u32.to_le_bytes());
+        }
+        push(type_id, TypeKind::Struct, aux);
+    }
+
+    for (key, el) in &layout.specialized_enums {
+        let Some(type_id) = layout.specialized_type_ids.get(key).copied() else {
+            continue;
+        };
+        let mut aux = Vec::new();
+        let variant_count = u32::try_from(el.variants.len()).unwrap_or(u32::MAX);
+        aux.extend_from_slice(&variant_count.to_le_bytes());
+        for v in &el.variants {
+            aux.extend_from_slice(&v.name.index().to_le_bytes());
+            aux.extend_from_slice(&v.tag.to_le_bytes());
+            let payload_len = u32::try_from(v.kind.payload_len()).unwrap_or(u32::MAX);
+            aux.extend_from_slice(&payload_len.to_le_bytes());
+        }
+        push(type_id, TypeKind::Enum, aux);
+    }
+
+    (TypeTable { records }, remap)
+}
+
 fn build_fn_arity_map(
     typed: &TypedProgram,
     ir: &IrModule,
@@ -135,7 +291,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
 
     for func in &ir.functions {
         let offset = u32_section("code_offset", code.len())?;
-        let emitted = emit::emit_function(func, &mut pool, &def_to_fn, &fn_arity)?;
+        let emitted = emit::emit_function(func, &mut pool, &def_to_fn, &fn_arity, None)?;
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: func.id.index(),
@@ -196,6 +352,8 @@ pub fn codegen_module(
     let layout = &typed.layout;
     let def_to_fn = global_fn;
     let fn_arity = build_fn_arity_map(typed, ir, global_fn);
+    let used_types = collect_type_ids_from_ir(ir);
+    let (module_types, type_remap) = build_module_type_table(layout, &typed.types, &used_types);
 
     let mut pool = ConstPoolBuilder::new();
     pool.fill_from_ir(&ir.constants)?;
@@ -205,7 +363,8 @@ pub fn codegen_module(
     for func in &ir.functions {
         let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
         let offset = u32_section("code_offset", code.len())?;
-        let emitted = emit::emit_function(func, &mut pool, def_to_fn, &fn_arity)?;
+        let emitted =
+            emit::emit_function(func, &mut pool, def_to_fn, &fn_arity, Some(&type_remap))?;
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: fn_id,
@@ -262,7 +421,7 @@ pub fn codegen_module(
             ..FileHeader::new(5, entry_function_id)
         },
         constants,
-        types: build_type_table(layout, &typed.types),
+        types: module_types,
         functions: FunctionTable { functions: records },
         code,
         local_layouts: LocalLayoutTable { layouts },
