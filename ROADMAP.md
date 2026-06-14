@@ -78,7 +78,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Shift masking and NaN comparison semantics | PHX-052 | **Decided:** mask shift amounts to width; IEEE 754 NaN (`NaN != NaN`, ordered comparisons false) (Resolved Design Decisions #4); spec in `wide-integers.md`/`type-system.md`, then implement |
 | Heap allocation cap; remove pointer sentinel | PHX-053 | `VmError::OutOfMemory` instead of abort |
 | Use-after-free detection against the live ledger, on by default | PHX-054 | **Decided:** always-checked in v0 behind a single gateable function (Resolved Design Decisions #5); protects the std bootstrap (M6) |
-| Verifier fidelity cluster: join-mismatch error kind, `Trap` operand contract, `MakeStr` tag, layouts required at minor ≥ 1 | PHX-049 | — |
+| Verifier fidelity cluster: join-mismatch error kind, `Trap` operand contract, `MakeStr` tag, layouts required at minor ≥ 1 | PHX-049 | done |
 | Carry `(function_id, pc)` on `VmError` | PHX-056 | Coarse runtime attribution (full source maps deferred) |
 | `run_verified()` / `VerifiedModule` so the verify-before-run invariant is type-enforced; PC-past-end is an error | PHX-055 | **Decided:** VM assumes verified input; `VerifiedModule` constructible only via the verifier (Resolved Design Decisions #7) |
 | `[INFRA]` Mutation-test expansion: `JumpIfFalse` underflow, join mismatch, section overlap, oversized alloc, non-boundary jump | PHX-061 | Pairs with the fixes above |

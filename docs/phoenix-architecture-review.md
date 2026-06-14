@@ -658,10 +658,12 @@ Owns the PHX0 contract: header/section encode-decode, single `Opcode` enum (corr
 **Location:** `phx-bytecode/src/verify.rs:456–460, 721–728, 730–740, 483–485`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Verifier fidelity cluster — `JoinDepthMismatch` is reported as `StackUnderflow` (losing the merge diagnostic); `Trap` is verified as one-operand while `opcode.rs` documents zero operands and the interpreter treats the operand as optional; `MakeStr` doesn't check the const entry is `ConstTag::Bytes`; all local-layout checks are skipped when the layout table is empty even though the compiler always emits layouts at format minor ≥ 1.
 **Recommendation:** Add a dedicated join-mismatch error; align the `Trap` contract across docs/verifier/interpreter; check `MakeStr`'s tag; require layouts when `version_minor ≥ 1 && local_count > 0`.
+
+**Resolution:** Dedicated `VerifyError::JoinDepthMismatch`; verifier rejects non-empty `Trap` operands and `MakeStr` non-`Bytes` pool entries; `verify_function_layout` and `check_local_slot` require layout rows at format minor ≥ 1 when `local_count > 0`; VM `Trap` always returns `GivenMismatch`; codegen emits zero-operand `Trap`.
 
 ---
 
@@ -911,7 +913,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-046 | - [x]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
 | PHX-047 | - [x]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
 | PHX-048 | - [x]  | Major        | phx-bytecode    | Decode pre-allocates from untrusted `u32` counts                         |
-| PHX-049 | - [ ]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
+| PHX-049 | - [x]  | Minor        | phx-bytecode    | Verifier fidelity cluster (`Trap`, `MakeStr`, layout checks)             |
 | PHX-050 | - [ ]  | Minor        | phx-bytecode    | Section bounds validated by re-encoding; `encode` silently truncates     |
 | PHX-051 | - [ ]  | Major        | phx-vm          | All integer arithmetic funnels through `i128`, breaking `u128`           |
 | PHX-052 | - [ ]  | Major        | phx-vm          | Shift amounts unmasked; NaN comparison non-IEEE                          |

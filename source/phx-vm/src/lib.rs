@@ -166,6 +166,18 @@ mod tests {
     }
 
     #[test]
+    fn run_trap_returns_given_mismatch() {
+        let code = Instruction {
+            opcode: Opcode::Trap,
+            operands: vec![],
+        }
+        .encode();
+        let module = minimal_module(code, 0, 4);
+        phx_bytecode::verify(&module).expect("trap module verifies");
+        assert_eq!(run(&module), Err(VmError::GivenMismatch));
+    }
+
+    #[test]
     fn run_bytes_const_returns_unsupported() {
         let mut code = Vec::new();
         code.extend(

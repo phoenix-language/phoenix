@@ -674,11 +674,15 @@ fn check_local_slot(
     prim_kind_byte: u8,
     func: &FunctionRecord,
     layout: Option<&FunctionLocalLayout>,
+    version_minor: u16,
 ) -> Result<(), VerifyError> {
     if slot >= u32::from(func.local_count) {
         return Err(VerifyError::LocalIndexOutOfRange { function_id, slot });
     }
     let Some(layout) = layout else {
+        if version_minor >= 1 && func.local_count > 0 {
+            return Err(VerifyError::MissingLocalLayout { function_id });
+        }
         return Ok(());
     };
     let Some(slot_kind) = layout.slots.get(slot as usize) else {
@@ -788,7 +792,14 @@ fn verify_operands(
                     prim_kind: prim_kind_byte,
                 });
             }
-            check_local_slot(function_id, slot, prim_kind_byte, func, layout)?;
+            check_local_slot(
+                function_id,
+                slot,
+                prim_kind_byte,
+                func,
+                layout,
+                module.header.version_minor,
+            )?;
         }
         Opcode::Call => {
             if inst.operands.len() != 1 {
@@ -1645,6 +1656,44 @@ mod tests {
         assert!(matches!(
             err,
             VerifyError::MissingLocalLayout { function_id: 0 }
+        ));
+    }
+
+    #[test]
+    fn reject_local_prim_kind_mismatch() {
+        use crate::LocalSlotKind;
+
+        let mut code = Vec::new();
+        code.extend(
+            Instruction {
+                opcode: Opcode::LoadLocal,
+                operands: vec![0, u32::from(PrimitiveKind::F32.as_u8())],
+            }
+            .encode(),
+        );
+        code.extend(
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            }
+            .encode(),
+        );
+        let mut module = minimal_module(code, 4, 0, 0);
+        module.functions.functions[0].local_count = 1;
+        module.local_layouts = LocalLayoutTable {
+            layouts: vec![FunctionLocalLayout {
+                function_id: 0,
+                slots: vec![LocalSlotKind::primitive(PrimitiveKind::S32)],
+            }],
+        };
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::LocalPrimKindMismatch {
+                function_id: 0,
+                slot: 0,
+                ..
+            }
         ));
     }
 

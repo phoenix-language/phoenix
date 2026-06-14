@@ -555,13 +555,7 @@ pub fn run_captured(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
                     slice_elem_store_heap(&mut machine, elem_kind, ptr, idx, kind, signed, value)?;
                 }
             }
-            Opcode::Trap => {
-                let kind = inst.operands.first().copied().unwrap_or(0);
-                if kind == 0 {
-                    return Err(VmError::GivenMismatch);
-                }
-                return Err(VmError::UnsupportedOpcode(inst.opcode.as_u8()));
-            }
+            Opcode::Trap => return Err(VmError::GivenMismatch),
             Opcode::MakeFnPtr => {
                 let target_kind = inst.operands.first().copied().unwrap_or(0);
                 let target_id = inst.operands.get(1).copied().unwrap_or(0);

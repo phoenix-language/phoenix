@@ -87,6 +87,7 @@ Section kinds (MVP):
 **Compiler-only notes (MVP):**
 
 - **`POP` (opcode 3)** — defined for the verifier/VM; Phoenix codegen emits it to discard `()` call results (scope-exit [`DropLocal`](../../../source/phx-compiler/src/lower/drop_glue.rs) glue and explicit void calls in lowering).
+- **`TRAP` (opcode 37)** — zero operands; runtime abort as `GivenMismatch` (non-exhaustive `match` / pattern failure lowering).
 - **`ALLOC` (38) / `FREE` (49) / `PTR_STORE` (40)** — VM heap intrinsics; compiler emits when lowering `std::core::alloc::alloc_bytes`, `std::core::alloc::dealloc_bytes`, and `*ptr = …` on raw pointers ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic), [V0-065](../language-v0-completion-roadmap.md#v0-065--heap-deallocation-dealloc_bytes--free)). **`alloc_bytes` and `dealloc_bytes` require `unsafe`** (same boundary as `extern "C"` calls).
 
 ---
@@ -127,7 +128,7 @@ Payload begins with `u32 layout_count`, then for each function:
 | slot_count | 2 | number of local slots |
 | slot_kinds | N | one byte per slot: `0xFF` = aggregate slot; `0`–`12` = [`PrimitiveKind`](#primitive-kind-operands) wire byte |
 
-The verifier uses this table to validate local slot indices and optional stack-kind simulation.
+The verifier uses this table to validate local slot indices and `LOAD_LOCAL` / `STORE_LOCAL` `prim_kind` operands. At format minor ≥ 1, every function with `local_count > 0` must have a layout row.
 
 ---
 
