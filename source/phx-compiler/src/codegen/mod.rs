@@ -1,7 +1,7 @@
 //! IR to PHX0 bytecode codegen.
 //!
 //! Flattens per-function CFGs into the code section, builds constant and function tables,
-//! and sets `entry_function_id` to `main`.
+//! and sets `entry_function_id` to `main` or [`ENTRY_NONE`] when no entry is configured.
 
 mod const_pool;
 mod emit;

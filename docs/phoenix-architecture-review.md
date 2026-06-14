@@ -572,10 +572,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/codegen/mod.rs:162–165` vs `232–237`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Single-module `codegen()` defaults a missing `main` to entry id `0`; the multi-module path correctly uses `ENTRY_NONE`.
-**Detail:** Inconsistent entry semantics for library-style single-file compiles; entry 0 is a real function.
+**Detail:** Fixed in `92d51a1`: `codegen()` uses `ENTRY_NONE` when `ir.entry` is absent, matching `codegen_module()`. Test `codegen_library_module_without_entry_uses_entry_none` guards library-style single-module compiles.
 **Recommendation:** Use `ENTRY_NONE` when `ir.entry` is absent.
 
 ---
@@ -895,7 +895,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-040 | - [ ]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |
 | PHX-041 | - [x]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |
 | PHX-042 | - [x]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |
-| PHX-043 | - [ ]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
+| PHX-043 | - [x]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
 | PHX-044 | - [ ]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
 | PHX-045 | - [ ]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
 | PHX-046 | - [ ]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
