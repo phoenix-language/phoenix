@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use phx_bytecode::verify;
-use phx_bytecode::{BytecodeModule, ConstTag, Opcode};
+use phx_bytecode::{BytecodeModule, ConstTag, ENTRY_NONE, Opcode};
 use phx_compiler::{
     compile_source,
     unstable::{IrBinOp, IrInst, IrModule, codegen, lower},
@@ -405,6 +405,38 @@ fn codegen_heap_alloc_emits_alloc_opcode() {
         "expected ALLOC opcode in heap_alloc bytecode"
     );
     verify(&module).expect("verify heap_alloc");
+}
+
+#[test]
+fn codegen_library_module_without_entry_uses_entry_none() {
+    let source = "helper :: () => () { }; main :: () => { helper(); };";
+    let unit = compile_source(source, None).expect("compile");
+    let ir = lower(&unit.typed).expect("lower");
+    let helper = ir
+        .functions
+        .iter()
+        .find(|f| {
+            unit.typed
+                .resolved
+                .defs
+                .get(f.def.index() as usize)
+                .is_some_and(|d| unit.typed.resolved.interner.resolves_to(d.name, "helper"))
+        })
+        .expect("helper IR");
+    let module = codegen(
+        &IrModule {
+            functions: vec![helper.clone()],
+            constants: ir.constants.clone(),
+            entry: None,
+        },
+        &unit.typed,
+    )
+    .expect("codegen library module");
+    assert_eq!(
+        module.header.entry_function_id, ENTRY_NONE,
+        "library-style single-module codegen must not default entry to function 0"
+    );
+    verify(&module).expect("library module without entry verifies");
 }
 
 #[test]

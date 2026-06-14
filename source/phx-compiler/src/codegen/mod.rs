@@ -162,7 +162,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     let entry_function_id = ir
         .entry
         .and_then(|main| def_to_fn.get(&main).copied())
-        .unwrap_or(0);
+        .unwrap_or(ENTRY_NONE);
 
     let constants = pool.finish();
     let local_layouts = build_local_layouts(ir, typed);
