@@ -823,11 +823,13 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 **Location:** `justfile:30–39`
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `just pre-commit` — the agent completion gate — runs only fmt/clippy/doc/dep-check plus **three** integration tests (`cli_e2e`, `run_smoke`, `diagnostics`); CI runs `cargo test --workspace`.
 **Detail:** Typeck, verifier, VM, and build unit/integration tests are all outside the gate that the workspace rules tell agents to trust. Regressions in exactly the areas this review flags (ownership, verifier, link) pass pre-commit.
 **Recommendation:** Add `cargo test --workspace` (or a curated fast superset including typeck/verify/vm suites) to pre-commit, or rename the gate so it doesn't imply commit-readiness.
+
+**Resolution:** `just pre-commit` now runs `just test` (`cargo test --workspace`) before serial `test-lang`, matching CI's `rust` and `cli` jobs. Completion-gate docs no longer tell agents to run workspace tests separately.
 
 ---
 
@@ -944,7 +946,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-057 | - [x]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
 | PHX-058 | - [x]  | Minor        | phx             | ICE handler discards panic message                                       |
 | PHX-059 | - [x]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
-| PHX-060 | - [ ]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
+| PHX-060 | - [x]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
 | PHX-061 | - [ ]  | Major        | tests           | Coverage gaps on all three Critical findings                             |
 | PHX-062 | - [ ]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing                |
 | PHX-063 | - [ ]  | Major        | cross-cutting   | Span propagation ends at typeck; IR carries no spans                     |

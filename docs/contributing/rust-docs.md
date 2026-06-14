@@ -86,16 +86,16 @@ Do **not** require docs on every private one-line helper.
 
 - `just doc-check` — `cargo doc --workspace --no-deps`
 - `just pre-commit` — fmt, clippy, doc-check, dep-check, CLI lang tests (see `.cursor/rules/project-layout.mdc`)
-- Full CI parity before merge: `cargo test --workspace`
+- Full CI parity before merge: covered by `just pre-commit` (`cargo test --workspace` + `test-lang`)
 
 ---
 
 ## Verification
 
 ```bash
-just pre-commit          # fmt-check, clippy, doc-check, test-lang
+just pre-commit          # fmt-check, clippy, doc-check, dep-check, test, test-lang
 just doc-check           # rustdoc only (also run via pre-commit)
-cargo test --workspace   # unit + integration (not in pre-commit)
+cargo test --workspace   # same as `just test` (included in pre-commit)
 ```
 
 ---

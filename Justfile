@@ -37,7 +37,7 @@ dep-check:
     bash tests/ci/check-compiler-api.sh
 
 pre-commit:
-    just fmt-check lint doc-check dep-check test-lang
+    just fmt-check lint doc-check dep-check test test-lang
 
 doc-check:
     cargo doc --workspace --no-deps

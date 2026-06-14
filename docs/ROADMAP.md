@@ -38,7 +38,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | `fn_def_for` failure must not fall back to `DefId(0)` | PHX-017 | Skip + internal-error diagnostic |
 | Remove the production `expect` in derive expansion | PHX-018 | Propagate as `DeriveError` |
 | Silent-fallback cleanup in codegen/lower (`pool_index_for_literal`, `LowerCtx::emit`, `u32::MAX` saturation) | PHX-041, PHX-030, PHX-021 | Convert to errors |
-| `[INFRA]` Align `just pre-commit` with what protects the pipeline | PHX-060 | Add `cargo test --workspace` (or curated superset incl. typeck/verify/vm suites) |
+| `[INFRA]` Align `just pre-commit` with what protects the pipeline | PHX-060 | **Done:** `pre-commit` runs `cargo test --workspace` plus serial `test-lang` (matches CI `rust` + `cli` jobs) |
 | `[INFRA]` Fixture-gated tests must fail loudly when fixtures are missing | PHX-062 | Replace `if !path.is_file() { return; }` with a test failure |
 
 ---

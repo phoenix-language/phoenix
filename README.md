@@ -82,7 +82,7 @@ cargo run -p phx -- run
 
 ```bash
 just phx run examples/hello/src/main.phx --dump-main
-just pre-commit    # fmt, clippy, doc-check, dep-check, test-lang
+just pre-commit    # fmt, clippy, doc-check, dep-check, test, test-lang
 just test-lang     # CLI E2E + diagnostics goldens
 just test          # full workspace tests
 ```

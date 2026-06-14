@@ -11,14 +11,14 @@ cargo build -p phx
 just pre-commit
 ```
 
-`just pre-commit` runs format check, Clippy, doc check, dependency check, and language integration tests (`just test-lang`). Run `just test` for the full workspace test suite before large merges.
+`just pre-commit` runs format check, Clippy, doc check, dependency check, the full workspace test suite (`cargo test --workspace`), and language integration tests (`just test-lang`).
 
 ## Common commands
 
 | Command | Purpose |
 |---------|---------|
 | `just phx <args>` | Run the local `phx` CLI (e.g. `just phx check file.phx`) |
-| `just pre-commit` | Pre-PR gate: fmt, lint, docs, deps, `test-lang` |
+| `just pre-commit` | Pre-PR gate: fmt, lint, docs, deps, workspace tests, `test-lang` |
 | `just test-lang` | CLI E2E, run smoke, and diagnostic golden tests |
 | `just test` | `cargo test --workspace` |
 | `just build-std` | Build the bundled `std` library package |

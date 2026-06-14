@@ -35,13 +35,12 @@ Cargo workspace; crates live under `source/`. One pipeline stage per crate — n
 | Run a Phoenix file | `just run file.phx` or `just phx <args>` |
 | Language E2E tests | `just test-lang` |
 | Lint / format | `just lint` / `just fmt` |
-| Full pre-commit gate | `just pre-commit` (fmt-check, clippy `-D warnings`, doc-check, dep-check, test-lang) |
+| Full pre-commit gate | `just pre-commit` (fmt-check, clippy `-D warnings`, doc-check, dep-check, `cargo test --workspace`, test-lang) |
 
 ## Completion gate
 
 Before marking a task complete, suggesting a commit, or opening a PR:
 
 1. Run `just pre-commit` from the repo root; fix and re-run until green.
-2. `just pre-commit` does **not** run `cargo test --workspace` — run `just test` too when changes touch compiler logic, the VM, or tests.
 
 Commit messages: `[stage]: description` — e.g. `[typeck]: enforce use-after-move diagnostics`, `[lower]: add IndexStore slice stores`. Each commit leaves the workspace building and passing tests. Never commit commented-out code or debug prints.
