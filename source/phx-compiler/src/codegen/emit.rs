@@ -7,9 +7,10 @@
 
 use std::collections::HashMap;
 
-use phx_bytecode::{Instruction, Opcode, apply_stack_effect};
+use phx_bytecode::{Instruction, Opcode};
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
+use crate::ir::{StackSimError, compute_ir_stack_max};
 use crate::resolver::DefId;
 
 use super::const_pool::ConstPoolBuilder;
@@ -91,130 +92,6 @@ fn compute_block_starts(
     Ok(starts)
 }
 
-#[allow(clippy::too_many_lines)]
-fn apply_ir_stack_effect(
-    inst: &IrInst,
-    stack: &mut u32,
-    def_to_fn: &HashMap<DefId, u32>,
-    fn_arity: &HashMap<u32, u16>,
-) -> Result<(), CodegenError> {
-    let none = None::<u32>;
-    match inst {
-        IrInst::Const { .. } => {
-            let _ = apply_stack_effect(Opcode::Const, stack, None, none);
-        }
-        IrInst::LoadLocal { .. } => {
-            let _ = apply_stack_effect(Opcode::LoadLocal, stack, None, none);
-        }
-        IrInst::StoreLocal { .. } => {
-            let _ = apply_stack_effect(Opcode::StoreLocal, stack, None, none);
-        }
-        IrInst::BinOp { op, .. } => {
-            let opcode = ir_binop_to_opcode(*op);
-            let _ = apply_stack_effect(opcode, stack, None, none);
-        }
-        IrInst::Call { callee, .. } => {
-            let fn_id = function_id_for(*callee, def_to_fn)?;
-            let arity = *fn_arity.get(&fn_id).unwrap_or(&0);
-            let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
-        }
-        IrInst::DropLocal { drop_fn, .. } => {
-            let _ = apply_stack_effect(Opcode::LoadLocal, stack, None, none);
-            let fn_id = function_id_for(*drop_fn, def_to_fn)?;
-            let arity = *fn_arity.get(&fn_id).unwrap_or(&1);
-            let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
-            let _ = apply_stack_effect(Opcode::Pop, stack, None, none);
-        }
-        IrInst::MakeFnPtr { .. } => {
-            let _ = apply_stack_effect(Opcode::MakeFnPtr, stack, None, none);
-        }
-        IrInst::CallIndirect { expected_arity, .. } => {
-            let arity = u16::try_from(*expected_arity).unwrap_or(0);
-            let _ = apply_stack_effect(Opcode::CallIndirect, stack, Some(arity), none);
-        }
-        IrInst::JumpIf { .. } => {
-            let _ = apply_stack_effect(Opcode::JumpIfTrue, stack, None, none);
-        }
-        IrInst::MakeStruct { field_count, .. } => {
-            let _ = apply_stack_effect(Opcode::MakeStruct, stack, None, Some(*field_count));
-        }
-        IrInst::MakeEnum { payload_count, .. } => {
-            let _ = apply_stack_effect(Opcode::MakeEnum, stack, None, Some(*payload_count));
-        }
-        IrInst::GetField { .. } => {
-            let _ = apply_stack_effect(Opcode::GetField, stack, None, none);
-        }
-        IrInst::SetField { .. } => {
-            let _ = apply_stack_effect(Opcode::SetField, stack, None, none);
-        }
-        IrInst::MatchTag { .. } => {
-            let _ = apply_stack_effect(Opcode::MatchTag, stack, None, none);
-        }
-        IrInst::Cast { .. } => {
-            let _ = apply_stack_effect(Opcode::Cast, stack, None, none);
-        }
-        IrInst::Neg { .. } => {
-            let _ = apply_stack_effect(Opcode::Neg, stack, None, none);
-        }
-        IrInst::Not { .. } => {
-            let _ = apply_stack_effect(Opcode::Not, stack, None, none);
-        }
-        IrInst::BitNot { .. } => {
-            let _ = apply_stack_effect(Opcode::BitNot, stack, None, none);
-        }
-        IrInst::MakeTuple { arity } => {
-            let _ = apply_stack_effect(Opcode::MakeTuple, stack, None, Some(*arity));
-        }
-        IrInst::MakeArray { len } => {
-            let _ = apply_stack_effect(Opcode::MakeArray, stack, None, Some(*len));
-        }
-        IrInst::Index { .. } => {
-            let _ = apply_stack_effect(Opcode::Index, stack, None, none);
-        }
-        IrInst::IndexStore { .. } => {
-            let _ = apply_stack_effect(Opcode::IndexStore, stack, None, none);
-        }
-        IrInst::PtrLoad { .. } => {
-            let _ = apply_stack_effect(Opcode::PtrLoad, stack, None, none);
-        }
-        IrInst::MakeSlice { .. } => {
-            let _ = apply_stack_effect(Opcode::MakeSlice, stack, None, none);
-        }
-        IrInst::MakeSliceFromPtr { .. } => {
-            let _ = apply_stack_effect(Opcode::MakeSliceFromPtr, stack, None, none);
-        }
-        IrInst::MakeStr { .. } => {
-            let _ = apply_stack_effect(Opcode::MakeStr, stack, None, none);
-        }
-        IrInst::StrAsSlice => {
-            let _ = apply_stack_effect(Opcode::StrAsSlice, stack, None, none);
-        }
-        IrInst::AddressOfLocal { .. } => {
-            let _ = apply_stack_effect(Opcode::AddressOfLocal, stack, None, none);
-        }
-        IrInst::LoadAggViaLocalPtr => {
-            let _ = apply_stack_effect(Opcode::LoadAggViaLocalPtr, stack, None, none);
-        }
-        IrInst::Alloc { .. } => {
-            let _ = apply_stack_effect(Opcode::Alloc, stack, None, none);
-        }
-        IrInst::PtrStore { .. } => {
-            let _ = apply_stack_effect(Opcode::PtrStore, stack, None, none);
-        }
-        IrInst::Free => {
-            let _ = apply_stack_effect(Opcode::Free, stack, None, none);
-        }
-        IrInst::Pop => {
-            let _ = apply_stack_effect(Opcode::Pop, stack, None, none);
-        }
-        IrInst::TrapGivenMismatch => {
-            let _ = apply_stack_effect(Opcode::Trap, stack, None, none);
-        }
-        IrInst::Return { .. } | IrInst::Jump { .. } => {}
-    }
-    Ok(())
-}
-
 fn ir_binop_to_opcode(op: IrBinOp) -> Opcode {
     match op {
         IrBinOp::Add => Opcode::Add,
@@ -250,152 +127,14 @@ fn emit_blocks(
             emit_inst(&mut out, inst, pool, def_to_fn, block_starts, type_remap)?;
         }
     }
-    let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity)?;
+    let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity).map_err(map_stack_sim_error)?;
     let stack_max = u16::try_from(max_stack).unwrap_or(u16::MAX);
     Ok((out, stack_max))
 }
 
-/// CFG-aware max stack depth for IR (short-circuit paths are not linear in block order).
-fn compute_ir_stack_max(
-    func: &IrFunction,
-    def_to_fn: &HashMap<DefId, u32>,
-    fn_arity: &HashMap<u32, u16>,
-) -> Result<u32, CodegenError> {
-    use std::collections::VecDeque;
-
-    if func.blocks.is_empty() {
-        return Ok(0);
-    }
-
-    let mut entry_depth: HashMap<u32, u32> = HashMap::new();
-    let mut max_stack = 0u32;
-    let mut worklist = VecDeque::from([0u32]);
-    entry_depth.insert(0, 0);
-    let visit_limit = u32::try_from(func.blocks.len())
-        .unwrap_or(u32::MAX)
-        .saturating_mul(64)
-        .max(64);
-    let mut visits = 0u32;
-
-    while let Some(block_id) = worklist.pop_front() {
-        visits = visits.saturating_add(1);
-        if visits > visit_limit {
-            break;
-        }
-        let Some(block) = func.blocks.get(block_id as usize) else {
-            continue;
-        };
-        let mut depth = *entry_depth.get(&block_id).unwrap_or(&0);
-        max_stack = max_stack.max(depth);
-
-        let mut block_terminates = false;
-        for inst in &block.insts {
-            apply_ir_stack_effect(inst, &mut depth, def_to_fn, fn_arity)?;
-            max_stack = max_stack.max(depth);
-
-            match inst {
-                IrInst::Jump { target } => {
-                    enqueue_ir_edge(
-                        block_id,
-                        *target,
-                        depth,
-                        &mut entry_depth,
-                        &mut worklist,
-                        &mut max_stack,
-                    );
-                    block_terminates = true;
-                }
-                IrInst::JumpIf {
-                    then_block,
-                    else_block,
-                } => {
-                    enqueue_ir_edge(
-                        block_id,
-                        *then_block,
-                        depth,
-                        &mut entry_depth,
-                        &mut worklist,
-                        &mut max_stack,
-                    );
-                    enqueue_ir_edge(
-                        block_id,
-                        *else_block,
-                        depth,
-                        &mut entry_depth,
-                        &mut worklist,
-                        &mut max_stack,
-                    );
-                    block_terminates = true;
-                }
-                IrInst::Return { .. } | IrInst::TrapGivenMismatch => {
-                    block_terminates = true;
-                }
-                _ => {}
-            }
-        }
-
-        // Empty merge blocks share the next block's bytecode offset; still enqueue fallthrough.
-        if block.insts.is_empty() || !block_terminates {
-            let next = block_id.saturating_add(1);
-            if (next as usize) < func.blocks.len() {
-                enqueue_ir_edge(
-                    block_id,
-                    next,
-                    depth,
-                    &mut entry_depth,
-                    &mut worklist,
-                    &mut max_stack,
-                );
-            }
-        }
-    }
-
-    let conservative_floor = u32::try_from(func.params.len())
-        .unwrap_or(0)
-        .saturating_add(func.local_count)
-        .saturating_add(16);
-    Ok(max_stack.max(conservative_floor))
-}
-
-/// Enqueues a CFG edge for stack-depth fixpoint. Back-edges merge depth without re-walking
-/// the header (prevents infinite re-simulation on `while` loops).
-fn enqueue_ir_edge(
-    from: u32,
-    target: u32,
-    depth: u32,
-    entry_depth: &mut std::collections::HashMap<u32, u32>,
-    worklist: &mut std::collections::VecDeque<u32>,
-    max_stack: &mut u32,
-) {
-    *max_stack = (*max_stack).max(depth);
-    if target <= from {
-        let merged = entry_depth.get(&target).copied().unwrap_or(0).max(depth);
-        entry_depth.insert(target, merged);
-        return;
-    }
-    try_enqueue_ir_block(target, depth, entry_depth, worklist);
-}
-
-fn try_enqueue_ir_block(
-    target: u32,
-    depth: u32,
-    entry_depth: &mut std::collections::HashMap<u32, u32>,
-    worklist: &mut std::collections::VecDeque<u32>,
-) {
-    match entry_depth.get(&target).copied() {
-        None => {
-            entry_depth.insert(target, depth);
-            worklist.push_back(target);
-        }
-        Some(existing) if existing == depth => {}
-        Some(existing) => {
-            // Conservative stack allocation: merge with max depth and re-walk if increased.
-            let merged = existing.max(depth);
-            if merged != existing {
-                entry_depth.insert(target, merged);
-                worklist.push_back(target);
-            }
-        }
+fn map_stack_sim_error(err: StackSimError) -> CodegenError {
+    match err {
+        StackSimError::MissingCallee { def_index } => CodegenError::MissingCallee { def_index },
     }
 }
 
@@ -679,12 +418,14 @@ mod tests {
 
     #[test]
     fn drop_local_stack_effect_is_balanced() {
+        use crate::ir::apply_ir_stack_effect_emit;
+
         let mut stack = 0u32;
         let mut def_to_fn = HashMap::new();
         def_to_fn.insert(DefId::from_raw(1), 0);
         let mut fn_arity = HashMap::new();
         fn_arity.insert(0, 1);
-        apply_ir_stack_effect(
+        apply_ir_stack_effect_emit(
             &IrInst::DropLocal {
                 slot: LocalSlot::from_raw(0),
                 ty: TypeId::from_raw(0),

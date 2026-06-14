@@ -9,7 +9,7 @@ use std::path::Path;
 use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
-    DiagnosticBag, DiagnosticStyle, LintBag, LowerBag, ParseBag, PlainStyle, SpanContext,
+    DiagnosticBag, DiagnosticStyle, IrBag, LintBag, LowerBag, ParseBag, PlainStyle, SpanContext,
     TypeCheckBag, format_lints_styled, format_lower_error_styled, format_parse_bag_styled,
     format_resolve_error_styled, format_typecheck_error_styled, join_diagnostics,
 };
@@ -100,6 +100,13 @@ pub enum CompileError {
         /// Module sources and interner from the typed program.
         context: DiagnosticContext,
     },
+    /// One or more IR validation errors (internal invariant violations).
+    IrValidate {
+        /// Collected errors.
+        bag: IrBag,
+        /// Module sources and interner from the typed program.
+        context: DiagnosticContext,
+    },
     /// IR → bytecode codegen failure.
     Codegen(crate::codegen::CodegenError),
     /// Failed to read source from disk.
@@ -184,6 +191,9 @@ impl CompileError {
             }
             Self::Lower { bag, context } => {
                 format_lower_bag(bag, entry_source, entry_path, Some(&context.modules), style)
+            }
+            Self::IrValidate { bag, context } => {
+                format_ir_bag(bag, entry_source, entry_path, Some(&context.modules), style)
             }
             Self::Codegen(e) => style.plain_error(&e.to_string()),
             Self::Io(e) => style.plain_error(&format!("I/O error: {e}")),
@@ -358,6 +368,39 @@ fn format_lower_bag(
     join_diagnostics(style, &parts)
 }
 
+fn format_ir_bag(
+    bag: &IrBag,
+    _entry_source: Option<&str>,
+    _entry_path: Option<&str>,
+    _modules: Option<&[SourceModule]>,
+    style: &dyn DiagnosticStyle,
+) -> String {
+    let mut parts = Vec::new();
+    for located in bag.errors() {
+        let body = style.error_header(located.error.code(), &located.error.to_string());
+        parts.push(body);
+    }
+    join_diagnostics(style, &parts)
+}
+
+#[cfg(any(debug_assertions, test))]
+pub(crate) fn debug_validate_ir(
+    ir: &crate::ir::IrModule,
+    typed: &crate::typeck::TypedProgram,
+    context: DiagnosticContext,
+) -> Result<(), CompileError> {
+    crate::ir::validate_ir(ir, typed).map_err(|bag| CompileError::IrValidate { bag, context })
+}
+
+#[cfg(not(any(debug_assertions, test)))]
+fn debug_validate_ir(
+    _ir: &crate::ir::IrModule,
+    _typed: &crate::typeck::TypedProgram,
+    _context: DiagnosticContext,
+) -> Result<(), CompileError> {
+    Ok(())
+}
+
 fn resolve_error_source<'a>(
     entry_source: Option<&'a str>,
     entry_path: Option<&str>,
@@ -422,6 +465,7 @@ impl std::fmt::Display for CompileError {
             Self::Resolve { bag, .. } => write!(f, "{bag}"),
             Self::TypeCheck { bag, .. } => write!(f, "{bag}"),
             Self::Lower { bag, .. } => write!(f, "{bag}"),
+            Self::IrValidate { bag, .. } => write!(f, "{bag}"),
             Self::Codegen(e) => write!(f, "{e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
         }
@@ -435,6 +479,7 @@ impl std::error::Error for CompileError {
             Self::Resolve { bag, .. } => Some(bag),
             Self::TypeCheck { bag, .. } => Some(bag),
             Self::Lower { bag, .. } => Some(bag),
+            Self::IrValidate { bag, .. } => Some(bag),
             Self::Codegen(e) => Some(e),
             Self::Io(e) => Some(e),
         }
@@ -702,6 +747,10 @@ pub fn compile_to_module_with_module_path(
 ) -> Result<BytecodeModule, CompileError> {
     let unit = check_file_with_module_path(path, module_root)?;
     let ctx = DiagnosticContext::from_resolved(&unit.typed.resolved);
-    let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower { bag, context: ctx })?;
+    let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower {
+        bag,
+        context: ctx.clone(),
+    })?;
+    debug_validate_ir(&ir, &unit.typed, ctx)?;
     codegen(&ir, &unit.typed).map_err(CompileError::Codegen)
 }

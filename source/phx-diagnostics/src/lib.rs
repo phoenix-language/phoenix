@@ -14,10 +14,12 @@
 //! - `resolve_error` — name resolution ([`ResolveError`], [`DiagnosticBag`]).
 //! - `type_error` — type checking ([`TypeCheckError`], [`TypeCheckBag`]).
 //! - `lower_error` — IR lowering ([`LowerError`], [`LowerBag`]).
+//! - `ir_error` — IR validation ([`IrError`], [`IrBag`]).
 
 mod code;
 mod explain;
 mod format;
+mod ir_error;
 mod lex_error;
 mod lint;
 mod located;
@@ -34,12 +36,13 @@ mod type_notes;
 pub use code::DiagnosticCode;
 pub use explain::{lookup as explain_code, normalize_code};
 pub use format::{
-    format_lex_error, format_lex_error_styled, format_lower_error, format_lower_error_styled,
-    format_parse_bag_styled, format_parse_error, format_parse_error_styled, format_resolve_error,
-    format_resolve_error_styled, format_span_message, format_span_message_with_note,
-    format_typecheck_error, format_typecheck_error_styled, parse_message, resolve_message,
-    typecheck_message,
+    format_ir_error, format_ir_error_styled, format_lex_error, format_lex_error_styled,
+    format_lower_error, format_lower_error_styled, format_parse_bag_styled, format_parse_error,
+    format_parse_error_styled, format_resolve_error, format_resolve_error_styled,
+    format_span_message, format_span_message_with_note, format_typecheck_error,
+    format_typecheck_error_styled, parse_message, resolve_message, typecheck_message,
 };
+pub use ir_error::{IrBag, IrError, IrResult};
 pub use lex_error::LexError;
 pub use lint::{Lint, LintBag, LintKind, LocatedLint};
 pub use located::LocatedError;

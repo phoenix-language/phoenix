@@ -102,7 +102,8 @@ pub fn compile_standalone_with_context(
     let ctx_diag = DiagnosticContext::from_resolved(&unit.typed.resolved);
     let ir = lower(&unit.typed).map_err(|bag| CompileError::Lower {
         bag,
-        context: ctx_diag,
+        context: ctx_diag.clone(),
     })?;
+    crate::compile::debug_validate_ir(&ir, &unit.typed, ctx_diag)?;
     crate::codegen::codegen(&ir, &unit.typed).map_err(CompileError::Codegen)
 }

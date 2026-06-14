@@ -1,5 +1,6 @@
 //! Source span rendering with carets for CLI diagnostics.
 
+use crate::IrError;
 use crate::LexError;
 use crate::LowerError;
 use crate::ParseBag;
@@ -456,6 +457,18 @@ fn append_ancillary_text(
         out.push('\n');
         out.push_str(&style.help_label(help));
     }
+}
+
+/// Formats an IR validation error with a source caret when possible.
+#[must_use]
+pub fn format_ir_error(err: &IrError) -> String {
+    format_ir_error_styled(err, &PlainStyle)
+}
+
+/// Formats an IR validation error with styling.
+#[must_use]
+pub fn format_ir_error_styled(err: &IrError, style: &dyn crate::render::DiagnosticStyle) -> String {
+    style.error_header(err.code(), &err.to_string())
 }
 
 /// Formats a lowering error with a source caret when possible.

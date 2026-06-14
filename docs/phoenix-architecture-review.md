@@ -524,10 +524,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/ir/block.rs:5–10`, `ir/mod.rs:15–22`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** No IR validator — nothing checks that blocks end in terminators, jump targets are valid block ids, or stack discipline holds before codegen.
-**Detail:** Blocks are flat instruction vectors with implicit fallthrough; all structural invariants are enforced only two stages later by the bytecode verifier, where the error loses all IR context (and spans — PHX-070). Lowering bugs surface as baffling verify failures.
+**Detail:** Fixed: `ir/validate.rs` checks terminators, jump targets, unpatched loop-exit placeholders, and stack depth at merge blocks; shared stack simulation lives in `ir/stack_effect.rs`. The pass runs in debug builds between lower and codegen (`debug_validate_ir`); tests call `validate_ir` directly.
 **Recommendation:** Add a debug-mode IR validation pass between lower and codegen (terminator-last, target-in-range, optional depth simulation).
 
 ---
@@ -889,7 +889,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-036 | - [x]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
 | PHX-037 | - [x]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
 | PHX-038 | - [x]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
-| PHX-039 | - [ ]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |
+| PHX-039 | - [x]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |
 | PHX-040 | - [ ]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |
 | PHX-041 | - [ ]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |
 | PHX-042 | - [ ]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |

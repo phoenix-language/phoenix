@@ -187,6 +187,8 @@ fn build_package(
     }
 
     let full_ir = lower(&typed).map_err(BuildError::Lower)?;
+    #[cfg(any(debug_assertions, test))]
+    crate::ir::validate_ir(&full_ir, &typed).map_err(BuildError::IrValidate)?;
     let load_ctx = ProgramLoadContext::from_config(config);
     let global_fn = build_global_fn_map(config, &layout, &load_ctx, &loaded, &typed, &full_ir)?;
     let ctx = ArtifactEmitCtx {
@@ -903,6 +905,7 @@ impl From<CompileError> for BuildError {
             CompileError::Resolve { bag, .. } => Self::Resolve(bag),
             CompileError::TypeCheck { bag, .. } => Self::TypeCheck(bag),
             CompileError::Lower { bag, .. } => Self::Lower(bag),
+            CompileError::IrValidate { bag, .. } => Self::IrValidate(bag),
             CompileError::Codegen(e) => Self::Codegen(e),
             CompileError::Io(e) => Self::Io {
                 path: PathBuf::new(),

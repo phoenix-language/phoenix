@@ -17,7 +17,8 @@
 //! `if` and `match` expression lowering join branches at a merge block without phi nodes:
 //! each branch must leave the same stack depth (typically one unified result value; `match`
 //! stores the scrutinee in a temp local first). Short-circuit `&&` / `||` use dedicated CFG
-//! (`lower_short_circuit_bool` in `lower/expr.rs`). There is no IR-level stack verifier in MVP;
+//! (`lower_short_circuit_bool` in `lower/expr.rs`). [`validate_ir`](validate::validate_ir)
+//! (debug builds and tests) simulates stack depth and rejects join mismatches before codegen;
 //! [`phx_bytecode::verify`](../../../phx-bytecode/src/verify.rs) enforces stack effects on emitted
 //! bytecode.
 //!
@@ -31,11 +32,20 @@ mod block;
 mod const_lit;
 mod func;
 mod inst;
+mod stack_effect;
+#[cfg(any(debug_assertions, test))]
+mod validate;
+
+#[allow(unused_imports)]
+pub(crate) use stack_effect::apply_ir_stack_effect_emit;
+pub use stack_effect::{StackSimError, compute_ir_stack_max};
 
 pub use block::IrBasicBlock;
 pub use const_lit::IrConst;
 pub use func::IrFunction;
 pub use inst::{IrBinOp, IrFunctionId, IrInst, LocalSlot};
+#[cfg(any(debug_assertions, test))]
+pub use validate::{validate_function, validate_ir};
 
 use crate::resolver::DefId;
 
