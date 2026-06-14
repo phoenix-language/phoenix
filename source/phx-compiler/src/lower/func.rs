@@ -8,7 +8,7 @@ use crate::typeck::{
     BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template,
     is_generic_impl_method_template, lookup_function,
 };
-use phx_diagnostics::LowerBag;
+use phx_diagnostics::{LowerBag, LowerError};
 
 /// Lowers all functions in `typed`.
 ///
@@ -70,7 +70,18 @@ pub(crate) fn lower_one_function(
         .map(|b| b.ty)
         .collect();
 
-    let ir_index = u32::try_from(index).unwrap_or(u32::MAX);
+    let ir_index = if let Ok(idx) = u32::try_from(index) {
+        idx
+    } else {
+        bag.push(
+            module,
+            LowerError::LimitExceeded {
+                item: "functions",
+                len: index,
+            },
+        );
+        return None;
+    };
     let pending_exits = ctx.pending_loop_exits.clone();
     let mut blocks = ctx.into_blocks();
     LowerCtx::patch_loop_exit_targets(&mut blocks, &pending_exits);

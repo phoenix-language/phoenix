@@ -422,7 +422,9 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E3003" => Some("The syntax is recognized but not supported in this compiler version."),
         "E3004" => Some("A pattern could not be parsed at this location."),
         "E3005" => Some("The identifier intern table ran out of index space."),
-        "E4001" => Some("The compiler hit an internal lowering invariant (please report)."),
+        "E4001" | "E4002" => {
+            Some("The compiler hit an internal lowering invariant (please report).")
+        }
         "W3001" | "W3002" => Some("A lint warning (does not fail the build in v1)."),
         _ => None,
     }

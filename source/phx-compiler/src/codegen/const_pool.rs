@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use phx_bytecode::{ConstEntry, ConstPool, ConstTag, PrimitiveKind};
 
+use crate::codegen::CodegenError;
+use crate::codegen::error::u32_section;
 use crate::ir::IrConst;
 
 /// Key for deduplicating constant pool entries.
@@ -30,7 +32,11 @@ impl ConstPoolBuilder {
     }
 
     /// Registers all literals from `constants`, deduplicating identical payloads.
-    pub fn fill_from_ir(&mut self, constants: &[IrConst]) {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CodegenError::SectionTooLarge`] when the pool exceeds `u32::MAX` entries.
+    pub fn fill_from_ir(&mut self, constants: &[IrConst]) -> Result<(), CodegenError> {
         self.ir_to_pool.clear();
         self.ir_to_pool.reserve(constants.len());
         for lit in constants {
@@ -42,28 +48,27 @@ impl ConstPoolBuilder {
             let pool_idx = if let Some(&idx) = self.dedupe.get(&key) {
                 idx
             } else {
-                let Some(idx) = u32::try_from(self.entries.len()).ok() else {
-                    break;
-                };
+                let idx = u32_section("const_pool", self.entries.len())?;
                 self.dedupe.insert(key, idx);
                 self.entries.push(entry);
                 idx
             };
             self.ir_to_pool.push(pool_idx);
         }
+        Ok(())
     }
 
     /// Returns the constant pool index for IR literal `literal_index`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `fill_from_ir` was not called or `literal_index` is out of range.
-    #[must_use]
-    pub fn pool_index_for_literal(&self, literal_index: u32) -> u32 {
+    /// Returns [`CodegenError::MissingLiteralIndex`] when `literal_index` is out of range
+    /// or `fill_from_ir` was not called for that literal.
+    pub fn pool_index_for_literal(&self, literal_index: u32) -> Result<u32, CodegenError> {
         self.ir_to_pool
             .get(literal_index as usize)
             .copied()
-            .unwrap_or(literal_index)
+            .ok_or(CodegenError::MissingLiteralIndex { literal_index })
     }
 
     /// Finishes the pool.
@@ -152,5 +157,38 @@ impl PrimUnsigned for PrimitiveKind {
                 | PrimitiveKind::U64
                 | PrimitiveKind::U128
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use phx_bytecode::PrimitiveKind;
+
+    #[test]
+    fn pool_index_for_literal_errors_on_miss() {
+        let builder = ConstPoolBuilder::new();
+        assert_eq!(
+            builder.pool_index_for_literal(0),
+            Err(CodegenError::MissingLiteralIndex { literal_index: 0 })
+        );
+    }
+
+    #[test]
+    fn fill_from_ir_maps_literals() {
+        let mut builder = ConstPoolBuilder::new();
+        let constants = vec![IrConst::Int(1, PrimitiveKind::S32)];
+        assert!(builder.fill_from_ir(&constants).is_ok());
+        assert_eq!(builder.pool_index_for_literal(0), Ok(0));
+    }
+
+    #[test]
+    fn pool_index_for_literal_errors_on_out_of_range() {
+        let mut builder = ConstPoolBuilder::new();
+        assert!(builder.fill_from_ir(&[IrConst::Bool(true)]).is_ok());
+        assert_eq!(
+            builder.pool_index_for_literal(1),
+            Err(CodegenError::MissingLiteralIndex { literal_index: 1 })
+        );
     }
 }

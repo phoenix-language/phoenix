@@ -23,6 +23,7 @@ use crate::typeck::{
     primitive_load_signed,
 };
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
+use phx_diagnostics::LowerError;
 use phx_syntax::token::IntegerSuffix;
 
 /// Lowers `expr` so its value is on the implicit stack.
@@ -1104,6 +1105,12 @@ fn lower_try_return_scrutinee(ctx: &mut LowerCtx<'_>, temp: LocalSlot, temp_ty: 
     });
 }
 
+/// Lowers the failure arm of `?` when `From` converts the error payload.
+///
+/// # Errors
+///
+/// Records [`LowerError::MissingTryConvertLayout`] when typeck layout metadata for the
+/// enclosing return `Result` is missing (internal invariant violation).
 fn lower_try_convert_err(
     ctx: &mut LowerCtx<'_>,
     meta: &TrySiteMeta,
@@ -1146,7 +1153,12 @@ fn lower_try_convert_err(
         args: ret_enum_args,
     } = ctx.typed.types.get(*return_result_ty).clone()
     else {
-        debug_assert!(false, "missing return Result type for `?` conversion");
+        ctx.bag.push(
+            ctx.module,
+            LowerError::MissingTryConvertLayout {
+                detail: "return Result type",
+            },
+        );
         return;
     };
     let Some(ret_bytecode_type_id) = ctx
@@ -1154,7 +1166,12 @@ fn lower_try_convert_err(
         .layout
         .type_id_for_named(ret_enum_def, &ret_enum_args)
     else {
-        debug_assert!(false, "missing bytecode type id for return Result");
+        ctx.bag.push(
+            ctx.module,
+            LowerError::MissingTryConvertLayout {
+                detail: "bytecode type id for return Result",
+            },
+        );
         return;
     };
     let Some(err_tag) = ctx.typed.std_kernel.failure_tag_for(
@@ -1162,7 +1179,12 @@ fn lower_try_convert_err(
         &ctx.typed.types,
         *return_result_ty,
     ) else {
-        debug_assert!(false, "missing Err tag for return Result");
+        ctx.bag.push(
+            ctx.module,
+            LowerError::MissingTryConvertLayout {
+                detail: "Err tag for return Result",
+            },
+        );
         return;
     };
     ctx.emit(IrInst::MakeEnum {

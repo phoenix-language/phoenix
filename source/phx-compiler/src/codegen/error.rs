@@ -12,6 +12,11 @@ pub enum CodegenError {
         /// Length or index that overflowed.
         len: usize,
     },
+    /// IR literal index has no entry in the constant pool mapping.
+    MissingLiteralIndex {
+        /// IR literal index from [`crate::ir::IrInst::Const`] or [`crate::ir::IrInst::MakeStr`].
+        literal_index: u32,
+    },
 }
 
 impl std::fmt::Display for CodegenError {
@@ -21,6 +26,12 @@ impl std::fmt::Display for CodegenError {
                 write!(
                     f,
                     "codegen: section `{section}` size {len} exceeds u32::MAX"
+                )
+            }
+            Self::MissingLiteralIndex { literal_index } => {
+                write!(
+                    f,
+                    "codegen: constant pool has no entry for IR literal index {literal_index}"
                 )
             }
         }

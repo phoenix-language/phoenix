@@ -15,6 +15,23 @@ pub enum LowerError {
         /// Call expression span.
         span: Span,
     },
+    /// Emission targeted a basic block index that does not exist.
+    InvalidBlockIndex {
+        /// Block index passed to [`LowerCtx::emit`] or [`LowerCtx::set_current`].
+        block: u32,
+    },
+    /// A lowering table exceeded representable `u32` indices.
+    LimitExceeded {
+        /// Table name (for example `"const_pool"`, `"basic_blocks"`, `"functions"`).
+        item: &'static str,
+        /// Length or index that overflowed.
+        len: usize,
+    },
+    /// Missing layout metadata while lowering `?` with `From` error conversion.
+    MissingTryConvertLayout {
+        /// Invariant detail (for example `"return Result type"`).
+        detail: &'static str,
+    },
 }
 
 impl LowerError {
@@ -23,6 +40,9 @@ impl LowerError {
     pub const fn code(&self) -> DiagnosticCode {
         match self {
             Self::UnresolvedCallee { .. } => DiagnosticCode::new("E4001"),
+            Self::InvalidBlockIndex { .. }
+            | Self::LimitExceeded { .. }
+            | Self::MissingTryConvertLayout { .. } => DiagnosticCode::new("E4002"),
         }
     }
 
@@ -31,6 +51,9 @@ impl LowerError {
     pub const fn span(&self) -> Option<Span> {
         match self {
             Self::UnresolvedCallee { span } => Some(*span),
+            Self::InvalidBlockIndex { .. }
+            | Self::LimitExceeded { .. }
+            | Self::MissingTryConvertLayout { .. } => None,
         }
     }
 }
@@ -40,6 +63,24 @@ impl fmt::Display for LowerError {
         match self {
             Self::UnresolvedCallee { .. } => {
                 f.write_str("internal error: unresolved call target during lowering")
+            }
+            Self::InvalidBlockIndex { block } => {
+                write!(
+                    f,
+                    "internal error: invalid basic block index {block} during lowering"
+                )
+            }
+            Self::LimitExceeded { item, len } => {
+                write!(
+                    f,
+                    "internal error: lowering table `{item}` size {len} exceeds u32::MAX"
+                )
+            }
+            Self::MissingTryConvertLayout { detail } => {
+                write!(
+                    f,
+                    "internal error: missing {detail} for `?` conversion during lowering"
+                )
             }
         }
     }
@@ -100,3 +141,18 @@ impl std::fmt::Display for LowerBag {
 }
 
 impl std::error::Error for LowerBag {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_try_convert_layout_display_and_code() {
+        let err = LowerError::MissingTryConvertLayout {
+            detail: "return Result type",
+        };
+        assert_eq!(err.code(), DiagnosticCode::new("E4002"));
+        assert!(err.span().is_none());
+        assert!(err.to_string().contains("return Result type"), "{}", err);
+    }
+}

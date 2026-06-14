@@ -107,11 +107,28 @@ impl<'a> LowerCtx<'a> {
             .push(self.module, LowerError::UnresolvedCallee { span });
     }
 
+    fn error_invalid_block(&mut self, block: u32) {
+        self.bag
+            .push(self.module, LowerError::InvalidBlockIndex { block });
+    }
+
+    fn error_limit_exceeded(&mut self, item: &'static str, len: usize) {
+        self.bag
+            .push(self.module, LowerError::LimitExceeded { item, len });
+    }
+
     /// Appends a literal to the module pool and returns its index.
+    ///
+    /// On overflow, records [`LowerError::LimitExceeded`] and returns `0`; callers should
+    /// abort lowering when [`LowerBag::has_errors`].
     pub fn intern_const(&mut self, lit: IrConst) -> u32 {
-        let index = u32::try_from(self.constants.len()).unwrap_or(u32::MAX);
-        self.constants.push(lit);
-        index
+        if let Ok(index) = u32::try_from(self.constants.len()) {
+            self.constants.push(lit);
+            index
+        } else {
+            self.error_limit_exceeded("const_pool", self.constants.len());
+            0
+        }
     }
 
     /// Reserves a loop exit block id to patch after the loop body is lowered.
@@ -220,26 +237,46 @@ impl<'a> LowerCtx<'a> {
 
     /// Appends a non-terminator or terminator to the current block.
     pub fn emit(&mut self, inst: IrInst) {
-        let block = match usize::try_from(self.current) {
-            Ok(b) => b,
-            Err(_) => return,
+        let block = if let Ok(b) = usize::try_from(self.current) {
+            b
+        } else {
+            self.error_invalid_block(self.current);
+            return;
         };
         if let Some(b) = self.blocks.get_mut(block) {
             b.insts.push(inst);
+        } else {
+            self.error_invalid_block(self.current);
         }
     }
 
     /// Allocates a new empty basic block and returns its index.
+    ///
+    /// On overflow, records [`LowerError::LimitExceeded`] and returns `0`.
     #[must_use]
     pub fn fresh_block(&mut self) -> u32 {
-        let id = u32::try_from(self.blocks.len()).unwrap_or(u32::MAX);
-        self.blocks.push(IrBasicBlock::new());
-        id
+        if let Ok(id) = u32::try_from(self.blocks.len()) {
+            self.blocks.push(IrBasicBlock::new());
+            id
+        } else {
+            self.error_limit_exceeded("basic_blocks", self.blocks.len());
+            0
+        }
     }
 
     /// Switches emission to `block`.
     pub fn set_current(&mut self, block: u32) {
-        self.current = block;
+        let index = if let Ok(i) = usize::try_from(block) {
+            i
+        } else {
+            self.error_invalid_block(block);
+            return;
+        };
+        if self.blocks.get(index).is_some() {
+            self.current = block;
+        } else {
+            self.error_invalid_block(block);
+        }
     }
 
     /// Finishes building blocks.

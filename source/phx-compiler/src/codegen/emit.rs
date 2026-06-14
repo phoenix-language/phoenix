@@ -11,6 +11,7 @@ use crate::ir::{IrBinOp, IrFunction, IrInst};
 use crate::resolver::DefId;
 
 use super::const_pool::ConstPoolBuilder;
+use super::error::CodegenError;
 
 /// Result of emitting one function body.
 #[derive(Debug)]
@@ -22,23 +23,26 @@ pub struct EmittedFunction {
 }
 
 /// Emits one function's CFG to bytecode bytes.
-#[must_use]
+///
+/// # Errors
+///
+/// Returns [`CodegenError`] when a constant pool lookup fails.
 pub fn emit_function(
     func: &IrFunction,
     pool: &mut ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
-) -> EmittedFunction {
-    let block_starts = compute_block_starts(func, pool, def_to_fn);
-    let (code, stack_max) = emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts);
-    EmittedFunction { code, stack_max }
+) -> Result<EmittedFunction, CodegenError> {
+    let block_starts = compute_block_starts(func, pool, def_to_fn)?;
+    let (code, stack_max) = emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts)?;
+    Ok(EmittedFunction { code, stack_max })
 }
 
 fn compute_block_starts(
     func: &IrFunction,
     pool: &ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
-) -> Vec<u32> {
+) -> Result<Vec<u32>, CodegenError> {
     let n = func.blocks.len();
     let mut starts = vec![0u32; n];
     let mut scratch = Vec::new();
@@ -47,11 +51,11 @@ fn compute_block_starts(
         starts[block_id] = offset;
         for inst in &block.insts {
             scratch.clear();
-            emit_inst(&mut scratch, inst, pool, def_to_fn, &starts);
+            emit_inst(&mut scratch, inst, pool, def_to_fn, &starts)?;
             offset = offset.saturating_add(u32::try_from(scratch.len()).unwrap_or(u32::MAX));
         }
     }
-    starts
+    Ok(starts)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -203,16 +207,16 @@ fn emit_blocks(
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     fn_arity: &std::collections::HashMap<u32, u16>,
     block_starts: &[u32],
-) -> (Vec<u8>, u16) {
+) -> Result<(Vec<u8>, u16), CodegenError> {
     let mut out = Vec::new();
     for block in &func.blocks {
         for inst in &block.insts {
-            emit_inst(&mut out, inst, pool, def_to_fn, block_starts);
+            emit_inst(&mut out, inst, pool, def_to_fn, block_starts)?;
         }
     }
     let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity);
     let stack_max = u16::try_from(max_stack).unwrap_or(u16::MAX);
-    (out, stack_max)
+    Ok((out, stack_max))
 }
 
 /// CFG-aware max stack depth for IR (short-circuit paths are not linear in block order).
@@ -366,12 +370,12 @@ fn emit_inst(
     pool: &ConstPoolBuilder,
     def_to_fn: &std::collections::HashMap<DefId, u32>,
     block_starts: &[u32],
-) {
+) -> Result<(), CodegenError> {
     match inst {
         IrInst::Const {
             index, prim_kind, ..
         } => {
-            let pool_idx = pool.pool_index_for_literal(*index);
+            let pool_idx = pool.pool_index_for_literal(*index)?;
             out.extend(encode(Opcode::Const, &[pool_idx, u32::from(*prim_kind)]));
         }
         IrInst::LoadLocal {
@@ -535,7 +539,7 @@ fn emit_inst(
             out.extend(encode(Opcode::MakeSliceFromPtr, &[u32::from(*elem_kind)]));
         }
         IrInst::MakeStr { pool_index } => {
-            let pool_idx = pool.pool_index_for_literal(*pool_index);
+            let pool_idx = pool.pool_index_for_literal(*pool_index)?;
             out.extend(encode(Opcode::MakeStr, &[pool_idx]));
         }
         IrInst::StrAsSlice => {
@@ -558,6 +562,7 @@ fn emit_inst(
             out.extend(encode(Opcode::Call, &[fn_id]));
         }
     }
+    Ok(())
 }
 
 fn encode(opcode: Opcode, operands: &[u32]) -> Vec<u8> {

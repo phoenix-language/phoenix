@@ -129,13 +129,13 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
         .collect();
 
     let mut pool = ConstPoolBuilder::new();
-    pool.fill_from_ir(&ir.constants);
+    pool.fill_from_ir(&ir.constants)?;
     let mut code = Vec::new();
     let mut records = Vec::new();
 
     for func in &ir.functions {
         let offset = u32_section("code_offset", code.len())?;
-        let emitted = emit::emit_function(func, &mut pool, &def_to_fn, &fn_arity);
+        let emitted = emit::emit_function(func, &mut pool, &def_to_fn, &fn_arity)?;
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: func.id.index(),
@@ -198,14 +198,14 @@ pub fn codegen_module(
     let fn_arity = build_fn_arity_map(typed, ir, global_fn);
 
     let mut pool = ConstPoolBuilder::new();
-    pool.fill_from_ir(&ir.constants);
+    pool.fill_from_ir(&ir.constants)?;
     let mut code = Vec::new();
     let mut records = Vec::new();
 
     for func in &ir.functions {
         let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
         let offset = u32_section("code_offset", code.len())?;
-        let emitted = emit::emit_function(func, &mut pool, def_to_fn, &fn_arity);
+        let emitted = emit::emit_function(func, &mut pool, def_to_fn, &fn_arity)?;
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: fn_id,
