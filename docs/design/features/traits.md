@@ -244,6 +244,8 @@ s32 :: impl :: Zero { };
 
 Default trait bodies use static dispatch — empty `Type :: impl :: Trait { }` inherits methods that have defaults; explicit impl methods override them entirely (no `super` in Language v0).
 
+**Status:** Implemented (V0-063). Typeck synthesizes inherited bodies via `typeck/trait_defaults.rs`; monomorphization and lowering emit them like explicit impl methods. Fixtures: `tests/cli/fixtures/trait_default`, `tests/cli/fixtures/std_platform_smoke`; unit tests in `source/phx-compiler/tests/typeck.rs` and `lower.rs`.
+
 ---
 
 ## Generics and trait bounds

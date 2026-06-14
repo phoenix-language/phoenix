@@ -53,8 +53,8 @@ flowchart LR
 | Feature                             | Design status                                                                       | Compiler status                                                                   | Checklist ID             |
 | ----------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------ |
 | **Heap slices**                     | `[T]` is a core `(ptr, len)` view type                                              | Slices only view **stack/arena Arrays** (`arr as [T]`); no slice over heap memory | — (partial in audit)     |
-| **Trait default bodies**            | Documented in [traits.md](features/traits.md); grammar parses them                  | Parsed into AST; **no inheritance in typeck/codegen**                             | — (partial in audit)     |
-| **Match on multi-payload `Result`** | [error-handling.md](features/error-handling.md) requires `match` / `if const` / `?` | `Option` match solid; `Result<ok, err>` with **two generic parameters** partial   | — (partial in audit)     |
+| **Trait default bodies**            | Documented in [traits.md](features/traits.md)                                       | Empty `impl` inherits defaults in typeck, mono, lower, and codegen                | V0-063                   |
+| **Match on multi-payload `Result`** | [error-handling.md](features/error-handling.md) requires `match` / `if const` / `?` | Two-param `Result` match, exhaustiveness, and `if const`/`if var` binding ship    | V0-064                   |
 | Heap `ALLOC` intrinsic              | Done (V0-030)                                                                       | Done                                                                              | V0-030                   |
 | `dealloc_bytes` / `FREE`            | Documented in design (V0-065)                                                       | Done                                                                              | V0-065                   |
 | Pluggable `Allocator` trait         | [allocator.md](features/allocator.md) (V0-066)                                      | Std `Allocator` + `Global` in Phoenix source                                      | V0-066                   |
@@ -203,11 +203,11 @@ Status: **Done** (implemented)
 
 **Acceptance criteria:**
 
-- [ ] Trait with default method body + empty `s32 :: impl :: Trait { }` compiles, monomorphizes, and runs calling the default.
-- [ ] Impl that overrides a default uses the override; default is not also emitted as duplicate symbol.
-- [ ] Diagnostic when impl is empty but trait method has **no** default (missing method error).
-- [ ] Optional stretch (same PR or follow-up): `Into` default from `From` in std once both traits and defaults work — document in fixture.
-- [ ] `just pre-commit` green.
+- [x] Trait with default method body + empty `s32 :: impl :: Trait { }` compiles, monomorphizes, and runs calling the default.
+- [x] Impl that overrides a default uses the override; default is not also emitted as duplicate symbol.
+- [x] Diagnostic when impl is empty but trait method has **no** default (missing method error).
+- [x] Optional stretch (same PR or follow-up): `Into` default from `From` in std once both traits and defaults work — document in fixture.
+- [x] `just pre-commit` green.
 
 **Refs:** [traits.md](features/traits.md#default-trait-bodies), [grammar-deferred.md](features/grammar-deferred.md)
 
@@ -253,11 +253,11 @@ pub Result :: <ok, err> enum {
 
 **Acceptance criteria:**
 
-- [ ] `match result_expr { Ok(v) => …; Err(e) => … }` works when `result_expr: Result<Config, AppError>` (or equivalent fixture types).
-- [ ] Non-exhaustive `Result` match rejected at compile time.
-- [ ] `if const Ok(x) = expr` / `if var Err(e) = expr` works for two-payload `Result` (same binding rules as `Option`).
-- [ ] `?` and explicit `match` on the same `Result` type both pass in one program (`examples/errors` or dedicated fixture).
-- [ ] `just pre-commit` green.
+- [x] `match result_expr { Ok(v) => …; Err(e) => … }` works when `result_expr: Result<Config, AppError>` (or equivalent fixture types).
+- [x] Non-exhaustive `Result` match rejected at compile time.
+- [x] `if const Ok(x) = expr` / `if var Err(e) = expr` works for two-payload `Result` (same binding rules as `Option`).
+- [x] `?` and explicit `match` on the same `Result` type both pass in one program (`examples/errors` or dedicated fixture).
+- [x] `just pre-commit` green.
 
 **Refs:** [error-handling.md](features/error-handling.md), [language-v0.md](language-v0.md) V0-042, V0-059, [traits.md](features/traits.md)
 
@@ -365,8 +365,8 @@ Do not expand scope while Phase 7 is open:
 | ID     | Item                             | Phase      | Blocks Language v0 announcement |
 | ------ | -------------------------------- | ---------- | ------------------------------- |
 | V0-062 | Heap slices                      | 7          | **Yes**                         |
-| V0-063 | Trait default bodies             | 7          | **Yes**                         |
-| V0-064 | Match on multi-payload `Result`  | 7          | **Yes**                         |
+| V0-063 | Trait default bodies             | 7          | **Yes — Done**                  |
+| V0-064 | Match on multi-payload `Result`  | 7          | **Yes — Done**                  |
 | V0-067 | Cross-pillar integration fixture | 7          | **Yes**                         |
 | V0-065 | `dealloc_bytes` / `FREE`         | 8          | No (blocks Std v0 collections)  |
 | V0-066 | `Allocator` trait design + std   | 8 / Std v0 | No — **Done**                   |
