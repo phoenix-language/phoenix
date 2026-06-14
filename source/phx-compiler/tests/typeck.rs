@@ -380,6 +380,61 @@ fn loop_inner_var_move_ok() {
 }
 
 #[test]
+fn field_read_without_move_ok() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; const _ = p.r; };",
+    );
+}
+
+#[test]
+fn pattern_destructure_scrutinee_still_usable() {
+    compile_ok(
+        "Result :: enum { Ok { v: s32 }, Err { code: s32 }, }; main :: () => { var x: s32 = 1; var r: Result = Ok { v: x }; match r { Ok { v: y } => { const _ = r; const w = y; }; Err { code: c } => { const _ = c; }; }; };",
+    );
+}
+
+#[test]
+fn field_read_after_whole_move_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var q: Point = p; const _ = p.r; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+}
+
+#[test]
+fn field_assign_after_whole_move_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var m: s32 = 2; var p: Point = Point { r: &n }; var q: Point = p; p.r = &m; };";
+    let bag = typeck_err(source);
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::UseAfterMove { name, .. } if name == "p"
+            ) || matches!(
+                &e.error,
+                TypeCheckError::MovedAssignTarget { name, .. } if name == "p"
+            )
+        }),
+        "expected use-after-move or moved assign on `p`: {:?}",
+        bag.errors()
+    );
+}
+
+// MVP gap (PHX-025): field extraction does not invalidate the parent binding until post-MVP.
+#[test]
+fn partial_field_extract_not_tracked_mvp() {
+    compile_ok(
+        "Pair :: struct { a: Point, b: s32 }; Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Pair = Pair { a: Point { r: &n }, b: 1 }; var q: Point = p.a; const _ = p.a.r; };",
+    );
+}
+
+#[test]
 fn function_trailing_expr_return_compile_ok() {
     compile_ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
 }

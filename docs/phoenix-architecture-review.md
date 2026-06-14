@@ -289,7 +289,7 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Detail:** Theoretical, but it is silent state corruption on (very large) user input — same family as PHX-016.
 **Recommendation:** Emit a fatal "program too large" diagnostic.
 
-**Resolution:** Added `DefId::try_from_index` and made resolver `alloc_def` / `define_*` fallible with a one-shot `def_table_full` flag and `ResolveError::ProgramTooLarge` (E1024). Hardened duplicate-definition reporting in `scopes.rs`. Type-check growth sites (`trait_defaults`, mono `alloc_specialized_def`) emit `TypeCheckError::ProgramTooLarge` (E2040). Multi-module merge in `resolve_loaded_program` uses checked remapping instead of saturating to `u32::MAX`.
+**Resolution:** Added `DefId::try_from_index` and made resolver `alloc_def` / `define_`* fallible with a one-shot `def_table_full` flag and `ResolveError::ProgramTooLarge` (E1024). Hardened duplicate-definition reporting in `scopes.rs`. Type-check growth sites (`trait_defaults`, mono `alloc_specialized_def`) emit `TypeCheckError::ProgramTooLarge` (E2040). Multi-module merge in `resolve_loaded_program` uses checked remapping instead of saturating to `u32::MAX`.
 
 **[PHX-022] Severity: Suggestion**
 **Location:** `phx-compiler/src/resolver/mod.rs:87–113`; `typeck/mod.rs:34–39`; `lib.rs:57–86`
@@ -338,11 +338,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/ownership.rs:9–15`; `check.rs:3194–3200`, `5170–5269`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** No partial-move tracking — field access and destructuring never invalidate the parent binding.
 **Detail:** `BindingState` is only `Valid | Moved(Span)`. Extracting a non-Copyable field leaves the whole parent usable. `ownership.md` is the authority here; if MVP scope is whole-value moves only, the current behavior may be intentional but is undocumented and untested either way.
 **Recommendation:** Requires design discussion: either document "MVP moves are whole-value; field extraction of non-Copyable values is a copy/error," or add `PartiallyMoved` states. Do not silently keep the current ambiguous behavior.
+
+**Resolution:** Author confirmed MVP whole-value move policy: field access and pattern binds are reads; only bare-identifier transfer marks a binding moved. Documented in `ownership.md` (`MVP: no partial moves`); no `PartiallyMoved` states. Regression tests (PHX-069) in `source/phx-compiler/tests/typeck.rs`.
 
 ---
 
@@ -855,13 +857,13 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-016 | - [x]  | Major        | phx-compiler    | Out-of-bounds `TypeId` silently resolves to `Ty::Unit`                   |
 | PHX-017 | - [x]  | Major        | phx-compiler    | `fn_def_for` failure proceeds with `DefId::from_raw(0)`                  |
 | PHX-018 | - [x]  | Major        | phx-compiler    | Derive expansion panics on intern table exhaustion                       |
-| PHX-019 | - [x]  | Major        | phx-compiler    | `#![allow(unreachable_patterns)]` in typeck and lower                     |
+| PHX-019 | - [x]  | Major        | phx-compiler    | `#![allow(unreachable_patterns)]` in typeck and lower                    |
 | PHX-020 | - [x]  | Minor        | phx-compiler    | Wholesale clones across pass boundaries                                  |
 | PHX-021 | - [x]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
 | PHX-022 | - [x]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
 | PHX-023 | - [x]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
 | PHX-024 | - [x]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
-| PHX-025 | - [ ]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
+| PHX-025 | - [x]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
 | PHX-026 | - [ ]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
 | PHX-027 | - [ ]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |
 | PHX-028 | - [ ]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |

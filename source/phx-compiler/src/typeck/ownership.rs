@@ -6,6 +6,8 @@ use phx_syntax::Symbol;
 use super::types::TypeId;
 
 /// State of a local binding.
+///
+/// MVP tracks whole-binding validity only; field-level partial moves are post-MVP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingState {
     /// Available for use.
