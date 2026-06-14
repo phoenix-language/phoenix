@@ -1,0 +1,9 @@
+[project]
+name = "lint_std_result_discard"
+version = "0.1.0"
+description = "PHX-029 lint: discarded std Result must-use warning"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

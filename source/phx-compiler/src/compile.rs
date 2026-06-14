@@ -515,7 +515,7 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
 ///
 /// Returns [`DiagnosticBag`] when `#[allow(...)]` names are invalid.
 pub fn lint_checked(typed: &crate::typeck::TypedProgram) -> Result<LintBag, DiagnosticBag> {
-    lint_program(&typed.resolved)
+    lint_program(typed)
 }
 
 /// Formats lint warnings for stderr (does not fail the build).

@@ -394,11 +394,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/lint/mod.rs:21, 293–306`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Lint runs on `ResolvedProgram` only — it has no type information, so the documented post-MVP "discarded `Result`/`Option` is an error" rule cannot be implemented in this pass as wired.
 **Detail:** `check_discard` keys off `#[must_use]` attributes only. Not an MVP bug, but a known extension point that currently requires re-plumbing.
 **Recommendation:** Flag for review now; when M7 lands, pass `TypedProgram` (or `expr_types`) into lint.
+
+**Resolution:** `lint_program` now consumes `TypedProgram`; typeck records `expr_span_types` keyed by `(module, span)`; `check_discard` uses `StdKernel` to warn on discarded std `Result`/`Option` values (lint warning, M7 error promotion deferred). Tests in `tests/lint.rs` and fixture `lint_std_result_discard`.
 
 ---
 
@@ -406,11 +408,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/derive/mod.rs:30, 342–350`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `#derive` supports `Debug` (undocumented in design docs) and rejects generic types entirely.
 **Detail:** Doc/code divergence in both directions — docs promise `Copyable`/`PartialEq`; code also ships `Debug`; generic derive is a silent capability gap for std authoring (`DynamicArray<T>` cannot derive).
 **Recommendation:** Flag for review — either document `Debug` or remove it; track generic derive as a feature item.
+
+**Resolution:** Kept `#derive(Debug)` (already documented in `traits.md` Derive section and `compiler-directives.md`); fixed stale contradictions in `traits.md` (“future feature”) and `mvp.md` (listed `#derive` as unimplemented). Generic derive tracked explicitly in `grammar-deferred.md`; expansion emits a clear error for generic types. Tests in `derive.rs` for `Debug` and generic rejection.
 
 ### Pragmatic Critic Findings
 
@@ -873,8 +877,8 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-026 | - [x]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
 | PHX-027 | - [x]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |
 | PHX-028 | - [x]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |
-| PHX-029 | - [ ]  | Minor        | phx-compiler    | Lint pass has no type information                                        |
-| PHX-030 | - [ ]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |
+| PHX-029 | - [x]  | Minor        | phx-compiler    | Lint pass has no type information                                        |
+| PHX-030 | - [x]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |
 | PHX-031 | - [ ]  | Major        | phx-compiler    | `TypeChecker` is a 6,030-line God module                                 |
 | PHX-032 | - [ ]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
 | PHX-033 | - [ ]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |

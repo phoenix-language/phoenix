@@ -69,6 +69,8 @@ pub struct TypeChecker<'a> {
     types: TypeInterner,
     bag: TypeCheckBag,
     expr_types: HashMap<ExprId, TypeId>,
+    /// Expression types keyed by `(module_id, source span)` for lint discard checks.
+    expr_span_types: HashMap<(u32, Span), TypeId>,
     next_expr: u32,
     type_defs: TypeDefMap,
     value_types: HashMap<DefId, TypeId>,
@@ -176,6 +178,7 @@ impl<'a> TypeChecker<'a> {
             types,
             bag: TypeCheckBag::new(),
             expr_types: HashMap::new(),
+            expr_span_types: HashMap::new(),
             next_expr: 0,
             type_defs: build_type_def_map(&resolved.defs),
             value_types,
@@ -2963,6 +2966,8 @@ impl<'a> TypeChecker<'a> {
         let id = self.alloc_expr_id();
         let ty = self.check_expr_with_move(&expr.inner, expr.span, record_move, id);
         self.expr_types.insert(id, ty);
+        self.expr_span_types
+            .insert((self.current_module, expr.span), ty);
         ty
     }
 
@@ -5832,6 +5837,7 @@ impl<'a> TypeChecker<'a> {
     ) -> (
         TypeInterner,
         HashMap<ExprId, TypeId>,
+        HashMap<(u32, Span), TypeId>,
         TypeCheckBag,
         Vec<FunctionLayout>,
         ProgramLayout,
@@ -5854,6 +5860,7 @@ impl<'a> TypeChecker<'a> {
         (
             self.types,
             self.expr_types,
+            self.expr_span_types,
             self.bag,
             self.functions,
             self.program_layout,
@@ -6273,6 +6280,7 @@ pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, 
     let (
         types,
         expr_types,
+        expr_span_types,
         bag,
         functions,
         layout,
@@ -6301,6 +6309,7 @@ pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, 
         resolved,
         types,
         expr_types,
+        expr_span_types,
         functions,
         entry,
         layout,

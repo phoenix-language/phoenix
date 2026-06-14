@@ -50,6 +50,7 @@ pub use type_size::type_byte_size;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
 use crate::resolver::{DefId, ResolvedProgram};
+use phx_diagnostics::Span;
 
 /// Result of type-checking a [`ResolvedProgram`].
 ///
@@ -63,6 +64,8 @@ pub struct TypedProgram {
     pub types: TypeInterner,
     /// Expression types by [`ExprId`].
     pub expr_types: std::collections::HashMap<ExprId, TypeId>,
+    /// Expression types keyed by `(module_id, source span)` for lint discard checks.
+    pub expr_span_types: std::collections::HashMap<(u32, Span), TypeId>,
     /// Per-function local layouts for lowering.
     pub functions: Vec<bindings::FunctionLayout>,
     /// `main` definition id when present.

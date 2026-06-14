@@ -33,7 +33,7 @@ Float caveat:
 - `f32`/`f64` should generally implement `PartialEq` and `PartialOrd`.
 - They should not imply total-order `Eq`/`Ord` by default unless a separate total-order wrapper is used.
 
-`#derive(...)` is a future feature and not required for MVP code generation.
+`#derive(Copyable, PartialEq, Debug)` on structs and enums is **shipped** ([V0-056](../language-v0.md#v0-056--derive-minimal), [Derive (V0-056)](#derive-v0-056)) — generic types and additional traits remain deferred.
 
 Conversion traits (`From`, `Into`, `TryFrom`, `TryInto`) are required for ergonomic std error handling and for `?` with mismatched error types — see [error-handling.md](error-handling.md#error-conversion-from--into--v0-058).
 

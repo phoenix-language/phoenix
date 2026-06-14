@@ -45,6 +45,29 @@ fn expand_unsupported_trait_errors() {
 }
 
 #[test]
+fn expand_debug_adds_impl() {
+    let source = "Debug :: trait { fmt :: (self: &Self) => [u8; 32]; }; \
+                  #derive(Debug) Point :: struct { x: s32, y: s32 }; main :: () => { };";
+    assert_eq!(expand_and_count_impls(source), 1);
+}
+
+#[test]
+fn expand_generic_type_errors() {
+    let parsed = parse(
+        "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
+         #derive(PartialEq) Box :: <t> struct { v: t }; main :: () => { };",
+    );
+    assert!(!parsed.has_errors());
+    let mut file = parsed.value;
+    let err = expand_derives(&mut file.program, &file.interner).expect_err("generic");
+    assert!(
+        err.message.contains("generic"),
+        "expected generic derive rejection: {}",
+        err.message
+    );
+}
+
+#[test]
 fn derive_partialeq_typechecks() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
                   #derive(PartialEq) Point :: struct { x: s32, y: s32 }; \

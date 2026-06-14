@@ -11,14 +11,16 @@ use phx_syntax::ast::{ExprNode, Node};
 use phx_syntax::{Interner, Symbol};
 
 use crate::attrs::parse_allow_lint_kinds;
-use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
+use crate::resolver::{DefId, ResolutionKey};
+use crate::typeck::{TypeId, TypedProgram};
 
-/// Runs lint checks after type-checking.
+/// Runs lint checks on a type-checked program.
 ///
 /// # Errors
 ///
 /// Returns [`DiagnosticBag`] when `#[allow(...)]` uses an unknown lint name.
-pub fn lint_program(resolved: &ResolvedProgram) -> Result<LintBag, DiagnosticBag> {
+pub fn lint_program(typed: &TypedProgram) -> Result<LintBag, DiagnosticBag> {
+    let resolved = &typed.resolved;
     let mut bag = DiagnosticBag::new();
     let mut lints = LintBag::new();
     for module in &resolved.modules {
@@ -33,7 +35,7 @@ pub fn lint_program(resolved: &ResolvedProgram) -> Result<LintBag, DiagnosticBag
         }
         let mut walker = LintWalker {
             module: module.id,
-            resolved,
+            typed,
             interner: &resolved.interner,
             allow_stack: vec![HashSet::new()],
             lints: &mut lints,
@@ -88,7 +90,7 @@ fn check_fn_allow(f: &Function, interner: &Interner, errors: &mut Vec<(Span, Str
 
 struct LintWalker<'a> {
     module: u32,
-    resolved: &'a ResolvedProgram,
+    typed: &'a TypedProgram,
     interner: &'a Interner,
     allow_stack: Vec<HashSet<LintKind>>,
     lints: &'a mut LintBag,
@@ -256,13 +258,14 @@ impl LintWalker<'_> {
         let Some(def_id) = def_id else {
             return;
         };
-        let Some(attrs) = self.resolved.def_attrs.get(&def_id) else {
+        let Some(attrs) = self.typed.resolved.def_attrs.get(&def_id) else {
             return;
         };
         let Some(meta) = &attrs.deprecated else {
             return;
         };
         let name = self
+            .typed
             .resolved
             .defs
             .get(def_id.index() as usize)
@@ -290,21 +293,48 @@ impl LintWalker<'_> {
     }
 
     fn check_discard(&mut self, expr: &ExprNode) {
-        if self.is_allowed(LintKind::MustUse) || !self.expr_must_use(expr) {
+        if self.is_allowed(LintKind::MustUse) {
             return;
         }
+        let Some(reason) = self.discard_must_use_reason(expr) else {
+            return;
+        };
         self.lints.push(
             self.module,
             Lint {
                 kind: LintKind::MustUse,
                 span: expr.span,
-                message: "unused result of `#[must_use]` item".to_string(),
+                message: reason,
                 notes: Vec::new(),
             },
         );
     }
 
-    fn expr_must_use(&self, expr: &ExprNode) -> bool {
+    fn discard_must_use_reason(&self, expr: &ExprNode) -> Option<String> {
+        if let Some(ty) = self.expr_type(expr) {
+            let kernel = &self.typed.std_kernel;
+            let types = &self.typed.types;
+            if kernel.is_std_result(types, ty) {
+                return Some("discarded `Result` value must be handled".to_string());
+            }
+            if kernel.is_std_option(types, ty) {
+                return Some("discarded `Option` value must be handled".to_string());
+            }
+        }
+        if self.expr_attr_must_use(expr) {
+            return Some("unused result of `#[must_use]` item".to_string());
+        }
+        None
+    }
+
+    fn expr_type(&self, expr: &ExprNode) -> Option<TypeId> {
+        self.typed
+            .expr_span_types
+            .get(&(self.module, expr.span))
+            .copied()
+    }
+
+    fn expr_attr_must_use(&self, expr: &ExprNode) -> bool {
         match &expr.inner {
             Expr::Postfix { base, ops } if matches!(ops.last(), Some(PostfixOp::Call { .. })) => {
                 self.callee_def_id(base)
@@ -331,14 +361,16 @@ impl LintWalker<'_> {
     }
 
     fn def_must_use(&self, def_id: DefId) -> bool {
-        self.resolved
+        self.typed
+            .resolved
             .def_attrs
             .get(&def_id)
             .is_some_and(|a| a.must_use)
     }
 
     fn type_name_must_use(&self, sym: Symbol) -> bool {
-        self.resolved
+        self.typed
+            .resolved
             .defs
             .iter()
             .enumerate()
@@ -349,7 +381,8 @@ impl LintWalker<'_> {
                         crate::resolver::DefKind::Struct | crate::resolver::DefKind::Enum
                     )
                 {
-                    self.resolved
+                    self.typed
+                        .resolved
                         .def_attrs
                         .get(&DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
                         .filter(|a| a.must_use)
@@ -362,7 +395,8 @@ impl LintWalker<'_> {
     }
 
     fn resolve_node(&self, node_id: phx_syntax::AstNodeId) -> Option<DefId> {
-        self.resolved
+        self.typed
+            .resolved
             .resolutions
             .get(&ResolutionKey {
                 module: self.module,
