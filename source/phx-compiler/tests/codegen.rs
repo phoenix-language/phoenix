@@ -356,6 +356,54 @@ fn codegen_heap_slice_emits_make_slice_from_ptr_opcode() {
 }
 
 #[test]
+fn codegen_heap_slice_store_emits_index_store_opcode() {
+    use phx_test::{cli_project, fixture_fs_lock};
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_slice_store");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let path = root.join("src/main.phx");
+    let unit = phx_compiler::check_file(&path).expect("check heap_slice_store");
+    let ir = lower(&unit.typed).expect("lower heap_slice_store");
+    assert!(
+        ir.functions.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.insts
+                    .iter()
+                    .any(|i| matches!(i, IrInst::IndexStore { .. }))
+            })
+        }),
+        "expected IrInst::IndexStore in heap_slice_store"
+    );
+    let module = codegen(&ir, &unit.typed).expect("codegen heap_slice_store");
+    assert!(
+        module.code.contains(&Opcode::IndexStore.as_u8()),
+        "expected INDEX_STORE opcode in heap_slice_store bytecode"
+    );
+    verify(&module).expect("verify heap_slice_store");
+}
+
+#[test]
+fn codegen_heap_slice_nested_index_emits_index_store_opcode() {
+    use phx_test::{cli_project, fixture_fs_lock};
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_slice_nested_index");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let path = root.join("src/main.phx");
+    let unit = phx_compiler::check_file(&path).expect("check heap_slice_nested_index");
+    let ir = lower(&unit.typed).expect("lower heap_slice_nested_index");
+    let module = codegen(&ir, &unit.typed).expect("codegen heap_slice_nested_index");
+    assert!(
+        module.code.contains(&Opcode::IndexStore.as_u8()),
+        "expected INDEX_STORE opcode in heap_slice_nested_index bytecode"
+    );
+    verify(&module).expect("verify heap_slice_nested_index");
+}
+
+#[test]
 fn codegen_heap_dealloc_emits_free_opcode() {
     use phx_test::{cli_project, fixture_fs_lock};
     let _lock = fixture_fs_lock();

@@ -1,0 +1,15 @@
+error[E2032]: call to foreign function `c_add` requires `unsafe`
+  --> tests/cli/fixtures/extern_unsafe.phx:6:5
+  |
+6 |     c_add(10, 2);
+  |     ^^^^^^^^^^^^
+   = help: wrap the call in `unsafe { ... }` or declare the enclosing function as `unsafe`
+
+error[E2001]: type mismatch: expected (), found S32
+  --> tests/cli/fixtures/extern_unsafe.phx:5:15
+  |
+5 | main :: () => {
+  |               ^^^^^^^^^^^^^^^^^^^^^
+   = note: function body must produce `()` to match the declared return type
+   = help: change the expression to produce `()`, or adjust the expected type to `S32`
+error: aborting due to 2 previous errors

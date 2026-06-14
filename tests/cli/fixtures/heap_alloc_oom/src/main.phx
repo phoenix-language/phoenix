@@ -1,0 +1,9 @@
+#import std::core::alloc::alloc_bytes;
+
+main :: () => {
+    unsafe {
+        loop {
+            const _buf: *mut u8 = alloc_bytes(8u);
+        };
+    };
+};

@@ -64,3 +64,32 @@ fn heap_slice_oob_index_fails_at_runtime() {
         "expected OOB diagnostic, got:\n{msg}"
     );
 }
+
+#[test]
+fn heap_slice_store_round_trip() {
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_slice_store");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let built = force_build_project("heap_slice_store");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice_store");
+
+    run(verified).expect("run heap_slice_store");
+    // `v` local slot after `const v: u8 = sl[0];`
+    assert_main_locals(&built.module, &[(3, ExpectedLocal::U8(42))]);
+}
+
+#[test]
+fn heap_slice_nested_index_store_round_trip() {
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_slice_nested_index");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let built = force_build_project("heap_slice_nested_index");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice_nested_index");
+
+    run(verified).expect("run heap_slice_nested_index");
+    assert_main_locals(&built.module, &[(3, ExpectedLocal::U8(42))]);
+}

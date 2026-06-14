@@ -137,7 +137,8 @@ impl TypeChecker<'_> {
                 };
                 if let PostfixOp::Field(field) = &ops[0] {
                     self.check_field(base_ty, field, target.span)
-                } else if matches!(ops[0], PostfixOp::Index(_)) {
+                } else if let PostfixOp::Index(idx) = &ops[0] {
+                    let _ = self.check_expr_node(idx);
                     self.check_index(base_ty, target.span)
                 } else {
                     self.bag.push(

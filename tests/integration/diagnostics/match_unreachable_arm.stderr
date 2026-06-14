@@ -1,0 +1,6 @@
+error[E2009]: unreachable `match` arm: a previous `_` arm matches all remaining values
+  --> tests/cli/fixtures/match_unreachable_arm.phx:4:9
+  |
+4 |         2 => 2;
+  |         ^
+   = help: remove or reorder this arm so it can match before a broader arm

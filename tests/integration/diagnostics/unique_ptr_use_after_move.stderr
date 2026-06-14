@@ -1,0 +1,11 @@
+error[E2017]: use of moved value `a`
+  --> tests/cli/fixtures/unique_ptr_use_after_move.phx:10:15
+   |
+10 |     const _ = a.r;
+   |               ^
+   = note: value `a` was moved here
+  --> tests/cli/fixtures/unique_ptr_use_after_move.phx:9:20
+  |
+9 |     var b: Owner = a;
+  |                    ^
+   = help: use `a` only before it is moved, or bind a new value after the move

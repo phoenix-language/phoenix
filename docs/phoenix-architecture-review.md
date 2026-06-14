@@ -837,10 +837,12 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 **Location:** `phx-compiler/tests/typeck.rs`; `phx-bytecode/tests/verify_mutation.rs`; `tests/integration/diagnostics/`
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Coverage gaps cluster precisely on this review's Criticals: zero tests for moves across `if`/`match` arms or loop iterations (PHX-023/024), no `JumpIfFalse`/join-depth/section-overlap/oversized-alloc mutation tests (PHX-045/047/053), no multi-module link execution tests (PHX-033), no `IndexStore`/drop-glue stack verification (PHX-035, in-flight slice work), and only 6 golden diagnostics vs ~15 substring-only negative fixtures.
 **Recommendation:** Land regression tests alongside each fix; grow the golden set for move/trait/unsafe diagnostics.
+
+**Resolution (2026-06-14):** Branch/loop move tests, `JumpIfFalse`/section-overlap mutations, and `link_rebase` e2e were already present. Closed remaining gaps: `mutate_join_depth_mismatch_rejected` and `mutate_jump_target_mid_instruction_rejected` in `verify_mutation.rs`; `heap_slice_store` / `heap_slice_nested_index` fixtures with lower/codegen/integration `IndexStore` coverage (plus typeck index-assign cursor fix); `heap_alloc_oom` integration with `run_captured_with_heap_cap`; golden diagnostics expanded to 12 (move/trait/unsafe/cast/reachability); `dynamic_array_drop_smoke_verifies_balanced_main_return` locks PHX-035 on std drop glue.
 
 ---
 
@@ -947,7 +949,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-058 | - [x]  | Minor        | phx             | ICE handler discards panic message                                       |
 | PHX-059 | - [x]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
 | PHX-060 | - [x]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
-| PHX-061 | - [ ]  | Major        | tests           | Coverage gaps on all three Critical findings                             |
+| PHX-061 | - [x]  | Major        | tests           | Coverage gaps on Critical findings — regression suite expanded (2026-06-14) |
 | PHX-062 | - [ ]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing                |
 | PHX-063 | - [ ]  | Major        | cross-cutting   | Span propagation ends at typeck; IR carries no spans                     |
 

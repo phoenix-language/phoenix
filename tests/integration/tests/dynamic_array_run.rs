@@ -30,3 +30,16 @@ fn dynamic_array_drop_smoke_fixture_runs() {
 
     run(verified).expect("run dynamic_array_drop_smoke");
 }
+
+/// Verifier enforces canonical operand-stack depth at `Return` (PHX-035); drop glue on std
+/// `DynamicArray` must not leak stack slots.
+#[test]
+fn dynamic_array_drop_smoke_verifies_balanced_main_return() {
+    let _lock = fixture_fs_lock();
+    let root = cli_project("dynamic_array_drop_smoke");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let built = force_build_project("dynamic_array_drop_smoke");
+    phx_bytecode::verify(&built.module).expect("verify balanced main return stack for drop glue");
+}

@@ -1,0 +1,9 @@
+[project]
+name = "heap_slice_nested_index"
+version = "0.1.0"
+description = "V0-062 heap slice non-literal index store"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

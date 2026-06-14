@@ -1,0 +1,17 @@
+#import std::core::alloc::alloc_bytes;
+#import std::core::slice::slice_from_raw_parts;
+
+idx :: () => s32 {
+    0
+};
+
+main :: () => {
+    unsafe {
+        const buf: *mut u8 = alloc_bytes(4u);
+        var sl: [u8] = slice_from_raw_parts(buf, 4u);
+        const byte: u8 = 42 as u8;
+        sl[idx()] = byte;
+        const v: u8 = sl[idx()];
+        const _ = v;
+    };
+};

@@ -6,10 +6,12 @@ mod support;
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
     Instruction, LocalLayoutTable, ModuleError, Opcode, PrimitiveKind, SectionError, SectionKind,
-    TypeTable, verify,
+    TypeTable, VerifyError, verify,
 };
 use phx_vm::run_unverified;
-use support::{const_return_code, minimal_module, valid_const_return_module};
+use support::{
+    const_return_code, join_depth_mismatch_code, minimal_module, valid_const_return_module,
+};
 
 fn assert_verify_rejects(module: &BytecodeModule) {
     assert!(
@@ -352,4 +354,75 @@ fn mutate_overlapping_sections_rejected_at_decode() {
             second: SectionKind::Types,
         })
     ));
+}
+
+#[test]
+fn mutate_join_depth_mismatch_rejected() {
+    let (code, merge_off) = join_depth_mismatch_code();
+    let mut module = minimal_module(code, 4, 0, 0);
+    module.constants.entries = vec![
+        ConstEntry {
+            tag: ConstTag::Bool,
+            payload: vec![1],
+        },
+        ConstEntry {
+            tag: ConstTag::SignedInt,
+            payload: 1i32.to_le_bytes().to_vec(),
+        },
+    ];
+    let err = verify(&module).expect_err("join depth mismatch");
+    assert!(
+        matches!(
+            err,
+            VerifyError::JoinDepthMismatch {
+                function_id: 0,
+                offset,
+                expected: 0,
+                found: 1,
+            } if offset == merge_off
+        ),
+        "unexpected error: {err:?}"
+    );
+    assert_run_does_not_panic(&module);
+}
+
+#[test]
+fn mutate_jump_target_mid_instruction_rejected() {
+    let mut code = Vec::new();
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, u32::from(PrimitiveKind::S32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    // Target 3 lands inside the first `Const` operand, not on an instruction boundary.
+    code.extend(
+        Instruction {
+            opcode: Opcode::JumpIfTrue,
+            operands: vec![3],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    let module = minimal_module(code, 4, 0, 0);
+    let err = verify(&module).expect_err("mid-instruction jump");
+    assert!(matches!(
+        err,
+        VerifyError::InvalidJumpTarget {
+            function_id: 0,
+            target: 3,
+            ..
+        }
+    ));
+    assert_run_does_not_panic(&module);
 }

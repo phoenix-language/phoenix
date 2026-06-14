@@ -1,0 +1,9 @@
+[project]
+name = "heap_alloc_oom"
+version = "0.1.0"
+description = "V0-030 heap alloc OOM regression with low heap cap"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

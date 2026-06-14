@@ -367,6 +367,68 @@ fn lower_heap_slice_emits_make_slice_from_ptr_not_call() {
 }
 
 #[test]
+fn lower_heap_slice_store_emits_index_store() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_slice_store/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck heap_slice_store");
+    let ir = lower(&unit.typed).expect("lower heap_slice_store");
+    let has_index_store = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|i| matches!(i, IrInst::IndexStore { .. }))
+        })
+    });
+    assert!(
+        has_index_store,
+        "expected IrInst::IndexStore in heap_slice_store"
+    );
+}
+
+#[test]
+fn lower_heap_slice_nested_index_store_emits_index_store() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/heap_slice_nested_index/src/main.phx");
+    if !path.is_file() {
+        return;
+    }
+    let unit = phx_compiler::check_file(&path).expect("typecheck heap_slice_nested_index");
+    let ir = lower(&unit.typed).expect("lower heap_slice_nested_index");
+    let has_index_store = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|i| matches!(i, IrInst::IndexStore { .. }))
+        })
+    });
+    let has_call_before_store = ir.functions.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            let mut saw_call = false;
+            for inst in &b.insts {
+                if matches!(inst, IrInst::Call { .. }) {
+                    saw_call = true;
+                }
+                if saw_call && matches!(inst, IrInst::IndexStore { .. }) {
+                    return true;
+                }
+            }
+            false
+        })
+    });
+    assert!(
+        has_index_store,
+        "expected IrInst::IndexStore in heap_slice_nested_index"
+    );
+    assert!(
+        has_call_before_store,
+        "expected call to index fn before IndexStore in heap_slice_nested_index"
+    );
+}
+
+#[test]
 fn lower_heap_dealloc_emits_free_not_call() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/cli/fixtures/heap_dealloc/src/main.phx");

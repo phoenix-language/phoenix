@@ -80,3 +80,53 @@ fn golden_pow_unsupported() {
         &format_check_file(&path),
     );
 }
+
+#[test]
+fn golden_unique_ptr_use_after_move() {
+    let path = cli_fixture("unique_ptr_use_after_move.phx");
+    assert_golden(
+        &diagnostics_dir(),
+        "unique_ptr_use_after_move",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
+fn golden_trait_impl_incomplete() {
+    let path = cli_fixture("trait_impl_incomplete.phx");
+    assert_golden(
+        &diagnostics_dir(),
+        "trait_impl_incomplete",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
+fn golden_extern_unsafe() {
+    let path = cli_fixture("extern_unsafe.phx");
+    assert_golden(
+        &diagnostics_dir(),
+        "extern_unsafe",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
+fn golden_invalid_utf8_byte_as_str() {
+    let path = cli_fixture("invalid_utf8_byte_as_str.phx");
+    assert_golden(
+        &diagnostics_dir(),
+        "invalid_utf8_byte_as_str",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
+fn golden_match_unreachable_arm() {
+    let path = cli_fixture("match_unreachable_arm.phx");
+    assert_golden(
+        &diagnostics_dir(),
+        "match_unreachable_arm",
+        &format_check_file(&path),
+    );
+}

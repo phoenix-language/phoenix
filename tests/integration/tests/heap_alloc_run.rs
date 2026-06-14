@@ -47,3 +47,18 @@ fn heap_alloc_unsafe_check_fails() {
         "expected unsafe diagnostic, got:\n{msg}"
     );
 }
+
+#[test]
+fn heap_alloc_oom_with_low_heap_cap() {
+    use phx_vm::{VmErrorKind, run_captured_with_heap_cap};
+
+    let _lock = fixture_fs_lock();
+    let root = cli_project("heap_alloc_oom");
+    if !root.join("phoenix.toml").is_file() {
+        return;
+    }
+    let built = force_build_project("heap_alloc_oom");
+    let verified = phx_bytecode::verify(&built.module).expect("verify heap_alloc_oom");
+    let err = run_captured_with_heap_cap(verified, 32).expect_err("heap cap exceeded");
+    assert_eq!(err.kind, VmErrorKind::OutOfMemory);
+}

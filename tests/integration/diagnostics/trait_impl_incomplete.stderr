@@ -1,0 +1,6 @@
+error[E2026]: type `Point` does not implement trait method `eq` from `PartialEq`
+  --> tests/cli/fixtures/trait_impl_incomplete.phx:10:1
+   |
+10 | Point :: impl :: PartialEq {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: add `fn eq(...)` to `Point :: impl :: PartialEq`

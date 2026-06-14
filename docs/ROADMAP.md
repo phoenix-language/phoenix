@@ -59,7 +59,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | `Interner::resolve` must not mask invalid symbols | PHX-003 | `Option<&str>`; restrict `Symbol::from_raw` |
 | Unclosed `{` emits `UnexpectedEof` | PHX-006 | Parser recovery diagnostic |
 | `range_pattern`: parse-and-defer | PHX-007 | **Decided:** AST node + `UnsupportedFeature` in typeck (Resolved Design Decisions #9); add row to `grammar-deferred.md` |
-| `[INFRA]` Negative-test expansion for typeck: branch/loop moves, cast edges, bounds arity, inference holes | PHX-061 | Lands with the fixes above |
+| `[INFRA]` Negative-test expansion for typeck: branch/loop moves, cast edges, bounds arity, inference holes | PHX-061 | Done — branch/loop move tests in `typeck.rs`; golden cast fixture added |
 | `[FEATURE]` Cast-rule consolidation: move tuple-struct and `[u8; N] as str` special casts into `ops.rs` with documented rules | — | Single cast authority; no implicit widening anywhere (verified none exists today) |
 
 ---
@@ -81,7 +81,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Verifier fidelity cluster: join-mismatch error kind, `Trap` operand contract, `MakeStr` tag, layouts required at minor ≥ 1 | PHX-049 | done |
 | Carry `(function_id, pc)` on `VmError` | PHX-056 | Done — coarse runtime attribution; full source maps → PHX-070 |
 | `run_verified()` / `VerifiedModule` so the verify-before-run invariant is type-enforced; PC-past-end is an error | PHX-055 | **Decided:** VM assumes verified input; `VerifiedModule` constructible only via the verifier (Resolved Design Decisions #7) |
-| `[INFRA]` Mutation-test expansion: `JumpIfFalse` underflow, join mismatch, section overlap, oversized alloc, non-boundary jump | PHX-061 | Pairs with the fixes above |
+| `[INFRA]` Mutation-test expansion: `JumpIfFalse` underflow, join mismatch, section overlap, oversized alloc, non-boundary jump | PHX-061 | Done — join-depth + mid-instruction jump mutations; `heap_alloc_oom` e2e OOM |
 
 ---
 
@@ -95,7 +95,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Module-local lowering: stop embedding the whole-program constant pool per module | PHX-036 | Unmasks PHX-033; do both in one change with link tests |
 | Reject malformed `.pxi` exports instead of partial-parsing | PHX-040 | `Result`-returning PXI body parse |
 | Single-module codegen uses `ENTRY_NONE` when `main` is absent | PHX-043 | Entry-semantics consistency for `lib` artifacts |
-| `[INFRA]` Two-module link-and-execute integration fixtures (cross-module enum match, field access, drop glue) | PHX-061 | The test that fails before PHX-033/036 and passes after |
+| `[INFRA]` Two-module link-and-execute integration fixtures (cross-module enum match, field access, drop glue) | PHX-061 | Done — `tests/integration/tests/link_rebase.rs` |
 | `[INFRA]` PXI round-trip property tests for nested generic types | — | Hand-rolled JSON parser hardening |
 
 ---
@@ -122,8 +122,8 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Item | Finding | Work |
 |---|---|---|
 | `[FEATURE]` Finish heap slices (V0-062): slices over heap memory, `IndexStore`, slice assignment — complete and land the in-flight working-tree changes | — | The last documented Phase-7 partial |
-| `[INFRA]` Lower/codegen/verify tests for `IndexStore` and nested index chains | PHX-061 | Currently untested in-flight surface |
-| Drop glue verified end to end on std types after PHX-035 | PHX-035 | `DynamicArray`/`UniquePtr` drop fixtures assert balanced stacks |
+| `[INFRA]` Lower/codegen/verify tests for `IndexStore` and nested index chains | PHX-061 | Done — `heap_slice_store` / `heap_slice_nested_index` fixtures |
+| Drop glue verified end to end on std types after PHX-035 | PHX-035 | Done — `dynamic_array_drop_smoke_verifies_balanced_main_return` |
 | `[INFRA]` Delete dead `interface_loader.rs` scaffolding (live path: `exports_for_dependency`) | PHX-044 | Done — removed unused module |
 | `[FEATURE]` Document `str`/`Ty::Str` as the sanctioned core text view in `type-system.md` (already in `mvp.md`) | — | **Decided:** `Ty::Str` stays compiler-known through v0; add normative Copyable-view statement + phased migration note (Resolved Design Decisions #6) |
 
@@ -171,7 +171,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Clone audit: `ResolvedProgram` clone, per-mono `TypeInterner` clones, `type_defs.clone()` | PHX-020 | Profile-first |
 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | PHX-058 | — |
 | API surface triage: `ResolvedProgram`/IR/mono re-exports vs `facade` | PHX-022 | Documented decision |
-| Test-suite hygiene: stale keyword test, missing `mod`/`reexport`/`extern` parser tests, `extern` `pub`, golden-set expansion, dev-dep cycle decision | PHX-010, PHX-011, PHX-061, PHX-062 | — |
+| Test-suite hygiene: stale keyword test, missing `mod`/`reexport`/`extern` parser tests, `extern` `pub`, golden-set expansion, dev-dep cycle decision | PHX-010, PHX-011, PHX-061, PHX-062 | PHX-061 golden set expanded (12 fixtures); PHX-062 open |
 | `verify` validates the in-memory module directly (no re-encode); fallible `Instruction::encode` | PHX-050 | done |
 | `load_project_binary` optional verify-on-load | PHX-055-adjacent | Defense in depth; documented decision |
 | Doc-truth pass: `ownership.md` (loop/partial-move rules from M0/M1), `wide-integers.md`/`type-system.md` (shift/NaN from M2), `vm-linear.md` (POP/`Trap` contract), V0 checklists | PHX-032 | Docs match code everywhere |

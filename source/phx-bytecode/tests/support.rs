@@ -76,6 +76,77 @@ pub fn valid_const_return_module() -> BytecodeModule {
     minimal_module(const_return_code(), 4, 0, 1)
 }
 
+/// If/else merge with divergent stack depths: then-branch leaves 1 value, else leaves 0.
+///
+/// Returns `(code, merge_offset)` where `merge_offset` is the join point with mismatched depth.
+#[must_use]
+pub fn join_depth_mismatch_code() -> (Vec<u8>, u32) {
+    let mut code = Vec::new();
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, u32::from(PrimitiveKind::Bool.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::JumpIfTrue,
+            operands: vec![0],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Jump,
+            operands: vec![0],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    let then_off = u32::try_from(code.len()).unwrap_or(0);
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![1, u32::from(PrimitiveKind::S32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Jump,
+            operands: vec![0],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    let merge_off = u32::try_from(code.len()).unwrap_or(0);
+    code.extend(
+        Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode"),
+    );
+
+    let patch_operand = |code: &mut Vec<u8>, inst_offset: usize, target: u32| {
+        let start = inst_offset + 2;
+        code[start..start + 4].copy_from_slice(&target.to_le_bytes());
+    };
+    patch_operand(&mut code, 10, then_off);
+    patch_operand(&mut code, 16, merge_off);
+    patch_operand(
+        &mut code,
+        usize::try_from(then_off).unwrap_or(0) + 10,
+        merge_off,
+    );
+    (code, merge_off)
+}
+
 /// `Const 4u32` → `Alloc` → store ptr → `PtrStore 77u8` → `PtrLoad` → store u8 → `Return`.
 #[allow(clippy::too_many_lines)]
 #[must_use]
