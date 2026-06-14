@@ -15,13 +15,13 @@
 //! `expr_end`. Cursor drift or a missing entry in [`TypedProgram::expr_types`](crate::typeck::TypedProgram::expr_types)
 //! for an id in that range is a [`LowerError`](phx_diagnostics::LowerError).
 //!
-//! Short-circuit `&&` and `||` lower to `JumpIf` chains (see `lower_short_circuit_bool` in `expr.rs`).
+//! Short-circuit `&&` and `||` lower to `JumpIf` chains (see `expr::literal::lower_short_circuit_bool`).
 //! Merge blocks for `if`/`match` expressions rely on balanced stack depth per [`IrModule`](crate::ir::IrModule) invariants.
 //!
 //! ## Module map
 //!
 //! - [`func`] — top-level and impl function bodies
-//! - [`expr`] — expression trees → instruction streams
+//! - [`expr`] — expression trees → instruction streams (`literal`, `assign`, `call`, `intrinsic`, `match`)
 //! - [`stmt`] — statements, bindings, control flow
 
 mod ctx;

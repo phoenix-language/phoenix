@@ -3,9 +3,6 @@
 mod discover;
 mod graph;
 pub(crate) mod import_resolve;
-#[allow(dead_code)]
-// incremental `.pxi`-only import surface; wired via exports_for_dependency today
-mod interface_loader;
 mod load_context;
 mod loader;
 mod path;

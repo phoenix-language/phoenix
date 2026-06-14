@@ -124,7 +124,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | `[FEATURE]` Finish heap slices (V0-062): slices over heap memory, `IndexStore`, slice assignment — complete and land the in-flight working-tree changes | — | The last documented Phase-7 partial |
 | `[INFRA]` Lower/codegen/verify tests for `IndexStore` and nested index chains | PHX-061 | Currently untested in-flight surface |
 | Drop glue verified end to end on std types after PHX-035 | PHX-035 | `DynamicArray`/`UniquePtr` drop fixtures assert balanced stacks |
-| `[INFRA]` Wire or delete dead `interface_loader.rs` scaffolding | PHX-044 | — |
+| `[INFRA]` Delete dead `interface_loader.rs` scaffolding (live path: `exports_for_dependency`) | PHX-044 | Done — removed unused module |
 | `[FEATURE]` Document `str`/`Ty::Str` as the sanctioned core text view in `type-system.md` (already in `mvp.md`) | — | **Decided:** `Ty::Str` stays compiler-known through v0; add normative Copyable-view statement + phased migration note (Resolved Design Decisions #6) |
 
 ---

@@ -584,10 +584,12 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/lower/expr.rs` (1,975 lines); `build/driver.rs` (913 lines); `modules/mod.rs:6–8` (dead `interface_loader.rs`)
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Backend God modules and one dead scaffolding module.
 **Recommendation:** Flag for review — split `expr.rs` into match/call/intrinsic/assign units, `driver.rs` into incremental/artifact/link-map units; wire or delete `interface_loader.rs`.
+
+**Resolution:** Deleted dead [`interface_loader.rs`](source/phx-compiler/src/modules/interface_loader.rs) (`exports_for_dependency` in `import_resolve.rs` is the live `.pxi` path). Split [`lower/expr.rs`](source/phx-compiler/src/lower/expr/) into `literal`, `assign`, `call`, `intrinsic`, and `match` submodules. Split [`build/driver.rs`](source/phx-compiler/src/build/driver/) into `package`, `incremental`, `artifacts`, `link_map`, and `util` submodules. Public APIs unchanged.
 
 ---
 
@@ -896,7 +898,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-041 | - [x]  | Minor        | phx-compiler    | Silent-fallback cluster in const pool and lower                          |
 | PHX-042 | - [x]  | Minor        | phx-compiler    | `?`-lowering uses `debug_assert!` instead of `LowerError`                |
 | PHX-043 | - [x]  | Minor        | phx-compiler    | Single-module codegen defaults missing `main` to entry 0                 |
-| PHX-044 | - [ ]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
+| PHX-044 | - [x]  | Suggestion   | phx-compiler    | Backend God modules and dead `interface_loader.rs`                       |
 | PHX-045 | - [ ]  | **Critical** | phx-bytecode    | `JumpIfFalse` never modeled in stack-depth CFG                           |
 | PHX-046 | - [ ]  | Major        | phx-bytecode    | Jump opcodes don't validate operand count                                |
 | PHX-047 | - [ ]  | Major        | phx-bytecode    | Version and section overlap not validated in `verify`                    |
