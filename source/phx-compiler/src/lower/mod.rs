@@ -9,6 +9,12 @@
 //! Consumes a [`TypedProgram`](crate::typeck::TypedProgram) and produces an [`IrModule`](crate::ir::IrModule).
 //! Does not read source text or build types — type checking must run first.
 //!
+//! Lowering walks expressions in the same pre-order as typeck (`check_expr_node`) and consumes one
+//! [`ExprId`](crate::typeck::ExprId) per expression via [`LowerCtx::expr_ty`], starting at
+//! [`FunctionLayout::expr_start`](crate::typeck::FunctionLayout::expr_start) and ending at
+//! `expr_end`. Cursor drift or a missing entry in [`TypedProgram::expr_types`](crate::typeck::TypedProgram::expr_types)
+//! for an id in that range is a [`LowerError`](phx_diagnostics::LowerError).
+//!
 //! Short-circuit `&&` and `||` lower to `JumpIf` chains (see `lower_short_circuit_bool` in `expr.rs`).
 //! Merge blocks for `if`/`match` expressions rely on balanced stack depth per [`IrModule`](crate::ir::IrModule) invariants.
 //!

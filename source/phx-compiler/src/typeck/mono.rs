@@ -6,7 +6,6 @@ use phx_diagnostics::{TypeCheckBag, TypeCheckError};
 use phx_syntax::ast::decl::{Function, ImplMember, TopLevelDecl};
 use phx_syntax::ast::types::GenericParam;
 
-use super::bindings::FunctionLayout;
 use super::bounds::validate_instantiation_bounds;
 use super::check::TypeChecker;
 use super::layout::{EnumLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout};
@@ -253,58 +252,51 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         {
             typed.fn_effective_unsafe.insert(spec_def, true);
         }
-        let skip_impl_body = find_impl_generics_for_fn(&typed.resolved, inst.base_fn)
-            .is_some_and(|params| !params.is_empty())
-            && f.generics.as_ref().is_none_or(Vec::is_empty);
-        if skip_impl_body {
-            clone_specialized_function_layout(typed, inst.base_fn, spec_def, &subst);
-        } else {
-            let mut checker = TypeChecker::new_with_substitution(
-                &typed.resolved,
-                subst,
-                std::mem::take(&mut typed.types),
-            );
-            checker.set_expr_id_base(expr_base);
-            checker.seed_layout_tables(&typed.layout);
-            checker.seed_std_kernel(&typed.std_kernel);
-            checker.seed_std_trait_kernel(&typed.std_trait_kernel);
-            checker.seed_intrinsic_kernel(&typed.intrinsic_kernel);
-            checker.seed_value_types(&typed.value_types);
-            checker.seed_fn_effective_unsafe(&typed.fn_effective_unsafe);
-            checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
-            let (
-                checker_types,
-                expr_types,
-                checker_bag,
-                layouts,
-                _program_layout,
-                value_types,
-                spec_aliases,
-                try_sites,
-                associated_fn_sites,
-                method_call_sites,
-                indirect_call_sites,
-                intrinsic_call_sites,
-                size_of_literals,
-            ) = checker.finish_all();
-            if checker_bag.has_errors() {
-                for located in checker_bag.into_errors() {
-                    bag.push_located(located);
-                }
-                continue;
+        let mut checker = TypeChecker::new_with_substitution(
+            &typed.resolved,
+            subst,
+            std::mem::take(&mut typed.types),
+        );
+        checker.set_expr_id_base(expr_base);
+        checker.seed_layout_tables(&typed.layout);
+        checker.seed_std_kernel(&typed.std_kernel);
+        checker.seed_std_trait_kernel(&typed.std_trait_kernel);
+        checker.seed_intrinsic_kernel(&typed.intrinsic_kernel);
+        checker.seed_value_types(&typed.value_types);
+        checker.seed_fn_effective_unsafe(&typed.fn_effective_unsafe);
+        checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
+        let (
+            checker_types,
+            expr_types,
+            checker_bag,
+            layouts,
+            _program_layout,
+            value_types,
+            spec_aliases,
+            try_sites,
+            associated_fn_sites,
+            method_call_sites,
+            indirect_call_sites,
+            intrinsic_call_sites,
+            size_of_literals,
+        ) = checker.finish_all();
+        if checker_bag.has_errors() {
+            for located in checker_bag.into_errors() {
+                bag.push_located(located);
             }
-            typed.types = checker_types;
-            typed.expr_types.extend(expr_types);
-            typed.functions.extend(layouts);
-            typed.specialized_aliases.extend(spec_aliases);
-            typed.try_sites.extend(try_sites);
-            typed.associated_fn_sites.extend(associated_fn_sites);
-            typed.method_call_sites.extend(method_call_sites);
-            typed.indirect_call_sites.extend(indirect_call_sites);
-            typed.intrinsic_call_sites.extend(intrinsic_call_sites);
-            typed.size_of_literals.extend(size_of_literals);
-            typed.value_types.extend(value_types);
+            continue;
         }
+        typed.types = checker_types;
+        typed.expr_types.extend(expr_types);
+        typed.functions.extend(layouts);
+        typed.specialized_aliases.extend(spec_aliases);
+        typed.try_sites.extend(try_sites);
+        typed.associated_fn_sites.extend(associated_fn_sites);
+        typed.method_call_sites.extend(method_call_sites);
+        typed.indirect_call_sites.extend(indirect_call_sites);
+        typed.intrinsic_call_sites.extend(intrinsic_call_sites);
+        typed.size_of_literals.extend(size_of_literals);
+        typed.value_types.extend(value_types);
         for node_id in &inst.call_sites {
             for module in &typed.resolved.modules {
                 resolution_patches.insert(
@@ -539,52 +531,6 @@ fn combined_generic_params(
         params.extend(fn_generics.clone());
     }
     params
-}
-
-fn clone_specialized_function_layout(
-    typed: &mut TypedProgram,
-    base_fn: DefId,
-    spec_def: DefId,
-    subst: &Substitution,
-) {
-    let Some(base_layout) = typed.functions.iter().find(|l| l.def == base_fn) else {
-        return;
-    };
-    let mut layout = base_layout.clone();
-    layout.def = spec_def;
-    layout.return_type = Substitution::apply(&mut typed.types, layout.return_type, subst);
-    for binding in &mut layout.bindings {
-        binding.ty = Substitution::apply(&mut typed.types, binding.ty, subst);
-    }
-    reserve_impl_method_scratch_temps(typed, &mut layout);
-    typed.functions.push(layout);
-}
-
-/// Scratch locals for `emit_ref_receiver_from_stack_value` when body typeck omitted match temps.
-const IMPL_METHOD_SCRATCH_TEMPS: u32 = 4;
-
-fn reserve_impl_method_scratch_temps(typed: &mut TypedProgram, layout: &mut FunctionLayout) {
-    use phx_syntax::scratch_binding_symbol;
-
-    use super::bindings::{Binding, BindingKind, LocalSlot};
-    use super::builtins::unit;
-
-    let scratch_ty = unit(&mut typed.types);
-    for _ in 0..IMPL_METHOD_SCRATCH_TEMPS {
-        let symbol = scratch_binding_symbol(
-            u32::try_from(layout.match_temp_slots.len()).unwrap_or(u32::MAX),
-        );
-        let slot = LocalSlot::from_raw(u32::try_from(layout.bindings.len()).unwrap_or(u32::MAX));
-        layout.bindings.push(Binding {
-            symbol,
-            slot,
-            ty: scratch_ty,
-            kind: BindingKind::MatchTemp,
-            scope_depth: 0,
-            utf8_rodata: None,
-        });
-        layout.match_temp_slots.push(slot);
-    }
 }
 
 fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<GenericParam>> {

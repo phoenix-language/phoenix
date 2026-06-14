@@ -121,17 +121,11 @@ fn lower_expr_inner(ctx: &mut LowerCtx<'_>, expr: &Expr, result_ty: TypeId, expr
             lower_assign_expr(ctx, target, value, result_ty);
         }
         Expr::Cast { expr, .. } => {
-            let from_id = crate::typeck::ExprId::from_raw(ctx.next_expr);
-            let from_ty = ctx
-                .typed
-                .expr_types
-                .get(&from_id)
-                .copied()
-                .unwrap_or(result_ty);
+            let from_ty = ctx.peek_next_expr_ty();
             if matches!(ctx.typed.types.get(result_ty), Ty::Str) {
                 if let Some(bytes) = utf8_bytes_for_str_cast(ctx, &expr.inner) {
                     let idx = ctx.intern_const(IrConst::Bytes(bytes));
-                    ctx.next_expr += 1;
+                    let _ = ctx.expr_ty();
                     ctx.emit(IrInst::MakeStr { pool_index: idx });
                     return;
                 }

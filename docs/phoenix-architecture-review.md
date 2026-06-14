@@ -500,10 +500,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/lower/ctx.rs:196–203` (`expr_ty`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Lowering's `ExprId` cursor silently falls back to `unit_ty()` when it drifts from typeck's expression order.
-**Detail:** The entire lowering correctness story rests on "lowering walks expressions in exactly typeck's order," an invariant enforced nowhere and whose violation is silently absorbed as `()`. Combined with PHX-034 this is the second link in a silent-miscompile chain.
+**Detail:** Fixed: `expr_ty` emits `LowerError::MissingExprType` on map miss within the function's expr range; `finish_expr_cursor` rejects `next_expr != expr_end`. Monomorphized impl methods always body-typecheck so `expr_types` is populated. Ordering invariant documented on `TypedProgram::expr_types`.
 **Recommendation:** Emit `LowerError` on cursor miss. Document the ordering invariant on `TypedProgram::expr_types`.
 
 ---
@@ -887,7 +887,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-034 | - [x]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
 | PHX-035 | - [x]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
 | PHX-036 | - [x]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
-| PHX-037 | - [ ]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
+| PHX-037 | - [x]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
 | PHX-038 | - [ ]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |
 | PHX-039 | - [ ]  | Major        | phx-compiler    | No IR validator between lower and codegen                                |
 | PHX-040 | - [ ]  | Major        | phx-compiler    | Malformed `.pxi` parses without error                                    |

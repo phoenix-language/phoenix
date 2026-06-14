@@ -209,15 +209,44 @@ impl<'a> LowerCtx<'a> {
 
     /// Advances the expression cursor and returns the typeck-assigned type.
     ///
-    /// Returns the typeck-assigned type for the next expression (visit order must match typeck).
+    /// Visit order must match typeck (`check_expr_node` pre-order). On a missing map entry for an
+    /// id in [`FunctionLayout::expr_start`, `expr_end`), records [`LowerError::MissingExprType`]
+    /// and returns a poison `()` type so lowering can continue collecting errors.
     pub fn expr_ty(&mut self) -> TypeId {
-        let id = ExprId::from_raw(self.next_expr);
-        self.next_expr += 1;
-        self.typed
-            .expr_types
-            .get(&id)
-            .copied()
-            .unwrap_or_else(|| unit_ty(self.typed))
+        let raw = self.next_expr;
+        self.next_expr = self.next_expr.saturating_add(1);
+        self.lookup_expr_type(raw)
+    }
+
+    /// Returns the typeck-assigned type for the next expression without advancing the cursor.
+    pub fn peek_next_expr_ty(&mut self) -> TypeId {
+        self.lookup_expr_type(self.next_expr)
+    }
+
+    /// Verifies the expression cursor ended at `layout.expr_end`.
+    pub fn finish_expr_cursor(&mut self) {
+        if self.next_expr != self.layout.expr_end {
+            self.bag.push(
+                self.module,
+                LowerError::ExprCursorDrift {
+                    expected: self.layout.expr_end,
+                    found: self.next_expr,
+                },
+            );
+        }
+    }
+
+    fn lookup_expr_type(&mut self, raw: u32) -> TypeId {
+        let id = ExprId::from_raw(raw);
+        if let Some(ty) = self.typed.expr_types.get(&id) {
+            *ty
+        } else {
+            if raw >= self.layout.expr_start && raw < self.layout.expr_end {
+                self.bag
+                    .push(self.module, LowerError::MissingExprType { expr_id: raw });
+            }
+            unit_ty(self.typed)
+        }
     }
 
     /// Returns a compiler intrinsic site only when `expr_id` belongs to this function's typeck range.
@@ -384,4 +413,103 @@ pub fn struct_def_by_name(resolved: &ResolvedProgram, name: Symbol) -> Option<De
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::compile_source;
+    use phx_diagnostics::LowerError;
+    use std::path::Path;
+
+    fn main_layout<'a>(typed: &'a TypedProgram) -> &'a FunctionLayout {
+        typed
+            .functions
+            .iter()
+            .find(|layout| typed.entry == Some(layout.def))
+            .expect("main layout")
+    }
+
+    fn main_module(typed: &TypedProgram) -> u32 {
+        let layout = main_layout(typed);
+        typed
+            .resolved
+            .defs
+            .get(layout.def.index() as usize)
+            .expect("main def")
+            .module
+    }
+
+    #[test]
+    fn expr_ty_missing_in_range_records_error() {
+        let source = "main :: () => { const x: s32 = 1; };";
+        let mut unit = compile_source(source, None).expect("compile");
+        let entry = unit.typed.entry;
+        let (module, expected_id) = {
+            let layout = main_layout(&unit.typed);
+            (main_module(&unit.typed), layout.expr_start)
+        };
+        unit.typed.expr_types.clear();
+        let layout = unit
+            .typed
+            .functions
+            .iter()
+            .find(|layout| entry == Some(layout.def))
+            .expect("main layout");
+        let mut constants = Vec::new();
+        let mut bag = LowerBag::new();
+        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        let _ = ctx.expr_ty();
+        assert!(
+            bag.errors()
+                .iter()
+                .any(|e| matches!(e.error, LowerError::MissingExprType { expr_id } if expr_id == expected_id)),
+            "expected MissingExprType for id {expected_id}, got {bag:?}"
+        );
+    }
+
+    #[test]
+    fn finish_expr_cursor_detects_drift() {
+        let source = "main :: () => { };";
+        let unit = compile_source(source, None).expect("compile");
+        let layout = main_layout(&unit.typed);
+        let module = main_module(&unit.typed);
+        let mut constants = Vec::new();
+        let mut bag = LowerBag::new();
+        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        ctx.next_expr = layout.expr_end.saturating_add(2);
+        ctx.finish_expr_cursor();
+        assert!(
+            bag.errors().iter().any(|e| {
+                matches!(
+                    e.error,
+                    LowerError::ExprCursorDrift {
+                        expected,
+                        found,
+                    } if expected == layout.expr_end && found == layout.expr_end.saturating_add(2)
+                )
+            }),
+            "expected ExprCursorDrift, got {bag:?}"
+        );
+    }
+
+    #[test]
+    fn lower_generic_impl_method_balances_expr_cursor() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/cli/fixtures/generic_impl_method.phx");
+        let unit = crate::check_file(&path).expect("check");
+        let ir = crate::lower::lower(&unit.typed).expect("lower");
+        assert!(
+            ir.functions.iter().any(|f| {
+                unit.typed
+                    .functions
+                    .iter()
+                    .find(|layout| layout.def == f.def)
+                    .is_some_and(|layout| layout.expr_start < layout.expr_end)
+            }),
+            "expected specialized function with typechecked expression range"
+        );
+    }
 }

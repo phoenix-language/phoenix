@@ -59,6 +59,7 @@ pub(crate) fn lower_one_function(
     let mut ctx = LowerCtx::new(typed, module, layout, constants, bag);
     lower_block_value(&mut ctx, &source.body.inner);
     lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
+    ctx.finish_expr_cursor();
     if ctx.bag.has_errors() {
         return None;
     }

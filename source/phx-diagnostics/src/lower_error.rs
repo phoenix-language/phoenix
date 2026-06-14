@@ -32,6 +32,18 @@ pub enum LowerError {
         /// Invariant detail (for example `"return Result type"`).
         detail: &'static str,
     },
+    /// Expression id in the function's typeck range has no entry in `TypedProgram::expr_types`.
+    MissingExprType {
+        /// Raw expression id index assigned during type checking.
+        expr_id: u32,
+    },
+    /// Lowering consumed a different number of expression ids than typeck assigned.
+    ExprCursorDrift {
+        /// Expected cursor (`FunctionLayout::expr_end`).
+        expected: u32,
+        /// Cursor after lowering the function body.
+        found: u32,
+    },
 }
 
 impl LowerError {
@@ -42,7 +54,9 @@ impl LowerError {
             Self::UnresolvedCallee { .. } => DiagnosticCode::new("E4001"),
             Self::InvalidBlockIndex { .. }
             | Self::LimitExceeded { .. }
-            | Self::MissingTryConvertLayout { .. } => DiagnosticCode::new("E4002"),
+            | Self::MissingTryConvertLayout { .. }
+            | Self::MissingExprType { .. }
+            | Self::ExprCursorDrift { .. } => DiagnosticCode::new("E4002"),
         }
     }
 
@@ -53,7 +67,9 @@ impl LowerError {
             Self::UnresolvedCallee { span } => Some(*span),
             Self::InvalidBlockIndex { .. }
             | Self::LimitExceeded { .. }
-            | Self::MissingTryConvertLayout { .. } => None,
+            | Self::MissingTryConvertLayout { .. }
+            | Self::MissingExprType { .. }
+            | Self::ExprCursorDrift { .. } => None,
         }
     }
 }
@@ -80,6 +96,18 @@ impl fmt::Display for LowerError {
                 write!(
                     f,
                     "internal error: missing {detail} for `?` conversion during lowering"
+                )
+            }
+            Self::MissingExprType { expr_id } => {
+                write!(
+                    f,
+                    "internal error: missing expression type for id {expr_id} during lowering"
+                )
+            }
+            Self::ExprCursorDrift { expected, found } => {
+                write!(
+                    f,
+                    "internal error: expression cursor drift during lowering (expected {expected}, found {found})"
                 )
             }
         }
@@ -154,5 +182,25 @@ mod tests {
         assert_eq!(err.code(), DiagnosticCode::new("E4002"));
         assert!(err.span().is_none());
         assert!(err.to_string().contains("return Result type"), "{}", err);
+    }
+
+    #[test]
+    fn missing_expr_type_display_and_code() {
+        let err = LowerError::MissingExprType { expr_id: 7 };
+        assert_eq!(err.code(), DiagnosticCode::new("E4002"));
+        assert!(err.span().is_none());
+        assert!(err.to_string().contains("id 7"), "{}", err);
+    }
+
+    #[test]
+    fn expr_cursor_drift_display_and_code() {
+        let err = LowerError::ExprCursorDrift {
+            expected: 10,
+            found: 12,
+        };
+        assert_eq!(err.code(), DiagnosticCode::new("E4002"));
+        assert!(err.span().is_none());
+        assert!(err.to_string().contains("expected 10"), "{}", err);
+        assert!(err.to_string().contains("found 12"), "{}", err);
     }
 }

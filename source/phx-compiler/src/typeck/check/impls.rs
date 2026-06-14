@@ -109,7 +109,13 @@ impl TypeChecker<'_> {
         base_fn: DefId,
         mono_args: &[TypeId],
     ) {
-        let fn_ty = self.fn_type_for_function(f);
+        let combined_generics = self.combined_generic_params_for_fn(base_fn, f);
+        let scope_generics = if combined_generics.is_empty() {
+            f.generics.as_deref()
+        } else {
+            Some(combined_generics.as_slice())
+        };
+        let fn_ty = self.fn_type_for_function_scoped(f, scope_generics);
         let fn_ty = if let Some(subst) = &self.subst {
             match self.types.get(fn_ty).clone() {
                 Ty::Fn { params, ret } => {
@@ -192,9 +198,31 @@ impl TypeChecker<'_> {
     }
 
     pub(in crate::typeck::check) fn fn_type_for_function(&mut self, f: &Function) -> TypeId {
+        self.fn_type_for_function_scoped(f, f.generics.as_deref())
+    }
+
+    pub(in crate::typeck::check) fn combined_generic_params_for_fn(
+        &self,
+        base_fn: DefId,
+        f: &Function,
+    ) -> Vec<phx_syntax::ast::types::GenericParam> {
+        let mut params = self
+            .impl_type_for_method(base_fn)
+            .and_then(|type_def| self.find_inherent_impl_generics(type_def))
+            .unwrap_or_default();
+        if let Some(generics) = f.generics.as_ref() {
+            params.extend(generics.clone());
+        }
+        params
+    }
+
+    pub(in crate::typeck::check) fn fn_type_for_function_scoped(
+        &mut self,
+        f: &Function,
+        scope_generics: Option<&[phx_syntax::ast::types::GenericParam]>,
+    ) -> TypeId {
         let module = self.fn_module(f);
-        let generics = f.generics.as_deref();
-        self.with_pushed_generics(module, generics, |this| {
+        self.with_pushed_generics(module, scope_generics, |this| {
             let type_defs = this.type_defs.clone();
             let ret = f
                 .ret

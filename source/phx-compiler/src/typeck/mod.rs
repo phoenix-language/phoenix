@@ -63,6 +63,11 @@ pub struct TypedProgram {
     /// Interned types for the unit.
     pub types: TypeInterner,
     /// Expression types by [`ExprId`].
+    ///
+    /// Typeck assigns ids in pre-order AST visit order (`check_expr_node` / `alloc_expr_id`).
+    /// Each function records its half-open id range in [`bindings::FunctionLayout::expr_start`] /
+    /// [`bindings::FunctionLayout::expr_end`]. Lowering must consume exactly that range in the
+    /// same visit order; a missing entry or cursor mismatch is an internal compiler error.
     pub expr_types: std::collections::HashMap<ExprId, TypeId>,
     /// Expression types keyed by `(module_id, source span)` for lint discard checks.
     pub expr_span_types: std::collections::HashMap<(u32, Span), TypeId>,
