@@ -366,11 +366,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/bounds.rs:46–48` (`validate_instantiation_bounds`)
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** A generic arity mismatch between params and concrete args returns `true` (success) and skips all bound checks.
 **Detail:** Inconsistent generic metadata sails through bounds validation; callers in `mono.rs:200–212` only react to `false`. Invalid instantiations reach monomorphization.
 **Recommendation:** Push an arity-mismatch diagnostic and return `false`; add a negative test.
+
+**Resolution:** `validate_instantiation_bounds` now emits `TypeCheckError::ArityMismatch` and returns `false` when `generic_params`, `param_defs`, and `concrete_args` lengths disagree; unit test in `bounds.rs`. Defense-in-depth at the bounds layer — callers already skip monomorphization on `false`.
 
 ---
 
@@ -867,7 +869,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-024 | - [x]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
 | PHX-025 | - [x]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
 | PHX-026 | - [x]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
-| PHX-027 | - [ ]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |
+| PHX-027 | - [x]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |
 | PHX-028 | - [ ]  | Major        | phx-compiler    | Type unification does not recurse structurally                           |
 | PHX-029 | - [ ]  | Minor        | phx-compiler    | Lint pass has no type information                                        |
 | PHX-030 | - [ ]  | Minor        | phx-compiler    | Undocumented `Debug` derive; generic derive unsupported                  |

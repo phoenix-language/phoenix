@@ -21,7 +21,7 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 ///
 /// Returns `false` when any bound fails (errors are appended to `bag`).
 #[must_use]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn validate_instantiation_bounds(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,
@@ -39,7 +39,15 @@ pub fn validate_instantiation_bounds(
         return true;
     };
     if generic_params.len() != param_defs.len() || param_defs.len() != concrete_args.len() {
-        return true;
+        bag.push(
+            module,
+            TypeCheckError::ArityMismatch {
+                expected: param_defs.len(),
+                found: concrete_args.len(),
+                span,
+            },
+        );
+        return false;
     }
     let mut subst = Substitution::new();
     for (param_def, concrete) in param_defs.iter().zip(concrete_args) {
@@ -325,5 +333,84 @@ fn format_trait_bound(resolved: &ResolvedProgram, types: &TypeInterner, ty: &Typ
             format!("{head}<{}>", arg_strs.join(", "))
         }
         _ => "?".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use phx_syntax::Interner;
+    use phx_syntax::ast::Program;
+    use phx_syntax::ast::ident::Ident;
+    use phx_syntax::ast::node_id::AstNodeId;
+    use phx_syntax::intern::Symbol;
+
+    use super::*;
+    use crate::attrs::DefAttrs;
+
+    #[test]
+    fn validate_instantiation_bounds_arity_mismatch_errors() {
+        let resolved = ResolvedProgram {
+            program: Program {
+                imports: Vec::new(),
+                items: Vec::new(),
+            },
+            modules: Vec::new(),
+            root: 0,
+            interner: Interner::new(),
+            defs: Vec::new(),
+            resolutions: HashMap::new(),
+            closures: HashMap::new(),
+            main_fn: None,
+            import_types: HashMap::new(),
+            def_attrs: DefAttrs::new(),
+        };
+        let layout = ProgramLayout::default();
+        let mut types = TypeInterner::default();
+        let std_traits = StdTraitKernel::default();
+        let value_types = HashMap::new();
+        let span = Span::new(0, 0);
+        let mut bag = TypeCheckBag::new();
+        let generic_param = GenericParam {
+            name: Ident {
+                symbol: Symbol::from_raw(1),
+                span,
+                id: AstNodeId::synthetic(0),
+            },
+            bounds: None,
+            default: None,
+        };
+        let generics = [generic_param];
+
+        let ok = validate_instantiation_bounds(
+            &resolved,
+            &layout,
+            &mut types,
+            &std_traits,
+            &value_types,
+            Some(&generics),
+            &[],
+            &[],
+            0,
+            span,
+            &mut bag,
+        );
+
+        assert!(!ok);
+        assert!(
+            bag.errors().iter().any(|e| {
+                matches!(
+                    &e.error,
+                    TypeCheckError::ArityMismatch {
+                        expected: 0,
+                        found: 0,
+                        ..
+                    }
+                )
+            }),
+            "expected ArityMismatch for generic metadata length mismatch: {:?}",
+            bag.errors()
+        );
     }
 }
