@@ -536,10 +536,10 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/pxi/format.rs:336–367` (`parse_exports`)
 **Reviewer:** Rust Expert
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Malformed `.pxi` exports arrays parse without error — the loop `break`s on the first unexpected byte and returns a partial export list.
-**Detail:** Verified. `.pxi` files are external input (hand-editable, cache-corruptible); a truncated file yields a module that "successfully" exports a subset, producing confusing unresolved-name errors downstream instead of "corrupt interface file."
+**Detail:** Fixed: `parse_json_object_array` drives strict parsing for `exports` and `dependencies`; structural failures (missing keys, truncated arrays, unclosed objects, garbage tokens, missing required fields) return `PxiError::Parse` instead of partial lists. Unit tests cover malformed inputs for both arrays.
 **Recommendation:** Make `parse_exports` return `Result` and fail on structural errors; the v1/v2 version gate (`format.rs:255–257`) is already strict, extend that rigor to the body.
 
 ---

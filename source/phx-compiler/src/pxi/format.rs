@@ -143,7 +143,8 @@ impl PxiFile {
     ///
     /// # Errors
     ///
-    /// Returns `PxiError` on unsupported version or malformed JSON.
+    /// Returns `PxiError` on unsupported version, malformed JSON, or invalid
+    /// `exports` / `dependencies` arrays.
     pub fn parse(text: &str) -> Result<Self, PxiError> {
         parse_inner(text)
     }
@@ -268,8 +269,8 @@ fn parse_inner(text: &str) -> Result<PxiFile, PxiError> {
         message: "missing source_hash".to_owned(),
     })?;
     let origin = extract_optional_string(text, "origin");
-    let exports = parse_exports(&logical_module, text);
-    let dependencies = parse_dependencies(text);
+    let exports = parse_exports(&logical_module, text)?;
+    let dependencies = parse_dependencies(text)?;
     Ok(PxiFile {
         format_version: version,
         logical_module,
@@ -333,49 +334,86 @@ fn parse_json_string(s: &str) -> Option<String> {
     None
 }
 
-fn parse_exports(logical_module: &str, text: &str) -> Vec<PxiExport> {
-    let Some(start) = text.find("\"exports\"") else {
-        return Vec::new();
-    };
-    let Some(arr_start) = text[start..].find('[') else {
-        return Vec::new();
-    };
+fn malformed_array(field_name: &str, detail: &str) -> PxiError {
+    PxiError::Parse {
+        message: format!("malformed {field_name}: {detail}"),
+    }
+}
+
+fn parse_json_object_array<T, F>(
+    text: &str,
+    field_name: &str,
+    mut parse_elem: F,
+) -> Result<Vec<T>, PxiError>
+where
+    F: FnMut(&str) -> Result<T, PxiError>,
+{
+    let key = format!("\"{field_name}\"");
+    let start = text.find(&key).ok_or_else(|| PxiError::Parse {
+        message: format!("missing {field_name}"),
+    })?;
+    let arr_start = text[start..]
+        .find('[')
+        .ok_or_else(|| malformed_array(field_name, "expected '['"))?;
     let slice = &text[start + arr_start + 1..];
-    let mut exports = Vec::new();
+    let mut items = Vec::new();
     let mut i = 0usize;
+    let mut closed = false;
     while i < slice.len() {
         while i < slice.len()
             && (slice.as_bytes()[i].is_ascii_whitespace() || slice.as_bytes()[i] == b',')
         {
             i += 1;
         }
-        if i >= slice.len() || slice.as_bytes()[i] == b']' {
+        if i >= slice.len() {
+            return Err(malformed_array(
+                field_name,
+                &format!("truncated {field_name} array"),
+            ));
+        }
+        if slice.as_bytes()[i] == b']' {
+            closed = true;
             break;
         }
         if slice.as_bytes()[i] != b'{' {
-            break;
+            return Err(malformed_array(field_name, "expected object or ']'"));
         }
-        let Some(obj_end) = find_matching_brace(slice, i) else {
-            break;
-        };
+        let obj_end = find_matching_brace(slice, i)
+            .ok_or_else(|| malformed_array(field_name, "unclosed object"))?;
         let chunk = &slice[i..=obj_end];
-        if let Some(exp) = parse_export_object(logical_module, chunk) {
-            exports.push(exp);
-        }
+        items.push(parse_elem(chunk)?);
         i = obj_end + 1;
     }
-    exports
+    if !closed {
+        return Err(malformed_array(
+            field_name,
+            &format!("truncated {field_name} array"),
+        ));
+    }
+    Ok(items)
 }
 
-fn parse_export_object(logical_module: &str, chunk: &str) -> Option<PxiExport> {
-    let name = extract_field_string(chunk, "name")?;
-    let kind = extract_field_string(chunk, "kind")?;
-    let sig = extract_field_string(chunk, "signature")?;
+fn parse_exports(logical_module: &str, text: &str) -> Result<Vec<PxiExport>, PxiError> {
+    parse_json_object_array(text, "exports", |chunk| {
+        parse_export_object(logical_module, chunk)
+    })
+}
+
+fn parse_export_object(logical_module: &str, chunk: &str) -> Result<PxiExport, PxiError> {
+    let name = extract_field_string(chunk, "name").ok_or_else(|| PxiError::Parse {
+        message: "malformed export: missing 'name'".to_owned(),
+    })?;
+    let kind = extract_field_string(chunk, "kind").ok_or_else(|| PxiError::Parse {
+        message: "malformed export: missing 'kind'".to_owned(),
+    })?;
+    let sig = extract_field_string(chunk, "signature").ok_or_else(|| PxiError::Parse {
+        message: "malformed export: missing 'signature'".to_owned(),
+    })?;
     let export_id = extract_field_string(chunk, "export_id")
         .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
     let ty = parse_export_type(chunk);
     let function_id = extract_field_u32(chunk, "function_id");
-    Some(PxiExport {
+    Ok(PxiExport {
         export_id,
         name,
         kind,
@@ -424,30 +462,22 @@ fn find_matching_brace(text: &str, start: usize) -> Option<usize> {
     None
 }
 
-fn parse_dependencies(text: &str) -> Vec<PxiDependency> {
-    let Some(start) = text.find("\"dependencies\"") else {
-        return Vec::new();
-    };
-    let Some(arr_start) = text[start..].find('[') else {
-        return Vec::new();
-    };
-    let slice = &text[start + arr_start..];
-    let mut deps = Vec::new();
-    let mut search = slice;
-    while let Some(pos) = search.find("\"logical_module\"") {
-        let chunk = &search[pos..];
-        if let (Some(logical_module), Some(pxi_hash)) = (
-            extract_field_string(chunk, "logical_module"),
-            extract_field_string(chunk, "pxi_hash"),
-        ) {
-            deps.push(PxiDependency {
-                logical_module,
-                pxi_hash,
-            });
-        }
-        search = &search[pos + 16..];
-    }
-    deps
+fn parse_dependencies(text: &str) -> Result<Vec<PxiDependency>, PxiError> {
+    parse_json_object_array(text, "dependencies", parse_dependency_object)
+}
+
+fn parse_dependency_object(chunk: &str) -> Result<PxiDependency, PxiError> {
+    let logical_module =
+        extract_field_string(chunk, "logical_module").ok_or_else(|| PxiError::Parse {
+            message: "malformed dependency: missing 'logical_module'".to_owned(),
+        })?;
+    let pxi_hash = extract_field_string(chunk, "pxi_hash").ok_or_else(|| PxiError::Parse {
+        message: "malformed dependency: missing 'pxi_hash'".to_owned(),
+    })?;
+    Ok(PxiDependency {
+        logical_module,
+        pxi_hash,
+    })
 }
 
 fn parse_export_type(chunk: &str) -> Option<PxiType> {
@@ -543,5 +573,189 @@ mod tests {
         let id = pxi.exports.iter().find(|e| e.name == "id").expect("id");
         assert_eq!(id.export_id, "math::id::fn");
         assert_eq!(id.function_id, None);
+    }
+
+    fn minimal_pxi_json(exports: &str, dependencies: &str) -> String {
+        format!(
+            r#"{{
+  "format_version": 1,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": {exports},
+  "dependencies": {dependencies}
+}}"#
+        )
+    }
+
+    #[test]
+    fn parse_empty_exports_and_dependencies() {
+        let json = minimal_pxi_json("[]", "[]");
+        let pxi = PxiFile::parse(&json).unwrap();
+        assert!(pxi.exports.is_empty());
+        assert!(pxi.dependencies.is_empty());
+    }
+
+    #[test]
+    fn parse_rejects_missing_exports() {
+        let json = r#"{
+  "format_version": 1,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "dependencies": []
+}"#;
+        let err = PxiFile::parse(json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "missing exports".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_truncated_exports_array() {
+        let json = r#"{
+  "format_version": 1,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [
+    {"export_id": "m::add::fn", "name": "add", "kind": "fn", "signature": "() => ()"},
+"#;
+        let err = PxiFile::parse(json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed exports: truncated exports array".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_garbage_in_exports_array() {
+        let json = minimal_pxi_json("[ 123 ]", "[]");
+        let err = PxiFile::parse(&json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed exports: expected object or ']'".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_unclosed_export_object() {
+        let json = r#"{
+  "format_version": 1,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [{"name": "a", "kind": "fn", "signature": "s", "type": {
+  "dependencies": []
+}"#;
+        let err = PxiFile::parse(json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed exports: unclosed object".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_export_missing_name() {
+        let json = minimal_pxi_json(
+            r#"[{"export_id": "m::add::fn", "kind": "fn", "signature": "() => ()"}]"#,
+            "[]",
+        );
+        let err = PxiFile::parse(&json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed export: missing 'name'".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_export_missing_kind() {
+        let json = minimal_pxi_json(
+            r#"[{"export_id": "m::add::fn", "name": "add", "signature": "() => ()"}]"#,
+            "[]",
+        );
+        let err = PxiFile::parse(&json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed export: missing 'kind'".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_export_missing_signature() {
+        let json = minimal_pxi_json(
+            r#"[{"export_id": "m::add::fn", "name": "add", "kind": "fn"}]"#,
+            "[]",
+        );
+        let err = PxiFile::parse(&json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed export: missing 'signature'".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_missing_dependencies() {
+        let json = r#"{
+  "format_version": 1,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": []
+}"#;
+        let err = PxiFile::parse(json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "missing dependencies".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_truncated_dependencies_array() {
+        let json = r#"{
+  "format_version": 1,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [],
+  "dependencies": [
+    {"logical_module": "core", "pxi_hash": "abc"},
+"#;
+        let err = PxiFile::parse(json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed dependencies: truncated dependencies array".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_dependency_missing_pxi_hash() {
+        let json = minimal_pxi_json("[]", r#"[{"logical_module": "core"}]"#);
+        let err = PxiFile::parse(&json).unwrap_err();
+        assert_eq!(
+            err,
+            PxiError::Parse {
+                message: "malformed dependency: missing 'pxi_hash'".to_owned()
+            }
+        );
     }
 }
