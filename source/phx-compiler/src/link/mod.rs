@@ -163,7 +163,7 @@ pub fn link_modules(
                 flags: f.flags,
                 code_offset,
                 code_len,
-                return_type_id: f.return_type_id.saturating_add(type_base),
+                return_type_id: link_return_type_id(f.return_type_id, type_base),
             });
         }
 
@@ -196,6 +196,18 @@ pub fn link_modules(
         code: merged_code,
         local_layouts: merged_layouts,
     })
+}
+
+/// Rebases a function's `return_type_id` when merging type tables across modules.
+///
+/// Codegen uses `0` and `1` as stack-depth sentinels (unit vs value); those must not
+/// be shifted. Real layout type ids (`>= 2` in current codegen) pick up `type_base`.
+fn link_return_type_id(return_type_id: u32, type_base: u32) -> u32 {
+    if return_type_id <= 1 {
+        return_type_id
+    } else {
+        return_type_id.saturating_add(type_base)
+    }
 }
 
 fn slice_code(code: &[u8], offset: u32, len: u32) -> &[u8] {

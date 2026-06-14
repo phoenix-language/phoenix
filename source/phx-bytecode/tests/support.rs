@@ -8,7 +8,12 @@ use phx_bytecode::{
 
 /// Minimal single-function module for verifier and mutation tests.
 #[must_use]
-pub fn minimal_module(code: Vec<u8>, stack_max: u16, entry_arity: u16) -> BytecodeModule {
+pub fn minimal_module(
+    code: Vec<u8>,
+    stack_max: u16,
+    entry_arity: u16,
+    return_type_id: u32,
+) -> BytecodeModule {
     BytecodeModule {
         header: FileHeader::new(5, 0),
         constants: ConstPool {
@@ -28,7 +33,7 @@ pub fn minimal_module(code: Vec<u8>, stack_max: u16, entry_arity: u16) -> Byteco
                 flags: 0,
                 code_offset: 0,
                 code_len: u32::try_from(code.len()).unwrap_or(0),
-                return_type_id: 0,
+                return_type_id,
             }],
         },
         code,
@@ -60,7 +65,7 @@ pub fn const_return_code() -> Vec<u8> {
 /// Valid baseline module used as the mutation source.
 #[must_use]
 pub fn valid_const_return_module() -> BytecodeModule {
-    minimal_module(const_return_code(), 4, 0)
+    minimal_module(const_return_code(), 4, 0, 1)
 }
 
 /// `Const 4u32` → `Alloc` → store ptr → `PtrStore 77u8` → `PtrLoad` → store u8 → `Return`.

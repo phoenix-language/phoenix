@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use super::instr::Instruction;
 use super::opcode::Opcode;
 use super::stack_effect::apply_stack_effect;
+use super::types::{TypeKind, TypeTable};
 
 /// Stack analysis failure (mapped to [`crate::verify::VerifyError`] by the verifier).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +25,15 @@ pub enum StackFlowError {
         /// Depth already recorded from another predecessor.
         expected: u32,
         /// Depth from the conflicting predecessor.
+        found: u32,
+    },
+    /// [`Opcode::Return`] reached with the wrong operand-stack depth.
+    ReturnDepthMismatch {
+        /// Offset of the return instruction.
+        offset: u32,
+        /// Required depth from the function's return type.
+        expected: u32,
+        /// Observed depth at the return.
         found: u32,
     },
     /// [`Opcode::Call`] targets a function id not in the module table.
@@ -45,6 +55,18 @@ pub struct StackFlowSummary {
 /// Decoded instruction at a relative offset within a function body.
 pub type DecodedInst = (u32, Instruction);
 
+/// Operand-stack cells required at [`Opcode::Return`] for a function return type id.
+#[must_use]
+pub fn return_stack_depth(return_type_id: u32, types: &TypeTable) -> u32 {
+    if return_type_id == 0 {
+        return 0;
+    }
+    match types.records.iter().find(|r| r.type_id == return_type_id) {
+        Some(record) if record.kind == TypeKind::Unit => 0,
+        Some(_) | None => 1,
+    }
+}
+
 /// Simulates stack depth over the function CFG starting at offset `0` with depth `0`.
 ///
 /// Block entries are instruction boundaries in `inst_starts`. Unconditional and
@@ -53,12 +75,14 @@ pub type DecodedInst = (u32, Instruction);
 /// # Errors
 ///
 /// Returns [`StackFlowError::Underflow`] when an instruction would pop below the
-/// current depth, or [`StackFlowError::JoinDepthMismatch`] when predecessors disagree.
+/// current depth, [`StackFlowError::JoinDepthMismatch`] when predecessors disagree,
+/// or [`StackFlowError::ReturnDepthMismatch`] when `RETURN` depth != `return_depth`.
 #[allow(clippy::implicit_hasher)]
 pub fn analyze_stack_cfg(
     instructions: &[DecodedInst],
     inst_starts: &HashSet<u32>,
     fn_arity: &HashMap<u32, u16>,
+    return_depth: u32,
 ) -> Result<StackFlowSummary, StackFlowError> {
     if instructions.is_empty() {
         return Ok(StackFlowSummary { max_depth: 0 });
@@ -118,6 +142,14 @@ pub fn analyze_stack_cfg(
             apply_stack_effect(inst.opcode, &mut depth, call_arity, field_count)
                 .map_err(|_| StackFlowError::Underflow { offset: *rel })?;
             max_depth = max_depth.max(depth);
+
+            if inst.opcode == Opcode::Return && depth != return_depth {
+                return Err(StackFlowError::ReturnDepthMismatch {
+                    offset: *rel,
+                    expected: return_depth,
+                    found: depth,
+                });
+            }
 
             let successors = terminators_successors(inst, instructions.get(idx + 1));
             if !successors.is_empty() {
@@ -274,7 +306,42 @@ mod tests {
 
         let _ = (jump_if_off, b_jump_off, c_jump_off);
         let inst_starts: HashSet<u32> = [a, b, c, d].into_iter().collect();
-        let summary = analyze_stack_cfg(&instructions, &inst_starts, &HashMap::new()).expect("cfg");
+        let summary =
+            analyze_stack_cfg(&instructions, &inst_starts, &HashMap::new(), 1).expect("cfg");
         assert_eq!(summary.max_depth, 1);
+    }
+
+    #[test]
+    fn return_depth_mismatch_rejected() {
+        let push = Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
+        };
+        let ret = Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        };
+        let mut code = Vec::new();
+        code.extend(push.encode());
+        let ret_off = u32::try_from(code.len()).expect("offset");
+        code.extend(ret.encode());
+
+        let mut instructions = Vec::new();
+        let mut off = 0usize;
+        while off < code.len() {
+            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
+            instructions.push((u32::try_from(off).expect("offset"), inst));
+            off = next;
+        }
+
+        let inst_starts: HashSet<u32> = [0].into_iter().collect();
+        match analyze_stack_cfg(&instructions, &inst_starts, &HashMap::new(), 0) {
+            Err(StackFlowError::ReturnDepthMismatch {
+                offset,
+                expected: 0,
+                found: 1,
+            }) if offset == ret_off => {}
+            other => panic!("expected ReturnDepthMismatch at {ret_off}, got {other:?}"),
+        }
     }
 }

@@ -123,6 +123,7 @@ fn apply_ir_stack_effect(
             let fn_id = function_id_for(*drop_fn, def_to_fn)?;
             let arity = *fn_arity.get(&fn_id).unwrap_or(&1);
             let _ = apply_stack_effect(Opcode::Call, stack, Some(arity), none);
+            let _ = apply_stack_effect(Opcode::Pop, stack, None, none);
         }
         IrInst::MakeFnPtr { .. } => {
             let _ = apply_stack_effect(Opcode::MakeFnPtr, stack, None, none);
@@ -599,6 +600,7 @@ fn emit_inst(
             ));
             let fn_id = function_id_for(*drop_fn, def_to_fn)?;
             out.extend(encode(Opcode::Call, &[fn_id]));
+            out.extend(encode(Opcode::Pop, &[]));
         }
     }
     Ok(())
@@ -614,6 +616,8 @@ fn encode(opcode: Opcode, operands: &[u32]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::ir::{IrBasicBlock, IrFunction, IrFunctionId, IrInst, LocalSlot};
     use crate::typeck::TypeId;
@@ -671,5 +675,51 @@ mod tests {
             Err(CodegenError::MissingCallee { def_index: 7 }) => {}
             other => panic!("expected MissingCallee {{ def_index: 7 }}, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn drop_local_stack_effect_is_balanced() {
+        let mut stack = 0u32;
+        let mut def_to_fn = HashMap::new();
+        def_to_fn.insert(DefId::from_raw(1), 0);
+        let mut fn_arity = HashMap::new();
+        fn_arity.insert(0, 1);
+        apply_ir_stack_effect(
+            &IrInst::DropLocal {
+                slot: LocalSlot::from_raw(0),
+                ty: TypeId::from_raw(0),
+                drop_fn: DefId::from_raw(1),
+                prim_kind: 0,
+            },
+            &mut stack,
+            &def_to_fn,
+            &fn_arity,
+        )
+        .expect("drop local stack effect");
+        assert_eq!(stack, 0);
+    }
+
+    #[test]
+    fn drop_local_emits_load_call_pop() {
+        let func = minimal_func(vec![IrInst::DropLocal {
+            slot: LocalSlot::from_raw(0),
+            ty: TypeId::from_raw(0),
+            drop_fn: DefId::from_raw(1),
+            prim_kind: 0,
+        }]);
+        let mut def_to_fn = HashMap::new();
+        def_to_fn.insert(DefId::from_raw(1), 0);
+        let fn_arity = HashMap::from([(0u32, 1u16)]);
+        let mut pool = ConstPoolBuilder::new();
+        let emitted =
+            emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None).expect("emit drop local");
+        let mut opcodes = Vec::new();
+        let mut off = 0usize;
+        while off < emitted.code.len() {
+            let (inst, next) = Instruction::decode_at(&emitted.code, off).expect("decode");
+            opcodes.push(inst.opcode);
+            off = next;
+        }
+        assert_eq!(opcodes, vec![Opcode::LoadLocal, Opcode::Call, Opcode::Pop]);
     }
 }

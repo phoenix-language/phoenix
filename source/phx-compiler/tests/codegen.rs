@@ -30,6 +30,16 @@ fn codegen_generic_fn_verifies() {
 }
 
 #[test]
+fn codegen_deep_logical_chain_verifies() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/deep_logical_chain.phx");
+    let unit = phx_compiler::check_file(&path).expect("check_file");
+    let ir = lower(&unit.typed).expect("lower");
+    let module = codegen(&ir, &unit.typed).expect("codegen");
+    verify(&module).expect("verify deep logical chain");
+}
+
+#[test]
 fn codegen_dual_generic_fn_instantiation_verifies() {
     let source = "id :: <t> (x: t) => t { x }; main :: () => { const a: s32 = id :: <s32> (1); const b: bool = id :: <bool> (true); const _ = a; };";
     let unit = compile_source(source, None).expect("compile dual generic fn");

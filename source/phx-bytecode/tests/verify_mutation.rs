@@ -59,7 +59,7 @@ fn mutate_jump_target_out_of_range_rejected_by_verifier() {
         }
         .encode(),
     );
-    let module = minimal_module(code, 4, 0);
+    let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
     // MVP VM treats falling off the end of `main` as normal return; invalid jumps are verify-only.
     assert_run_does_not_panic(&module);
@@ -82,7 +82,7 @@ fn mutate_invalid_call_target_rejected() {
         }
         .encode(),
     );
-    let module = minimal_module(code, 8, 0);
+    let module = minimal_module(code, 8, 0, 0);
     assert_verify_rejects(&module);
     assert_run_returns_err(&module);
 }
@@ -104,14 +104,14 @@ fn mutate_local_count_zero_with_load_rejected() {
         }
         .encode(),
     );
-    let module = minimal_module(code, 4, 0);
+    let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
     assert_run_returns_err(&module);
 }
 
 #[test]
 fn mutate_stack_max_too_low_rejected_by_verifier() {
-    let module = minimal_module(const_return_code(), 0, 0);
+    let module = minimal_module(const_return_code(), 0, 0, 1);
     assert_verify_rejects(&module);
     // Verifier-only invariant: MVP VM does not re-check `stack_max` at run time.
     assert_run_does_not_panic(&module);
@@ -144,7 +144,7 @@ fn mutate_stack_underflow_rejected() {
         }
         .encode(),
     );
-    let module = minimal_module(code, 4, 0);
+    let module = minimal_module(code, 4, 0, 0);
     assert_verify_rejects(&module);
     assert_run_returns_err(&module);
 }

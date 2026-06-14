@@ -23,6 +23,31 @@ use crate::typeck::{
 pub use const_pool::ConstPoolBuilder;
 pub use error::CodegenError;
 
+/// Maps an IR function return type to the bytecode `return_type_id` field.
+///
+/// Uses [`IrInst::Return`] types when present so metadata matches what lowering
+/// actually places on the stack; falls back to the function signature otherwise.
+/// Unit returns use id `0` (zero stack cells at `RETURN`); all other returns use `1`.
+fn bytecode_return_type_id(func: &IrFunction, typed: &TypedProgram) -> u32 {
+    let return_tys: Vec<_> = func
+        .blocks
+        .iter()
+        .flat_map(|block| &block.insts)
+        .filter_map(|inst| match inst {
+            IrInst::Return { ty } => Some(*ty),
+            _ => None,
+        })
+        .collect();
+    let unit_return = if return_tys.is_empty() {
+        matches!(typed.types.get(func.return_type), Ty::Unit)
+    } else {
+        return_tys
+            .iter()
+            .all(|id| matches!(typed.types.get(*id), Ty::Unit))
+    };
+    u32::from(!unit_return)
+}
+
 /// Builds the bytecode types section from typeck layout tables.
 #[must_use]
 pub fn build_type_table(layout: &ProgramLayout, types: &TypeInterner) -> TypeTable {
@@ -310,7 +335,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
             flags: 0,
             code_offset: offset,
             code_len: len,
-            return_type_id: 0,
+            return_type_id: bytecode_return_type_id(func, typed),
         });
         code.extend_from_slice(&emitted.code);
     }
@@ -383,7 +408,7 @@ pub fn codegen_module(
             flags: 0,
             code_offset: offset,
             code_len: len,
-            return_type_id: 0,
+            return_type_id: bytecode_return_type_id(func, typed),
         });
         code.extend_from_slice(&emitted.code);
     }

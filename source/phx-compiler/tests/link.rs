@@ -355,3 +355,50 @@ fn link_rebases_make_str_const_operand() {
 
     verify(&linked).expect("linked module verifies");
 }
+
+#[test]
+fn link_preserves_return_type_id_sentinels() {
+    let unit_type = TypeRecord {
+        type_id: 0,
+        kind: TypeKind::Unit,
+        aux: vec![],
+    };
+    let object_a = module_with_tables(
+        0,
+        return_only(),
+        0,
+        ConstPool::default(),
+        TypeTable {
+            records: vec![unit_type],
+        },
+    );
+    let mut object_b = module_with_fn(1, return_only(), 0);
+    object_b.functions.functions[0].return_type_id = 1;
+
+    let linked = link_modules(
+        &[
+            LinkInput {
+                logical_path: "a::unit_type".to_owned(),
+                module: object_a,
+            },
+            LinkInput {
+                logical_path: "b::caller".to_owned(),
+                module: object_b,
+            },
+        ],
+        1,
+    )
+    .expect("link");
+
+    let fn_b = linked
+        .functions
+        .functions
+        .iter()
+        .find(|f| f.function_id == 1)
+        .expect("fn 1");
+    assert_eq!(
+        fn_b.return_type_id, 1,
+        "sentinel return_type_id 1 must not pick up prior module type_base"
+    );
+    verify(&linked).expect("linked module verifies");
+}

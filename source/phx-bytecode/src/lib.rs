@@ -36,7 +36,7 @@ pub use scalar::{
 };
 pub use section::{SectionEntry, SectionError, SectionKind};
 pub use stack_effect::{StackEffectError, apply_stack_effect};
-pub use stack_flow::{StackFlowError, StackFlowSummary, analyze_stack_cfg};
+pub use stack_flow::{StackFlowError, StackFlowSummary, analyze_stack_cfg, return_stack_depth};
 pub use types::{TypeKind, TypeRecord, TypeTable};
 pub use verify::{VerifyError, verify};
 

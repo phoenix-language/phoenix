@@ -520,14 +520,12 @@ fn lower_short_circuit_bool(
     right: &ExprNode,
     _result_ty: TypeId,
 ) {
-    let entry = ctx.current;
     lower_expr(ctx, left);
 
     let rhs_id = ctx.fresh_block();
     let short_id = ctx.fresh_block();
     let merge_id = ctx.fresh_block();
 
-    ctx.set_current(entry);
     match op {
         BinOp::And => {
             ctx.emit(IrInst::JumpIf {

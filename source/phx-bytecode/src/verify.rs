@@ -10,7 +10,7 @@ use super::instr::{InstrError, Instruction};
 use super::local_layout::{FunctionLocalLayout, LocalLayoutTable};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
-use super::stack_flow::{StackFlowError, analyze_stack_cfg};
+use super::stack_flow::{StackFlowError, analyze_stack_cfg, return_stack_depth};
 use super::types::TypeKind;
 
 /// Verifier failure.
@@ -84,6 +84,17 @@ pub enum VerifyError {
         /// Depth already recorded from another predecessor.
         expected: u32,
         /// Depth from the conflicting predecessor.
+        found: u32,
+    },
+    /// [`Opcode::Return`] reached with wrong operand-stack depth.
+    ReturnDepthMismatch {
+        /// Function containing the return.
+        function_id: u32,
+        /// Offset of the return instruction.
+        offset: u32,
+        /// Required depth from the function return type.
+        expected: u32,
+        /// Observed depth at the return.
         found: u32,
     },
     /// Simulated max stack depth exceeds declared `stack_max`.
@@ -245,6 +256,15 @@ impl std::fmt::Display for VerifyError {
             } => write!(
                 f,
                 "join stack depth mismatch in function {function_id} at offset {offset}: expected {expected}, found {found}"
+            ),
+            Self::ReturnDepthMismatch {
+                function_id,
+                offset,
+                expected,
+                found,
+            } => write!(
+                f,
+                "return stack depth mismatch in function {function_id} at offset {offset}: expected {expected}, found {found}"
             ),
             Self::StackExceedsMax {
                 function_id,
@@ -471,8 +491,9 @@ fn verify_function_body(
         )?;
     }
 
-    let summary =
-        analyze_stack_cfg(&instructions, &inst_starts, fn_arity).map_err(|e| match e {
+    let return_depth = return_stack_depth(func.return_type_id, &module.types);
+    let summary = analyze_stack_cfg(&instructions, &inst_starts, fn_arity, return_depth).map_err(
+        |e| match e {
             StackFlowError::Underflow { offset } => VerifyError::StackUnderflow {
                 function_id: func.function_id,
                 offset,
@@ -487,11 +508,22 @@ fn verify_function_body(
                 expected,
                 found,
             },
+            StackFlowError::ReturnDepthMismatch {
+                offset,
+                expected,
+                found,
+            } => VerifyError::ReturnDepthMismatch {
+                function_id: func.function_id,
+                offset,
+                expected,
+                found,
+            },
             StackFlowError::InvalidCallTarget { callee, .. } => VerifyError::InvalidCallTarget {
                 function_id: func.function_id,
                 callee,
             },
-        })?;
+        },
+    )?;
     let max_depth = summary.max_depth;
 
     if max_depth > u32::from(func.stack_max) {
@@ -901,7 +933,12 @@ mod tests {
         TypeTable,
     };
 
-    fn minimal_module(code: Vec<u8>, stack_max: u16, entry_arity: u16) -> BytecodeModule {
+    fn minimal_module(
+        code: Vec<u8>,
+        stack_max: u16,
+        entry_arity: u16,
+        return_type_id: u32,
+    ) -> BytecodeModule {
         BytecodeModule {
             header: FileHeader::new(5, 0),
             constants: ConstPool {
@@ -921,7 +958,7 @@ mod tests {
                     flags: 0,
                     code_offset: 0,
                     code_len: u32::try_from(code.len()).unwrap_or(0),
-                    return_type_id: 0,
+                    return_type_id,
                 }],
             },
             code,
@@ -950,13 +987,13 @@ mod tests {
 
     #[test]
     fn valid_const_return_passes() {
-        let module = minimal_module(const_return_code(), 4, 0);
+        let module = minimal_module(const_return_code(), 4, 0, 1);
         verify(&module).expect("verify");
     }
 
     #[test]
     fn reject_invalid_entry_arity() {
-        let module = minimal_module(const_return_code(), 4, 1);
+        let module = minimal_module(const_return_code(), 4, 1, 1);
         let err = verify(&module).unwrap_err();
         assert_eq!(err, VerifyError::InvalidEntryFunction);
     }
@@ -978,7 +1015,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1003,7 +1040,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1013,7 +1050,7 @@ mod tests {
 
     #[test]
     fn reject_stack_exceeds_max() {
-        let module = minimal_module(const_return_code(), 0, 0);
+        let module = minimal_module(const_return_code(), 0, 0, 1);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1042,7 +1079,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1051,8 +1088,23 @@ mod tests {
     }
 
     #[test]
+    fn reject_return_depth_mismatch() {
+        let module = minimal_module(const_return_code(), 4, 0, 0);
+        let err = verify(&module).unwrap_err();
+        assert!(matches!(
+            err,
+            VerifyError::ReturnDepthMismatch {
+                function_id: 0,
+                expected: 0,
+                found: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn reject_const_payload_width_mismatch() {
-        let mut module = minimal_module(const_return_code(), 4, 0);
+        let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.constants.entries[0].payload = 1i64.to_le_bytes().to_vec();
         let err = verify(&module).unwrap_err();
         assert!(matches!(err, VerifyError::ConstPayloadMismatch { .. }));
@@ -1075,7 +1127,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 8, 0);
+        let module = minimal_module(code, 8, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1100,7 +1152,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1131,7 +1183,7 @@ mod tests {
                         flags: 0,
                         code_offset: 0,
                         code_len: u32::try_from(code.len()).unwrap_or(0),
-                        return_type_id: 0,
+                        return_type_id: 1,
                     },
                     FunctionRecord {
                         function_id: 1,
@@ -1311,7 +1363,7 @@ mod tests {
     #[test]
     fn reject_join_depth_mismatch() {
         let (code, merge_off) = join_depth_mismatch_code();
-        let mut module = minimal_module(code, 4, 0);
+        let mut module = minimal_module(code, 4, 0, 0);
         module.constants.entries = vec![
             ConstEntry {
                 tag: ConstTag::Bool,
@@ -1347,7 +1399,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1365,7 +1417,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         verify(&module).expect("trap without operands");
     }
 
@@ -1386,7 +1438,7 @@ mod tests {
             }
             .encode(),
         );
-        let module = minimal_module(code, 4, 0);
+        let module = minimal_module(code, 4, 0, 0);
         let err = verify(&module).unwrap_err();
         assert!(matches!(
             err,
@@ -1399,7 +1451,7 @@ mod tests {
 
     #[test]
     fn reject_missing_local_layout_when_required() {
-        let mut module = minimal_module(const_return_code(), 4, 0);
+        let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.functions.functions[0].local_count = 1;
         let err = verify(&module).unwrap_err();
         assert!(matches!(
@@ -1425,7 +1477,7 @@ mod tests {
             }
             .encode(),
         );
-        let mut module = minimal_module(code, 4, 0);
+        let mut module = minimal_module(code, 4, 0, 1);
         module.constants.entries[0] = ConstEntry {
             tag: ConstTag::Bytes,
             payload: b"hi".to_vec(),

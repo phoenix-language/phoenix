@@ -476,7 +476,7 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/codegen/emit.rs:555–567` (`DropLocal`) vs `phx-bytecode/src/stack_effect.rs:63–66, 89–92`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** `DropLocal` emits `LoadLocal` + `Call` with no `Pop`; since `Call` nets +1 and `Return`'s stack effect pops nothing, every drop leaks one stack slot.
 **Detail:** Verified in both files. The leak survives verification (Return imposes no depth requirement), inflates `stack_max`, and will trip `JoinDepthMismatch` whenever drop glue runs on one edge of a control-flow merge but not the other.
@@ -885,7 +885,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-032 | - [ ]  | Minor        | phx-compiler    | Design docs stale on trait defaults and `Result` match                   |
 | PHX-033 | - [x]  | Major        | phx-compiler    | Linker does not rebase all type-referencing opcodes                      |
 | PHX-034 | - [x]  | Major        | phx-compiler    | Missing codegen map entries silently encode operand 0                    |
-| PHX-035 | - [ ]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
+| PHX-035 | - [x]  | Major        | phx-compiler    | `DropLocal` leaks one stack slot per drop call                           |
 | PHX-036 | - [x]  | Major        | phx-compiler    | Per-module artifacts embed whole-program tables                          |
 | PHX-037 | - [ ]  | Major        | phx-compiler    | Lowering `ExprId` cursor silently falls back to `unit_ty()`              |
 | PHX-038 | - [ ]  | Major        | phx-compiler    | Lowering re-implements method/trait resolution                           |

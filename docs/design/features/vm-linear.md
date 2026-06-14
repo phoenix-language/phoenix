@@ -86,7 +86,7 @@ Section kinds (MVP):
 
 **Compiler-only notes (MVP):**
 
-- **`POP` (opcode 3)** — defined for the verifier/VM; Phoenix codegen does not emit it (void results are handled via control flow and `STORE_LOCAL` to `_`).
+- **`POP` (opcode 3)** — defined for the verifier/VM; Phoenix codegen emits it to discard `()` call results (scope-exit [`DropLocal`](../../../source/phx-compiler/src/lower/drop_glue.rs) glue and explicit void calls in lowering).
 - **`ALLOC` (38) / `FREE` (49) / `PTR_STORE` (40)** — VM heap intrinsics; compiler emits when lowering `std::core::alloc::alloc_bytes`, `std::core::alloc::dealloc_bytes`, and `*ptr = …` on raw pointers ([V0-030](../language-v0.md#v0-030--heap-allocation-intrinsic), [V0-065](../language-v0-completion-roadmap.md#v0-065--heap-deallocation-dealloc_bytes--free)). **`alloc_bytes` and `dealloc_bytes` require `unsafe`** (same boundary as `extern "C"` calls).
 
 ---
@@ -263,6 +263,7 @@ Loader must reject bytecode when:
 - jump targets are not aligned to instruction starts
 - local slot indexes exceed `local_count`
 - stack effect analysis exceeds `stack_max` or underflows
+- at each `RETURN`, simulated operand-stack depth is not exactly the return stack cells (`0` for unit / `return_type_id == 0`, `1` otherwise)
 - `entry_function_id` is missing or has non-zero arity
 
 ---
