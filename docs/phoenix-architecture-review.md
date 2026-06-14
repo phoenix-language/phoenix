@@ -324,11 +324,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `phx-compiler/src/typeck/check.rs` (`check_while`/`check_loop` paths) + `typeck/ownership.rs:17–91`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** No loop back-edge analysis — a move inside a loop body is not detected as use-after-move on the next iteration.
 **Detail:** The tracker is strictly linear; `loop { use(x); consume(x); }` checks clean because the textual use precedes the move. `grep` of `tests/typeck.rs` confirms zero loop/branch move tests. This is the false-*negative* counterpart to PHX-023: invalid programs are accepted, and the resulting bytecode operates on moved-from values.
 **Recommendation:** Treat any binding moved anywhere in a loop body as moved at the loop head on a second pass (or error outright on non-Copyable moves of loop-external bindings inside loop bodies, the conservative MVP rule). Needs a one-paragraph design-doc decision on which rule Phoenix wants — flag for the author.
+
+**Resolution:** Flow-insensitive loop join (author-confirmed, matches PHX-023): `with_loop_body` forks from pre-loop state, joins with `join_arms`, runs a lightweight AST read-use scan via `newly_moved_since` for loop-carried bindings, and sets post-loop ownership to the joined state. Loop-move regression tests (PHX-068) live in `source/phx-compiler/tests/typeck.rs`.
 
 ---
 
@@ -858,7 +860,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-021 | - [x]  | Minor        | phx-compiler    | `DefId` allocation saturates silently at `u32::MAX`                      |
 | PHX-022 | - [x]  | Suggestion   | phx-compiler    | Internal types are public crate API                                      |
 | PHX-023 | - [x]  | **Critical** | phx-compiler    | Ownership state not forked/joined across `if`/`match` arms               |
-| PHX-024 | - [ ]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
+| PHX-024 | - [x]  | **Critical** | phx-compiler    | No loop back-edge analysis for move detection                            |
 | PHX-025 | - [ ]  | Major        | phx-compiler    | No partial-move tracking for field access                                |
 | PHX-026 | - [ ]  | Major        | phx-compiler    | Name-only std type lookups bypass `StdKernel` path anchoring             |
 | PHX-027 | - [ ]  | Major        | phx-compiler    | Generic arity mismatch returns `true` and skips bound checks             |

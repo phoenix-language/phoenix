@@ -128,6 +128,41 @@ impl OwnershipTracker {
         }
         out
     }
+
+    fn binding_state_at_depth(&self, symbol: Symbol, depth: u32) -> Option<BindingState> {
+        self.bindings
+            .iter()
+            .find(|entry| entry.symbol == symbol && entry.depth == depth)
+            .map(|entry| entry.state)
+    }
+
+    /// Bindings visible at `base` that are [`BindingState::Moved`] in `joined` but valid in `base`.
+    #[must_use]
+    pub fn newly_moved_since(base: &Self, joined: &Self) -> Vec<(Symbol, u32, Span)> {
+        let mut out = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for entry in base
+            .bindings
+            .iter()
+            .rev()
+            .filter(|entry| entry.depth <= base.scope_depth)
+        {
+            if !seen.insert(entry.symbol) {
+                continue;
+            }
+            let symbol = entry.symbol;
+            let depth = entry.depth;
+            let Some(BindingState::Valid) = base.binding_state_at_depth(symbol, depth) else {
+                continue;
+            };
+            let Some(BindingState::Moved(span)) = joined.binding_state_at_depth(symbol, depth)
+            else {
+                continue;
+            };
+            out.push((symbol, depth, span));
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -194,5 +229,58 @@ mod tests {
         let joined = OwnershipTracker::join_arms(&base, &[arm]);
         assert_eq!(joined.moved_at(outer), None);
         assert_eq!(joined.moved_at(inner), None);
+    }
+
+    #[test]
+    fn newly_moved_since_reports_loop_carried_move() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let move_span = Span::new(5, 6);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+
+        let mut body_end = base.clone();
+        body_end.move_binding(sym, move_span);
+        let joined = OwnershipTracker::join_arms(&base, &[body_end]);
+
+        let newly = OwnershipTracker::newly_moved_since(&base, &joined);
+        assert_eq!(newly, vec![(sym, 0, move_span)]);
+    }
+
+    #[test]
+    fn newly_moved_since_skips_already_moved_in_base() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let move_span = Span::new(5, 6);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+        base.move_binding(sym, move_span);
+
+        let joined = base.clone();
+        let newly = OwnershipTracker::newly_moved_since(&base, &joined);
+        assert!(newly.is_empty());
+    }
+
+    #[test]
+    fn newly_moved_since_ignores_inner_scope_only_bindings() {
+        let outer = Symbol::from_raw(1);
+        let inner = Symbol::from_raw(2);
+        let ty = TypeId::from_raw(0);
+        let move_span = Span::new(1, 2);
+
+        let mut base = OwnershipTracker::new();
+        base.define(outer, ty);
+
+        let mut body_end = base.clone();
+        body_end.enter_scope();
+        body_end.define(inner, ty);
+        body_end.move_binding(inner, move_span);
+        body_end.exit_scope();
+
+        let joined = OwnershipTracker::join_arms(&base, &[body_end]);
+        let newly = OwnershipTracker::newly_moved_since(&base, &joined);
+        assert!(newly.is_empty());
     }
 }

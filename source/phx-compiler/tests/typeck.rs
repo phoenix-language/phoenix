@@ -319,6 +319,67 @@ fn if_both_arms_use_binding_ok() {
 }
 
 #[test]
+fn loop_use_then_move_in_body_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; loop { const _ = p.r; var q: Point = p; }; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+}
+
+#[test]
+fn while_use_then_move_in_body_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; while c { const _ = p.r; var q: Point = p; }; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+}
+
+#[test]
+fn loop_move_then_use_after_loop_errors() {
+    let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; loop { var q: Point = p; break; }; const _ = p.r; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
+        .expect("use-after-move");
+    if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
+        assert_eq!(name, "p");
+    }
+}
+
+#[test]
+fn loop_move_then_break_ok() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; loop { var q: Point = p; break; }; };",
+    );
+}
+
+#[test]
+fn loop_both_s32_reassign_ok() {
+    compile_ok("main :: () => { var i: s32 = 0; while i < 3 { i = i + 1; }; };");
+}
+
+#[test]
+fn loop_inner_var_move_ok() {
+    compile_ok(
+        "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; loop { var p: Point = Point { r: &n }; var q: Point = p; }; };",
+    );
+}
+
+#[test]
 fn function_trailing_expr_return_compile_ok() {
     compile_ok("add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { };");
 }

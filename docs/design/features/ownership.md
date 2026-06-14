@@ -175,6 +175,8 @@ Block-scoped shadowing is respected: an inner `var x` does not affect move state
 
 **Conditional branches (`if` / `match`):** Each arm is checked starting from a snapshot of ownership at the branch entry. At the merge point, a binding is treated as **Moved** if it was moved on **any** arm (flow-insensitive join, consistent with drop planning below). Uses of a binding in one arm therefore do not see moves performed only in sibling arms; uses after the whole `if` or `match` expression see the joined state.
 
+**Loops (`while` / `loop` / `for-in`):** The body is checked once from a pre-loop snapshot; loop-carried bindings (defined before the loop) that are moved anywhere in the body are treated as **Moved** at the loop head for back-edge checking. Any **read** use of such a binding anywhere in the loop body is a **use-after-move** (flow-insensitive, same family as branch join). Move sources (`var q = p`, by-value call arguments) are not counted as reads. Uses after the loop see the joined post-body state. This may reject some break-guarded single-iteration patterns until post-MVP path-sensitive analysis — see the drop-planning limitation below.
+
 Post-MVP ownership analysis will use path-sensitive last-use and move-through-call rules aligned with the full design above.
 
 ### MVP: returning borrows of locals
