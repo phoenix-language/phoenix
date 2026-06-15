@@ -181,3 +181,14 @@ just phx run path/to/main.phx --dump-main
 | `phx explain E####` | Short explanation for a diagnostic code |
 
 Integration tests live in `tests/integration/tests/cli_e2e.rs` and `diagnostics.rs` (not shell scripts).
+
+## Test fixtures
+
+Regression fixtures under `tests/cli/fixtures/` are mandatory — tests must not silently skip when a fixture is missing.
+
+| Location | Use for |
+|----------|---------|
+| `phx-compiler/tests/` | Inline-source compiler pass tests (`compile_source` strings) |
+| `phx-integration-tests` | On-disk fixtures, `build_project` / `check_file` API tests, CLI subprocess E2E |
+
+In integration tests, use `phx_test::require_cli_project("name")` or `require_fixture_file(&path)` instead of `if !path.is_file() { return; }`. CI runs `tests/ci/check-fixture-gates.sh` to block that anti-pattern.

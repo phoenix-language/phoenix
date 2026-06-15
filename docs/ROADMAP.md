@@ -39,7 +39,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Remove the production `expect` in derive expansion | PHX-018 | Propagate as `DeriveError` |
 | Silent-fallback cleanup in codegen/lower (`pool_index_for_literal`, `LowerCtx::emit`, `u32::MAX` saturation) | PHX-041, PHX-030, PHX-021 | Convert to errors |
 | `[INFRA]` Align `just pre-commit` with what protects the pipeline | PHX-060 | **Done:** `pre-commit` runs `cargo test --workspace` plus serial `test-lang` (matches CI `rust` + `cli` jobs) |
-| `[INFRA]` Fixture-gated tests must fail loudly when fixtures are missing | PHX-062 | Replace `if !path.is_file() { return; }` with a test failure |
+| `[INFRA]` Fixture-gated tests must fail loudly when fixtures are missing | PHX-062 | **Done:** `require_cli_project` / `require_fixture_file`; CI `check-fixture-gates.sh`; compiler ↔ phx-test dev-dep cycle broken |
 
 ---
 
@@ -171,7 +171,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Clone audit: `ResolvedProgram` clone, per-mono `TypeInterner` clones, `type_defs.clone()` | PHX-020 | Profile-first |
 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | PHX-058 | — |
 | API surface triage: `ResolvedProgram`/IR/mono re-exports vs `facade` | PHX-022 | Documented decision |
-| Test-suite hygiene: stale keyword test, missing `mod`/`reexport`/`extern` parser tests, `extern` `pub`, golden-set expansion, dev-dep cycle decision | PHX-010, PHX-011, PHX-061, PHX-062 | PHX-061 golden set expanded (12 fixtures); PHX-062 open |
+| Test-suite hygiene: stale keyword test, missing `mod`/`reexport`/`extern` parser tests, `extern` `pub`, golden-set expansion, dev-dep cycle decision | PHX-010, PHX-011, PHX-061, PHX-062 | PHX-061 golden set expanded (12 fixtures); PHX-062 fixture gates + cycle break done |
 | `verify` validates the in-memory module directly (no re-encode); fallible `Instruction::encode` | PHX-050 | done |
 | `load_project_binary` optional verify-on-load | PHX-055-adjacent | Defense in depth; documented decision |
 | Doc-truth pass: `ownership.md` (loop/partial-move rules from M0/M1), `wide-integers.md`/`type-system.md` (shift/NaN from M2), `vm-linear.md` (POP/`Trap` contract), V0 checklists | PHX-032 | Docs match code everywhere |

@@ -50,3 +50,28 @@ pub fn assert_fixture_exists(path: &Path) {
         path.display()
     );
 }
+
+/// Assert a fixture file exists; returns `path` for chaining.
+pub fn require_fixture_file(path: &Path) -> &Path {
+    assert!(path.is_file(), "missing fixture file: {}", path.display());
+    path
+}
+
+/// CLI project fixture directory; panics when `phoenix.toml` is absent.
+pub fn require_cli_project(name: &str) -> PathBuf {
+    let root = cli_project(name);
+    require_fixture_file(&root.join("phoenix.toml"));
+    root
+}
+
+/// Bundled stdlib project root (`std/phoenix.toml`).
+pub fn require_std_project() -> PathBuf {
+    let root = repo_root().join("std");
+    require_fixture_file(&root.join("phoenix.toml"));
+    root
+}
+
+/// Entry source for a CLI project fixture.
+pub fn cli_project_main(name: &str) -> PathBuf {
+    require_cli_project(name).join("src/main.phx")
+}

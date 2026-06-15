@@ -850,12 +850,12 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 **Location:** e.g. `phx-compiler/tests/typeck.rs:151` and the `if !path.is_file() { return; }` pattern; `phx-compiler` ↔ `tests/phx-test` dev-dep cycle
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Fixture-gated tests silently pass when the fixture is missing — a moved directory turns a suite green-by-vacuity; the dev-only dependency cycle lengthens the test build graph.
 **Recommendation:** Panic (in tests) when an expected fixture is absent; flag the cycle for review.
 
----
+**Resolution (2026-06-14):** Added `require_cli_project`, `require_fixture_file`, and `require_std_project` in `phx-test`; replaced silent returns across integration tests. Migrated phx-compiler fixture/build tests to `phx-integration-tests` (`compiler_build`, `module_barrel`, `pxi_roundtrip`, `*_fixture`); phx-compiler pass tests use local `tests/support` with no `phx-test` dev-dep (cycle broken). CI guard: `tests/ci/check-fixture-gates.sh` wired into `just dep-check`.
 
 ## Cross-Cutting Issues
 
@@ -875,7 +875,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 
 **Error recovery.** Strategy is consistent and good: every pass collects multiple errors in a bag (`ParseBag`, `DiagnosticBag`, `TypeCheckBag`, `LowerBag`); the pipeline aborts *between* stages on a non-empty bag; the CLI wraps everything in `catch_unwind` → exit 6. The two real gaps are PHX-005 (partial ASTs discarded, so recovery never crosses the parse boundary) and the silent-fallback family (PHX-016/017/034/037/041), which is worse than panicking — those paths neither panic nor diagnose.
 
-**Crate dependency graph.** Verified clean and acyclic in production: `phx-diagnostics` ← `phx-syntax` ← `phx-compiler` (also ← `phx-bytecode`); `phx-vm` ← {`phx-bytecode`, `phx-diagnostics`} — `**phx-vm` correctly does not depend on `phx-compiler`**; `phx-cli` links all; `phx` ← `phx-cli`. Zero external crates anywhere, enforced by `tests/ci/check-deps.sh`. Only dev-time wrinkles: `phx-compiler` ↔ `phx-test` cycle and `phx-bytecode` dev-depending on `phx-vm` (PHX-062).
+**Crate dependency graph.** Verified clean and acyclic in production: `phx-diagnostics` ← `phx-syntax` ← `phx-compiler` (also ← `phx-bytecode`); `phx-vm` ← {`phx-bytecode`, `phx-diagnostics`} — `**phx-vm` correctly does not depend on `phx-compiler`**; `phx-cli` links all; `phx` ← `phx-cli`. Zero external crates anywhere, enforced by `tests/ci/check-deps.sh`. Dev-time wrinkle remaining: `phx-bytecode` dev-depending on `phx-vm` (PHX-062 broke the `phx-compiler` ↔ `phx-test` cycle).
 
 **Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" is type-enforced at the `phx_vm::run` library boundary via `VerifiedModule` (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 resolved for `terminators_successors` opcode match in `stack_flow.rs`. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
 
@@ -950,7 +950,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-059 | - [x]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
 | PHX-060 | - [x]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
 | PHX-061 | - [x]  | Major        | tests           | Coverage gaps on Critical findings — regression suite expanded (2026-06-14) |
-| PHX-062 | - [ ]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing                |
+| PHX-062 | - [x]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing (2026-06-14)   |
 | PHX-063 | - [ ]  | Major        | cross-cutting   | Span propagation ends at typeck; IR carries no spans                     |
 
 

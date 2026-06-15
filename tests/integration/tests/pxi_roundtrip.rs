@@ -1,10 +1,10 @@
-//! `.pxi` v2 structured type round-trip and import type seeding.
+//! PXI round-trip tests (migrated from phx-compiler).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use phx_compiler::{
     BuildOptions, PxiExport, PxiFile, PxiType, compile_source, unstable::type_check,
 };
-use phx_test::{build_cli_project, cli_project, discover_cli_project};
+use phx_test::{build_cli_project, discover_cli_project, require_cli_project};
 
 #[test]
 fn pxi_v2_type_json_round_trip() {
@@ -38,7 +38,7 @@ fn pxi_v2_type_json_round_trip() {
 
 #[test]
 fn project_build_emits_pxi_v2_with_structured_fn_type() {
-    let root = cli_project("project");
+    let root = require_cli_project("project");
     let config = discover_cli_project(&root);
     build_cli_project(&config, BuildOptions::force(true));
     let pxi_path = root.join("build/pxi/cli_project_test/util/math.pxi");
@@ -63,7 +63,7 @@ fn project_build_emits_pxi_v2_with_structured_fn_type() {
 
 #[test]
 fn math_lib_pxi_exports_mangled_generic_specialization() {
-    let app_root = cli_project("app_dep");
+    let app_root = require_cli_project("app_dep");
     let app_config = discover_cli_project(&app_root);
     build_cli_project(&app_config, BuildOptions::force(true));
     let pxi_path = app_root.join("build/deps/math/pxi/math.pxi");

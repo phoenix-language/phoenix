@@ -21,8 +21,9 @@ pub use cli::{
 };
 pub use compile::{compile_ok, expect_compile_err, expect_resolve_err, expect_typeck_err};
 pub use fixtures::{
-    cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project, examples_dir, examples_project,
-    repo_root,
+    assert_fixture_exists, cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project,
+    cli_project_main, examples_dir, examples_project, repo_root, require_cli_project,
+    require_fixture_file, require_std_project,
 };
 pub use golden::{
     assert_golden, format_check_file, format_check_with_module_root, format_compile_source,

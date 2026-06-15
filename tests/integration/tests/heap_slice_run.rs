@@ -3,17 +3,14 @@
 #![allow(clippy::expect_used)]
 
 use phx_test::{
-    ExpectedLocal, assert_main_locals, cli_project, fixture_fs_lock, force_build_project,
+    ExpectedLocal, assert_main_locals, fixture_fs_lock, force_build_project, require_cli_project,
 };
 use phx_vm::run;
 
 #[test]
 fn heap_slice_fixture_runs() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("heap_slice");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("heap_slice");
     let built = force_build_project("heap_slice");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice");
 
@@ -23,10 +20,7 @@ fn heap_slice_fixture_runs() {
 #[test]
 fn heap_slice_reads_seventy_seven_via_index() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("heap_slice");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("heap_slice");
     let built = force_build_project("heap_slice");
     // `v` local slot after `const v: u8 = sl[0];`
     assert_main_locals(&built.module, &[(3, ExpectedLocal::U8(77))]);
@@ -35,10 +29,7 @@ fn heap_slice_reads_seventy_seven_via_index() {
 #[test]
 fn heap_slice_unsafe_check_fails() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("heap_slice_unsafe");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    let root = require_cli_project("heap_slice_unsafe");
     let entry = root.join("src/main.phx");
     let err = phx_compiler::check_file(&entry).expect_err("slice outside unsafe");
     let msg = format!("{err}");
@@ -51,10 +42,7 @@ fn heap_slice_unsafe_check_fails() {
 #[test]
 fn heap_slice_oob_index_fails_at_runtime() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("heap_slice_oob");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("heap_slice_oob");
     let built = force_build_project("heap_slice_oob");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice_oob");
     let err = run(verified).expect_err("OOB slice index");
@@ -68,10 +56,7 @@ fn heap_slice_oob_index_fails_at_runtime() {
 #[test]
 fn heap_slice_store_round_trip() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("heap_slice_store");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("heap_slice_store");
     let built = force_build_project("heap_slice_store");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice_store");
 
@@ -83,10 +68,7 @@ fn heap_slice_store_round_trip() {
 #[test]
 fn heap_slice_nested_index_store_round_trip() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("heap_slice_nested_index");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("heap_slice_nested_index");
     let built = force_build_project("heap_slice_nested_index");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_slice_nested_index");
 

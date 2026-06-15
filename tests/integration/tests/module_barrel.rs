@@ -1,24 +1,16 @@
-//! V0-061 `mod` declarations, barrel reexports, and visibility.
+//! Module barrel tests (migrated from phx-compiler).
 
 #![allow(clippy::expect_used)]
-
-use std::path::PathBuf;
 
 use phx_compiler::{
     BuildLayout, BuildOptions, ProjectConfig, load_program_with_context, resolve_loaded_program,
     unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
-use phx_test::fixture_fs_lock;
-
-fn fixture_root(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures")
-        .join(name)
-}
+use phx_test::{fixture_fs_lock, require_cli_project};
 
 fn load_project(name: &str) -> Result<phx_compiler::unstable::ResolvedProgram, DiagnosticBag> {
-    let root = fixture_root(name);
+    let root = require_cli_project(name);
     let config = ProjectConfig::load(&root).expect("load project");
     let entry = config.default_entry_file();
     let layout = BuildLayout::new(&config);
@@ -32,10 +24,6 @@ fn load_project(name: &str) -> Result<phx_compiler::unstable::ResolvedProgram, D
 #[test]
 fn bin_barrel_reexport_resolves() {
     let _lock = fixture_fs_lock();
-    let root = fixture_root("modules_bin_barrel");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
     let resolved = load_project("modules_bin_barrel").expect("resolve barrel project");
     type_check(resolved).expect("typecheck barrel import util::add");
 }
@@ -43,10 +31,7 @@ fn bin_barrel_reexport_resolves() {
 #[test]
 fn missing_module_entry_fails_load() {
     let _lock = fixture_fs_lock();
-    let root = fixture_root("modules_missing_mod");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    let root = require_cli_project("modules_missing_mod");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
     let ctx = phx_compiler::ProgramLoadContext::from_config(&config);
@@ -66,10 +51,7 @@ fn missing_module_entry_fails_load() {
 #[test]
 fn orphan_file_fails_load() {
     let _lock = fixture_fs_lock();
-    let root = fixture_root("modules_orphan_file");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    let root = require_cli_project("modules_orphan_file");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
     let layout = BuildLayout::new(&config);
@@ -94,10 +76,7 @@ fn std_error_import_path_flattened() {
 #[test]
 fn std_iter_for_in_has_plan() {
     let _lock = fixture_fs_lock();
-    let root = fixture_root("std_iter");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("std_iter");
     let resolved = load_project("std_iter").expect("resolve std_iter");
     let typed = type_check(resolved).expect("typecheck std_iter");
     let main_layout = typed
@@ -121,10 +100,7 @@ fn std_iter_for_in_has_plan() {
 #[test]
 fn modules_bin_barrel_builds() {
     let _lock = fixture_fs_lock();
-    let root = fixture_root("modules_bin_barrel");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    let root = require_cli_project("modules_bin_barrel");
     let config = ProjectConfig::load(&root).expect("load");
     phx_compiler::build_project(&config, None, BuildOptions::force(true))
         .expect("build modules_bin_barrel");

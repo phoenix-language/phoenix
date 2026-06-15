@@ -33,7 +33,6 @@ dependencies = [
  "phx-bytecode",
  "phx-diagnostics",
  "phx-syntax",
- "phx-test",
 ]
 
 [[package]]

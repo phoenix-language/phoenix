@@ -1,12 +1,14 @@
 //! Integration tests for the type-checking pass.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use phx_compiler::{
-    CompileError, check_file, compile_source,
+    CompileError, compile_source,
     unstable::{DefKind, TypedProgram},
 };
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
-use phx_test::{compile_ok, expect_typeck_err};
+use support::{compile_ok, expect_typeck_err};
 
 fn typeck_err(source: &str) -> TypeCheckBag {
     expect_typeck_err(source)
@@ -144,82 +146,6 @@ fn question_mark_invalid_operand_without_result_context() {
             .iter()
             .any(|e| { matches!(&e.error, TypeCheckError::InvalidTryOperand { .. }) })
     );
-}
-
-#[test]
-fn question_mark_ok_with_std_imports() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_try/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let unit = check_file(&path).unwrap_or_else(|e| panic!("std_try typeck: {e}"));
-    assert!(
-        !unit.typed.try_sites.is_empty(),
-        "expected try_sites in std_try fixture"
-    );
-}
-
-#[test]
-fn try_result_from_conversion_ok() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_try_from/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    check_file(&path).unwrap_or_else(|e| panic!("std_try_from typeck: {e}"));
-}
-
-#[test]
-fn try_result_from_missing() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_try_from_missing/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let err = check_file(&path).expect_err("expected type error");
-    let bag = match err {
-        CompileError::TypeCheck { bag, .. } => bag,
-        other => panic!("expected type-check error, got {other}"),
-    };
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| { matches!(&e.error, TypeCheckError::TryErrorFromMissing { .. }) }),
-        "expected TryErrorFromMissing: {:?}",
-        bag.errors()
-    );
-}
-
-#[test]
-fn try_result_ok_mismatch() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_try_ok_mismatch/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let err = check_file(&path).expect_err("expected type error");
-    let bag = match err {
-        CompileError::TypeCheck { bag, .. } => bag,
-        other => panic!("expected type-check error, got {other}"),
-    };
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| { matches!(&e.error, TypeCheckError::InvalidTryOperand { .. }) }),
-        "expected InvalidTryOperand for Ok type mismatch: {:?}",
-        bag.errors()
-    );
-}
-
-#[test]
-fn try_result_identical_err_regression() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_try/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    check_file(&path).unwrap_or_else(|e| panic!("std_try typeck: {e}"));
 }
 
 #[test]
@@ -1197,18 +1123,6 @@ fn generic_call_ast_has_args() {
 }
 
 #[test]
-fn generic_cli_fixtures_check_file_ok() {
-    use phx_test::cli_fixture;
-    for name in ["generic_fn.phx", "generic_struct.phx", "generic_enum.phx"] {
-        let path = cli_fixture(name);
-        let source = std::fs::read_to_string(&path).expect("read fixture");
-        compile_source(&source, Some(&path))
-            .unwrap_or_else(|e| panic!("compile_source {name}: {e}"));
-        check_file(&path).unwrap_or_else(|e| panic!("check_file {name}: {e}"));
-    }
-}
-
-#[test]
 fn generic_fn_infer_from_args_compile_ok() {
     compile_ok("id :: <t> (x: t) => t { x }; main :: () => { const _: s32 = id(1); };");
 }
@@ -1299,30 +1213,6 @@ fn float_does_not_satisfy_eq_trait_bound() {
             .iter()
             .any(|e| matches!(&e.error, TypeCheckError::TraitNotSatisfied { .. }))
     );
-}
-
-#[test]
-fn std_traits_fixture_typechecks() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_traits/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let unit = check_file(&path).unwrap_or_else(|e| panic!("std_traits typeck: {e}"));
-    assert!(
-        !unit.typed.primitive_method_sites.is_empty(),
-        "expected primitive eq/clone method sites in std_traits"
-    );
-}
-
-#[test]
-fn std_prelude_fixture_typechecks_without_imports() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_prelude/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    check_file(&path).unwrap_or_else(|e| panic!("std_prelude typeck: {e}"));
 }
 
 #[test]
@@ -1726,114 +1616,6 @@ fn extern_call_requires_unsafe() {
 }
 
 #[test]
-fn dealloc_bytes_requires_unsafe() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/heap_dealloc_unsafe/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let err = check_file(&path).expect_err("expected dealloc_bytes outside unsafe to fail");
-    let bag = match err {
-        CompileError::TypeCheck { bag, .. } => bag,
-        other => panic!("expected type-check error, got {other}"),
-    };
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::IntrinsicRequiresUnsafe { .. })),
-        "expected IntrinsicRequiresUnsafe: {:?}",
-        bag.errors()
-    );
-}
-
-#[test]
-fn heap_dealloc_fixture_typechecks() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/heap_dealloc/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let unit = check_file(&path).expect("heap_dealloc typecheck");
-    assert!(
-        unit.typed.intrinsic_call_sites.len() >= 2,
-        "expected at least alloc_bytes + dealloc_bytes intrinsic sites, got {}",
-        unit.typed.intrinsic_call_sites.len()
-    );
-}
-
-#[test]
-fn alloc_bytes_requires_unsafe() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/heap_alloc_unsafe/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let err = check_file(&path).expect_err("expected alloc_bytes outside unsafe to fail");
-    let bag = match err {
-        CompileError::TypeCheck { bag, .. } => bag,
-        other => panic!("expected type-check error, got {other}"),
-    };
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::IntrinsicRequiresUnsafe { .. })),
-        "expected IntrinsicRequiresUnsafe: {:?}",
-        bag.errors()
-    );
-}
-
-#[test]
-fn slice_from_raw_parts_requires_unsafe() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/heap_slice_unsafe/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let err = check_file(&path).expect_err("expected slice_from_raw_parts outside unsafe to fail");
-    let bag = match err {
-        CompileError::TypeCheck { bag, .. } => bag,
-        other => panic!("expected type-check error, got {other}"),
-    };
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::IntrinsicRequiresUnsafe { .. })),
-        "expected IntrinsicRequiresUnsafe: {:?}",
-        bag.errors()
-    );
-}
-
-#[test]
-fn heap_slice_fixture_typechecks() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/heap_slice/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let unit = check_file(&path).expect("heap_slice typecheck");
-    assert!(
-        unit.typed.intrinsic_call_sites.len() >= 2,
-        "expected at least alloc_bytes + slice_from_raw_parts intrinsic sites, got {}",
-        unit.typed.intrinsic_call_sites.len()
-    );
-}
-
-#[test]
-fn heap_alloc_fixture_typechecks() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/heap_alloc/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let unit = check_file(&path).expect("heap_alloc typecheck");
-    assert!(
-        !unit.typed.intrinsic_call_sites.is_empty(),
-        "expected intrinsic_call_sites for alloc_bytes"
-    );
-    // Reuses `buf` after `*buf = …` — would fail use-after-move if *mut u8 were non-Copyable.
-}
-
-#[test]
 fn extern_call_in_unsafe_ok() {
     compile_ok("extern \"C\" stub :: (x: s32) => s32; main :: () => { unsafe { stub(1); }; };");
 }
@@ -1882,27 +1664,6 @@ fn unsafe_impl_of_safe_trait_rejected() {
 fn unsafe_trait_method_call_requires_unsafe() {
     let source = "A :: unsafe trait { f :: (self: &mut Self) => (); }; T :: struct {}; T :: unsafe impl :: A { f :: (self: &mut Self) => () {}; }; main :: () => { var t: T = T {}; t.f(); };";
     let bag = typeck_err(source);
-    assert!(
-        bag.errors()
-            .iter()
-            .any(|e| matches!(&e.error, TypeCheckError::UnsafeFnCallRequiresUnsafe { .. })),
-        "expected UnsafeFnCallRequiresUnsafe: {:?}",
-        bag.errors()
-    );
-}
-
-#[test]
-fn allocator_smoke_unsafe_fail_fixture() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/allocator_smoke_unsafe_fail/src/main.phx");
-    if !path.is_file() {
-        return;
-    }
-    let err = check_file(&path).expect_err("expected alloc outside unsafe to fail");
-    let bag = match err {
-        CompileError::TypeCheck { bag, .. } => bag,
-        other => panic!("expected type-check error, got {other}"),
-    };
     assert!(
         bag.errors()
             .iter()

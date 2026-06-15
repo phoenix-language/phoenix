@@ -2,16 +2,13 @@
 
 #![allow(clippy::expect_used)]
 
-use phx_test::{cli_project, fixture_fs_lock, force_build_project};
+use phx_test::{fixture_fs_lock, force_build_project, require_cli_project};
 use phx_vm::run;
 
 #[test]
 fn allocator_smoke_fixture_runs() {
     let _lock = fixture_fs_lock();
-    let root = cli_project("allocator_smoke");
-    if !root.join("phoenix.toml").is_file() {
-        return;
-    }
+    require_cli_project("allocator_smoke");
     let built = force_build_project("allocator_smoke");
     let verified = phx_bytecode::verify(&built.module).expect("verify allocator_smoke");
 
