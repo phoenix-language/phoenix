@@ -204,8 +204,10 @@ pub(super) fn exec_make_slice_from_ptr(
         return Err(VmErrorKind::ExpectedScalar);
     };
     let ptr_val = pop_scalar(&mut ctx.stack)?;
-    let ScalarValue::Ptr(ptr) = ptr_val else {
-        return Err(VmErrorKind::ExpectedScalar);
+    let ptr = match ptr_val {
+        ScalarValue::Ptr(p) | ScalarValue::U64(p) => p,
+        ScalarValue::U32(p) => u64::from(p),
+        _ => return Err(VmErrorKind::ExpectedScalar),
     };
     let slice = runtime.push_aggregate(Aggregate::Slice {
         elem_kind,

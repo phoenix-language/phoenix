@@ -280,6 +280,24 @@ fn mutate_stack_underflow_rejected() {
 }
 
 #[test]
+fn heap_s32_slice_index_store_load_roundtrip() {
+    use phx_bytecode::ScalarValue;
+    use phx_vm::{Value, run_captured};
+
+    let module = support::heap_s32_slice_index_roundtrip_module();
+    let verified = verify(&module).expect("verify s32 slice roundtrip");
+    let capture = run_captured(verified).expect("run s32 slice roundtrip");
+    let loaded = capture
+        .main_local(1)
+        .and_then(|v| match v {
+            Value::Scalar(ScalarValue::I32(n)) => Some(n),
+            _ => None,
+        })
+        .expect("slot 1 should hold loaded s32");
+    assert_eq!(loaded, 1);
+}
+
+#[test]
 fn heap_alloc_ptr_store_load_roundtrip() {
     use phx_bytecode::ScalarValue;
     use phx_vm::{Value, run_captured};

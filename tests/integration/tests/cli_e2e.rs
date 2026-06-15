@@ -428,6 +428,78 @@ fn build_dynamic_array_drop_smoke() {
 }
 
 #[test]
+fn build_dynamic_array_grow() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_grow");
+        let project = cli_project("dynamic_array_grow");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/dynamic_array_grow.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_dynamic_array_pop() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_pop");
+        let project = cli_project("dynamic_array_pop");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/dynamic_array_pop.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_dynamic_array_index_oob() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_index_oob");
+        let project = cli_project("dynamic_array_index_oob");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/dynamic_array_index_oob.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
+fn build_dynamic_array_nested_drop() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_nested_drop");
+        let project = cli_project("dynamic_array_nested_drop");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/dynamic_array_nested_drop.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
+fn build_dynamic_array_uaf() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_uaf");
+        let project = cli_project("dynamic_array_uaf");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/dynamic_array_uaf.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_dynamic_array_double_free() {
+    e2e(|cli| {
+        rm_project_build_unlocked("dynamic_array_double_free");
+        let project = cli_project("dynamic_array_double_free");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/dynamic_array_double_free.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
 fn build_unique_ptr_smoke() {
     e2e(|cli| {
         rm_project_build_unlocked("unique_ptr_smoke");

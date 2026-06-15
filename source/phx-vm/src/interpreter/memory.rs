@@ -77,29 +77,37 @@ pub(super) fn exec_address_of_local(ctx: &mut ExecutionContext, inst: &Instructi
     ctx.stack.push(Value::Scalar(ScalarValue::local_ptr(slot)));
 }
 
-/// Loads an aggregate value through a caller-frame local pointer.
+/// Loads an aggregate value through a tagged local pointer (`AddressOfLocal`).
+///
+/// The pointer encodes only a slot index in the binding's home frame. Callees may
+/// re-pass the same pointer through nested calls (`main` → `push` → `grow`), so
+/// resolution walks from the immediate caller up to the root frame.
 pub(super) fn exec_load_agg_via_local_ptr(ctx: &mut ExecutionContext) -> Result<(), VmErrorKind> {
     let ptr = pop_scalar(&mut ctx.stack)?;
     let ScalarValue::Ptr(encoded) = ptr else {
         return Err(VmErrorKind::ExpectedScalar);
     };
     let slot = ScalarValue::local_slot_from_ptr(encoded).ok_or(VmErrorKind::InvalidConstPayload)?;
-    let frame_idx = ctx.frames.len().saturating_sub(2);
-    let frame = ctx
-        .frames
-        .get(frame_idx)
-        .ok_or(VmErrorKind::InvalidLocalSlot(slot))?;
-    let idx = usize::try_from(slot).map_err(|_| VmErrorKind::InvalidLocalSlot(slot))?;
-    let local = frame
-        .locals
-        .get(idx)
-        .copied()
-        .ok_or(VmErrorKind::InvalidLocalSlot(slot))?;
-    let Value::Agg(_) = local else {
-        return Err(VmErrorKind::InvalidAggregate);
-    };
+    let local = local_aggregate_in_ancestor_frames(ctx, slot)?;
     ctx.stack.push(local);
     Ok(())
+}
+
+/// Finds `Value::Agg` at `slot` in the caller frame or any ancestor frame.
+fn local_aggregate_in_ancestor_frames(
+    ctx: &ExecutionContext,
+    slot: u32,
+) -> Result<Value, VmErrorKind> {
+    let idx = usize::try_from(slot).map_err(|_| VmErrorKind::InvalidLocalSlot(slot))?;
+    let caller_idx = ctx.frames.len().saturating_sub(2);
+    for fi in (0..=caller_idx).rev() {
+        if let Some(local) = ctx.frames.get(fi).and_then(|f| f.locals.get(idx))
+            && matches!(local, Value::Agg(_))
+        {
+            return Ok(*local);
+        }
+    }
+    Err(VmErrorKind::InvalidAggregate)
 }
 
 pub(super) fn ptr_load(
@@ -275,8 +283,7 @@ pub(super) fn scalar_store_bytes(
         }
         _ => return Err(VmErrorKind::InvalidConstPayload),
     };
-    let start = wide.len().saturating_sub(usize::from(size));
-    Ok(wide[start..].to_vec())
+    Ok(wide[..usize::from(size)].to_vec())
 }
 
 pub(super) fn write_heap_scalar(

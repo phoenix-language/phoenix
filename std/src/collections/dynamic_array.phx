@@ -1,5 +1,6 @@
 // std::collections::dynamic_array — growable buffer with pluggable allocator (V0).
 
+#import std::core::alloc::alloc_bytes;
 #import std::core::memory::allocator::{Allocator, Global, Layout};
 #import std::core::drop::Drop;
 #import std::core::slice::slice_from_raw_parts;
@@ -28,6 +29,16 @@ DynamicArray :: <t> impl {
         self.len
     };
 
+    as_ptr :: (self: &Self) => *mut t {
+        self.ptr as *mut t
+    };
+
+    byte_layout :: (self: &Self) => Layout {
+        const elem_size: u32 = size_of :: <t> ();
+        const byte_size: u32 = self.cap * elem_size;
+        Layout { size: byte_size, align: 1u }
+    };
+
     get :: (self: &Self, index: u32) => t {
         unsafe {
             const elem_ptr: *mut t = self.ptr as *mut t;
@@ -48,24 +59,25 @@ DynamicArray :: <t> impl {
         self.len = self.len + 1u;
     };
 
+    pop :: (self: &mut Self) => t {
+        const last_idx: u32 = self.len - 1u;
+        const val: t = self.get(last_idx);
+        self.len = last_idx;
+        val
+    };
+
     grow :: (self: &mut Self) => () {
-        const new_cap: u32 = if self.cap == 0u { 4u } else { self.cap * 2u };
         const elem_size: u32 = size_of :: <t> ();
-        const byte_size: u32 = new_cap * elem_size;
-        const layout: Layout = Layout { size: byte_size, align: 1u };
+        const doubled_cap: u32 = self.cap * 2u;
         unsafe {
             var mut_alloc: Global = self.alloc;
-            const new_ptr: *mut u8 = mut_alloc.alloc(layout);
-            if self.len > 0u {
-                var i: u32 = 0u;
-                while i < self.len {
-                    const old_elem_ptr: *mut t = self.ptr as *mut t;
-                    const old_sl: [t] = slice_from_raw_parts(old_elem_ptr, self.len);
-                    const new_elem_ptr: *mut t = new_ptr as *mut t;
-                    const new_sl: [t] = slice_from_raw_parts(new_elem_ptr, new_cap);
-                    new_sl[i] = old_sl[i];
-                    i = i + 1u;
-                };
+            const new_ptr: *mut u8 = alloc_bytes(doubled_cap * elem_size);
+            var new_sl: [t] = slice_from_raw_parts(new_ptr as *mut t, self.len);
+            var i: u32 = 0u;
+            while i < self.len {
+                const v: t = self.get(i);
+                new_sl[i] = v;
+                i = i + 1u;
             };
             if self.cap > 0u {
                 const old_byte_size: u32 = self.cap * elem_size;
@@ -73,7 +85,7 @@ DynamicArray :: <t> impl {
                 mut_alloc.dealloc(self.ptr, old_layout);
             };
             self.ptr = new_ptr;
-            self.cap = new_cap;
+            self.cap = doubled_cap;
             self.alloc = mut_alloc;
         };
     };
@@ -81,6 +93,19 @@ DynamicArray :: <t> impl {
 
 DynamicArray :: <t> impl :: Drop {
     drop :: (self) => () {
+        if self.len > 0u {
+            var i: u32 = 0u;
+            while i < self.len {
+                unsafe {
+                    const elem_ptr: *mut t = self.ptr as *mut t;
+                    const sl: [t] = slice_from_raw_parts(elem_ptr, self.len);
+                    {
+                        const elem: t = sl[i];
+                    };
+                };
+                i = i + 1u;
+            };
+        };
         if self.cap != 0u {
             const elem_size: u32 = size_of :: <t> ();
             const byte_size: u32 = self.cap * elem_size;

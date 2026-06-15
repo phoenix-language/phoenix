@@ -116,6 +116,38 @@ fn lower_heap_slice_nested_index_store_emits_index_store() {
 }
 
 #[test]
+fn lower_dynamic_array_grow_emits_index_store_for_s32_slice() {
+    let path = cli_project_main("dynamic_array_grow");
+    let unit = phx_compiler::check_file(&path).expect("typecheck dynamic_array_grow");
+    let ir = lower(&unit.typed).expect("lower dynamic_array_grow");
+    let mut make_elem_kinds = Vec::new();
+    let mut store_kinds = Vec::new();
+    for f in &ir.functions {
+        for b in &f.blocks {
+            for s in &b.insts {
+                if let IrInst::MakeSliceFromPtr { elem_kind } = &s.inst {
+                    make_elem_kinds.push(*elem_kind);
+                }
+                if let IrInst::IndexStore {
+                    prim_kind, signed, ..
+                } = &s.inst
+                {
+                    store_kinds.push((*prim_kind, *signed));
+                }
+            }
+        }
+    }
+    assert!(
+        make_elem_kinds.contains(&phx_bytecode::PrimitiveKind::S32.as_u8()),
+        "expected S32 elem_kind in MakeSliceFromPtr, got {make_elem_kinds:?}"
+    );
+    assert!(
+        store_kinds.contains(&(phx_bytecode::PrimitiveKind::S32.as_u8(), 1)),
+        "expected S32 signed IndexStore, got {store_kinds:?}"
+    );
+}
+
+#[test]
 fn lower_heap_dealloc_emits_free_not_call() {
     let path = cli_project_main("heap_dealloc");
     let unit = phx_compiler::check_file(&path).expect("typecheck heap_dealloc");

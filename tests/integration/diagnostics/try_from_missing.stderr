@@ -3,7 +3,7 @@ error[E2031]: cannot use `?` on `Result<_, IoError>` in function returning `Resu
    |
 21 |     const cfg = read_bytes()?;
    |                 ^^^^^^^^^^^^^
-   = help: implement `From<IoError>` for `Error` (see docs/design/features/error-handling.md#the--operator-v0-042-error-conversion-v0-059)
+   = help: implement `From<IoError>` for `Error`
 
 error[E2001]: type mismatch: expected struct Config, found ()
   --> tests/cli/fixtures/std_try_from_missing/src/main.phx:22:8

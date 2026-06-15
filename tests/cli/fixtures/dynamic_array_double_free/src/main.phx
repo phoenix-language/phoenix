@@ -1,0 +1,12 @@
+#import std::collections::dynamic_array::DynamicArray;
+#import std::core::memory::allocator::{Allocator, Global};
+
+main :: () => {
+    var arr: DynamicArray<s32> = DynamicArray :: <s32>::empty(Global {});
+    arr.push(42);
+    unsafe {
+        var mut_alloc: Global = Global {};
+        const layout = arr.byte_layout();
+        mut_alloc.dealloc(arr.as_ptr() as *mut u8, layout);
+    };
+};

@@ -67,11 +67,11 @@ ROADMAP Milestones 7–8 exit criteria and doc truth. Complete after P0 is green
 
 ### Pre-announce verification
 
-- [ ] `**just pre-commit` green on mainline** — fmt, clippy `-D warnings`, dep-check, `cargo test --workspace`, `just test-lang`. **Ref:** PHX-060, project completion gate. **Owner:** CI + all crates. **Gate:** Language v0.
+- [x] `**just pre-commit` green on mainline** — fmt, clippy `-D warnings`, dep-check, `cargo test --workspace`, `just test-lang`. **Ref:** PHX-060, project completion gate. **Owner:** CI + all crates. **Gate:** Language v0.
 
-- [ ] `**std_platform_smoke` builds and runs** — Phase 7 capstone (Result match + trait defaults + heap slice in one program). Fixture exists; confirm green after P0 fixes. **Ref:** V0-067. **Owner:** tests + std. **Gate:** Language v0.
+- [x] `**std_platform_smoke` builds and runs** — Phase 7 capstone (Result match + trait defaults + heap slice in one program). Fixture exists; confirm green after P0 fixes. **Ref:** V0-067. **Owner:** tests + std. **Gate:** Language v0.
 
-- [ ] `**examples/errors` builds and runs via `just test-lang`** — Primary error-handling demo; currently blocked by stack-depth failure. **Ref:** V0-064, language-v0-completion-roadmap. **Owner:** tests + compiler. **Gate:** Language v0.
+- [x] `**examples/errors` builds and runs via `just test-lang`** — Primary error-handling demo; currently blocked by stack-depth failure. **Ref:** V0-064, language-v0-completion-roadmap. **Owner:** tests + compiler. **Gate:** Language v0.
 
 ---
 
@@ -81,7 +81,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 ### Collections and owning types
 
-- [ ] `**DynamicArray<T>` semantics suite** — Push-grow-realloc, index bounds, nested drop, move-in/out; `run_captured` value assertions beyond smoke build. **Ref:** ROADMAP M6, PHX-061. **Owner:** std + tests. **Gate:** Std v0.
+- [x] **`DynamicArray<T>` semantics suite** — Push-grow-realloc, index bounds, nested drop, move-in/out; `run_captured` value assertions beyond smoke build (2026-06-15). **Ref:** ROADMAP M6, PHX-061. **Owner:** std + tests. **Gate:** Std v0.
 
 - [ ] `**UniquePtr<T, A>` end-to-end** — Allocate, move, drop dealloc, use-after-move diagnostic; aligns with [allocator.md](design/features/allocator.md). **Owner:** std + compiler. **Gate:** Std v0.
 
@@ -93,7 +93,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 ### VM / runtime hardening for std workloads
 
-- [ ] **DynamicArray misuse fixtures (UAF, double-free)** — Exercise PHX-054 ledger checks under std collection patterns. **Ref:** ROADMAP M6. **Owner:** tests + VM. **Gate:** Std v0.
+- [x] **DynamicArray misuse fixtures (UAF, double-free)** — Exercise PHX-054 ledger checks under std collection patterns (2026-06-15). **Ref:** ROADMAP M6. **Owner:** tests + VM. **Gate:** Std v0.
 
 - [ ] **Heap cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); expose project/CLI tuning for std stress tests. **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
 

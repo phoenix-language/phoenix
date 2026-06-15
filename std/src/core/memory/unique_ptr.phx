@@ -30,6 +30,9 @@ UniquePtr :: <t> impl {
 UniquePtr :: <t> impl :: Drop {
     drop :: (self) => () {
         unsafe {
+            {
+                const val: t = *self.ptr;
+            };
             var mut_alloc: Global = self.alloc;
             mut_alloc.dealloc(self.ptr as *mut u8, self.layout);
         };

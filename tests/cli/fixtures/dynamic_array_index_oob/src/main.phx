@@ -1,0 +1,10 @@
+#import std::collections::dynamic_array::DynamicArray;
+#import std::core::memory::allocator::Global;
+
+main :: () => {
+    var arr: DynamicArray<s32> = DynamicArray :: <s32>::empty(Global {});
+    arr.push(10);
+    arr.push(20);
+    const bad: s32 = arr.get(arr.len());
+    const _ = bad;
+};

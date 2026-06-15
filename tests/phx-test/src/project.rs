@@ -7,6 +7,7 @@ use phx_compiler::{
     BuildOptions, BuildResult, ProjectConfig, build_project, discover_project, load_project_binary,
 };
 
+use crate::cli::rm_project_build_unlocked;
 use crate::fixtures::{assert_fixture_exists, cli_project};
 
 /// Result of a forced project build.
@@ -24,6 +25,7 @@ pub struct BuiltProject {
 pub fn force_build_project(name: &str) -> BuiltProject {
     let root = cli_project(name);
     assert_fixture_exists(&root);
+    rm_project_build_unlocked(name);
     let config = discover_project(&root).unwrap_or_else(|e| panic!("discover {name}: {e}"));
     let result = build_project(&config, None, BuildOptions::force(true))
         .unwrap_or_else(|e| panic!("build {name}: {e}"));

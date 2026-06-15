@@ -275,3 +275,172 @@ pub fn heap_alloc_roundtrip_module() -> BytecodeModule {
         },
     }
 }
+
+/// `Alloc` → `MakeSliceFromPtr` (s32) → `IndexStore` 1 → `Index` load → local s32 slot.
+#[allow(clippy::too_many_lines)]
+#[must_use]
+pub fn heap_s32_slice_index_roundtrip_module() -> BytecodeModule {
+    use phx_bytecode::{FunctionLocalLayout, LocalSlotKind, SLOT_KIND_AGG};
+
+    let mut code = Vec::new();
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![0, u32::from(PrimitiveKind::U32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Alloc,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![1, u32::from(PrimitiveKind::U32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::MakeSliceFromPtr,
+            operands: vec![u32::from(PrimitiveKind::S32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::StoreLocal,
+            operands: vec![0, u32::from(SLOT_KIND_AGG)],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::LoadLocal,
+            operands: vec![0, u32::from(SLOT_KIND_AGG)],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![2, u32::from(PrimitiveKind::U32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![3, u32::from(PrimitiveKind::S32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::IndexStore,
+            operands: vec![u32::from(PrimitiveKind::S32.as_u8()), 1],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::LoadLocal,
+            operands: vec![0, u32::from(SLOT_KIND_AGG)],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Const,
+            operands: vec![2, u32::from(PrimitiveKind::U32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Index,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::StoreLocal,
+            operands: vec![1, u32::from(PrimitiveKind::S32.as_u8())],
+        }
+        .encode()
+        .expect("encode"),
+    );
+    code.extend(
+        Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode"),
+    );
+
+    BytecodeModule {
+        header: FileHeader::new(5, 0),
+        constants: ConstPool {
+            entries: vec![
+                ConstEntry {
+                    tag: ConstTag::UnsignedInt,
+                    payload: 16u32.to_le_bytes().to_vec(),
+                },
+                ConstEntry {
+                    tag: ConstTag::UnsignedInt,
+                    payload: 4u32.to_le_bytes().to_vec(),
+                },
+                ConstEntry {
+                    tag: ConstTag::UnsignedInt,
+                    payload: 0u32.to_le_bytes().to_vec(),
+                },
+                ConstEntry {
+                    tag: ConstTag::SignedInt,
+                    payload: 1i32.to_le_bytes().to_vec(),
+                },
+            ],
+        },
+        types: TypeTable::default(),
+        functions: FunctionTable {
+            functions: vec![FunctionRecord {
+                function_id: 0,
+                name_symbol_id: 0,
+                arity: 0,
+                local_count: 2,
+                stack_max: 8,
+                flags: 0,
+                code_offset: 0,
+                code_len: u32::try_from(code.len()).unwrap_or(0),
+                return_type_id: 0,
+            }],
+        },
+        code,
+        local_layouts: LocalLayoutTable {
+            layouts: vec![FunctionLocalLayout {
+                function_id: 0,
+                slots: vec![
+                    LocalSlotKind::aggregate(),
+                    LocalSlotKind::primitive(PrimitiveKind::S32),
+                ],
+            }],
+        },
+    }
+}
