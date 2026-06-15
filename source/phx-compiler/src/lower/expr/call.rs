@@ -674,7 +674,11 @@ pub(super) fn struct_def_from_ty(ctx: &LowerCtx<'_>, ty: TypeId) -> Option<DefId
 pub(super) fn struct_args_from_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Vec<TypeId> {
     if let Expr::Ident(ident) = &base.inner {
         if let Some(binding) = ctx.layout.binding(ident.symbol) {
-            if let Ty::Named { args, .. } = ctx.typed.types.get(binding.ty) {
+            let inner = match ctx.typed.types.get(binding.ty) {
+                Ty::Ref { inner, .. } => *inner,
+                _ => binding.ty,
+            };
+            if let Ty::Named { args, .. } = ctx.typed.types.get(inner) {
                 return args.clone();
             }
         }

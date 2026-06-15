@@ -13,6 +13,7 @@ mod call;
 mod intrinsic;
 mod literal;
 mod r#match;
+mod prim;
 
 use phx_syntax::Symbol;
 use phx_syntax::ast::expr::{Expr, ExprNode, StructFieldInit};

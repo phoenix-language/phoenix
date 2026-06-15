@@ -5,6 +5,7 @@ use phx_syntax::ast::ident::{Ident, Path, PathSegment};
 use phx_syntax::ast::lit::Literal;
 use phx_syntax::token::IntegerSuffix;
 
+use super::prim::prim_kind_for_binop;
 use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{LowerCtx, bool_ty, lookup_resolution, prim_kind_byte};
@@ -246,7 +247,7 @@ pub(super) fn lower_binary(
                 ctx.emit_here(IrInst::BinOp {
                     op: ir_op,
                     result: result_ty,
-                    prim_kind: prim_kind_byte(ctx.typed, result_ty),
+                    prim_kind: prim_kind_for_binop(ctx, result_ty, left, right),
                 });
             }
         }
@@ -263,7 +264,7 @@ pub(super) fn lower_binary(
                 ctx.emit_here(IrInst::BinOp {
                     op: ir_op,
                     result: result_ty,
-                    prim_kind: prim_kind_byte(ctx.typed, result_ty),
+                    prim_kind: prim_kind_for_binop(ctx, result_ty, left, right),
                 });
             }
         }
