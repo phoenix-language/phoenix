@@ -366,6 +366,12 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
         TypeCheckError::ProgramTooLarge { .. } => {
             "program too large (definition table exceeds limit)".to_owned()
         }
+        TypeCheckError::DiscardedStdResult { .. } => {
+            "discarded `Result` value must be handled".to_owned()
+        }
+        TypeCheckError::DiscardedStdOption { .. } => {
+            "discarded `Option` value must be handled".to_owned()
+        }
     }
 }
 

@@ -1,8 +1,11 @@
 //! Lint pass tests (typed must-use and expr span types).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use phx_compiler::{compile_source, lint_checked};
-use phx_diagnostics::LintKind;
+mod support;
+
+use phx_compiler::{CompileError, check_file, compile_source, lint_checked};
+use phx_diagnostics::{LintKind, TypeCheckError};
+use support::cli_fixtures_dir;
 
 fn lint_source(source: &str) -> phx_diagnostics::LintBag {
     let unit = compile_source(source, None).expect("compile");
@@ -29,5 +32,21 @@ fn user_enum_discard_no_std_must_use() {
             .iter()
             .any(|loc| loc.lint.kind == LintKind::MustUse),
         "user enum discard should not trigger std Result/Option lint: {lints}"
+    );
+}
+
+#[test]
+fn std_result_discard_is_not_lint() {
+    let path = cli_fixtures_dir().join("lint_std_result_discard/src/main.phx");
+    let err = check_file(&path).expect_err("expected type-check failure");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::DiscardedStdResult { .. })),
+        "discarded std Result should be a type error, not a lint: {bag}"
     );
 }

@@ -1,4 +1,4 @@
-//! Lint pass — deprecated use and must-use discard warnings.
+//! Lint pass — deprecated use and `#[must_use]` discard warnings.
 
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -12,7 +12,7 @@ use phx_syntax::{Interner, Symbol};
 
 use crate::attrs::parse_allow_lint_kinds;
 use crate::resolver::{DefId, ResolutionKey};
-use crate::typeck::{TypeId, TypedProgram};
+use crate::typeck::TypedProgram;
 
 /// Runs lint checks on a type-checked program.
 ///
@@ -311,27 +311,10 @@ impl LintWalker<'_> {
     }
 
     fn discard_must_use_reason(&self, expr: &ExprNode) -> Option<String> {
-        if let Some(ty) = self.expr_type(expr) {
-            let kernel = &self.typed.std_kernel;
-            let types = &self.typed.types;
-            if kernel.is_std_result(types, ty) {
-                return Some("discarded `Result` value must be handled".to_string());
-            }
-            if kernel.is_std_option(types, ty) {
-                return Some("discarded `Option` value must be handled".to_string());
-            }
-        }
         if self.expr_attr_must_use(expr) {
             return Some("unused result of `#[must_use]` item".to_string());
         }
         None
-    }
-
-    fn expr_type(&self, expr: &ExprNode) -> Option<TypeId> {
-        self.typed
-            .expr_span_types
-            .get(&(self.module, expr.span))
-            .copied()
     }
 
     fn expr_attr_must_use(&self, expr: &ExprNode) -> bool {

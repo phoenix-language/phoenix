@@ -137,7 +137,7 @@ Suppresses listed warning kinds in the attributed item's body (and nested blocks
 
 ### `#[must_use]`
 
-Warns when a function's non-unit return value or a constructed `#[must_use]` type is used as a discarded statement expression.
+Warns when a function's non-unit return value or a constructed `#[must_use]` type is used as a discarded statement expression. Discarding std `Result` / `Option` is enforced separately as a type error (E2041/E2042); `#[allow(must_use)]` does not suppress those errors.
 
 ### Deferred item attributes
 

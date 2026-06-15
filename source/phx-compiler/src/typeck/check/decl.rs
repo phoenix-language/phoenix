@@ -970,6 +970,7 @@ pub(in crate::typeck::check) fn trailing_value_expr(block: &Block) -> Option<&Ex
             BlockItem::Expr(expr) => return Some(expr),
             BlockItem::Stmt(stmt) => match &stmt.inner {
                 Stmt::Return(expr) => return expr.as_ref(),
+                Stmt::Const { init, .. } | Stmt::Var { init, .. } => return Some(init),
                 Stmt::Expr(expr) if !matches!(expr.inner, Expr::Assign { .. }) => {
                     return Some(expr);
                 }

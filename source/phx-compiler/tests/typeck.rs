@@ -149,6 +149,22 @@ fn question_mark_invalid_operand_without_result_context() {
 }
 
 #[test]
+fn discarded_std_result_is_type_error() {
+    let path = support::cli_fixtures_dir().join("lint_std_result_discard/src/main.phx");
+    let err = phx_compiler::check_file(&path).expect_err("expected type-check failure");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::DiscardedStdResult { .. })),
+        "expected DiscardedStdResult, got {bag}"
+    );
+}
+
+#[test]
 fn use_after_move_error() {
     let source = "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var q: Point = p; const _ = p.r; };";
     let bag = typeck_err(source);

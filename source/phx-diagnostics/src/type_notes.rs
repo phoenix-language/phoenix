@@ -255,9 +255,8 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
         TypeCheckError::TryErrorFromMissing {
             err_in, err_out, ..
         } => {
-            out.helps.push(format!(
-                "implement `From<{err_in}>` for `{err_out}` (see docs/design/features/error-handling.md#the--operator-v0-042-error-conversion-v0-059)"
-            ));
+            out.helps
+                .push(format!("implement `From<{err_in}>` for `{err_out}`"));
         }
         TypeCheckError::ExternCallRequiresUnsafe { .. }
         | TypeCheckError::IntrinsicRequiresUnsafe { .. }
@@ -279,6 +278,11 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
         TypeCheckError::UnsafeImplOfSafeTrait { .. } => {
             out.helps.push(String::from(
                 "use a normal `impl` block, or mark the trait as `unsafe trait` if all implementers must be unsafe",
+            ));
+        }
+        TypeCheckError::DiscardedStdResult { .. } | TypeCheckError::DiscardedStdOption { .. } => {
+            out.helps.push(String::from(
+                "handle the value with `match`, `if const` / `if var`, or `?` inside a compatible return type",
             ));
         }
         TypeCheckError::InternalError { .. } | TypeCheckError::ProgramTooLarge { .. } => {}

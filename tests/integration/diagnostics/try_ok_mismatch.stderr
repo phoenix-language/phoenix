@@ -1,0 +1,15 @@
+error[E2029]: cannot apply `?` to `Result<S32, S32>` in function returning `Result<Bool, S32>`
+  --> tests/cli/fixtures/std_try_ok_mismatch/src/main.phx:8:15
+  |
+8 |     const x = read_a()?;
+  |               ^^^^^^^^^
+   = help: `?` requires a std `Option` or `Result` value matching the enclosing return type
+
+error[E2001]: type mismatch: expected Bool, found ()
+  --> tests/cli/fixtures/std_try_ok_mismatch/src/main.phx:9:8
+  |
+9 |     Ok(x)
+  |        ^
+   = note: argument 1 must be `Bool`
+   = help: change the expression to produce `Bool`, or adjust the expected type to `()`
+error: aborting due to 2 previous errors

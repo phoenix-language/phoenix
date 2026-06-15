@@ -73,6 +73,8 @@ typecheck_error_registry! {
     UnsafeImplOfSafeTrait => "E2038",
     InternalError => "E2039",
     ProgramTooLarge => "E2040",
+    DiscardedStdResult => "E2041",
+    DiscardedStdOption => "E2042",
 }
 
 #[cfg(test)]

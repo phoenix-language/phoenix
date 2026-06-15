@@ -2,19 +2,22 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use phx_compiler::{check_file, lint_checked};
-use phx_diagnostics::LintKind;
+use phx_compiler::{CompileError, check_file};
+use phx_diagnostics::TypeCheckError;
 use phx_test::cli_project_main;
 
 #[test]
-fn discarded_std_result_emits_must_use() {
+fn discarded_std_result_is_type_error() {
     let path = cli_project_main("lint_std_result_discard");
-    let unit = check_file(&path).expect("check");
-    let lints = lint_checked(&unit.typed).expect("lint");
+    let err = check_file(&path).expect_err("expected type-check failure");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
     assert!(
-        lints.lints().iter().any(|loc| {
-            loc.lint.kind == LintKind::MustUse && loc.lint.message.contains("Result")
-        }),
-        "expected discarded std Result must-use warning, got {lints}"
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::DiscardedStdResult { .. })),
+        "expected DiscardedStdResult, got {bag}"
     );
 }

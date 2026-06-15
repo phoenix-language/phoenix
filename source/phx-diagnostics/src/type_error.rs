@@ -358,6 +358,16 @@ pub enum TypeCheckError {
         /// Related source span.
         span: Span,
     },
+    /// A std `Result` value was used as a discarded statement expression.
+    DiscardedStdResult {
+        /// Discarded expression span.
+        span: Span,
+    },
+    /// A std `Option` value was used as a discarded statement expression.
+    DiscardedStdOption {
+        /// Discarded expression span.
+        span: Span,
+    },
 }
 
 impl fmt::Display for TypeCheckError {

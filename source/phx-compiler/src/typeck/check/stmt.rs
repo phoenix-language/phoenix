@@ -36,6 +36,31 @@ impl TypeChecker<'_> {
         );
     }
 
+    /// Errors when a discarded statement expression has std `Result` or `Option` type.
+    pub(in crate::typeck::check) fn check_discarded_std_value(&mut self, expr: &ExprNode) {
+        if matches!(expr.inner, Expr::Assign { .. }) {
+            return;
+        }
+        let Some(ty) = self
+            .expr_span_types
+            .get(&(self.current_module, expr.span))
+            .copied()
+        else {
+            return;
+        };
+        if self.std_kernel.is_std_result(&self.types, ty) {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::DiscardedStdResult { span: expr.span },
+            );
+        } else if self.std_kernel.is_std_option(&self.types, ty) {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::DiscardedStdOption { span: expr.span },
+            );
+        }
+    }
+
     pub(in crate::typeck::check) fn with_loop_body<F: FnOnce(&mut Self)>(
         &mut self,
         body: &Block,
@@ -609,11 +634,18 @@ impl TypeChecker<'_> {
     /// Type-checks `block` and returns the type of its last value-producing item.
     pub(in crate::typeck::check) fn check_block_value(&mut self, block: &Block) -> TypeId {
         self.enter_scope();
+        let trailing = super::decl::trailing_value_expr(block);
         let mut last = self.unit;
         for item in &block.items {
             last = match item {
-                BlockItem::Stmt(stmt) => self.check_block_stmt_value(stmt),
-                BlockItem::Expr(expr) => self.check_expr_node(expr),
+                BlockItem::Stmt(stmt) => self.check_block_stmt_value(stmt, trailing),
+                BlockItem::Expr(expr) => {
+                    let ty = self.check_expr_node(expr);
+                    if trailing != Some(expr) {
+                        self.check_discarded_std_value(expr);
+                    }
+                    ty
+                }
                 BlockItem::Import(_) => self.unit,
             };
         }
@@ -624,6 +656,7 @@ impl TypeChecker<'_> {
     pub(in crate::typeck::check) fn check_block_stmt_value(
         &mut self,
         stmt: &phx_syntax::ast::StmtNode,
+        trailing: Option<&ExprNode>,
     ) -> TypeId {
         match &stmt.inner {
             Stmt::Expr(expr) => {
@@ -631,7 +664,11 @@ impl TypeChecker<'_> {
                     let _ = self.check_expr_node(expr);
                     self.unit
                 } else {
-                    self.check_expr_node(expr)
+                    let ty = self.check_expr_node(expr);
+                    if trailing != Some(expr) {
+                        self.check_discarded_std_value(expr);
+                    }
+                    ty
                 }
             }
             Stmt::Return(expr) => self.check_return(stmt.span, expr.as_ref()),
@@ -741,6 +778,7 @@ impl TypeChecker<'_> {
             }
             Stmt::Expr(expr) => {
                 let _ = self.check_expr_node(expr);
+                self.check_discarded_std_value(expr);
             }
             Stmt::Return(expr) => {
                 let _ = self.check_return(stmt.span, expr.as_ref());

@@ -130,3 +130,33 @@ fn golden_match_unreachable_arm() {
         &format_check_file(&path),
     );
 }
+
+#[test]
+fn golden_try_ok_mismatch() {
+    let path = phx_test::cli_project_main("std_try_ok_mismatch");
+    assert_golden(
+        &diagnostics_dir(),
+        "try_ok_mismatch",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
+fn golden_try_from_missing() {
+    let path = phx_test::cli_project_main("std_try_from_missing");
+    assert_golden(
+        &diagnostics_dir(),
+        "try_from_missing",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
+fn golden_discarded_std_result() {
+    let path = phx_test::cli_project_main("lint_std_result_discard");
+    assert_golden(
+        &diagnostics_dir(),
+        "discarded_std_result",
+        &format_check_file(&path),
+    );
+}

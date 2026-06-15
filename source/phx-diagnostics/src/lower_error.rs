@@ -17,7 +17,7 @@ pub enum LowerError {
     },
     /// Emission targeted a basic block index that does not exist.
     InvalidBlockIndex {
-        /// Block index passed to [`LowerCtx::emit`] or [`LowerCtx::set_current`].
+        /// Block index passed to `LowerCtx::emit` or `LowerCtx::set_current` in the lowering driver.
         block: u32,
     },
     /// A lowering table exceeded representable `u32` indices.

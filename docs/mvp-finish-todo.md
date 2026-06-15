@@ -61,9 +61,9 @@ ROADMAP Milestones 7–8 exit criteria and doc truth. Complete after P0 is green
 
 ### Error-handling polish (ROADMAP M7)
 
-- [ ] **Promote discarded `Result`/`Option` from lint warning to type error** — PHX-029 wired typed lint via `StdKernel`; [error-handling.md](design/features/error-handling.md) expects must-use enforcement. Currently warnings only. **Owner:** compiler (typeck/lint). **Gate:** Language v0 (per error-handling design).
+- [x] **Promote discarded `Result`/`Option` from lint warning to type error** — PHX-029 wired typed lint via `StdKernel`; [error-handling.md](design/features/error-handling.md) expects must-use enforcement. E2041/E2042 in typeck; lint retains `#[must_use]` attr only. **Owner:** compiler (typeck/lint). **Gate:** Language v0 (per error-handling design).
 
-- [ ] **Golden diagnostics for `?` failure modes** — Add `.stderr` fixtures for `?` type mismatch, missing `From` impl, and discarded `Result` (ROADMAP M7 / PHX-061 follow-up). **Owner:** tests. **Gate:** Language v0.
+- [x] **Golden diagnostics for `?` failure modes** — `.stderr` fixtures for `?` type mismatch (E2029), missing `From` impl (E2031), and discarded `Result` (E2041). **Owner:** tests. **Gate:** Language v0.
 
 ### Pre-announce verification
 

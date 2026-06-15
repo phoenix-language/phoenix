@@ -389,7 +389,7 @@ Transitive importers are rebuilt in reverse dependency order.
 
 | Command | Behavior |
 |---------|----------|
-| `phx check [file.phx]` | Type-check only; emits lint warnings (`#[deprecated]`, `#[must_use]`, discarded std `Result`/`Option`). When `phoenix.toml` is found (walk parents from the file), uses `module_src` and path deps like `phx build`. Otherwise uses the file’s parent or `--module-src`. No `build/` required. |
+| `phx check [file.phx]` | Type-check only; emits lint warnings (`#[deprecated]`, `#[must_use]` on attributed items). Discarded std `Result`/`Option` are type errors (E2041/E2042), not lints. When `phoenix.toml` is found (walk parents from the file), uses `module_src` and path deps like `phx build`. Otherwise uses the file’s parent or `--module-src`. No `build/` required. |
 | `phx compile <file.phx>` | Compile to `.phx0`; emits lint warnings when type-check runs. |
 | `phx build [entry.phx]` | Requires `phoenix.toml`; writes `build/` artifacts and manifest; emits lint warnings when type-check runs (skipped on incremental cache hit unless `--build`). |
 | `phx run [entry.phx]` | Requires `phoenix.toml` and `type = bin` for project mode; loads `build/bin/{project.name}.phx0`. Standalone mode compiles in-process and emits lint warnings. Library packages (`type = lib`) produce `build/lib/{name}.phx0` for linking only — not executed by `phx run`. Lint warnings are skipped when `--no-build` loads a cached artifact. |

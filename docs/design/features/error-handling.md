@@ -28,6 +28,21 @@ Errors are values, not control-flow exceptions. Failure paths stay visible in ty
 
 ---
 
+## Must-handle (discarded std `Result` / `Option`)
+
+A std `Result` or `Option` value used as a **discarded** statement expression is a **compile error** (not a lint warning):
+
+| Code | Condition |
+|---|---|
+| E2041 | Discarded std `Result` value |
+| E2042 | Discarded std `Option` value |
+
+**Discarded** means the expression appears as a statement (or non-trailing block item) whose value is not bound, returned, or propagated. The trailing value of a block — including `const` / `var` bindings — is **not** discarded.
+
+Fix by handling the value with `match`, `if const` / `if var`, or `?` inside a compatible return type. `#[allow(must_use)]` suppresses warnings for user `#[must_use]` items only; it does **not** suppress E2041/E2042.
+
+---
+
 ## The `?` operator (V0-042, error conversion V0-059)
 
 `?` is postfix sugar over std `Option` / `Result` (requires `#import std::core::…` or prelude when `prelude = true`). Every call site that can fail shows propagation explicitly. See [runtime-transparency.md](runtime-transparency.md).
@@ -44,7 +59,8 @@ Errors are values, not control-flow exceptions. Failure paths stay visible in ty
 - **Ok payload types must unify** — `?` does not convert success values in v1.
 - `Result`-returning functions cannot `?` an `Option`, and vice versa (no `Try` trait bridge in Language v0).
 - Types must be the std definitions from `std::core::option` / `std::core::result` — not user enums with the same variant names.
-- Missing `From` impl when `E_in ≠ E_out` is a compile error with a note to implement `From<E_in>` for `E_out`.
+- Missing `From` impl when `E_in ≠ E_out` is a compile error (**E2031**) with a note to implement `From<E_in>` for `E_out`.
+- Operand / return-type mismatch for `?` is **E2029** (`InvalidTryOperand`).
 
 **V0-042 (shipped):** identical `Result<T, E>` only. **V0-059 (shipped):** adds the second row (`From` conversion when `E_in ≠ E_out`).
 
