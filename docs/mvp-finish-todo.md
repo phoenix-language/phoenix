@@ -15,7 +15,7 @@
 | **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
 
 
-**Last verified:** 2026-06-14 — `cargo test -p phx-integration-tests --test cli_e2e`: **54 pass, 7 fail**; `cargo test -p phx-compiler --test typeck`: **165 pass, 1 fail**.
+**Last verified:** 2026-06-15 — `just pre-commit` green; `cargo test -p phx-integration-tests --test cli_e2e`: **61 pass**; PHX-037 cursor drift closed (`f486b64`, `d04864b`, `c106981`).
 
 ---
 
@@ -25,25 +25,25 @@ These must pass before announcing Language v0 or calling the beta gate complete.
 
 ### Compiler regressions (in-flight heap-slice / mono work)
 
-- [ ] **Fix expression cursor drift in lowering** — `LowerError::MissingExprType` / cursor drift fires on `generic_infer.phx` and std build projects; root cause is likely desync between typeck `expr_types` order and lower's per-function cursor after recent typeck/lower changes. **Ref:** PHX-037, in-flight changes in `typeck/`, `lower/ctx.rs`, `lower/expr/`. **Owner:** compiler. **Gate:** Language v0.
+- [x] **Fix expression cursor drift in lowering** — `LowerError::MissingExprType` / cursor drift on `generic_infer.phx` and std builds. **Ref:** PHX-037. Fixed in `f486b64` (fail-closed + mono body typeck), `d04864b` (mono prim_kind fallbacks), `c106981` (cross-crate mono shells + deref lowering). Regression tests in `lower/ctx.rs`. **Gate:** Language v0.
 
-- [ ] **Fix `build_std_traits` project build** — `cli_e2e::build_std_traits` fails with unresolved call targets and expression cursor drift during lowering of std trait smoke. **Owner:** compiler + std fixtures. **Gate:** Language v0.
+- [x] **Fix `build_std_traits` project build** — `cli_e2e::build_std_traits` green with PHX-037 fixes. **Owner:** compiler + std fixtures. **Gate:** Language v0.
 
-- [ ] **Fix generic allocator / `Global` method resolution** — `duplicate_generic_struct_impl_allocator_size_of_mono_ok` (typeck) and `build_unique_ptr_*` fail: `no method on type Global`, `<error>` allocator bounds, invalid casts. Likely mono or trait-method site metadata gap for generic struct impls with allocator type params. **Ref:** PHX-038, ROADMAP M4. **Owner:** compiler (typeck/mono). **Gate:** Language v0.
+- [x] **Fix generic allocator / `Global` method resolution** — `build_unique_ptr_*` and related mono tests green (2026-06-15). **Ref:** PHX-038, ROADMAP M4. **Owner:** compiler (typeck/mono). **Gate:** Language v0.
 
-- [ ] **Fix `DynamicArray` std project builds** — `build_dynamic_array_smoke` and `build_dynamic_array_drop_smoke` fail (same allocator/mono error cluster as UniquePtr). **Owner:** compiler + std. **Gate:** Std v0 (blocks DynamicArray authoring).
+- [x] **Fix `DynamicArray` std project builds** — `build_dynamic_array_smoke` and `build_dynamic_array_drop_smoke` green (2026-06-15). **Owner:** compiler + std. **Gate:** Std v0 (blocks DynamicArray authoring).
 
-- [ ] **Fix `UniquePtr` std project builds** — `build_unique_ptr_smoke` and `build_unique_ptr_drop_smoke` fail. **Ref:** [allocator.md](design/features/allocator.md) (`UniquePtr` is Std v0). **Owner:** compiler + std. **Gate:** Std v0.
+- [x] **Fix `UniquePtr` std project builds** — `build_unique_ptr_smoke` and `build_unique_ptr_drop_smoke` green (2026-06-15). **Ref:** [allocator.md](design/features/allocator.md). **Owner:** compiler + std. **Gate:** Std v0.
 
-- [ ] **Fix return stack depth mismatch in `examples/errors`** — `examples_errors_build_run` fails verifier: `return stack depth mismatch … expected 1, found 2` in function 6 (likely `?` or drop-glue path). **Ref:** PHX-035, ROADMAP M2 stack-at-return invariant. **Owner:** compiler (lower/codegen) + VM verify. **Gate:** Language v0.
+- [x] **Fix return stack depth mismatch in `examples/errors`** — `examples_errors_build_run` green (2026-06-15). **Ref:** PHX-035, ROADMAP M2 stack-at-return invariant. **Owner:** compiler (lower/codegen) + VM verify. **Gate:** Language v0.
 
-- [ ] **Restore `run_smoke_fixtures` green** — blocked by `generic_infer.phx` cursor drift; unblocks single-file CLI regression suite. **Owner:** tests + compiler. **Gate:** Language v0.
+- [x] **Restore `run_smoke_fixtures` green** — unblocks single-file CLI regression suite (PHX-037). **Owner:** tests + compiler. **Gate:** Language v0.
 
 ### Integration gate
 
-- [ ] **All seven failing `cli_e2e` tests pass** — `build_dynamic_array_smoke`, `build_dynamic_array_drop_smoke`, `build_unique_ptr_smoke`, `build_unique_ptr_drop_smoke`, `build_std_traits`, `examples_errors_build_run`, `run_smoke_fixtures`. **Owner:** tests (verify) + compiler (fix). **Gate:** Language v0.
+- [x] **All seven failing `cli_e2e` tests pass** — `build_dynamic_array_smoke`, `build_dynamic_array_drop_smoke`, `build_unique_ptr_smoke`, `build_unique_ptr_drop_smoke`, `build_std_traits`, `examples_errors_build_run`, `run_smoke_fixtures`. Verified 2026-06-15. **Owner:** tests (verify) + compiler (fix). **Gate:** Language v0.
 
-- [ ] `**cargo test --workspace` fully green** — includes the one failing typeck test above; required by `just pre-commit` / PHX-060. **Owner:** tests. **Gate:** Language v0.
+- [x] **`cargo test --workspace` fully green** — required by `just pre-commit` / PHX-060. **Owner:** tests. **Gate:** Language v0.
 
 ---
 

@@ -662,6 +662,22 @@ main :: () => {
     }
 
     #[test]
+    fn ref_local_lowers_without_cursor_drift() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/ref_local.phx");
+        let unit = crate::check_file(&path).expect("check");
+        crate::lower::lower(&unit.typed).expect("lower ref_local");
+    }
+
+    #[test]
+    fn std_traits_lowers_without_cursor_drift() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/cli/fixtures/std_traits/src/main.phx");
+        let unit = crate::check_file(&path).expect("check");
+        crate::lower::lower(&unit.typed).expect("lower std_traits");
+    }
+
+    #[test]
     fn missing_method_call_site_fails_lower() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/cli/fixtures/generic_impl_method.phx");

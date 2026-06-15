@@ -1,5 +1,18 @@
 //! Lower expressions to IR instructions (stack-oriented).
 //!
+//! Each expression node visited by typeck [`check_expr_node`](crate::typeck::check::expr::TypeChecker::check_expr_node)
+//! gets one [`ExprId`](crate::typeck::ExprId); lowering consumes them in the same pre-order via
+//! [`LowerCtx::expr_ty`](crate::lower::ctx::LowerCtx::expr_ty). A few paths skip codegen but still
+//! advance the cursor — keep these in sync with typeck:
+//!
+//! - static `f(args)` — base ident consumed in [`call`] without loading it
+//! - `&ident` — operand ident consumed in this module after `AddressOfLocal`
+//! - `arr as str` fast path — inner operand consumed after peek in the `Cast` arm
+//! - ref-receiver / ident-receiver method calls — base consumed in [`call`]
+//!
+//! [`check_expr_node_infer`](crate::typeck::check::expr::TypeChecker::check_expr_node_infer) does
+//! **not** allocate ids (generic inference only); lowering never sees those visits.
+//!
 //! ## Module map
 //!
 //! - [`literal`] — literals, identifiers, paths, binary operators
