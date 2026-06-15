@@ -12,11 +12,9 @@ pub Allocator :: unsafe trait {
     dealloc :: (self: &mut Self, ptr: *mut u8, layout: Layout) => ();
 };
 
-pub VmHeapAllocator :: struct {};
+pub Global :: struct {};
 
-pub type Global = VmHeapAllocator;
-
-VmHeapAllocator :: unsafe impl :: Allocator {
+Global :: unsafe impl :: Allocator {
     alloc :: (self: &mut Self, layout: Layout) => *mut u8 {
         alloc_bytes(layout.size)
     };

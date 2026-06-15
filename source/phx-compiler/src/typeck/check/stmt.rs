@@ -485,7 +485,10 @@ impl TypeChecker<'_> {
         if self.intrinsic_kernel.is_intrinsic_fn(def) {
             return;
         }
-        let module = self.def_module(def);
+        let module = self
+            .mono_template_def
+            .map(|template| self.def_module(template))
+            .unwrap_or_else(|| self.def_module(def));
         let saved_type_defs = self.type_defs.clone();
         let impl_lookup_def = self.mono_template_def.unwrap_or(def);
         let impl_generics = self
@@ -502,8 +505,9 @@ impl TypeChecker<'_> {
         });
         if let Some(subst) = &self.subst {
             ret = Substitution::apply(&mut self.types, ret, subst, self.resolved);
+            ret = self.mono_fix_impl_self_named_type(ret);
             if let Ty::Named { def, args } = self.types.get(ret).clone() {
-                if !args.is_empty() {
+                if !args.is_empty() && !args.iter().all(|arg| self.is_generic_param_type(*arg)) {
                     let span = f.ret.as_ref().map(|r| r.span).unwrap_or(f.name.span);
                     ret = self.resolve_instantiated_named(def, args, span);
                 }

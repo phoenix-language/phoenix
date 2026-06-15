@@ -1,21 +1,22 @@
 // std::core::memory::unique_ptr — single-owner heap pointer (Rust `Box` equivalent).
 
 #import std::core::drop::Drop;
-#import std::core::memory::allocator::{Allocator, Global, Layout, VmHeapAllocator};
+#import std::core::memory::allocator::{Allocator, Global, Layout};
 
-pub UniquePtr :: <t, a: Allocator = Global> struct {
+pub UniquePtr :: <t> struct {
     ptr: *mut t,
     layout: Layout,
-    alloc: a,
+    alloc: Global,
 };
 
-UniquePtr :: <t, a> impl {
-    new :: (value: t, byte_layout: Layout, alloc: a) => UniquePtr<t, a> {
+UniquePtr :: <t> impl {
+    new :: (value: t, byte_layout: Layout, alloc: Global) => UniquePtr<t> {
         unsafe {
-            const raw: *mut u8 = alloc.alloc(byte_layout);
+            var mut_alloc: Global = alloc;
+            const raw: *mut u8 = mut_alloc.alloc(byte_layout);
             const ptr: *mut t = raw as *mut t;
             *ptr = value;
-            UniquePtr :: <t, a> { ptr: ptr, layout: byte_layout, alloc: alloc };
+            UniquePtr :: <t> { ptr: ptr, layout: byte_layout, alloc: mut_alloc };
         };
     };
 
@@ -26,10 +27,11 @@ UniquePtr :: <t, a> impl {
     };
 };
 
-UniquePtr :: <t, a> impl :: Drop {
+UniquePtr :: <t> impl :: Drop {
     drop :: (self) => () {
         unsafe {
-            self.alloc.dealloc(self.ptr as *mut u8, self.layout);
+            var mut_alloc: Global = self.alloc;
+            mut_alloc.dealloc(self.ptr as *mut u8, self.layout);
         };
     };
 };

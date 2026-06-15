@@ -39,7 +39,7 @@ dep-check:
     bash tests/ci/check-zero-spans.sh
 
 pre-commit:
-    just fmt-check lint doc-check dep-check test test-lang
+    just fmt lint doc-check dep-check test test-lang
 
 doc-check:
     cargo doc --workspace --no-deps

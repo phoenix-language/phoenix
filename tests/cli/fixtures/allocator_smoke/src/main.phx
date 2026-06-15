@@ -1,7 +1,7 @@
-#import std::core::memory::allocator::{Allocator, Layout, VmHeapAllocator};
+#import std::core::memory::allocator::{Allocator, Layout, Global};
 
 main :: () => {
-    var alloc: VmHeapAllocator = VmHeapAllocator {};
+    var alloc: Global = Global {};
     const layout: Layout = Layout { size: 8u, align: 1u };
     unsafe {
         const ptr: *mut u8 = alloc.alloc(layout);

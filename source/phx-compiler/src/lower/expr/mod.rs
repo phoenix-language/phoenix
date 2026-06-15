@@ -199,17 +199,10 @@ pub(super) fn lower_expr_inner(
                     Ty::Named { def, args } => (*def, args.clone()),
                     _ => (def, Vec::new()),
                 };
-                if ctx.typed.layout.struct_layout(type_def, &args).is_some() {
-                    let type_id = ctx
-                        .typed
-                        .layout
-                        .type_id_for_named(type_def, &args)
-                        .unwrap_or(0);
-                    let struct_fields = ctx
-                        .typed
-                        .layout
-                        .struct_layout(type_def, &args)
-                        .map(|s| s.fields.as_slice());
+                if let Some((type_id, struct_layout)) =
+                    crate::lower::ctx::struct_lit_layout_ops(&ctx.typed.layout, type_def, &args)
+                {
+                    let struct_fields = Some(struct_layout.fields.as_slice());
                     let mut field_count = 0u32;
                     for field in fields {
                         if let StructFieldInit::Field { name, value, .. } = field {

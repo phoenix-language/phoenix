@@ -10,7 +10,7 @@ use phx_syntax::ast::{ExprNode, Node};
 use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::TypeChecker;
-use crate::resolver::{DefId, DefKind};
+use crate::resolver::{DefId, DefKind, ResolvedProgram};
 use crate::typeck::bindings::BindingKind;
 use crate::typeck::bounds::trait_bound_head;
 use crate::typeck::builtins::implements_drop_for_def;
@@ -109,32 +109,6 @@ impl TypeChecker<'_> {
         base_fn: DefId,
         mono_args: &[TypeId],
     ) {
-        let combined_generics = self.combined_generic_params_for_fn(base_fn, f);
-        let scope_generics = if combined_generics.is_empty() {
-            f.generics.as_deref()
-        } else {
-            Some(combined_generics.as_slice())
-        };
-        let fn_ty = self.fn_type_for_function_scoped(f, scope_generics);
-        let fn_ty = if let Some(subst) = &self.subst {
-            match self.types.get(fn_ty).clone() {
-                Ty::Fn { params, ret } => {
-                    let params: Vec<_> = params
-                        .iter()
-                        .map(|p| Substitution::apply(&mut self.types, *p, subst, self.resolved))
-                        .collect();
-                    let ret = Substitution::apply(&mut self.types, ret, subst, self.resolved);
-                    self.types.intern(&Ty::Fn { params, ret })
-                }
-                other => self.types.intern(&other),
-            }
-        } else {
-            fn_ty
-        };
-        self.value_types.insert(spec_def, fn_ty);
-        if let Ty::Fn { ret, .. } = self.types.get(fn_ty).clone() {
-            self.fn_ret = Some(ret);
-        }
         let saved_module = self.current_module;
         if let Some(def) = self.resolved.defs.get(base_fn.index() as usize) {
             self.current_module = def.module;
@@ -154,11 +128,147 @@ impl TypeChecker<'_> {
             }
         }
         self.mono_template_def = Some(base_fn);
+
+        let combined_generics = self.combined_generic_params_for_fn(base_fn, f);
+        let scope_generics = if combined_generics.is_empty() {
+            f.generics.as_deref()
+        } else {
+            Some(combined_generics.as_slice())
+        };
+        let fn_ty = self.fn_type_for_function_scoped(f, scope_generics);
+        let fn_ty = self.mono_apply_fn_subst(fn_ty, mono_args);
+        self.value_types.insert(spec_def, fn_ty);
+        if let Ty::Fn { ret, .. } = self.types.get(fn_ty).clone() {
+            self.fn_ret = Some(ret);
+        }
         self.check_function_body(f, spec_def, true, true);
         self.mono_template_def = None;
         self.impl_self_type = saved_impl_self;
         self.current_module = saved_module;
         self.fn_ret = None;
+    }
+
+    pub(in crate::typeck::check) fn is_generic_param_type(&self, ty: TypeId) -> bool {
+        let Ty::Named { def, args } = self.types.get(ty).clone() else {
+            return false;
+        };
+        args.is_empty()
+            && self
+                .resolved
+                .defs
+                .get(def.index() as usize)
+                .is_some_and(|d| d.kind == DefKind::GenericParam)
+    }
+
+    pub(in crate::typeck::check) fn mono_fix_impl_self_named_type(&mut self, ty: TypeId) -> TypeId {
+        let Ty::Named { def, args } = self.types.get(ty).clone() else {
+            return ty;
+        };
+        let Some(self_ty) = self.impl_self_type else {
+            return ty;
+        };
+        let Ty::Named {
+            def: self_def,
+            args: self_args,
+        } = self.types.get(self_ty).clone()
+        else {
+            return ty;
+        };
+        if def != self_def || self_args.is_empty() || args.len() != self_args.len() {
+            return ty;
+        }
+        if !args.iter().all(|a| self.is_generic_param_type(*a)) {
+            return ty;
+        }
+        self.types.intern(&Ty::Named {
+            def,
+            args: self_args,
+        })
+    }
+
+    pub(in crate::typeck::check) fn mono_substitute_generic_param(
+        &mut self,
+        ty: TypeId,
+        mono_args: &[TypeId],
+        ordered_params: Option<&[DefId]>,
+    ) -> TypeId {
+        if !self.is_generic_param_type(ty) {
+            return ty;
+        }
+        let Ty::Named { def, .. } = self.types.get(ty).clone() else {
+            return ty;
+        };
+        if let Some(subst) = &self.subst {
+            if let Some(concrete) = subst.concrete_for_generic(def, self.resolved) {
+                return concrete;
+            }
+        }
+        let Some(index) = ordered_params
+            .and_then(|defs| Self::generic_param_index_in(def, defs, self.resolved))
+            .or_else(|| self.generic_param_index_from_template(def))
+        else {
+            return ty;
+        };
+        if let Some(&concrete) = mono_args.get(index) {
+            return concrete;
+        }
+        if let Some(self_ty) = self.impl_self_type {
+            if let Ty::Named { args, .. } = self.types.get(self_ty).clone() {
+                if let Some(&concrete) = args.get(index) {
+                    return concrete;
+                }
+            }
+        }
+        ty
+    }
+
+    fn generic_param_index_in(
+        param_def: DefId,
+        param_defs: &[DefId],
+        resolved: &ResolvedProgram,
+    ) -> Option<usize> {
+        if let Some(index) = param_defs.iter().position(|&p| p == param_def) {
+            return Some(index);
+        }
+        let param_record = resolved.defs.get(param_def.index() as usize)?;
+        param_defs.iter().position(|&p| {
+            let Some(p_record) = resolved.defs.get(p.index() as usize) else {
+                return false;
+            };
+            p_record.kind == DefKind::GenericParam
+                && p_record.name == param_record.name
+                && p_record.module == param_record.module
+        })
+    }
+
+    /// Index of `param_def` in the active monomorphization template's generic list.
+    fn generic_param_index_from_template(&self, param_def: DefId) -> Option<usize> {
+        let template = self.mono_template_def?;
+        let param_defs =
+            crate::typeck::mono::generic_param_defs_for_fn_base(self.resolved, template)?;
+        Self::generic_param_index_in(param_def, &param_defs, self.resolved)
+    }
+
+    fn mono_apply_fn_subst(&mut self, fn_ty: TypeId, mono_args: &[TypeId]) -> TypeId {
+        let Some(subst) = self.subst.clone() else {
+            return fn_ty;
+        };
+        match self.types.get(fn_ty).clone() {
+            Ty::Fn { params, ret } => {
+                let mut concrete_params = Vec::with_capacity(params.len());
+                for p in &params {
+                    let p = Substitution::apply(&mut self.types, *p, &subst, self.resolved);
+                    concrete_params.push(self.mono_substitute_generic_param(p, mono_args, None));
+                }
+                let ret = Substitution::apply(&mut self.types, ret, &subst, self.resolved);
+                let ret = self.mono_fix_impl_self_named_type(ret);
+                self.types.intern(&Ty::Fn {
+                    params: concrete_params,
+                    ret,
+                })
+            }
+            other => self.types.intern(&other),
+        }
     }
 
     pub(in crate::typeck::check) fn impl_type_for_method(&self, fn_def: DefId) -> Option<DefId> {

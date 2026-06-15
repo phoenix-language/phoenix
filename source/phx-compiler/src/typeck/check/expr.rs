@@ -1168,10 +1168,21 @@ impl TypeChecker<'_> {
         args: Vec<TypeId>,
         span: Span,
     ) -> TypeId {
+        let param_defs = generic_param_defs_for_type(self.resolved, base).unwrap_or_default();
+        let args: Vec<_> = args
+            .into_iter()
+            .map(|arg| {
+                let arg = if let Some(subst) = &self.subst {
+                    Substitution::apply(&mut self.types, arg, subst, self.resolved)
+                } else {
+                    arg
+                };
+                self.mono_substitute_generic_param(arg, &[], Some(&param_defs))
+            })
+            .collect();
         let Some(kind) = self.type_mono_kind_for_def(base) else {
             return self.types.intern(&Ty::Named { def: base, args });
         };
-        let param_defs = generic_param_defs_for_type(self.resolved, base).unwrap_or_default();
         if param_defs.is_empty() {
             self.bag.push(
                 self.current_module,
@@ -1685,9 +1696,7 @@ impl TypeChecker<'_> {
         type_def: DefId,
         receiver: TypeId,
     ) -> Option<Vec<TypeId>> {
-        let Ty::Named { def, args } = self.types.get(receiver).clone() else {
-            return None;
-        };
+        let (def, args) = self.named_type_under_receiver(receiver)?;
         if def != type_def {
             return None;
         }
@@ -2323,6 +2332,21 @@ impl TypeChecker<'_> {
         }
     }
 
+    pub(in crate::typeck::check) fn named_type_under_receiver(
+        &self,
+        receiver: TypeId,
+    ) -> Option<(DefId, Vec<TypeId>)> {
+        let named = match self.types.get(receiver).clone() {
+            Ty::Named { .. } => receiver,
+            Ty::Ref { inner, .. } => inner,
+            _ => return None,
+        };
+        match self.types.get(named).clone() {
+            Ty::Named { def, args } => Some((def, args)),
+            _ => None,
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     pub(in crate::typeck::check) fn check_method_call_with_generics(
         &mut self,
@@ -2337,15 +2361,9 @@ impl TypeChecker<'_> {
         if let Ty::Primitive(kw) = self.types.get(receiver).clone() {
             return self.check_primitive_method_call(kw, receiver, name, args, span, site_id);
         }
-        let Ty::Named {
-            def,
-            args: type_args,
-        } = self.types.get(receiver).clone()
-        else {
+        let Some((type_def, implementer_args)) = self.named_type_under_receiver(receiver) else {
             return self.emit_unresolved_method(receiver, name, span);
         };
-        let type_def = def;
-        let implementer_args = type_args;
         let fn_def = self
             .program_layout
             .inherent_methods

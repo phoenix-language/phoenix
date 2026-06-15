@@ -1,8 +1,8 @@
 #import std::collections::dynamic_array::DynamicArray;
-#import std::core::memory::allocator::VmHeapAllocator;
+#import std::core::memory::allocator::Global;
 
 main :: () => {
-    var arr: DynamicArray<s32> = DynamicArray :: <s32>::empty(VmHeapAllocator {});
+    var arr: DynamicArray<s32> = DynamicArray :: <s32>::empty(Global {});
     arr.push(10);
     arr.push(20);
     arr.push(30);

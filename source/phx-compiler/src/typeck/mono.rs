@@ -60,8 +60,11 @@ pub(crate) fn monomorphize(
     type_insts: &[TypeMonoInst],
 ) -> TypeCheckBag {
     let mut bag = TypeCheckBag::new();
-    monomorphize_functions(typed, fn_insts, &mut bag);
     monomorphize_types(typed, type_insts, &mut bag);
+    let extra_type_insts = monomorphize_functions(typed, fn_insts, &mut bag);
+    if !extra_type_insts.is_empty() {
+        monomorphize_types(typed, &extra_type_insts, &mut bag);
+    }
     patch_specialized_drop_fns(typed);
     patch_associated_fn_sites(typed);
     patch_method_call_sites(typed);
@@ -162,9 +165,14 @@ pub(crate) fn specialized_fn_for_inst(
 }
 
 #[allow(clippy::too_many_lines)]
-fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mut TypeCheckBag) {
+fn monomorphize_functions(
+    typed: &mut TypedProgram,
+    insts: &[MonoInst],
+    bag: &mut TypeCheckBag,
+) -> Vec<TypeMonoInst> {
+    let mut extra_type_insts = Vec::new();
     if insts.is_empty() {
-        return;
+        return extra_type_insts;
     }
     let mut resolution_patches: HashMap<ResolutionKey, DefId> = HashMap::new();
     let expr_base = typed
@@ -265,6 +273,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         checker.seed_value_types(&typed.value_types);
         checker.seed_fn_effective_unsafe(&typed.fn_effective_unsafe);
         checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
+        extra_type_insts.extend(checker.take_type_mono_insts());
         let (
             checker_types,
             expr_types,
@@ -324,6 +333,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
     for (key, spec) in resolution_patches {
         typed.resolved.resolutions.insert(key, spec);
     }
+    extra_type_insts
 }
 
 fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mut TypeCheckBag) {

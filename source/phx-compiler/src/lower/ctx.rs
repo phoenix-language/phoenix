@@ -7,7 +7,8 @@ use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
 use std::collections::HashSet;
 
 use crate::typeck::{
-    ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, primitive_kind_for_type,
+    ExprId, FunctionLayout, LocalSlot, ProgramLayout, Ty, TypeId, TypedProgram,
+    primitive_kind_for_type,
 };
 use phx_bytecode::SLOT_KIND_AGG;
 use phx_bytecode::SLOT_KIND_FN_PTR;
@@ -392,6 +393,34 @@ pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
 #[must_use]
 pub fn slot_for_symbol(layout: &FunctionLayout, symbol: Symbol) -> Option<LocalSlot> {
     layout.binding(symbol).map(|b| b.slot)
+}
+
+/// Resolves bytecode struct `type_id` and field layout for a struct literal.
+#[must_use]
+pub fn struct_lit_layout_ops<'a>(
+    layout: &'a ProgramLayout,
+    type_def: DefId,
+    args: &[TypeId],
+) -> Option<(u32, &'a crate::typeck::StructLayout)> {
+    if let Some(sl) = layout.struct_layout(type_def, args) {
+        let type_id = layout.type_id_for_named(type_def, args)?;
+        return Some((type_id, sl));
+    }
+    if args.is_empty() {
+        return None;
+    }
+    let mut matches: Vec<_> = layout
+        .specialized_structs
+        .iter()
+        .filter(|(key, _)| key.base == type_def && key.args.len() == args.len())
+        .collect();
+    matches.sort_by_key(|(key, _)| key.args.first().map_or(0, |t| t.index()));
+    if matches.len() == 1 {
+        let (key, sl) = matches[0];
+        let type_id = layout.specialized_type_ids.get(key).copied()?;
+        return Some((type_id, sl));
+    }
+    None
 }
 
 /// Finds a struct definition by type name symbol.

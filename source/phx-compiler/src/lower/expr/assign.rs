@@ -50,6 +50,23 @@ fn prim_kind_for_index_store(
     })
 }
 
+/// Primitive kind for a store RHS, falling back to layout binding type for simple idents.
+fn prim_kind_for_assign_value(
+    ctx: &LowerCtx<'_>,
+    value: &ExprNode,
+    value_ty: TypeId,
+) -> Option<PrimitiveKind> {
+    primitive_kind_for_type(&ctx.typed.types, value_ty).or_else(|| {
+        if let Expr::Ident(ident) = &value.inner {
+            ctx.layout
+                .binding(ident.symbol)
+                .and_then(|b| primitive_kind_for_type(&ctx.typed.types, b.ty))
+        } else {
+            None
+        }
+    })
+}
+
 /// Lowers assignment (`=`, `+=`, …) into store or compound-op IR.
 pub(crate) fn lower_assign_expr(
     ctx: &mut LowerCtx<'_>,
@@ -79,7 +96,7 @@ pub(crate) fn lower_assign_expr(
         Expr::Unary {
             op: UnaryOp::Deref, ..
         } => {
-            if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, value_ty) {
+            if let Some(kind) = prim_kind_for_assign_value(ctx, value, value_ty) {
                 ctx.emit_here(IrInst::PtrStore {
                     prim_kind: kind.as_u8(),
                     signed: primitive_load_signed(kind),
