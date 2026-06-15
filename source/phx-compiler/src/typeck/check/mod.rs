@@ -87,6 +87,8 @@ pub struct TypeChecker<'a> {
     current_module: u32,
     /// Active type substitution when checking a monomorphized clone.
     subst: Option<Substitution>,
+    /// Template definition when checking a monomorphized function clone.
+    mono_template_def: Option<DefId>,
     /// Explicit generic instantiations to specialize after the main pass.
     mono_insts: Vec<MonoInst>,
     /// Explicit generic type instantiations to specialize after the main pass.

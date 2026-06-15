@@ -1559,6 +1559,70 @@ fn associated_fn_type_generics_path_compile_ok() {
 }
 
 #[test]
+fn duplicate_generic_struct_impl_two_param_size_of_mono_ok() {
+    compile_ok(
+        "size_of :: <t>() => u32 { 0u }; \
+         Holder :: <t, a> struct { n: t, alloc: a }; \
+         Holder :: <t, a> impl { \
+           empty :: (alloc: a) => Holder<t, a> { \
+             unsafe { \
+               const sz: u32 = size_of :: <t> (); \
+               Holder :: <t, a> { n: 0, alloc: alloc }; \
+             }; \
+           }; \
+         }; \
+         main :: () => { const h = Holder :: <s32, u32> :: empty(0u); const _ = h; };",
+    );
+}
+
+#[test]
+fn duplicate_generic_struct_impl_size_of_only_mono_ok() {
+    compile_ok(
+        "size_of :: <t>() => u32 { 0u }; \
+         Holder :: <t> struct { n: t }; \
+         Holder :: <t> impl { size :: () => u32 { size_of :: <t>() }; }; \
+         main :: () => { const n = Holder :: <s32> :: size(); const _ = n; };",
+    );
+}
+
+#[test]
+fn duplicate_generic_struct_impl_allocator_mono_ok() {
+    compile_ok(
+        "Allocator :: trait { }; Global :: struct { }; Global :: impl :: Allocator { }; \
+         Holder :: <t, a: Allocator = Global> struct { n: t, alloc: a }; \
+         Holder :: <t, a> impl { \
+           empty :: (alloc: a) => Holder<t, a> { Holder :: <t, a> { n: 0, alloc: alloc } }; \
+         }; \
+         main :: () => { const h = Holder :: <s32> :: empty(Global {}); const _ = h; };",
+    );
+}
+
+#[test]
+fn duplicate_generic_struct_impl_allocator_size_of_mono_ok() {
+    compile_ok(
+        "Allocator :: trait { }; Global :: struct { }; Global :: impl :: Allocator { }; \
+         size_of :: <t>() => u32 { 0u }; \
+         Holder :: <t, a: Allocator = Global> struct { n: t, alloc: a }; \
+         Holder :: <t, a> impl { \
+           empty :: (alloc: a) => Holder<t, a> { \
+             unsafe { \
+               const elem_size: u32 = size_of :: <t> (); \
+               Holder :: <t, a> { n: 0, alloc: alloc }; \
+             }; \
+           }; \
+         }; \
+         main :: () => { const h = Holder :: <s32> :: empty(Global {}); const _ = h; };",
+    );
+}
+
+#[test]
+fn duplicate_generic_struct_impl_two_params_mono_ok() {
+    compile_ok(
+        "Pair :: <t, u> struct { a: t, b: u }; Pair :: <t, u> impl { mk :: (a: t, b: u) => Pair<t, u> { Pair :: <t, u> { a: a, b: b } }; }; main :: () => { const p = Pair :: <s32, u32> :: mk(1, 2u); const _ = p; };",
+    );
+}
+
+#[test]
 fn generic_from_bound_at_mono_site_compile_ok() {
     compile_ok(
         "FromLocal :: <source> trait { from :: (value: source) => Self; }; Wrap :: struct { n: s32 }; Wrap :: impl :: FromLocal<s32> { from :: (value: s32) => Wrap { Wrap { n: value } }; }; convert :: <t: FromLocal<s32>> (x: s32) => t { t::from(x) }; main :: () => { const w: Wrap = convert :: <Wrap>(42); const _ = w.n; };",
@@ -1617,7 +1681,9 @@ fn extern_call_requires_unsafe() {
 
 #[test]
 fn extern_call_in_unsafe_ok() {
-    compile_ok("extern \"C\" stub :: (x: s32) => s32; main :: () => { unsafe { stub(1); }; };");
+    compile_ok(
+        "extern \"C\" stub :: (x: s32) => s32; main :: () => { unsafe { stub(1); }; const _ = (); };",
+    );
 }
 
 #[test]

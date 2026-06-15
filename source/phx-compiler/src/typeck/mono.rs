@@ -214,6 +214,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         for (param, arg) in param_defs.iter().zip(&inst.args) {
             subst.insert(*param, *arg);
         }
+        subst.extend_generic_param_aliases(&typed.resolved, base_def.module);
         let base_module = base_def.module;
         let base_span = base_def.span;
         let spec_def = match alloc_specialized_def(
@@ -278,6 +279,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
             indirect_call_sites,
             intrinsic_call_sites,
             size_of_literals,
+            primitive_method_sites,
         ) = checker.finish_all();
         if checker_bag.has_errors() {
             for located in checker_bag.into_errors() {
@@ -295,6 +297,7 @@ fn monomorphize_functions(typed: &mut TypedProgram, insts: &[MonoInst], bag: &mu
         typed.indirect_call_sites.extend(indirect_call_sites);
         typed.intrinsic_call_sites.extend(intrinsic_call_sites);
         typed.size_of_literals.extend(size_of_literals);
+        typed.primitive_method_sites.extend(primitive_method_sites);
         typed.value_types.extend(value_types);
         for node_id in &inst.call_sites {
             for module in &typed.resolved.modules {
@@ -410,7 +413,12 @@ fn specialize_struct(
     let fields: Vec<_> = template
         .fields
         .iter()
-        .map(|(name, ty)| (*name, Substitution::apply(&mut typed.types, *ty, subst)))
+        .map(|(name, ty)| {
+            (
+                *name,
+                Substitution::apply(&mut typed.types, *ty, subst, &typed.resolved),
+            )
+        })
         .collect();
     typed
         .layout
@@ -441,14 +449,19 @@ fn specialize_enum(
                 VariantKind::Tuple(ts) => {
                     let pts: Vec<_> = ts
                         .iter()
-                        .map(|t| Substitution::apply(&mut typed.types, *t, subst))
+                        .map(|t| Substitution::apply(&mut typed.types, *t, subst, &typed.resolved))
                         .collect();
                     VariantKind::Tuple(pts)
                 }
                 VariantKind::Struct(fs) => {
                     let fields: Vec<_> = fs
                         .iter()
-                        .map(|(n, t)| (*n, Substitution::apply(&mut typed.types, *t, subst)))
+                        .map(|(n, t)| {
+                            (
+                                *n,
+                                Substitution::apply(&mut typed.types, *t, subst, &typed.resolved),
+                            )
+                        })
                         .collect();
                     VariantKind::Struct(fields)
                 }

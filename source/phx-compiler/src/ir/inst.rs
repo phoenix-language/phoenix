@@ -100,10 +100,10 @@ pub enum IrInst {
     },
     /// Materialize function pointer. Stack: `[] → [fn_ptr]`
     MakeFnPtr {
-        /// `0` = Phoenix function id; `1` = foreign stub id.
-        target_kind: u32,
-        /// Callee or stub id.
-        target_id: u32,
+        /// Phoenix or foreign callable definition.
+        callee: DefId,
+        /// `true` when `callee` is an `extern` stub (`target_kind = 1` in bytecode).
+        foreign: bool,
         /// Result fn pointer type.
         ty: TypeId,
     },

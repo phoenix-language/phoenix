@@ -252,7 +252,7 @@ impl TypeChecker<'_> {
                 let type_defs = self.type_defs.clone();
                 let mut queried = self.lower_ast_type_with_defs(&type_args[0], &type_defs);
                 if let Some(subst) = &self.subst {
-                    queried = Substitution::apply(&mut self.types, queried, subst);
+                    queried = Substitution::apply(&mut self.types, queried, subst, self.resolved);
                 }
                 let Some(bytes) = crate::typeck::type_size::type_byte_size(
                     &self.types,

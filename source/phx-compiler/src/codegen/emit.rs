@@ -11,7 +11,7 @@ use phx_bytecode::{Instruction, Opcode};
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
 use crate::ir::{StackSimError, compute_ir_stack_max};
-use crate::resolver::DefId;
+use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 use super::const_pool::ConstPoolBuilder;
 use super::error::CodegenError;
@@ -38,10 +38,18 @@ pub fn emit_function(
     def_to_fn: &HashMap<DefId, u32>,
     fn_arity: &HashMap<u32, u16>,
     type_remap: Option<&HashMap<u32, u32>>,
+    resolved: &ResolvedProgram,
 ) -> Result<EmittedFunction, CodegenError> {
-    let block_starts = compute_block_starts(func, pool, def_to_fn, type_remap)?;
-    let (code, stack_max) =
-        emit_blocks(func, pool, def_to_fn, fn_arity, &block_starts, type_remap)?;
+    let block_starts = compute_block_starts(func, pool, def_to_fn, type_remap, resolved)?;
+    let (code, stack_max) = emit_blocks(
+        func,
+        pool,
+        def_to_fn,
+        fn_arity,
+        &block_starts,
+        type_remap,
+        resolved,
+    )?;
     Ok(EmittedFunction { code, stack_max })
 }
 
@@ -71,11 +79,33 @@ fn block_offset(block: u32, starts: &[u32]) -> Result<u32, CodegenError> {
         .ok_or(CodegenError::InvalidJumpBlock { block })
 }
 
+fn foreign_stub_id(def: DefId, resolved: &ResolvedProgram) -> Result<u32, CodegenError> {
+    let record = resolved
+        .defs
+        .get(def.index() as usize)
+        .ok_or(CodegenError::MissingCallee {
+            def_index: def.index(),
+        })?;
+    if record.kind != DefKind::ExternFn {
+        return Err(CodegenError::MissingCallee {
+            def_index: def.index(),
+        });
+    }
+    let id = resolved.defs[..def.index() as usize]
+        .iter()
+        .filter(|d| d.kind == DefKind::ExternFn)
+        .count();
+    u32::try_from(id).map_err(|_| CodegenError::MissingCallee {
+        def_index: def.index(),
+    })
+}
+
 fn compute_block_starts(
     func: &IrFunction,
     pool: &ConstPoolBuilder,
     def_to_fn: &HashMap<DefId, u32>,
     type_remap: Option<&HashMap<u32, u32>>,
+    resolved: &ResolvedProgram,
 ) -> Result<Vec<u32>, CodegenError> {
     let n = func.blocks.len();
     let mut starts = vec![0u32; n];
@@ -92,6 +122,7 @@ fn compute_block_starts(
                 def_to_fn,
                 &starts,
                 type_remap,
+                resolved,
             )?;
             offset = offset.saturating_add(u32::try_from(scratch.len()).unwrap_or(u32::MAX));
         }
@@ -127,6 +158,7 @@ fn emit_blocks(
     fn_arity: &HashMap<u32, u16>,
     block_starts: &[u32],
     type_remap: Option<&HashMap<u32, u32>>,
+    resolved: &ResolvedProgram,
 ) -> Result<(Vec<u8>, u16), CodegenError> {
     let mut out = Vec::new();
     for block in &func.blocks {
@@ -138,6 +170,7 @@ fn emit_blocks(
                 def_to_fn,
                 block_starts,
                 type_remap,
+                resolved,
             )?;
         }
     }
@@ -160,6 +193,7 @@ fn emit_inst(
     def_to_fn: &HashMap<DefId, u32>,
     block_starts: &[u32],
     type_remap: Option<&HashMap<u32, u32>>,
+    resolved: &ResolvedProgram,
 ) -> Result<(), CodegenError> {
     match inst {
         IrInst::Const {
@@ -192,11 +226,15 @@ fn emit_inst(
             out.extend(encode(Opcode::Call, &[fn_id])?);
         }
         IrInst::MakeFnPtr {
-            target_kind,
-            target_id,
-            ..
+            callee, foreign, ..
         } => {
-            out.extend(encode(Opcode::MakeFnPtr, &[*target_kind, *target_id])?);
+            let target_kind = u32::from(*foreign);
+            let target_id = if *foreign {
+                foreign_stub_id(*callee, resolved)?
+            } else {
+                function_id_for(*callee, def_to_fn)?
+            };
+            out.extend(encode(Opcode::MakeFnPtr, &[target_kind, target_id])?);
         }
         IrInst::CallIndirect {
             sig_type_id,
@@ -394,13 +432,20 @@ mod tests {
         }
     }
 
+    fn empty_resolved() -> ResolvedProgram {
+        let file = phx_syntax::parse("main :: () => {};");
+        let file = file.value;
+        crate::resolver::resolve(&file).expect("resolve empty")
+    }
+
     #[test]
     fn emit_fails_on_invalid_jump_block() {
         let func = minimal_func(vec![IrInst::Jump { target: 99 }]);
         let mut pool = ConstPoolBuilder::new();
         let def_to_fn = HashMap::new();
         let fn_arity = HashMap::new();
-        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None) {
+        let resolved = empty_resolved();
+        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None, &resolved) {
             Err(CodegenError::InvalidJumpBlock { block: 99 }) => {}
             other => panic!("expected InvalidJumpBlock {{ block: 99 }}, got {other:?}"),
         }
@@ -415,7 +460,8 @@ mod tests {
         let mut pool = ConstPoolBuilder::new();
         let def_to_fn = HashMap::new();
         let fn_arity = HashMap::new();
-        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None) {
+        let resolved = empty_resolved();
+        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None, &resolved) {
             Err(CodegenError::MissingCallee { def_index: 42 }) => {}
             other => panic!("expected MissingCallee {{ def_index: 42 }}, got {other:?}"),
         }
@@ -432,7 +478,8 @@ mod tests {
         let mut pool = ConstPoolBuilder::new();
         let def_to_fn = HashMap::new();
         let fn_arity = HashMap::new();
-        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None) {
+        let resolved = empty_resolved();
+        match emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None, &resolved) {
             Err(CodegenError::MissingCallee { def_index: 7 }) => {}
             other => panic!("expected MissingCallee {{ def_index: 7 }}, got {other:?}"),
         }
@@ -474,8 +521,9 @@ mod tests {
         def_to_fn.insert(DefId::from_raw(1), 0);
         let fn_arity = HashMap::from([(0u32, 1u16)]);
         let mut pool = ConstPoolBuilder::new();
-        let emitted =
-            emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None).expect("emit drop local");
+        let resolved = empty_resolved();
+        let emitted = emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None, &resolved)
+            .expect("emit drop local");
         let mut opcodes = Vec::new();
         let mut off = 0usize;
         while off < emitted.code.len() {

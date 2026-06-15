@@ -91,6 +91,8 @@ pub(super) fn lower_expr_inner(
                     {
                         ctx.emit_here(IrInst::AddressOfLocal { slot });
                     }
+                    // Operand ident is a separate typeck expression node; consume its cursor.
+                    let _ = ctx.expr_ty();
                 }
                 return;
             }

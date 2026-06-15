@@ -954,3 +954,7 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-063 | - [x]  | Major        | cross-cutting   | IR spans via `SpannedInst`; backend diagnostics cite source              |
 | PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
 
+## Follow-up
+
+Action items to close the MVP / Language v0 gate after this review: [mvp-finish-todo.md](mvp-finish-todo.md).
+

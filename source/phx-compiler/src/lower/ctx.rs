@@ -3,12 +3,11 @@
 use phx_syntax::Symbol;
 
 use crate::ir::{IrBasicBlock, IrConst, IrInst, SpannedInst};
-use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
+use crate::resolver::{DefId, ResolutionKey, ResolvedProgram};
 use std::collections::HashSet;
 
 use crate::typeck::{
-    ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, is_generic_fn_template,
-    primitive_kind_for_type,
+    ExprId, FunctionLayout, LocalSlot, Ty, TypeId, TypedProgram, primitive_kind_for_type,
 };
 use phx_bytecode::SLOT_KIND_AGG;
 use phx_bytecode::SLOT_KIND_FN_PTR;
@@ -106,7 +105,6 @@ impl<'a> LowerCtx<'a> {
 
     /// Records an unresolved call at `span` and skips emitting `IrInst::Call`.
     pub fn error_unresolved_callee(&mut self, span: Span) {
-        debug_assert!(false, "unresolved callee during lowering");
         self.bag
             .push(self.module, LowerError::UnresolvedCallee { span });
     }
@@ -377,33 +375,6 @@ pub fn bool_ty(typed: &TypedProgram) -> TypeId {
     TypeId::from_raw(0)
 }
 
-/// Returns `(target_kind, target_id)` for `MakeFnPtr` when `def` is a callable symbol.
-#[must_use]
-pub fn fn_ptr_target(typed: &TypedProgram, def: DefId) -> Option<(u32, u32)> {
-    let record = typed.resolved.defs.get(def.index() as usize)?;
-    match record.kind {
-        DefKind::Fn => {
-            let idx = typed
-                .functions
-                .iter()
-                .filter(|layout| !is_generic_fn_template(typed, layout.def))
-                .position(|layout| layout.def == def)?;
-            Some((0, u32::try_from(idx).ok()?))
-        }
-        DefKind::ExternFn => {
-            let id = typed
-                .resolved
-                .defs
-                .get(..def.index() as usize)?
-                .iter()
-                .filter(|d| d.kind == DefKind::ExternFn)
-                .count();
-            Some((1, u32::try_from(id).ok()?))
-        }
-        _ => None,
-    }
-}
-
 /// Wire primitive kind byte for `ty` (aggregate types use [`SLOT_KIND_AGG`]).
 #[must_use]
 pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
@@ -654,12 +625,23 @@ main :: () => {
     }
 
     #[test]
-    #[should_panic(expected = "unresolved callee during lowering")]
+    fn generic_infer_lowers_without_cursor_drift() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/cli/fixtures/generic_infer.phx");
+        let unit = crate::check_file(&path).expect("check");
+        crate::lower::lower(&unit.typed).expect("lower generic_infer");
+    }
+
+    #[test]
     fn missing_method_call_site_fails_lower() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/cli/fixtures/generic_impl_method.phx");
         let mut unit = crate::check_file(&path).expect("check");
         unit.typed.method_call_sites.clear();
-        let _ = crate::lower::lower(&unit.typed);
+        let bag = crate::lower::lower(&unit.typed);
+        assert!(
+            bag.is_err(),
+            "expected lowering to fail when method call sites are missing"
+        );
     }
 }

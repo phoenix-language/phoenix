@@ -193,23 +193,35 @@ impl TypeChecker<'_> {
     }
 
     pub(in crate::typeck::check) fn check_expr_node(&mut self, expr: &ExprNode) -> TypeId {
-        self.check_expr_node_inner(expr, true)
+        self.check_expr_node_inner(expr, true, true)
     }
 
     pub(in crate::typeck::check) fn check_expr_node_read(&mut self, expr: &ExprNode) -> TypeId {
-        self.check_expr_node_inner(expr, false)
+        self.check_expr_node_inner(expr, false, true)
+    }
+
+    /// Types `expr` for generic inference only — does not allocate a lowering cursor id.
+    pub(in crate::typeck::check) fn check_expr_node_infer(&mut self, expr: &ExprNode) -> TypeId {
+        self.check_expr_node_inner(expr, false, false)
     }
 
     pub(in crate::typeck::check) fn check_expr_node_inner(
         &mut self,
         expr: &ExprNode,
         record_move: bool,
+        record_expr_id: bool,
     ) -> TypeId {
-        let id = self.alloc_expr_id();
+        let id = if record_expr_id {
+            self.alloc_expr_id()
+        } else {
+            ExprId::from_raw(0)
+        };
         let ty = self.check_expr_with_move(&expr.inner, expr.span, record_move, id);
-        self.expr_types.insert(id, ty);
-        self.expr_span_types
-            .insert((self.current_module, expr.span), ty);
+        if record_expr_id {
+            self.expr_types.insert(id, ty);
+            self.expr_span_types
+                .insert((self.current_module, expr.span), ty);
+        }
         ty
     }
 
@@ -601,11 +613,17 @@ impl TypeChecker<'_> {
         let mut impl_args = implementer_args.clone();
         if impl_args.len() < impl_param_defs.len() {
             if let Some(call_generics) = generics {
-                if let Some(filled) = self.complete_generic_args_from_ast(
-                    generic_params_for_def(self.resolved, def).as_deref(),
+                let type_defs = self.type_defs.clone();
+                let partial: Vec<TypeId> = call_generics
+                    .iter()
+                    .map(|n| self.lower_ast_type_with_defs(n, &type_defs))
+                    .collect();
+                if let Some(filled) = self.complete_partial_generic_args_with_inference(
+                    def,
                     &impl_param_defs,
-                    call_generics,
-                    self.def_module(def),
+                    partial,
+                    &params,
+                    args,
                     span,
                 ) {
                     impl_args = filled;
@@ -638,7 +656,7 @@ impl TypeChecker<'_> {
             }
             let infer_params: Vec<_> = params
                 .iter()
-                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
                 .collect();
             let call_generics_for_method = if method_param_defs.is_empty() {
                 None
@@ -676,7 +694,7 @@ impl TypeChecker<'_> {
             }
             let applied_params: Vec<_> = params
                 .iter()
-                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
                 .collect();
             if applied_params.len() != args.len() {
                 self.bag.push(
@@ -697,7 +715,7 @@ impl TypeChecker<'_> {
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
             self.record_mono_inst(fn_def, mono_args, method.id);
-            return Substitution::apply(&mut self.types, ret, &subst);
+            return Substitution::apply(&mut self.types, ret, &subst, self.resolved);
         }
         if generics.is_some() {
             self.bag.push(
@@ -1059,7 +1077,8 @@ impl TypeChecker<'_> {
                         return None;
                     };
                     let lowered = this.lower_ast_type_with_defs(default, &type_defs);
-                    let concrete = Substitution::apply(&mut this.types, lowered, &subst);
+                    let concrete =
+                        Substitution::apply(&mut this.types, lowered, &subst, this.resolved);
                     subst.insert(param_defs[i], concrete);
                     result.push(concrete);
                 }
@@ -1135,7 +1154,7 @@ impl TypeChecker<'_> {
                     return None;
                 };
                 let lowered = this.lower_ast_type_with_defs(default, &type_defs);
-                let concrete = Substitution::apply(&mut this.types, lowered, &subst);
+                let concrete = Substitution::apply(&mut this.types, lowered, &subst, this.resolved);
                 subst.insert(param_defs[i], concrete);
                 provided.push(concrete);
             }
@@ -1175,7 +1194,7 @@ impl TypeChecker<'_> {
             let Some(&body) = self.value_types.get(&base) else {
                 return self.poison_type();
             };
-            let expanded = Substitution::apply(&mut self.types, body, &subst);
+            let expanded = Substitution::apply(&mut self.types, body, &subst, self.resolved);
             self.specialized_aliases
                 .insert(TypeMonoKey::new(base, args), expanded);
             return expanded;
@@ -1199,10 +1218,23 @@ impl TypeChecker<'_> {
         for (param, arg) in param_defs.iter().zip(args) {
             subst.insert(*param, *arg);
         }
+        if let Some(module) = self
+            .resolved
+            .defs
+            .get(def.index() as usize)
+            .map(|d| d.module)
+        {
+            subst.extend_generic_param_aliases(self.resolved, module);
+        }
         template
             .fields
             .iter()
-            .map(|(name, ty)| (*name, Substitution::apply(&mut self.types, *ty, &subst)))
+            .map(|(name, ty)| {
+                (
+                    *name,
+                    Substitution::apply(&mut self.types, *ty, &subst, self.resolved),
+                )
+            })
             .collect()
     }
 
@@ -1355,14 +1387,19 @@ impl TypeChecker<'_> {
             VariantKind::Tuple(ts) => {
                 let pts: Vec<_> = ts
                     .iter()
-                    .map(|t| Substitution::apply(&mut self.types, *t, &subst))
+                    .map(|t| Substitution::apply(&mut self.types, *t, &subst, self.resolved))
                     .collect();
                 VariantKind::Tuple(pts)
             }
             VariantKind::Struct(fs) => {
                 let fields: Vec<_> = fs
                     .iter()
-                    .map(|(n, t)| (*n, Substitution::apply(&mut self.types, *t, &subst)))
+                    .map(|(n, t)| {
+                        (
+                            *n,
+                            Substitution::apply(&mut self.types, *t, &subst, self.resolved),
+                        )
+                    })
                     .collect();
                 VariantKind::Struct(fields)
             }
@@ -1946,11 +1983,11 @@ impl TypeChecker<'_> {
         }
         let applied: Vec<_> = param_types
             .iter()
-            .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+            .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
             .collect();
         let mut arg_types = Vec::with_capacity(args.len());
         for arg in args {
-            arg_types.push(self.check_expr_node_read(arg));
+            arg_types.push(self.check_expr_node_infer(arg));
         }
         let defs = &self.resolved.defs;
         let value_types = &self.value_types;
@@ -1984,6 +2021,90 @@ impl TypeChecker<'_> {
             concrete_args.push(resolved);
         }
         Some(concrete_args)
+    }
+
+    /// Fills trailing generic parameters from call arguments before applying defaults.
+    pub(in crate::typeck::check) fn complete_partial_generic_args_with_inference(
+        &mut self,
+        type_def: DefId,
+        param_defs: &[DefId],
+        mut provided: Vec<TypeId>,
+        param_types: &[TypeId],
+        args: &[ExprNode],
+        span: Span,
+    ) -> Option<Vec<TypeId>> {
+        if provided.len() >= param_defs.len() {
+            return Some(provided);
+        }
+        let generic_params = generic_params_for_def(self.resolved, type_def)?;
+        let mut subst = Substitution::new();
+        for (i, param_def) in param_defs.iter().enumerate() {
+            if i < provided.len() {
+                subst.insert(*param_def, provided[i]);
+            }
+        }
+        let mut infer = InferenceCtx::new();
+        for param_def in &param_defs[provided.len()..] {
+            let var = infer.fresh_var(&mut self.types);
+            subst.insert(*param_def, var);
+        }
+        let applied: Vec<_> = param_types
+            .iter()
+            .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
+            .collect();
+        let mut arg_types = Vec::with_capacity(args.len());
+        for arg in args {
+            arg_types.push(self.check_expr_node_infer(arg));
+        }
+        let defs = &self.resolved.defs;
+        let value_types = &self.value_types;
+        let mut inferred_ok = true;
+        for (p, got) in applied.iter().zip(&arg_types) {
+            if !infer.unify(&mut self.types, defs, value_types, *p, *got) {
+                inferred_ok = false;
+                break;
+            }
+        }
+        if inferred_ok {
+            let start = provided.len();
+            for param_def in param_defs.iter().skip(start) {
+                let var = subst.get(*param_def)?;
+                let resolved = infer.resolve(&mut self.types, var);
+                if !infer.is_resolved(&mut self.types, resolved) {
+                    inferred_ok = false;
+                    break;
+                }
+                provided.push(resolved);
+            }
+        }
+        let _ = inferred_ok;
+        if provided.len() < param_defs.len() {
+            let type_defs = self.type_defs.clone();
+            let module = self.def_module(type_def);
+            for (i, &param_def) in param_defs.iter().enumerate().skip(provided.len()) {
+                let param = generic_params.get(i)?;
+                let default = param.default.as_ref()?;
+                let lowered = self.with_pushed_generics(module, Some(&generic_params), |this| {
+                    this.lower_ast_type_with_defs(default, &type_defs)
+                });
+                let concrete = Substitution::apply(&mut self.types, lowered, &subst, self.resolved);
+                subst.insert(param_def, concrete);
+                provided.push(concrete);
+            }
+        }
+        if provided.len() == param_defs.len() {
+            Some(provided)
+        } else {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::ArityMismatch {
+                    expected: param_defs.len(),
+                    found: provided.len(),
+                    span,
+                },
+            );
+            None
+        }
     }
 
     pub(in crate::typeck::check) fn check_call_with_generics(
@@ -2045,9 +2166,9 @@ impl TypeChecker<'_> {
         }
         let params: Vec<_> = params
             .iter()
-            .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+            .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
             .collect();
-        let ret = Substitution::apply(&mut self.types, ret, &subst);
+        let ret = Substitution::apply(&mut self.types, ret, &subst, self.resolved);
         if params.len() != args.len() {
             self.bag.push(
                 self.current_module,
@@ -2289,7 +2410,7 @@ impl TypeChecker<'_> {
             }
             let infer_arg_params: Vec<_> = arg_param_types
                 .iter()
-                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
                 .collect();
             let method_args = if method_param_defs.is_empty() {
                 Vec::new()
@@ -2322,7 +2443,7 @@ impl TypeChecker<'_> {
             }
             let applied_arg_params: Vec<_> = arg_param_types
                 .iter()
-                .map(|p| Substitution::apply(&mut self.types, *p, &subst))
+                .map(|p| Substitution::apply(&mut self.types, *p, &subst, self.resolved))
                 .collect();
             if applied_arg_params.len() != args.len() {
                 self.bag.push(
@@ -2350,7 +2471,7 @@ impl TypeChecker<'_> {
                     mono_args,
                 },
             );
-            let out = Substitution::apply(&mut self.types, ret, &subst);
+            let out = Substitution::apply(&mut self.types, ret, &subst, self.resolved);
             if let Some(expr) = receiver_expr {
                 self.mark_method_receiver_moved(expr, receiver, fn_def);
             }

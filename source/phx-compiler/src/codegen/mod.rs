@@ -316,7 +316,14 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
 
     for func in &ir.functions {
         let offset = u32_section("code_offset", code.len())?;
-        let emitted = emit::emit_function(func, &mut pool, &def_to_fn, &fn_arity, None)?;
+        let emitted = emit::emit_function(
+            func,
+            &mut pool,
+            &def_to_fn,
+            &fn_arity,
+            None,
+            &typed.resolved,
+        )?;
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: func.id.index(),
@@ -388,8 +395,14 @@ pub fn codegen_module(
     for func in &ir.functions {
         let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
         let offset = u32_section("code_offset", code.len())?;
-        let emitted =
-            emit::emit_function(func, &mut pool, def_to_fn, &fn_arity, Some(&type_remap))?;
+        let emitted = emit::emit_function(
+            func,
+            &mut pool,
+            def_to_fn,
+            &fn_arity,
+            Some(&type_remap),
+            &typed.resolved,
+        )?;
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: fn_id,

@@ -93,7 +93,7 @@ fn lower_postfix_inner(
     result_ty: TypeId,
     postfix_expr_id: ExprId,
 ) {
-    let static_call = ops.len() == 1
+    let static_call = !ops.is_empty()
         && matches!(ops[0], PostfixOp::Call { .. })
         && resolve_call_callee(ctx, base).is_some();
     if static_call {
@@ -107,7 +107,111 @@ fn lower_postfix_inner(
             for arg in args {
                 lower_expr(ctx, arg);
             }
-            emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
+            let call_result_ty = if ops.len() == 1 {
+                result_ty
+            } else {
+                let callee_ty = ctx
+                    .typed
+                    .value_types
+                    .get(&callee)
+                    .copied()
+                    .unwrap_or(result_ty);
+                match ctx.typed.types.get(callee_ty) {
+                    Ty::Fn { ret, .. } => *ret,
+                    _ => result_ty,
+                }
+            };
+            emit_call_or_intrinsic(ctx, callee, call_result_ty, postfix_expr_id);
+            if ops.len() > 1 {
+                let mut receiver_ty = call_result_ty;
+                for op in &ops[1..] {
+                    match op {
+                        PostfixOp::Field(field) => {
+                            if matches!(ctx.typed.types.get(receiver_ty), Ty::Ref { .. }) {
+                                ctx.emit_here(IrInst::LoadAggViaLocalPtr);
+                                receiver_ty = match ctx.typed.types.get(receiver_ty) {
+                                    Ty::Ref { inner, .. } => *inner,
+                                    _ => receiver_ty,
+                                };
+                            }
+                            if let Some((def, args)) = named_type_parts(ctx.typed, receiver_ty) {
+                                let type_id =
+                                    ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
+                                let field_index = ctx
+                                    .typed
+                                    .layout
+                                    .struct_field_index(def, field.symbol, &args)
+                                    .unwrap_or(0);
+                                let field_ty = ctx
+                                    .typed
+                                    .layout
+                                    .struct_layout(def, &args)
+                                    .and_then(|sl| sl.fields.get(field_index as usize))
+                                    .map_or(receiver_ty, |(_, ty)| *ty);
+                                ctx.emit_here(IrInst::GetField {
+                                    type_id,
+                                    field_index,
+                                    result: field_ty,
+                                });
+                                receiver_ty = field_ty;
+                            }
+                        }
+                        PostfixOp::Method { args, .. } => {
+                            for arg in args {
+                                lower_expr(ctx, arg);
+                            }
+                            if let Some(callee) =
+                                method_callee_from_site(ctx.typed, postfix_expr_id)
+                            {
+                                emit_ref_receiver_from_stack_value(ctx, callee, receiver_ty);
+                                emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
+                            } else if let Some(meta) =
+                                ctx.typed.indirect_call_sites.get(&postfix_expr_id)
+                            {
+                                ctx.emit_here(IrInst::CallIndirect {
+                                    sig_type_id: meta.sig_type_id,
+                                    expected_arity: meta.expected_arity,
+                                    ret: result_ty,
+                                    foreign: meta.foreign,
+                                });
+                            }
+                            receiver_ty = result_ty;
+                        }
+                        PostfixOp::Call { args, .. } => {
+                            for arg in args {
+                                lower_expr(ctx, arg);
+                            }
+                            if let Some(callee) =
+                                method_callee_from_site(ctx.typed, postfix_expr_id)
+                            {
+                                emit_ref_receiver_from_stack_value(ctx, callee, receiver_ty);
+                                emit_call_or_intrinsic(ctx, callee, result_ty, postfix_expr_id);
+                            } else if let Some(meta) =
+                                ctx.typed.indirect_call_sites.get(&postfix_expr_id)
+                            {
+                                ctx.emit_here(IrInst::CallIndirect {
+                                    sig_type_id: meta.sig_type_id,
+                                    expected_arity: meta.expected_arity,
+                                    ret: result_ty,
+                                    foreign: meta.foreign,
+                                });
+                            }
+                            receiver_ty = result_ty;
+                        }
+                        PostfixOp::Index(idx) => {
+                            lower_expr(ctx, idx);
+                            ctx.emit_here(IrInst::Index { result: result_ty });
+                            receiver_ty = result_ty;
+                        }
+                        PostfixOp::Try => {
+                            if let Some(meta) = ctx.typed.try_sites.get(&postfix_expr_id) {
+                                lower_try(ctx, meta);
+                                receiver_ty = result_ty;
+                            }
+                        }
+                    }
+                }
+            }
         }
         return;
     }

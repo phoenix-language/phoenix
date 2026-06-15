@@ -91,6 +91,7 @@ impl<'a> TypeChecker<'a> {
             trait_assoc_abstract: HashMap::new(),
             current_module: resolved.root,
             subst: None,
+            mono_template_def: None,
             mono_insts: Vec::new(),
             type_mono_insts: Vec::new(),
             specialized_aliases: HashMap::new(),
@@ -407,6 +408,7 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
         HashMap<ExprId, u32>,
+        HashMap<ExprId, PrimitiveMethodSite>,
     ) {
         (
             self.types,
@@ -422,6 +424,7 @@ impl<'a> TypeChecker<'a> {
             self.indirect_call_sites,
             self.intrinsic_call_sites,
             self.size_of_literals,
+            self.primitive_method_sites,
         )
     }
 }

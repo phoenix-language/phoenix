@@ -106,7 +106,8 @@ pub fn validate_instantiation_bounds(
                 ok = false;
                 continue;
             };
-            let trait_args = lower_trait_bound_args(types, &type_defs, trait_arg_nodes, &subst);
+            let trait_args =
+                lower_trait_bound_args(types, &type_defs, trait_arg_nodes, &subst, resolved);
             let alias_env = AliasEnv {
                 types,
                 defs: &resolved.defs,
@@ -153,6 +154,7 @@ fn lower_trait_bound_args(
     type_defs: &super::lower_ty::TypeDefMap,
     trait_arg_nodes: Option<&[Node<Type>]>,
     subst: &Substitution,
+    resolved: &ResolvedProgram,
 ) -> Vec<TypeId> {
     let Some(nodes) = trait_arg_nodes else {
         return Vec::new();
@@ -161,7 +163,7 @@ fn lower_trait_bound_args(
         .iter()
         .map(|node| {
             let id = lower_type(types, type_defs, &node.inner);
-            Substitution::apply(types, id, subst)
+            Substitution::apply(types, id, subst, resolved)
         })
         .collect()
 }

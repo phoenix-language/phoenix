@@ -121,9 +121,9 @@ impl TypeChecker<'_> {
                 Ty::Fn { params, ret } => {
                     let params: Vec<_> = params
                         .iter()
-                        .map(|p| Substitution::apply(&mut self.types, *p, subst))
+                        .map(|p| Substitution::apply(&mut self.types, *p, subst, self.resolved))
                         .collect();
-                    let ret = Substitution::apply(&mut self.types, ret, subst);
+                    let ret = Substitution::apply(&mut self.types, ret, subst, self.resolved);
                     self.types.intern(&Ty::Fn { params, ret })
                 }
                 other => self.types.intern(&other),
@@ -153,7 +153,9 @@ impl TypeChecker<'_> {
                 self.impl_self_type = Some(self_ty);
             }
         }
+        self.mono_template_def = Some(base_fn);
         self.check_function_body(f, spec_def, true, true);
+        self.mono_template_def = None;
         self.impl_self_type = saved_impl_self;
         self.current_module = saved_module;
         self.fn_ret = None;

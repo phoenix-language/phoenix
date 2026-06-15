@@ -127,6 +127,71 @@ mod tests {
     }
 
     #[test]
+    fn run_unit_callee_call_pop_succeeds() {
+        let unit_body: Vec<u8> = Instruction {
+            opcode: Opcode::Return,
+            operands: vec![],
+        }
+        .encode()
+        .expect("encode");
+        let main_body: Vec<u8> = [
+            Instruction {
+                opcode: Opcode::Call,
+                operands: vec![1],
+            },
+            Instruction {
+                opcode: Opcode::Pop,
+                operands: vec![],
+            },
+            Instruction {
+                opcode: Opcode::Return,
+                operands: vec![],
+            },
+        ]
+        .into_iter()
+        .flat_map(|i| i.encode().expect("encode"))
+        .collect();
+        let callee_off = u32::try_from(main_body.len()).expect("offset");
+        let mut code = main_body;
+        code.extend(unit_body);
+        let module = BytecodeModule {
+            header: FileHeader::new(5, 0),
+            constants: ConstPool::default(),
+            types: TypeTable::default(),
+            functions: FunctionTable {
+                functions: vec![
+                    FunctionRecord {
+                        function_id: 0,
+                        name_symbol_id: 0,
+                        arity: 0,
+                        local_count: 0,
+                        stack_max: 4,
+                        flags: 0,
+                        code_offset: 0,
+                        code_len: callee_off,
+                        return_type_id: 0,
+                    },
+                    FunctionRecord {
+                        function_id: 1,
+                        name_symbol_id: 0,
+                        arity: 0,
+                        local_count: 0,
+                        stack_max: 4,
+                        flags: 0,
+                        code_offset: callee_off,
+                        code_len: u32::try_from(code.len()).expect("len") - callee_off,
+                        return_type_id: 0,
+                    },
+                ],
+            },
+            code,
+            local_layouts: phx_bytecode::LocalLayoutTable::default(),
+        };
+        let verified = verify(&module).expect("verify unit call/pop");
+        run(verified).expect("run unit call/pop");
+    }
+
+    #[test]
     fn run_stack_underflow_returns_error() {
         let code = Instruction {
             opcode: Opcode::Add,

@@ -20,6 +20,7 @@ use crate::typeck::layout::TraitInstKey;
 use crate::typeck::lower_ty::push_generics;
 use crate::typeck::ownership::OwnershipTracker;
 use crate::typeck::primitive::primitive_kind_for_type;
+use crate::typeck::subst::Substitution;
 use crate::typeck::types::{Ty, TypeId, TypeInterner};
 use phx_bytecode::{SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 
@@ -461,12 +462,14 @@ impl TypeChecker<'_> {
     }
 
     pub(in crate::typeck::check) fn fn_is_drop_method(&self, fn_def: DefId) -> bool {
+        let lookup_def = self.mono_template_def.unwrap_or(fn_def);
         self.program_layout
             .trait_methods
             .iter()
             .any(|((key, method), &def)| {
-                def == fn_def
-                    && self.std_trait_kernel.is_drop_trait(key.trait_def)
+                def == lookup_def
+                    && (self.std_trait_kernel.is_drop_trait(key.trait_def)
+                        || crate::typeck::builtins::is_drop_trait_def(self.resolved, key.trait_def))
                     && self.resolved.interner.resolves_to(*method, "drop")
             })
     }
@@ -484,19 +487,28 @@ impl TypeChecker<'_> {
         }
         let module = self.def_module(def);
         let saved_type_defs = self.type_defs.clone();
-        push_generics(
-            &mut self.type_defs,
-            self.resolved,
-            module,
-            f.generics.as_deref(),
-        );
+        let impl_lookup_def = self.mono_template_def.unwrap_or(def);
+        let impl_generics = self
+            .impl_type_for_method(impl_lookup_def)
+            .and_then(|type_def| self.find_inherent_impl_generics(type_def));
+        let scoped_generics = impl_generics.as_deref().or(f.generics.as_deref());
+        push_generics(&mut self.type_defs, self.resolved, module, scoped_generics);
         let type_defs = self.type_defs.clone();
-        let ret = self.fn_ret.unwrap_or_else(|| {
+        let mut ret = self.fn_ret.unwrap_or_else(|| {
             f.ret
                 .as_ref()
                 .map(|r| self.lower_ast_type_with_defs(r, &type_defs))
                 .unwrap_or(self.unit)
         });
+        if let Some(subst) = &self.subst {
+            ret = Substitution::apply(&mut self.types, ret, subst, self.resolved);
+            if let Ty::Named { def, args } = self.types.get(ret).clone() {
+                if !args.is_empty() {
+                    let span = f.ret.as_ref().map(|r| r.span).unwrap_or(f.name.span);
+                    ret = self.resolve_instantiated_named(def, args, span);
+                }
+            }
+        }
         self.fn_ret = Some(ret);
         self.ownership = OwnershipTracker::new();
         if emit_layout {
@@ -619,6 +631,13 @@ impl TypeChecker<'_> {
                 }
             }
             Stmt::Return(expr) => self.check_return(stmt.span, expr.as_ref()),
+            Stmt::Unsafe(body) => {
+                let mut value = self.unit;
+                self.with_unsafe(|this| {
+                    value = this.check_block_value(&body.inner);
+                });
+                value
+            }
             _ => {
                 self.check_stmt(stmt);
                 self.unit

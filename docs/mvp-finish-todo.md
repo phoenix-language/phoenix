@@ -1,0 +1,164 @@
+# MVP finish todo — post architecture review
+
+**Purpose:** Actionable finish list after [phoenix-architecture-review.md](phoenix-architecture-review.md) (70 findings; 68 resolved, 1 doc item open, 1 deferred). This is **not** a duplicate of the review — it tracks what remains to close the **MVP / Language v0 gate** and begin **Std v0** authoring in earnest.
+
+**Authority:** [mvp.md](design/mvp.md), [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md), [ROADMAP.md](ROADMAP.md) (M6–M8), [mvp-implementation-checklist.md](mvp-implementation-checklist.md).
+
+**Scope labels used below:**
+
+
+| Label           | Meaning                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------- |
+| **MVP**         | Core single-process pipeline per `mvp.md` (already largely shipped)                     |
+| **Language v0** | Contributor-ready gate: Phase 7 partials closed, `just pre-commit` green, docs truthful |
+| **Std v0**      | Std library authored in Phoenix (`DynamicArray`, `UniquePtr`, owned `String`, …)        |
+| **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
+
+
+**Last verified:** 2026-06-14 — `cargo test -p phx-integration-tests --test cli_e2e`: **54 pass, 7 fail**; `cargo test -p phx-compiler --test typeck`: **165 pass, 1 fail**.
+
+---
+
+## P0 — Blockers (Language v0 gate)
+
+These must pass before announcing Language v0 or calling the beta gate complete.
+
+### Compiler regressions (in-flight heap-slice / mono work)
+
+- [ ] **Fix expression cursor drift in lowering** — `LowerError::MissingExprType` / cursor drift fires on `generic_infer.phx` and std build projects; root cause is likely desync between typeck `expr_types` order and lower's per-function cursor after recent typeck/lower changes. **Ref:** PHX-037, in-flight changes in `typeck/`, `lower/ctx.rs`, `lower/expr/`. **Owner:** compiler. **Gate:** Language v0.
+
+- [ ] **Fix `build_std_traits` project build** — `cli_e2e::build_std_traits` fails with unresolved call targets and expression cursor drift during lowering of std trait smoke. **Owner:** compiler + std fixtures. **Gate:** Language v0.
+
+- [ ] **Fix generic allocator / `Global` method resolution** — `duplicate_generic_struct_impl_allocator_size_of_mono_ok` (typeck) and `build_unique_ptr_*` fail: `no method on type Global`, `<error>` allocator bounds, invalid casts. Likely mono or trait-method site metadata gap for generic struct impls with allocator type params. **Ref:** PHX-038, ROADMAP M4. **Owner:** compiler (typeck/mono). **Gate:** Language v0.
+
+- [ ] **Fix `DynamicArray` std project builds** — `build_dynamic_array_smoke` and `build_dynamic_array_drop_smoke` fail (same allocator/mono error cluster as UniquePtr). **Owner:** compiler + std. **Gate:** Std v0 (blocks DynamicArray authoring).
+
+- [ ] **Fix `UniquePtr` std project builds** — `build_unique_ptr_smoke` and `build_unique_ptr_drop_smoke` fail. **Ref:** [allocator.md](design/features/allocator.md) (`UniquePtr` is Std v0). **Owner:** compiler + std. **Gate:** Std v0.
+
+- [ ] **Fix return stack depth mismatch in `examples/errors`** — `examples_errors_build_run` fails verifier: `return stack depth mismatch … expected 1, found 2` in function 6 (likely `?` or drop-glue path). **Ref:** PHX-035, ROADMAP M2 stack-at-return invariant. **Owner:** compiler (lower/codegen) + VM verify. **Gate:** Language v0.
+
+- [ ] **Restore `run_smoke_fixtures` green** — blocked by `generic_infer.phx` cursor drift; unblocks single-file CLI regression suite. **Owner:** tests + compiler. **Gate:** Language v0.
+
+### Integration gate
+
+- [ ] **All seven failing `cli_e2e` tests pass** — `build_dynamic_array_smoke`, `build_dynamic_array_drop_smoke`, `build_unique_ptr_smoke`, `build_unique_ptr_drop_smoke`, `build_std_traits`, `examples_errors_build_run`, `run_smoke_fixtures`. **Owner:** tests (verify) + compiler (fix). **Gate:** Language v0.
+
+- [ ] `**cargo test --workspace` fully green** — includes the one failing typeck test above; required by `just pre-commit` / PHX-060. **Owner:** tests. **Gate:** Language v0.
+
+---
+
+## P1 — Beta gate / Language v0 announcement
+
+ROADMAP Milestones 7–8 exit criteria and doc truth. Complete after P0 is green.
+
+### Documentation truth (PHX-032)
+
+- [ ] **PHX-032 doc-truth pass** — Sync design docs with implemented behavior: mark V0-063 (trait defaults) and V0-064 (multi-payload `Result` match) **done** in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md); update stale partial rows in [mvp-implementation-checklist.md](mvp-implementation-checklist.md) (survey date, `?` lowering status, opcode counts). **Ref:** PHX-032. **Owner:** docs.
+
+- [ ] **Restore or replace missing `language-v0.md`** — Referenced from `mvp.md`, `contributing.md`, and `grammar-deferred.md` but absent from `docs/design/`; either restore the checklist file or retarget all links to `language-v0-completion-roadmap.md`. **Ref:** PHX-032. **Owner:** docs.
+
+- [ ] **Confirm ownership / numeric docs match M0–M2 decisions** — Verify [ownership.md](design/features/ownership.md) documents loop move rule and MVP whole-value move policy; [wide-integers.md](design/features/wide-integers.md) and [type-system.md](design/features/type-system.md) document masked shifts and IEEE NaN; [vm-linear.md](design/features/vm-linear.md) documents stack-at-`RETURN` and `Trap` operand contract. **Ref:** ROADMAP Resolved Design Decisions #1–#4, PHX-032. **Owner:** docs.
+
+- [ ] **Document `str` / `Ty::Str` normative Copyable view** — Per ROADMAP M5 / Resolved Decision #6: rodata-backed UTF-8 view, phased migration note in `type-system.md`. **Owner:** docs. **Gate:** Language v0.
+
+### Error-handling polish (ROADMAP M7)
+
+- [ ] **Promote discarded `Result`/`Option` from lint warning to type error** — PHX-029 wired typed lint via `StdKernel`; [error-handling.md](design/features/error-handling.md) expects must-use enforcement. Currently warnings only. **Owner:** compiler (typeck/lint). **Gate:** Language v0 (per error-handling design).
+
+- [ ] **Golden diagnostics for `?` failure modes** — Add `.stderr` fixtures for `?` type mismatch, missing `From` impl, and discarded `Result` (ROADMAP M7 / PHX-061 follow-up). **Owner:** tests. **Gate:** Language v0.
+
+### Pre-announce verification
+
+- [ ] `**just pre-commit` green on mainline** — fmt, clippy `-D warnings`, dep-check, `cargo test --workspace`, `just test-lang`. **Ref:** PHX-060, project completion gate. **Owner:** CI + all crates. **Gate:** Language v0.
+
+- [ ] `**std_platform_smoke` builds and runs** — Phase 7 capstone (Result match + trait defaults + heap slice in one program). Fixture exists; confirm green after P0 fixes. **Ref:** V0-067. **Owner:** tests + std. **Gate:** Language v0.
+
+- [ ] `**examples/errors` builds and runs via `just test-lang`** — Primary error-handling demo; currently blocked by stack-depth failure. **Ref:** V0-064, language-v0-completion-roadmap. **Owner:** tests + compiler. **Gate:** Language v0.
+
+---
+
+## P2 — Std v0 bootstrap (post Language v0 announce)
+
+Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md) Std v0 entry table. **Not MVP blockers** if Phase 7 is green, but required before std collections/text ship.
+
+### Collections and owning types
+
+- [ ] `**DynamicArray<T>` semantics suite** — Push-grow-realloc, index bounds, nested drop, move-in/out; `run_captured` value assertions beyond smoke build. **Ref:** ROADMAP M6, PHX-061. **Owner:** std + tests. **Gate:** Std v0.
+
+- [ ] `**UniquePtr<T, A>` end-to-end** — Allocate, move, drop dealloc, use-after-move diagnostic; aligns with [allocator.md](design/features/allocator.md). **Owner:** std + compiler. **Gate:** Std v0.
+
+- [ ] **Generic `#derive` for std types** — `DynamicArray<T>` and similar need `PartialEq`/`Debug` without hand-written impls. Explicitly deferred in [grammar-deferred.md](design/features/grammar-deferred.md); track as Std v0 prerequisite. **Ref:** PHX-030, ROADMAP Deferred. **Owner:** compiler (derive). **Gate:** Std v0.
+
+- [ ] **Owned `String` over `DynamicArray<u8>`** — Std v0 module per completion roadmap order #4; no primitive owned string in core. **Ref:** `type-system.md`, `mvp.md`. **Owner:** std. **Gate:** Std v0.
+
+- [ ] `**text::fmt` minimal formatting** — Depends on `String` + `Display`; post-collections. **Owner:** std. **Gate:** Std v0.
+
+### VM / runtime hardening for std workloads
+
+- [ ] **DynamicArray misuse fixtures (UAF, double-free)** — Exercise PHX-054 ledger checks under std collection patterns. **Ref:** ROADMAP M6. **Owner:** tests + VM. **Gate:** Std v0.
+
+- [ ] **Heap cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); expose project/CLI tuning for std stress tests. **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
+
+- [ ] **Mono guardrail for pathological generic nesting** — Recursion-depth limit with diagnostic (ROADMAP M4 follow-up); protects std generic authoring. **Owner:** compiler (mono). **Gate:** Std v0.
+
+---
+
+## P3 — Post-beta / post-MVP (do not start until P0–P1 pass)
+
+Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
+
+- [ ] **Bytecode source maps / debugger (PHX0 section 5)** — Encode `(function_id, pc) → span` at link time; CLI maps runtime errors to Phoenix source. **Ref:** PHX-070 (deferred). **Owner:** compiler + VM + CLI. **Gate:** Post-beta.
+
+- [ ] **Full borrow checker** — `&T` / `&mut T` exclusivity and lifetimes beyond MVP use-after-move. **Ref:** `ownership.md`, ROADMAP Deferred. **Owner:** compiler. **Gate:** Post-MVP.
+
+- [ ] **M:N scheduler + schedulable I/O** — Prerequisite for std I/O (`File.read`, networking). **Ref:** `mvp.md` shipping order, `runtime-transparency.md`. **Owner:** VM + std. **Gate:** Post-MVP.
+
+- [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
+
+- [ ] **Std I/O and networking** — Blocked on scheduler. **Owner:** std + VM. **Gate:** Post-MVP.
+
+- [ ] **JIT / hot reload** — Post-MVP per `mvp.md`. **Owner:** VM. **Gate:** Post-MVP.
+
+- [ ] **IDE / LSP partial-AST mode** — Builds on PHX-005 partial parse recovery (already shipped). **Ref:** ROADMAP Deferred. **Owner:** compiler + tooling. **Gate:** Post-beta.
+
+- [ ] **Stable FFI symbol identity (Phase B)** — Replace registration-order foreign stubs. **Ref:** `ffi.md`, ROADMAP Deferred. **Owner:** VM + linker. **Gate:** Post-beta.
+
+- [ ] `**--deny` / lint configuration** — Fail compiles on warnings; deferred post-beta per ROADMAP M7 Decision #10. **Owner:** CLI. **Gate:** Post-beta.
+
+---
+
+## Explicitly not todo (already resolved in architecture review)
+
+Do **not** re-open unless a regression appears:
+
+- Ownership fork/join across branches and loops (PHX-023, PHX-024)
+- Verifier `JumpIfFalse` / stack-flow soundness (PHX-045)
+- Silent codegen fallbacks → diagnostics (PHX-016, PHX-034, PHX-037, PHX-041)
+- Module-local link rebasing (PHX-033, PHX-036)
+- VM width-faithful integers, heap cap, UAF detection, `VerifiedModule` (PHX-051–PHX-055)
+- Heap slices V0-062, trait defaults V0-063, Result match V0-064, dealloc V0-065 (implemented; docs may lag — see P1 PHX-032)
+
+---
+
+## Suggested work order
+
+1. **P0 compiler regressions** — cursor drift → allocator/mono → stack depth in `examples/errors` → seven `cli_e2e` tests green.
+2. **P1 doc-truth (PHX-032)** — update completion roadmap + implementation checklist; fix `language-v0.md` link target.
+3. **P1 error-handling polish** — must-use errors + golden diagnostics.
+4. **Announce Language v0** when P0 + P1 verification items pass.
+5. **P2 Std v0** — DynamicArray/UniquePtr suites → generic derive → String → fmt.
+
+---
+
+## Quick counts
+
+
+| Tier                 | Items  | Primary gate |
+| -------------------- | ------ | ------------ |
+| P0 — Blockers        | 9      | Language v0  |
+| P1 — Beta / announce | 10     | Language v0  |
+| P2 — Std v0          | 8      | Std v0       |
+| P3 — Post-MVP        | 9      | Post-beta    |
+| **Total actionable** | **36** |              |
+
+

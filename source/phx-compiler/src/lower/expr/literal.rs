@@ -7,7 +7,8 @@ use phx_syntax::token::IntegerSuffix;
 
 use crate::ir::IrConst;
 use crate::ir::{IrBinOp, IrInst};
-use crate::lower::ctx::{LowerCtx, bool_ty, fn_ptr_target, lookup_resolution, prim_kind_byte};
+use crate::lower::ctx::{LowerCtx, bool_ty, lookup_resolution, prim_kind_byte};
+use crate::resolver::DefKind;
 use crate::typeck::{BindingKind, Ty, TypeId, primitive_kind_for_type};
 use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
 
@@ -161,10 +162,22 @@ pub(super) fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
         return;
     }
     if let Some(def) = lookup_resolution(&ctx.typed.resolved, ctx.module, ident.id) {
-        if let Some((target_kind, target_id)) = fn_ptr_target(ctx.typed, def) {
+        let foreign = ctx
+            .typed
+            .resolved
+            .defs
+            .get(def.index() as usize)
+            .is_some_and(|d| d.kind == DefKind::ExternFn);
+        let phoenix_fn = ctx
+            .typed
+            .resolved
+            .defs
+            .get(def.index() as usize)
+            .is_some_and(|d| d.kind == DefKind::Fn);
+        if foreign || phoenix_fn {
             ctx.emit_here(IrInst::MakeFnPtr {
-                target_kind,
-                target_id,
+                callee: def,
+                foreign,
                 ty,
             });
         }

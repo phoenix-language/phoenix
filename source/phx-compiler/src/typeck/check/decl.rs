@@ -50,7 +50,7 @@ impl TypeChecker<'_> {
                 args: Vec::new(),
             });
             return Some(if let Some(subst) = &self.subst {
-                Substitution::apply(&mut self.types, id, subst)
+                Substitution::apply(&mut self.types, id, subst, self.resolved)
             } else {
                 id
             });
@@ -102,7 +102,30 @@ impl TypeChecker<'_> {
                 return Some(self_ty);
             }
         }
-        self.lower_resolved_named_type(name, generics, type_defs, span)
+        if let Some(id) = self.lower_resolved_named_type(name, generics, type_defs, span) {
+            return Some(id);
+        }
+        let args = generics
+            .as_ref()
+            .map(|gs| {
+                gs.iter()
+                    .map(|g| self.lower_ast_type_with_defs(g, type_defs))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let def = self.type_defs.get(&name.symbol).copied()?;
+        if args.is_empty() {
+            let id = self.types.intern(&Ty::Named {
+                def,
+                args: Vec::new(),
+            });
+            return Some(if let Some(subst) = &self.subst {
+                Substitution::apply(&mut self.types, id, subst, self.resolved)
+            } else {
+                id
+            });
+        }
+        Some(self.resolve_instantiated_named(def, args, span))
     }
 
     pub(in crate::typeck::check) fn lower_ast_type_with_defs(
@@ -163,7 +186,7 @@ impl TypeChecker<'_> {
             _ => lower_type(&mut self.types, type_defs, &ty.inner),
         };
         let id = if let Some(subst) = &self.subst {
-            Substitution::apply(&mut self.types, id, subst)
+            Substitution::apply(&mut self.types, id, subst, self.resolved)
         } else {
             id
         };
@@ -818,9 +841,9 @@ impl TypeChecker<'_> {
             if let Ty::Fn { params, ret } = self.types.get(fn_ty).clone() {
                 let params: Vec<_> = params
                     .iter()
-                    .map(|p| Substitution::apply(&mut self.types, *p, &trait_subst))
+                    .map(|p| Substitution::apply(&mut self.types, *p, &trait_subst, self.resolved))
                     .collect();
-                let ret = Substitution::apply(&mut self.types, ret, &trait_subst);
+                let ret = Substitution::apply(&mut self.types, ret, &trait_subst, self.resolved);
                 fn_ty = self.types.intern(&Ty::Fn { params, ret });
             }
             self.value_types.insert(*fn_def, fn_ty);

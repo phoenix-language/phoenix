@@ -66,6 +66,18 @@ pub(super) fn exec_call(
     call_phoenix(machine, module, callee_id)
 }
 
+/// Placeholder pushed to the caller when a `()` callee returns with an empty stack.
+///
+/// Codegen treats every [`phx_bytecode::Opcode::Call`] as producing one stack cell; callers
+/// discard unit results with [`phx_bytecode::Opcode::Pop`].
+fn push_unit_return_value(machine: &mut Machine) {
+    machine.ctx.stack.push(
+        machine
+            .runtime
+            .push_aggregate(Aggregate::Tuple { elems: vec![] }),
+    );
+}
+
 /// Returns from the current function, optionally finishing the run.
 pub(super) fn exec_return(machine: &mut Machine) -> Option<ReturnCapture> {
     let return_value = machine.ctx.stack.pop();
@@ -84,6 +96,8 @@ pub(super) fn exec_return(machine: &mut Machine) -> Option<ReturnCapture> {
     }
     if let Some(v) = return_value {
         machine.ctx.stack.push(v);
+    } else {
+        push_unit_return_value(machine);
     }
     None
 }
