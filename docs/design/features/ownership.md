@@ -186,6 +186,8 @@ Move tracking applies to **whole bindings**, not individual fields within a stru
 - **Field assignment** (`p.field = v`) assigns through the receiver; MVP does not model partial mutability after a field was moved out.
 - Only **bare-identifier** whole-value transfer (above) marks a binding **Moved**; extracting a non-Copyable field via `.field` or pattern bind does not invalidate the parent until post-MVP path-sensitive analysis (same deferred family as branch/loop flow-insensitivity — see drop-planning limitation below).
 
+  **PHX-025 / ROADMAP note:** rejecting field-extraction moves (`var x = s.non_copyable_field`) is **deferred** — v0 does not implement partial-move rejection or per-field invalidation; see [ROADMAP.md](../ROADMAP.md) Resolved Design Decisions #2.
+
 Post-MVP ownership analysis will use path-sensitive last-use and move-through-call rules aligned with the full design above.
 
 ### MVP: returning borrows of locals

@@ -8,7 +8,7 @@ How Phoenix divides compiler-known types from library-defined behavior, and the 
 
 | Layer | Purpose | Examples |
 |---|---|---|
-| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, pointers, **Arrays** `[T; N]`, slices, tuples, `()`, `Name :: struct`, `Name :: enum` (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
+| Core language types | Compiler-known value/type forms | numeric primitives, `bool`, **`str`** UTF-8 view, pointers, **Arrays** `[T; N]`, slices, tuples, `()`, `Name :: struct`, `Name :: enum` (see [Phased: Option and Result](#phased-option-and-result-language--std)) |
 | VM runtime primitives | Scheduler-owned execution machinery (not user-declared types) | execution context, schedulable-I/O markers in std signatures, mailbox registration (post-MVP) |
 | Compile-time directives | Compiler behavior controls | `#import`, `#inline`, `#cold`, `#unsafe` |
 | Runtime directives | Opt-in explicit actor/message operations | `@spawn`, `@send`, `@receive`, `@reply` (post-MVP) |
@@ -66,6 +66,7 @@ Each numeric primitive occupies **its declared width** in constants, local slots
 | `+` `-` `*` `/` | yes (wrapping / truncating div) | yes (wrapping / truncating div) | yes (IEEE 754) |
 | `%` | yes | yes | yes (IEEE truncated remainder) |
 | `**` | **no (v0)** | **no (v0)** | **no (v0)** |
+| `<<` `>>` | yes (masked shift count — see [wide-integers.md](wide-integers.md)) | yes (masked) | **no (v0)** |
 | Comparisons | yes | yes (unsigned order) | yes (IEEE 754 ordered; `NaN` unordered — `==` false, `!=` true for `NaN` vs `NaN`; `<` `<=` `>` `>=` false when either operand is `NaN`) |
 
 Width-accurate execution through `u128` is normative; see [wide-integers.md](wide-integers.md).
@@ -340,15 +341,41 @@ Do not treat a function name as a move-only non-copyable value blob; that shape 
 
 ---
 
-## Phased: Option and Result (language → std)
+## Phased: `str` (language → std)
 
-Phoenix has no `null`. **Absence and failure are std concerns**, not compiler builtins in MVP.
+Core text in Language v0 is a **compiler-known** UTF-8 view — `Ty::Str` in the type checker — not a std enum or struct.
 
 | Layer | What belongs there |
 |---|---|
-| **Language** | `struct`, `enum`, `trait`, `impl`, generics, `match`, `if`, moves/`Copyable`, primitive types, explicit casts; optional **sugar** (`?`, `Some`/`None`/`Ok`/`Err` patterns) lowered against std-defined types once std ships |
-| **Std** | `Option`, `Result`, `Clone`, `Copyable`, collections, text helpers, I/O, formatting — imported via `#import` / prelude |
-| **Compiler (MVP)** | Knows primitives and user `enum`/`struct` only; **rejects** `Option`/`Result` types and std ctor/`?` syntax until std exists |
+| **Language** | `str` type, `"…"` literals, Tier A casts (`str as [u8]`, `[u8; N] as str` when UTF-8 is provable at compile time); **Copyable** fat-pointer semantics |
+| **Std** | Owned growable text (`String` over `DynamicArray<u8>`), formatting, comparison traits — post–Std v0 |
+| **Compiler (v0)** | `Ty::Str` special-case; lowers via `MakeStr` + constant-pool rodata; heap-backed views via V0-062 slices |
+
+**Representation (normative through Language v0):**
+
+- Runtime shape: `(ptr, len)` fat pointer — same width convention as `[u8]` slice views but a **distinct** type (`str` ≠ `[u8]`).
+- **Copyable:** bitwise copy of the fat pointer (like `[T]` slices). Copying a `str` does not duplicate UTF-8 bytes.
+- **Not owned text:** `str` is a view; heap/rodata provenance is the caller's responsibility. Std `String` owns bytes.
+
+**Provenance:**
+
+- `"…"` literals → rodata in the module constant pool (`MakeStr`).
+- `str as [u8]` → byte slice view over the same storage.
+- Heap-backed UTF-8 views follow V0-062 heap slices when constructed inside `unsafe` (same `(ptr, len)` rules as `[u8]`).
+
+**Phased migration (deferred):** A future edition may move the text view type into std (mirroring the [Copyable bootstrap](ownership.md#phased-copyable-language--std) path). Through Language v0 the compiler keeps `Ty::Str` and implicit Copyable fat-pointer copy — no migration design now.
+
+---
+
+## Phased: Option and Result (language → std)
+
+Phoenix has no `null`. **Absence and failure are std enums** — not compiler builtins (`Ty::Option` / `Ty::Result` do not exist).
+
+| Layer | What belongs there |
+|---|---|
+| **Language** | `struct`, `enum`, `trait`, `impl`, generics, `match`, `if`, moves/`Copyable`, primitive types, explicit casts; **sugar** (`?`, `Some`/`None`/`Ok`/`Err` patterns) lowered against std-defined types |
+| **Std** | `Option`, `Result`, `Clone`, `Copyable`, collections, text helpers, I/O, formatting — `#import` or default prelude |
+| **Compiler (bootstrap history)** | Before std shipped, the compiler **rejected** bare `Option`/`Result` names and `?` without prelude/import |
 
 **Std shape (ordinary generic enums, not language primitives):**
 
@@ -364,11 +391,11 @@ pub Result :: enum<Ok, Err> {
 }
 ```
 
-**When std lands:** add prelude re-exports, type-check `Option`/`Result` like any other enum, wire `?` and ctor/pattern sugar to those definitions ([error-handling.md](error-handling.md)). Do not reintroduce `Ty::Option` / `Ty::Result` in the type checker.
+**Shipped (V0-041+):** prelude re-exports (default `prelude = true`), type-check `Option`/`Result` like any other generic enum, `?` and ctor/pattern sugar wired to std definitions ([error-handling.md](error-handling.md)). Do not reintroduce `Ty::Option` / `Ty::Result` in the type checker.
 
-**Grammar note:** [grammar.ebnf](../grammar.ebnf) may still parse `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, and `?` for forward compatibility; MVP type-check reports them as post-MVP std features.
+**Grammar note:** [grammar.ebnf](../grammar.ebnf) parses `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, and `?`; without prelude/import, bare names still fail with `UnresolvedType` / import hints.
 
-**Already aligned:** `Clone` and phased `Copyable` live in std ([traits.md](traits.md), [ownership.md](ownership.md)); no primitive owned `string` (std `String` only); core `str` view is a language primitive; collections and I/O are post-MVP ([mvp.md](../mvp.md)).
+**Already aligned:** `Clone` and phased `Copyable` live in std ([traits.md](traits.md), [ownership.md](ownership.md)); no primitive owned `string` (std `String` only); core `str` view is a language primitive ([Phased: `str`](#phased-str-language--std)); collections and I/O are post-MVP ([mvp.md](../mvp.md)).
 
 ---
 

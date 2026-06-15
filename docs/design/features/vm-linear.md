@@ -265,6 +265,7 @@ Loader must reject bytecode when:
 - local slot indexes exceed `local_count`
 - stack effect analysis exceeds `stack_max` or underflows
 - at each `RETURN`, simulated operand-stack depth is not exactly the return stack cells (`0` for unit / `return_type_id == 0`, `1` otherwise)
+- **`Trap` (opcode 37)** must have **zero operands**; nonzero operand count is a verify error
 - `entry_function_id` is missing or has non-zero arity
 
 ---

@@ -43,7 +43,7 @@ These must pass before announcing Language v0 or calling the beta gate complete.
 
 - [x] **All seven failing `cli_e2e` tests pass** — `build_dynamic_array_smoke`, `build_dynamic_array_drop_smoke`, `build_unique_ptr_smoke`, `build_unique_ptr_drop_smoke`, `build_std_traits`, `examples_errors_build_run`, `run_smoke_fixtures`. Verified 2026-06-15. **Owner:** tests (verify) + compiler (fix). **Gate:** Language v0.
 
-- [x] **`cargo test --workspace` fully green** — required by `just pre-commit` / PHX-060. **Owner:** tests. **Gate:** Language v0.
+- [x] `**cargo test --workspace` fully green** — required by `just pre-commit` / PHX-060. **Owner:** tests. **Gate:** Language v0.
 
 ---
 
@@ -53,13 +53,11 @@ ROADMAP Milestones 7–8 exit criteria and doc truth. Complete after P0 is green
 
 ### Documentation truth (PHX-032)
 
-- [ ] **PHX-032 doc-truth pass** — Sync design docs with implemented behavior: mark V0-063 (trait defaults) and V0-064 (multi-payload `Result` match) **done** in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md); update stale partial rows in [mvp-implementation-checklist.md](mvp-implementation-checklist.md) (survey date, `?` lowering status, opcode counts). **Ref:** PHX-032. **Owner:** docs.
+- [x] **PHX-032 doc-truth pass** — Sync design docs with implemented behavior: mark V0-063 (trait defaults) and V0-064 (multi-payload `Result` match) **done** in [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md); update stale partial rows in [mvp-implementation-checklist.md](mvp-implementation-checklist.md) (survey date, `?` lowering status, opcode counts). **Ref:** PHX-032. **Owner:** docs.
 
-- [ ] **Restore or replace missing `language-v0.md`** — Referenced from `mvp.md`, `contributing.md`, and `grammar-deferred.md` but absent from `docs/design/`; either restore the checklist file or retarget all links to `language-v0-completion-roadmap.md`. **Ref:** PHX-032. **Owner:** docs.
+- [x] **Confirm ownership / numeric docs match M0–M2 decisions** — Verify [ownership.md](design/features/ownership.md) documents loop move rule and MVP whole-value move policy; [wide-integers.md](design/features/wide-integers.md) and [type-system.md](design/features/type-system.md) document masked shifts and IEEE NaN; [vm-linear.md](design/features/vm-linear.md) documents stack-at-`RETURN` and `Trap` operand contract. **Ref:** ROADMAP Resolved Design Decisions #1–#4, PHX-032. **Owner:** docs.
 
-- [ ] **Confirm ownership / numeric docs match M0–M2 decisions** — Verify [ownership.md](design/features/ownership.md) documents loop move rule and MVP whole-value move policy; [wide-integers.md](design/features/wide-integers.md) and [type-system.md](design/features/type-system.md) document masked shifts and IEEE NaN; [vm-linear.md](design/features/vm-linear.md) documents stack-at-`RETURN` and `Trap` operand contract. **Ref:** ROADMAP Resolved Design Decisions #1–#4, PHX-032. **Owner:** docs.
-
-- [ ] **Document `str` / `Ty::Str` normative Copyable view** — Per ROADMAP M5 / Resolved Decision #6: rodata-backed UTF-8 view, phased migration note in `type-system.md`. **Owner:** docs. **Gate:** Language v0.
+- [x] **Document `str` / `Ty::Str` normative Copyable view** — Per ROADMAP M5 / Resolved Decision #6: rodata-backed UTF-8 view, phased migration note in `type-system.md`. **Owner:** docs. **Gate:** Language v0.
 
 ### Error-handling polish (ROADMAP M7)
 

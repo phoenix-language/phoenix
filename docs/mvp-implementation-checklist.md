@@ -6,7 +6,7 @@
 
 **How to use with agents:** Attach this file to prompts. Work top-down in [Suggested implementation order](#suggested-implementation-order). For each row, read **Status**, implement in **Where** until **Acceptance** passes. Do not invent semantics — [design docs](design/README.md) are authoritative.
 
-**Last surveyed:** MVP partials (`if const` / `if var` pattern bindings). **`cargo test --workspace`:** all crates green. **`cargo clippy --workspace --all-targets -- -D warnings`:** green. **`tests/cli/run.sh`:** 34 single-file fixtures + `modules/main.phx`. **MVP acceptance:** [tests/cli/fixtures/mvp_acceptance/](../tests/cli/fixtures/mvp_acceptance/). **CI:** `.github/workflows/ci.yml` `rust` (fmt, clippy, tests) + `cli` (check, run, build, compile, help).
+**Last surveyed:** 2026-06-15 — PHX-032 doc-truth pass. **`just pre-commit`:** fmt, clippy, dep-check, `cargo test --workspace`, `just test-lang`. **Opcodes:** **51** wired (`0`–`50`, incl. `IndexStore`). **CLI E2E:** `tests/integration/tests/cli_e2e.rs` + `run_smoke.rs` via `just test-lang` / `just test-cli` (shell `run.sh` removed). **Std prelude:** ships by default (`prelude = true`); phased sections in [type-system.md](design/features/type-system.md) describe bootstrap history. **MVP acceptance:** [tests/cli/fixtures/mvp_acceptance/](../tests/cli/fixtures/mvp_acceptance/). **CI:** `.github/workflows/ci.yml` `rust` + `cli` jobs.
 
 ---
 
@@ -81,7 +81,7 @@ High-level pass/fail against [mvp.md](design/mvp.md) and [type-system.md](design
 | Locals / stack | Typed slots; `prim_kind` operands on const, load/store, and arithmetic |
 | Aggregates | Arena handles: struct, enum, tuple, **Array**, **slice** `(ptr, len)` |
 | PHX0 | Format minor **1**; **5** sections (constants, types, functions, code, **local layouts**) |
-| Opcodes | **50** wired (`0`–`49`), including `MakeSlice`, `MakeSliceFromPtr` (V0-062), `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc`/`Free` (V0-030/V0-065) |
+| Opcodes | **51** wired (`0`–`50`), including `MakeSlice`, `MakeSliceFromPtr` (V0-062), `IndexStore`, `AddressOfLocal`, `PtrLoad`/`PtrStore`, `Alloc`/`Free` (V0-030/V0-065), `MakeStr` |
 | Stack verify | CFG join analysis in `stack_flow.rs` (deep `&&`/`||` chains) |
 | Lifetime / drop | V0-054: scope-end drop glue for `Drop` types; flow-insensitive; see [traits.md](design/features/traits.md#drop-resource-cleanup) |
 | Text | Core **`str`** view (`"…"` literals, rodata); **`[u8; N]`** / `b"…"` for binary; std **`String`** (owned) post-std |
@@ -107,7 +107,7 @@ A credible MVP demo `.phx` should be able to:
 - [x] *(V0-044)* `?` and ctor shorthand without explicit `#import` when `prelude = true` (default)
 - [x] *(V0-043)* Core std traits (`Copyable`, `Clone`, `PartialEq`, `Eq`, `Debug`) with cross-module bounds
 
-**Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **`run.sh`:** 31 programs + `modules/main.phx`. **Acceptance project:** `mvp_acceptance/` via `build.sh`.
+**Reference fixtures today:** see [tests/cli/README.md](../tests/cli/README.md). **CLI E2E:** `cli_e2e.rs` + `run_smoke.rs` (`just test-lang`). **Acceptance project:** `mvp_acceptance/` via project build fixtures.
 
 ---
 
@@ -133,8 +133,8 @@ A credible MVP demo `.phx` should be able to:
 | Lower → IR                                                                       | done    | `source/phx-compiler/src/lower/`                       | CFG blocks, `IrInst`                                                 | `lower_sample_produces_ir` test                          |
 | IR → PHX0 codegen                                                                | done    | `source/phx-compiler/src/codegen/`                     | `codegen`, `emit.rs`                                                 | `codegen_sample_round_trip_and_verify`                   |
 | PHX0 encode/decode                                                               | done    | `source/phx-bytecode/src/module.rs`                    | Magic `PHX0`, **5** sections (incl. local layouts), minor v1           | Round-trip test in `codegen.rs`                          |
-| Bytecode verifier                                                                | done    | `source/phx-bytecode/src/verify.rs`                    | All 43 opcodes: operands, jumps, stack depth, locals               | Negative tests: jump, local, stack underflow             |
-| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | 43 opcodes; width-faithful scalars + arena aggregates + slices       | `tests/cli/run.sh` (31 + modules) |
+| Bytecode verifier                                                                | done    | `source/phx-bytecode/src/verify.rs`                    | All **51** opcodes: operands, jumps, stack depth at `RETURN`, locals | Negative tests: jump, local, stack underflow, `ReturnDepthMismatch` |
+| VM interpret verified module                                                     | done    | `source/phx-vm/src/interpreter.rs`                     | **51** opcodes; width-faithful scalars + arena aggregates + slices | `cli_e2e` / `run_smoke` fixtures |
 | Span-preserving AST                                                              | done    | `source/phx-syntax/src/ast/node.rs`, `phx-diagnostics` | Spans on nodes/tokens                                                | Errors include `Span` fields                             |
 | Interned identifiers                                                             | done    | `source/phx-syntax/src/intern.rs`                      | `Symbol` in AST                                                      | No raw `String` names in AST                             |
 | Source-backed diagnostics in CLI                                                 | done    | `source/phx-diagnostics/src/format.rs`                 | Line + caret for parse/type errors via `CompileError::format_with_source` | `phx check bad_type.phx` shows caret |
@@ -235,7 +235,7 @@ A credible MVP demo `.phx` should be able to:
 | Function calls                                | done    | `lower/expr.rs`           | `IrInst::Call`                                                                     | Call in sample IR                        |
 | `match`                                       | done    | `lower/expr.rs`           | Primitives + struct/enum via `MatchTag` / `GetField`                               | `enum_match.phx`, `match_int.phx`        |
 | `if const` / `if var`                         | done    | `lower/expr.rs`           | Pattern dispatch via `emit_arm_condition`; mismatch skips to `else`                | `if_const_struct.phx`, `if_const_enum_single_variant.phx`, `if_const_else.phx`          |
-| `?`                                           | deferred  | `lower/expr.rs`           | `PostfixOp::Try => {}`; post-MVP std only                                          | After std: early-return lowering         |
+| `?`                                           | done    | `lower/expr/call.rs`      | `MatchTag` + early-return desugar for `Result`/`Option`              | `std_try`, `std_try_from`, `question_mark_*` fixtures    |
 | Struct / enum value construction              | done    | `lower/expr.rs`           | `MakeStruct`, `MakeEnum`, `GetField`, `SetField`                                  | `struct_point.phx`, `struct_assign.phx`  |
 | Casts                                         | done    | `lower/expr.rs`           | `IrInst::Cast` with `from_kind`/`to_kind`                                          | `cast_width.phx`                         |
 | Field access `x.f`                            | done    | `lower/expr.rs`           | `GetField` / `SetField`                                                           | Aggregate fixtures                       |
@@ -248,9 +248,9 @@ A credible MVP demo `.phx` should be able to:
 
 | Item                                                                                                               | Status  | Where                            | Notes                                                    | Acceptance                   |
 | ------------------------------------------------------------------------------------------------------------------ | ------- | -------------------------------- | -------------------------------------------------------- | ---------------------------- |
-| MVP opcode set (20 opcodes)                                                                                        | partial | `phx-bytecode/src/opcode.rs`     | Includes aggregate opcodes 15–19                           | Documented subset stable     |
+| Opcode set (`0`–`50`, 51 total)                                                                                    | done    | `phx-bytecode/src/opcode.rs`     | Full MVP+ aggregate, ptr, heap, slice, str opcodes         | `verify_mutation` + CLI fixtures |
 | `CONST` / locals / arithmetic / compare / jumps / `CALL` / `RETURN`                                                | done    | `opcode.rs`, `emit.rs`           |                                                          | Verified sample module       |
-| `POP`, `MOD`, `NEG`, bitwise, `MAKE_*`, `GET_FIELD`, `INDEX`, `MATCH_*`, `MAKE_SOME/OK/…`, `TRY`, `ALLOC`, ptr ops | partial | `opcode.rs`, `emit.rs`, VM       | Aggregate `MAKE_*`/`GET_FIELD`/`SET_FIELD`/`MATCH_TAG` done | Aggregate fixtures verify    |
+| `POP`, `MOD`, `NEG`, bitwise, `MAKE_*`, `GET_FIELD`, `INDEX`/`INDEX_STORE`, `MATCH_*`, `ALLOC`/`FREE`, ptr/slice/str ops | done    | `opcode.rs`, `emit.rs`, VM       | `MakeEnum`/`MakeStruct`/`MatchTag`/`MakeStr`/`MakeSliceFromPtr` wired | Aggregate + heap + std fixtures |
 | Constants: width-native tags (1–16 byte ints, f32/f64, bool, blob)                                                 | done    | `const_pool.rs`, VM `load_const` | `prim_kind` on `CONST`                                   | `primitives_float.phx`, `byte_string.phx` |
 | Types section metadata                                                                                             | done    | `codegen/mod.rs`, `types.rs`     | Struct/enum aux from typeck layout tables                | Types round-trip in module   |
 | Symbols / debug section                                                                                            | missing | spec § symbols                   | Optional in MVP                                          | —                            |
@@ -266,8 +266,8 @@ A credible MVP demo `.phx` should be able to:
 | Item                        | Status  | Where                        | Notes                                 | Acceptance                                |
 | --------------------------- | ------- | ---------------------------- | ------------------------------------- | ----------------------------------------- |
 | Stack machine + call frames | done    | `frame.rs`, `interpreter.rs` |                                       | Nested `CALL` works                       |
-| `Value` model               | done    | `frame.rs`                   | `Scalar` (width-faithful) + `Agg` arena; slice aggregate | 31 CLI run fixtures                       |
-| Opcode interpreter          | done    | `interpreter.rs`             | 43 opcodes; `prim_kind` on scalar ops | Unsupported opcode → clean error          |
+| `Value` model               | done    | `frame.rs`                   | `Scalar` (width-faithful) + `Agg` arena; slice aggregate | `cli_e2e` / `run_smoke` fixtures |
+| Opcode interpreter          | done    | `interpreter.rs`             | **51** opcodes; `prim_kind` on scalar ops | Unsupported opcode → clean error          |
 | Deterministic run           | done    | `interpreter.rs`             | No I/O                                | Same bytecode → same result               |
 | Division by zero            | done    | `interpreter.rs`             | `VmError::DivisionByZero`             | Test / fixture                            |
 | Scope-end drop / RAII       | done    | typeck → lower → codegen     | Static `Call` to `Drop::drop`; no drop opcode | `drop.phx` fixture; use-after-drop rejected |
@@ -450,7 +450,7 @@ A credible MVP demo `.phx` should be able to:
 | Integration control_flow                  | done    | `tests/integration/tests/run_control_flow.rs` | compile → verify → run | `cargo test -p phx-integration-tests --test run_control_flow` |
 | Integration semantics                       | done    | `tests/integration/tests/run_semantics.rs` | `VmRunCapture::main_local` slot-index assertions | See table below (28 tests) |
 | Diagnostic golden tests                   | done    | `tests/integration/tests/diagnostics.rs` | `.stderr` sidecars in `tests/integration/diagnostics/` | `UPDATE_GOLDEN=1` to refresh |
-| Corpus of `.phx` programs                 | done    | `tests/cli/fixtures/`                   | 31 run + modules + project + `mvp_acceptance` + app_dep | [tests/cli/README.md](../tests/cli/README.md)        |
+| Corpus of `.phx` programs                 | done    | `tests/cli/fixtures/`                   | CLI E2E + project + `mvp_acceptance` + std fixtures | [tests/cli/README.md](../tests/cli/README.md)        |
 | MVP acceptance project                    | done    | `tests/cli/fixtures/mvp_acceptance/`    | Struct + enum `match` + `#import` + `phoenix.toml` build | `build.sh`, `run_build.rs`                           |
 | Unreachable `match` arm errors            | done    | `typeck/check.rs`, `match_unreachable_arm.phx` | Duplicate variant/literal/`_` arms rejected          | `check.sh`                                             |
 | Negative diagnostics fixtures             | done    | `check.sh`                              | `bad_type`, `missing_main`, `use_after_move`, `mixed_width`, module errors | Substring + caret assertions                         |
@@ -519,7 +519,7 @@ Aligned with `.cursor/rules/phoenix.mdc` (lexer → parser → AST → resolver 
 1. ~~Fix `continue` in `if`~~ — done (loop exit placement + `var` assign `StoreLocal`).
 2. ~~Logical ops~~ — done (`&&` / `||` short-circuit).
 3. ~~Match lowering (primitives)~~ — done for literal / `_` / ident; enum/struct patterns Phase 2.
-4. ~~E2E fixtures~~ — `run.sh` + integration tests.
+4. ~~E2E fixtures~~ — `cli_e2e` + `run_smoke` integration tests.
 
 ### Phase 2 — User-defined aggregates (done)
 
@@ -539,7 +539,7 @@ Fixtures: `struct_point.phx`, `struct_assign.phx`, `enum_match.phx`, `struct_met
 5. ~~**Source diagnostics**~~ — caret rendering in `phx check` / `phx run` (`tests/cli/check.sh`).
 6. ~~**Language surface:**~~ explicit casts, tuple/array/slice runtime, `if const` / `if var`, trait impl dispatch, `b"…"`, frame refs.
 
-Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `run.sh` runs **34** programs + modules.
+Fixtures: see [Demo bar](#demo-bar-minimum-showcase-program); `just test-lang` runs CLI E2E + smoke tests.
 
 ### Phase 4 — Polish (mostly done)
 
@@ -598,7 +598,7 @@ Do not implement scheduler/actors/std I/O until the memory model and module stor
   → phx-compiler/lower → ir    [control flow + struct/enum aggregates]
   → phx-compiler/codegen       [PHX0 + types section metadata]
   → phx-bytecode/verify        [scalar + aggregate opcode rules; local layouts]
-  → phx-vm/interpreter         [width-faithful scalars + arena + slices; 43 opcodes]
+  → phx-vm/interpreter         [width-faithful scalars + arena + slices; 51 opcodes]
 ```
 
 ---
@@ -608,8 +608,8 @@ Do not implement scheduler/actors/std I/O until the memory model and module stor
 
 | Status      | Count |
 | ----------- | ----- |
-| **done**    | ~82   |
-| **partial** | ~35   |
+| **done**    | ~85   |
+| **partial** | ~32   |
 | **missing** | ~18   |
 | **deferred** (post-MVP std) | 4 |
 | **Total**   | ~139  |
