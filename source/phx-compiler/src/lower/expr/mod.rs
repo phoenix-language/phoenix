@@ -97,6 +97,7 @@ pub(super) fn lower_expr_inner(
                 }
                 return;
             }
+            let operand_id = ExprId::from_raw(ctx.next_expr);
             lower_expr(ctx, operand);
             match op {
                 UnaryOp::Neg => {
@@ -118,15 +119,13 @@ pub(super) fn lower_expr_inner(
                     });
                 }
                 UnaryOp::Deref => {
-                    if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, result_ty) {
-                        ctx.emit_here(IrInst::PtrLoad {
-                            prim_kind: kind.as_u8(),
-                            signed: primitive_load_signed(kind),
-                            result: result_ty,
-                        });
-                    } else if aggregate_deref_target(&ctx.typed.types, result_ty) {
-                        ctx.emit_here(IrInst::LoadAggViaLocalPtr);
-                    }
+                    let operand_ty = ctx
+                        .typed
+                        .expr_types
+                        .get(&operand_id)
+                        .copied()
+                        .unwrap_or(result_ty);
+                    lower_ptr_deref(ctx, operand, operand_ty, result_ty);
                 }
                 UnaryOp::Ref | UnaryOp::RefMut => {
                     // `AddressOfLocal` emitted above; operand already consumed.
@@ -328,11 +327,66 @@ fn single_field_tuple_inner(ctx: &LowerCtx<'_>, ty: TypeId) -> Option<TypeId> {
     Some(layout.fields[0].1)
 }
 
-pub(super) fn aggregate_deref_target(types: &crate::typeck::TypeInterner, ty: TypeId) -> bool {
-    matches!(
-        types.get(ty),
-        Ty::Named { .. } | Ty::Tuple(_) | Ty::Array { .. }
-    )
+pub(super) fn aggregate_deref_target(typed: &TypedProgram, ty: TypeId) -> bool {
+    match typed.types.get(ty) {
+        Ty::Named { def, .. } => typed
+            .resolved
+            .defs
+            .get(def.index() as usize)
+            .is_some_and(|d| matches!(d.kind, DefKind::Struct | DefKind::Enum)),
+        Ty::Tuple(_) | Ty::Array { .. } => true,
+        _ => false,
+    }
+}
+
+fn lower_ptr_deref(
+    ctx: &mut LowerCtx<'_>,
+    operand: &ExprNode,
+    operand_ty: TypeId,
+    result_ty: TypeId,
+) {
+    let load_ty = deref_load_type(ctx, operand, operand_ty, result_ty);
+    if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, load_ty) {
+        ctx.emit_here(IrInst::PtrLoad {
+            prim_kind: kind.as_u8(),
+            signed: primitive_load_signed(kind),
+            result: load_ty,
+        });
+    } else if aggregate_deref_target(ctx.typed, load_ty) {
+        ctx.emit_here(IrInst::LoadAggViaLocalPtr);
+    }
+}
+
+fn deref_load_type(
+    ctx: &LowerCtx<'_>,
+    operand: &ExprNode,
+    operand_ty: TypeId,
+    result_ty: TypeId,
+) -> TypeId {
+    if let Some(pointee) = prim::pointee_type_for_deref_operand(ctx, operand, operand_ty) {
+        return pointee;
+    }
+    if primitive_kind_for_type(&ctx.typed.types, result_ty).is_some() {
+        return result_ty;
+    }
+    if let Ty::Ptr { inner, .. } = ctx.typed.types.get(operand_ty) {
+        if primitive_kind_for_type(&ctx.typed.types, *inner).is_some() {
+            return *inner;
+        }
+        if primitive_kind_for_type(&ctx.typed.types, ctx.layout.return_type).is_some() {
+            return ctx.layout.return_type;
+        }
+    }
+    if aggregate_deref_target(ctx.typed, result_ty) {
+        return result_ty;
+    }
+    if primitive_kind_for_type(&ctx.typed.types, ctx.layout.return_type).is_some() {
+        return ctx.layout.return_type;
+    }
+    match ctx.typed.types.get(operand_ty) {
+        Ty::Ptr { inner, .. } => *inner,
+        _ => result_ty,
+    }
 }
 
 pub(super) fn field_result_ty(ctx: &LowerCtx<'_>, struct_def: DefId, field: Symbol) -> TypeId {

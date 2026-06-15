@@ -72,6 +72,43 @@ fn named_parts_from_ty(ctx: &LowerCtx<'_>, ty: TypeId) -> Option<(DefId, Vec<Typ
     }
 }
 
+/// Concrete pointee type for `*expr` when expr types are still generic after monomorphization.
+pub(super) fn pointee_type_for_deref_operand(
+    ctx: &LowerCtx<'_>,
+    operand: &ExprNode,
+    operand_ty: TypeId,
+) -> Option<TypeId> {
+    if let Ty::Ptr { inner, .. } = ctx.typed.types.get(operand_ty) {
+        if primitive_kind_for_type(&ctx.typed.types, *inner).is_some() {
+            return Some(*inner);
+        }
+    }
+    match &operand.inner {
+        Expr::Postfix { base, ops } if !ops.is_empty() => {
+            let PostfixOp::Field(field) = ops.last()? else {
+                return None;
+            };
+            let (def, args) = named_parts_from_base(ctx, base)?;
+            let idx = ctx
+                .typed
+                .layout
+                .struct_field_index(def, field.symbol, &args)?;
+            let fty = ctx
+                .typed
+                .layout
+                .struct_layout(def, &args)?
+                .fields
+                .get(idx as usize)?
+                .1;
+            match ctx.typed.types.get(fty) {
+                Ty::Ptr { inner, .. } => Some(*inner),
+                _ => primitive_kind_for_type(&ctx.typed.types, fty).map(|_| fty),
+            }
+        }
+        _ => None,
+    }
+}
+
 fn literal_wire_kind(lit: &Literal) -> Option<u8> {
     match lit {
         Literal::Int(i) => {

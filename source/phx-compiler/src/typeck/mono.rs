@@ -225,12 +225,19 @@ fn monomorphize_functions(
         subst.extend_generic_param_aliases(&typed.resolved, base_def.module);
         let base_module = base_def.module;
         let base_span = base_def.span;
+        let workspace = workspace_package_name(typed);
+        let dep_export_shell = should_monomorphize_in_dependency(typed, inst, &workspace);
+        let spec_owner = if dep_export_shell {
+            base_module
+        } else {
+            inst.owner_module
+        };
         let spec_def = match alloc_specialized_def(
             &mut typed.resolved,
             inst.base_fn,
             &inst.args,
             &typed.types,
-            inst.owner_module,
+            spec_owner,
         ) {
             Ok(id) => id,
             Err(AllocSpecializedDefError::Intern(phx_syntax::InternError::TableFull)) => {
@@ -259,6 +266,25 @@ fn monomorphize_functions(
             .unwrap_or(false)
         {
             typed.fn_effective_unsafe.insert(spec_def, true);
+        }
+        if dep_export_shell {
+            for node_id in &inst.call_sites {
+                for module in &typed.resolved.modules {
+                    resolution_patches.insert(
+                        ResolutionKey {
+                            module: module.id,
+                            node_id: *node_id,
+                        },
+                        spec_def,
+                    );
+                }
+            }
+            for def in typed.associated_fn_sites.values_mut() {
+                if *def == inst.base_fn {
+                    *def = spec_def;
+                }
+            }
+            continue;
         }
         let mut checker = TypeChecker::new_with_substitution(
             &typed.resolved,
@@ -817,6 +843,60 @@ pub(crate) fn apply_mono_worklist(
 
 fn module_in_workspace_package(logical: &str, workspace: &str) -> bool {
     logical == workspace || logical.starts_with(&format!("{workspace}::"))
+}
+
+fn workspace_package_name(typed: &TypedProgram) -> String {
+    let entry_module = typed
+        .entry
+        .or(typed.resolved.main_fn)
+        .and_then(|d| typed.resolved.defs.get(d.index() as usize))
+        .map(|d| d.module);
+    if let Some(module) = entry_module {
+        if let Some(m) = typed.resolved.modules.get(module as usize) {
+            return m
+                .logical_path
+                .split("::")
+                .next()
+                .unwrap_or(m.logical_path.as_str())
+                .to_owned();
+        }
+    }
+    typed
+        .resolved
+        .modules
+        .first()
+        .map(|m| {
+            m.logical_path
+                .split("::")
+                .next()
+                .unwrap_or(m.logical_path.as_str())
+                .to_owned()
+        })
+        .unwrap_or_default()
+}
+
+fn module_logical_path(typed: &TypedProgram, module_id: u32) -> Option<String> {
+    typed
+        .resolved
+        .modules
+        .get(module_id as usize)
+        .map(|m| m.logical_path.clone())
+}
+
+/// Imported generic free functions are specialized in the dependency crate, not re-lowered here.
+fn should_monomorphize_in_dependency(
+    typed: &TypedProgram,
+    inst: &MonoInst,
+    workspace: &str,
+) -> bool {
+    let base_def = &typed.resolved.defs[inst.base_fn.index() as usize];
+    let Some(logical) = module_logical_path(typed, base_def.module) else {
+        return false;
+    };
+    if module_in_workspace_package(&logical, workspace) {
+        return false;
+    }
+    impl_type_def_for_method(typed, inst.base_fn).is_none()
 }
 
 fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {

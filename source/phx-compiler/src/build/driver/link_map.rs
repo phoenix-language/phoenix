@@ -165,8 +165,14 @@ pub(super) fn build_global_fn_map(
             if module_in_workspace_package(&logical, workspace) {
                 continue;
             }
-            // Monomorphized impl methods are lowered in the consumer crate.
+            // Monomorphized impl methods are lowered in the consumer crate; imported generic
+            // free functions map to the dependency's mangled export.
             if typed.specialized_from.contains_key(&def_id) {
+                let name = interner.resolve(def.name).unwrap_or("<?>");
+                let export_id = mangle_export_id(&logical, "fn", name);
+                if let Some(&id) = dep_export_fn_ids.get(&export_id) {
+                    map.insert(def_id, id);
+                }
                 continue;
             }
             let name = interner.resolve(def.name).unwrap_or("<?>");
