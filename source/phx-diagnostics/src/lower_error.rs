@@ -36,6 +36,8 @@ pub enum LowerError {
     MissingExprType {
         /// Raw expression id index assigned during type checking.
         expr_id: u32,
+        /// Lowering site when the missing type was discovered.
+        span: Span,
     },
     /// Lowering consumed a different number of expression ids than typeck assigned.
     ExprCursorDrift {
@@ -43,6 +45,8 @@ pub enum LowerError {
         expected: u32,
         /// Cursor after lowering the function body.
         found: u32,
+        /// Lowering site when drift was detected.
+        span: Span,
     },
 }
 
@@ -64,12 +68,12 @@ impl LowerError {
     #[must_use]
     pub const fn span(&self) -> Option<Span> {
         match self {
-            Self::UnresolvedCallee { span } => Some(*span),
+            Self::UnresolvedCallee { span }
+            | Self::MissingExprType { span, .. }
+            | Self::ExprCursorDrift { span, .. } => Some(*span),
             Self::InvalidBlockIndex { .. }
             | Self::LimitExceeded { .. }
-            | Self::MissingTryConvertLayout { .. }
-            | Self::MissingExprType { .. }
-            | Self::ExprCursorDrift { .. } => None,
+            | Self::MissingTryConvertLayout { .. } => None,
         }
     }
 }
@@ -98,13 +102,15 @@ impl fmt::Display for LowerError {
                     "internal error: missing {detail} for `?` conversion during lowering"
                 )
             }
-            Self::MissingExprType { expr_id } => {
+            Self::MissingExprType { expr_id, .. } => {
                 write!(
                     f,
                     "internal error: missing expression type for id {expr_id} during lowering"
                 )
             }
-            Self::ExprCursorDrift { expected, found } => {
+            Self::ExprCursorDrift {
+                expected, found, ..
+            } => {
                 write!(
                     f,
                     "internal error: expression cursor drift during lowering (expected {expected}, found {found})"
@@ -206,7 +212,10 @@ mod tests {
 
     #[test]
     fn missing_expr_type_display_and_code() {
-        let err = LowerError::MissingExprType { expr_id: 7 };
+        let err = LowerError::MissingExprType {
+            expr_id: 7,
+            span: Span::new(0, 0),
+        };
         assert_eq!(err.code(), DiagnosticCode::new("E4002"));
         assert!(err.span().is_none());
         assert!(err.to_string().contains("id 7"), "{}", err);
@@ -217,6 +226,7 @@ mod tests {
         let err = LowerError::ExprCursorDrift {
             expected: 10,
             found: 12,
+            span: Span::new(0, 0),
         };
         assert_eq!(err.code(), DiagnosticCode::new("E4002"));
         assert!(err.span().is_none());

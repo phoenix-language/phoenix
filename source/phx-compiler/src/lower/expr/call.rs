@@ -67,7 +67,7 @@ fn emit_ref_method_receiver(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
     if let Expr::Ident(ident) = &base.inner
         && let Some(slot) = slot_for_symbol(ctx.layout, ident.symbol)
     {
-        ctx.emit(IrInst::AddressOfLocal { slot });
+        ctx.emit_here(IrInst::AddressOfLocal { slot });
     }
 }
 
@@ -77,12 +77,12 @@ fn emit_ref_receiver_from_stack_value(ctx: &mut LowerCtx<'_>, callee: DefId, val
         return;
     }
     let slot = ctx.next_match_temp();
-    ctx.emit(IrInst::StoreLocal {
+    ctx.emit_here(IrInst::StoreLocal {
         slot,
         ty: value_ty,
         prim_kind: prim_kind_byte(ctx.typed, value_ty),
     });
-    ctx.emit(IrInst::AddressOfLocal { slot });
+    ctx.emit_here(IrInst::AddressOfLocal { slot });
 }
 
 #[allow(clippy::too_many_lines)]
@@ -131,7 +131,7 @@ fn lower_postfix_inner(
         match op {
             PostfixOp::Field(field) => {
                 if matches!(ctx.typed.types.get(receiver_ty), Ty::Ref { .. }) {
-                    ctx.emit(IrInst::LoadAggViaLocalPtr);
+                    ctx.emit_here(IrInst::LoadAggViaLocalPtr);
                     receiver_ty = match ctx.typed.types.get(receiver_ty) {
                         Ty::Ref { inner, .. } => *inner,
                         _ => receiver_ty,
@@ -150,7 +150,7 @@ fn lower_postfix_inner(
                         .struct_layout(def, &args)
                         .and_then(|s| s.fields.get(field_index as usize))
                         .map_or(result_ty, |(_, ty)| *ty);
-                    ctx.emit(IrInst::GetField {
+                    ctx.emit_here(IrInst::GetField {
                         type_id,
                         field_index,
                         result: field_ty,
@@ -196,7 +196,7 @@ fn lower_postfix_inner(
                     }
                     let (type_id, field_count) =
                         tuple_struct_make_operands(ctx, struct_def, result_ty);
-                    ctx.emit(IrInst::MakeStruct {
+                    ctx.emit_here(IrInst::MakeStruct {
                         type_id,
                         field_count,
                     });
@@ -216,7 +216,7 @@ fn lower_postfix_inner(
                             .type_id_for_named(meta.enum_def, &enum_args)
                             .unwrap_or(0);
                         let payload_count = u32::try_from(args.len()).unwrap_or(u32::MAX);
-                        ctx.emit(IrInst::MakeEnum {
+                        ctx.emit_here(IrInst::MakeEnum {
                             type_id,
                             variant_tag: meta.tag,
                             payload_count,
@@ -233,7 +233,7 @@ fn lower_postfix_inner(
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    ctx.emit(IrInst::CallIndirect {
+                    ctx.emit_here(IrInst::CallIndirect {
                         sig_type_id: meta.sig_type_id,
                         expected_arity: meta.expected_arity,
                         ret: result_ty,
@@ -253,7 +253,7 @@ fn lower_postfix_inner(
             }
             PostfixOp::Index(idx) => {
                 lower_expr(ctx, idx);
-                ctx.emit(IrInst::Index { result: result_ty });
+                ctx.emit_here(IrInst::Index { result: result_ty });
             }
             PostfixOp::Try => {
                 if let Some(meta) = ctx.typed.try_sites.get(&postfix_expr_id) {
@@ -281,7 +281,7 @@ fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
     let temp = meta.temp_slot;
     let temp_ty = meta.scrutinee_ty;
     let prim = prim_kind_byte(ctx.typed, temp_ty);
-    ctx.emit(IrInst::StoreLocal {
+    ctx.emit_here(IrInst::StoreLocal {
         slot: temp,
         ty: temp_ty,
         prim_kind: prim,
@@ -291,32 +291,32 @@ fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
     let fail_block = ctx.fresh_block();
     let cont_block = ctx.fresh_block();
 
-    ctx.emit(IrInst::LoadLocal {
+    ctx.emit_here(IrInst::LoadLocal {
         slot: temp,
         ty: temp_ty,
         prim_kind: prim,
     });
-    ctx.emit(IrInst::MatchTag {
+    ctx.emit_here(IrInst::MatchTag {
         type_id: bytecode_type_id,
         variant_tag: meta.success_tag,
     });
-    ctx.emit(IrInst::JumpIf {
+    ctx.emit_here(IrInst::JumpIf {
         then_block: succ_block,
         else_block: fail_block,
     });
 
     ctx.set_current(succ_block);
-    ctx.emit(IrInst::LoadLocal {
+    ctx.emit_here(IrInst::LoadLocal {
         slot: temp,
         ty: temp_ty,
         prim_kind: prim,
     });
-    ctx.emit(IrInst::GetField {
+    ctx.emit_here(IrInst::GetField {
         type_id: bytecode_type_id,
         field_index: 0,
         result: meta.success_ty,
     });
-    ctx.emit(IrInst::Jump { target: cont_block });
+    ctx.emit_here(IrInst::Jump { target: cont_block });
 
     ctx.set_current(fail_block);
     match &meta.failure_mode {
@@ -332,12 +332,12 @@ fn lower_try(ctx: &mut LowerCtx<'_>, meta: &TrySiteMeta) {
 }
 
 fn lower_try_return_scrutinee(ctx: &mut LowerCtx<'_>, temp: LocalSlot, temp_ty: TypeId, prim: u8) {
-    ctx.emit(IrInst::LoadLocal {
+    ctx.emit_here(IrInst::LoadLocal {
         slot: temp,
         ty: temp_ty,
         prim_kind: prim,
     });
-    ctx.emit(IrInst::Return {
+    ctx.emit_here(IrInst::Return {
         ty: ctx.layout.return_type,
     });
 }
@@ -371,17 +371,17 @@ fn lower_try_convert_err(
         .get(from_fn)
         .copied()
         .unwrap_or(*from_fn);
-    ctx.emit(IrInst::LoadLocal {
+    ctx.emit_here(IrInst::LoadLocal {
         slot: temp,
         ty: temp_ty,
         prim_kind: prim,
     });
-    ctx.emit(IrInst::GetField {
+    ctx.emit_here(IrInst::GetField {
         type_id: bytecode_type_id,
         field_index: 0,
         result: *err_in_ty,
     });
-    ctx.emit(IrInst::Call {
+    ctx.emit_here(IrInst::Call {
         callee,
         ret: *err_out_ty,
     });
@@ -424,12 +424,12 @@ fn lower_try_convert_err(
         );
         return;
     };
-    ctx.emit(IrInst::MakeEnum {
+    ctx.emit_here(IrInst::MakeEnum {
         type_id: ret_bytecode_type_id,
         variant_tag: err_tag,
         payload_count: 1,
     });
-    ctx.emit(IrInst::Return {
+    ctx.emit_here(IrInst::Return {
         ty: ctx.layout.return_type,
     });
 }
@@ -448,12 +448,12 @@ fn emit_call_or_intrinsic(
         lower_intrinsic_call(ctx, site, result_ty, expr_id);
         return;
     }
-    ctx.emit(IrInst::Call {
+    ctx.emit_here(IrInst::Call {
         callee,
         ret: result_ty,
     });
     if callee_returns_unit(ctx, callee, result_ty) {
-        ctx.emit(IrInst::Pop);
+        ctx.emit_here(IrInst::Pop);
     }
 }
 
@@ -484,7 +484,7 @@ fn lower_primitive_method(
             for arg in args {
                 lower_expr(ctx, arg);
             }
-            ctx.emit(IrInst::BinOp {
+            ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Eq,
                 result: result_ty,
                 prim_kind,
@@ -599,7 +599,7 @@ pub(super) fn emit_load_struct_base(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
     if let Expr::Ident(ident) = &base.inner {
         if binding_is_ref_to_struct(ctx, ident.symbol) {
             lower_ident(ctx, *ident, ty);
-            ctx.emit(IrInst::LoadAggViaLocalPtr);
+            ctx.emit_here(IrInst::LoadAggViaLocalPtr);
             return;
         }
     }
@@ -611,7 +611,7 @@ pub(super) fn store_base_local(ctx: &mut LowerCtx<'_>, base: &ExprNode) {
         && let Some(binding) = ctx.layout.binding(ident.symbol)
         && !matches!(ctx.typed.types.get(binding.ty), Ty::Ref { .. })
     {
-        ctx.emit(IrInst::StoreLocal {
+        ctx.emit_here(IrInst::StoreLocal {
             slot: binding.slot,
             ty: binding.ty,
             prim_kind: prim_kind_byte(ctx.typed, binding.ty),

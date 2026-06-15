@@ -758,18 +758,6 @@ A fully **safe-Rust** interpreter (zero `unsafe` in the crate — better than th
 
 ---
 
-**[PHX-070] Severity: Deferred**
-**Location:** `docs/design/features/vm-linear.md` section 5; `phx-compiler` codegen/link; `phx-vm` CLI attribution
-**Reviewer:** Language Designer
-
-**Status:** - [ ] Deferred (post-beta)
-
-**Issue:** No PHX0 section 5 symbols payload; `VmError` sites are bytecode offsets only — CLI/debugger cannot cite Phoenix source spans.
-**Prerequisites:** PHX-063 (IR spans for codegen) + PHX-056 (runtime `(function_id, pc)`).
-**Recommendation:** Encode `(function_id, pc) → file/span` tables at link time; map runtime errors to source in CLI/debugger; optional `Trap` diagnostic payload once symbols exist.
-
----
-
 **[PHX-057] Severity: Suggestion**
 **Location:** `phx-vm/src/interpreter/` (split from monolithic `interpreter.rs`); `foreign.rs`; `context.rs`
 **Reviewer:** Pragmatic Critic
@@ -867,10 +855,10 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 **Location:** `phx-compiler/src/ir/inst.rs` (whole file); `lower/stmt.rs:230`; `resolver/walk.rs:471,507`; `modules/graph.rs:209`; `typeck/check.rs:2178`
 **Reviewer:** Language Designer
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Span propagation ends at typeck — IR carries no spans, lowering/codegen errors and VM traps cannot cite source, and synthetic nodes use zero spans that render as caret-at-byte-0.
-**Detail:** `vm-linear.md` reserves section 5 for future debug symbols, so omitting spans from *bytecode* is by design; omitting them from the *IR* is not documented anywhere and makes every backend diagnostic and future debugger work harder. Zero-span synthesis violates "never discard span information."
+**Detail:** `vm-linear.md` reserves section 5 for future debug symbols, so omitting spans from *bytecode* is by design; IR now carries spans via `SpannedInst` for backend diagnostics (not serialized to PHX0). Production `Span::new(0,0)` synthesis has been replaced with construct spans; CI guard `tests/ci/check-zero-spans.sh` enforces hygiene.
 **Recommendation:** Carry a span (or side table keyed by instruction index) on `IrInst` for diagnostics; replace all `Span::new(0,0)` with the span of the construct being desugared. Bytecode-level source maps stay deferred.
 
 **Error recovery.** Strategy is consistent and good: every pass collects multiple errors in a bag (`ParseBag`, `DiagnosticBag`, `TypeCheckBag`, `LowerBag`); the pipeline aborts *between* stages on a non-empty bag; the CLI wraps everything in `catch_unwind` → exit 6. The two real gaps are PHX-005 (partial ASTs discarded, so recovery never crosses the parse boundary) and the silent-fallback family (PHX-016/017/034/037/041), which is worse than panicking — those paths neither panic nor diagnose.
@@ -880,6 +868,19 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 **Invariant enforcement.** "Operands are indices only" holds (operands are `Vec<u32>`; the symbols section is unwritten as documented; `Pop` is defined-but-never-emitted, confirmed). "Verify before execute" is type-enforced at the `phx_vm::run` library boundary via `VerifiedModule` (PHX-055). "Copyable = bitwise copy" is enforced in typeck (`CopyableDropConflict` exists) and trusted by the VM — appropriate. "No `_` wildcards on AST/token/opcode enums" is partially held: PHX-019 resolved for AST/token in compiler passes; PHX-045 resolved for `terminators_successors` opcode match in `stack_flow.rs`. No `Vec`-naming leaks into the language surface (std ships `DynamicArray`); `str` as a view type is sanctioned by `mvp.md` (the older "byte-first, no string" framing in the workspace rules is stale relative to the docs, not a code bug).
 
 **Post-MVP readiness.** Honest assessment: the **typeck side-table architecture** and **PHX0 versioned format** are good extension points. Three things will need surgery, none of which is stubbed: (1) the ownership tracker has no CFG notion at all — the full borrow checker cannot grow out of a linear `Vec<BindingEntry>`; expect replacement, which makes fixing PHX-023/024 with a properly shaped fork/join model doubly valuable; (2) the VM has no execution-context abstraction — scheduler work means refactoring `Machine`/frame ownership first (PHX-057); (3) lowering's order-coupled `ExprId` cursor (PHX-037) is fragile under any future reordering optimization; a keyed map or explicit typed-IR would be sturdier. The std bootstrap substrate, by contrast, is largely *done*: `Option`/`Result`/`?`/`Drop`/`DynamicArray`/allocator traits exist as std-authored Phoenix code with a path-scoped kernel — the remaining risk there is PHX-026's name-based fallbacks.
+
+---
+
+**[PHX-070] Severity: Deferred**
+**Location:** `docs/design/features/vm-linear.md` section 5; `phx-compiler` codegen/link; `phx-vm` CLI attribution
+**Reviewer:** Language Designer
+
+**Status:** - [ ] Deferred (post-beta)
+
+**Issue:** No PHX0 section 5 symbols payload; `VmError` sites are bytecode offsets only — CLI/debugger cannot cite Phoenix source spans.
+**Prerequisites:** PHX-063 (IR spans for codegen) + PHX-056 (runtime `(function_id, pc)`).
+**Recommendation:** Encode `(function_id, pc) → file/span` tables at link time; map runtime errors to source in CLI/debugger; optional `Trap` diagnostic payload once symbols exist.
+
 
 ---
 
@@ -951,6 +952,6 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-060 | - [x]  | Major        | tests           | `just pre-commit` gate excludes typeck/verifier/VM suites                |
 | PHX-061 | - [x]  | Major        | tests           | Coverage gaps on Critical findings — regression suite expanded (2026-06-14) |
 | PHX-062 | - [x]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing (2026-06-14)   |
-| PHX-063 | - [ ]  | Major        | cross-cutting   | Span propagation ends at typeck; IR carries no spans                     |
+| PHX-063 | - [x]  | Major        | cross-cutting   | IR spans via `SpannedInst`; backend diagnostics cite source              |
 
 

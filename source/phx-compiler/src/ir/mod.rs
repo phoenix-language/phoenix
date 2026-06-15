@@ -7,6 +7,8 @@
 //!
 //! - Every value-producing instruction is associated with a [`TypeId`](crate::typeck::TypeId)
 //!   or a typed local slot.
+//! - Every emitted instruction carries a [`Span`](phx_diagnostics::Span) via [`SpannedInst`]
+//!   for backend diagnostics. Spans are not serialized to PHX0 (section 5 deferred).
 //! - Control flow is explicit in [`IrBasicBlock`] terminators.
 //! - The entry function for executables is `main :: () => ()` (resolved before lowering).
 //! - Local slot indices must come from [`TypedProgram::functions`](crate::typeck::TypedProgram::functions);
@@ -32,6 +34,7 @@ mod block;
 mod const_lit;
 mod func;
 mod inst;
+mod spanned;
 mod stack_effect;
 #[cfg(any(debug_assertions, test))]
 mod validate;
@@ -44,6 +47,7 @@ pub use block::IrBasicBlock;
 pub use const_lit::IrConst;
 pub use func::IrFunction;
 pub use inst::{IrBinOp, IrFunctionId, IrInst, LocalSlot};
+pub use spanned::SpannedInst;
 #[cfg(any(debug_assertions, test))]
 pub use validate::{validate_function, validate_ir};
 

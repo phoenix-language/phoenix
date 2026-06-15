@@ -14,10 +14,10 @@ pub(super) fn lower_intrinsic_call(
 ) {
     match site {
         IntrinsicSite::AllocBytes => {
-            ctx.emit(IrInst::Alloc { result: result_ty });
+            ctx.emit_here(IrInst::Alloc { result: result_ty });
         }
         IntrinsicSite::DeallocBytes => {
-            ctx.emit(IrInst::Free);
+            ctx.emit_here(IrInst::Free);
         }
         IntrinsicSite::SliceFromRawParts => {
             let elem_kind = match ctx.typed.types.get(result_ty) {
@@ -27,7 +27,7 @@ pub(super) fn lower_intrinsic_call(
                 ),
                 _ => phx_bytecode::SLOT_KIND_AGG,
             };
-            ctx.emit(IrInst::MakeSliceFromPtr { elem_kind });
+            ctx.emit_here(IrInst::MakeSliceFromPtr { elem_kind });
         }
         IntrinsicSite::SizeOf => {
             let bytes = ctx
@@ -41,7 +41,7 @@ pub(super) fn lower_intrinsic_call(
                 i128::from(bytes),
                 phx_bytecode::PrimitiveKind::U32,
             ));
-            ctx.emit(IrInst::Const {
+            ctx.emit_here(IrInst::Const {
                 index: idx,
                 ty: result_ty,
                 prim_kind: phx_bytecode::PrimitiveKind::U32.as_u8(),

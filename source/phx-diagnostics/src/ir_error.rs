@@ -3,6 +3,7 @@
 use core::fmt;
 
 use crate::LocatedError;
+use crate::Span;
 use crate::code::DiagnosticCode;
 
 /// An IR validation error when lowered CFG or stack discipline is inconsistent.
@@ -29,6 +30,8 @@ pub enum IrError {
         block: u32,
         /// Index of the instruction after the terminator.
         inst_index: u32,
+        /// Source span of the offending instruction.
+        span: Span,
     },
     /// Jump target is out of range for the function's block list.
     InvalidJumpTarget {
@@ -49,6 +52,8 @@ pub enum IrError {
         block: u32,
         /// Unpatched placeholder target.
         target: u32,
+        /// Source span of the jump instruction.
+        span: Span,
     },
     /// Simulated stack depth would underflow before an instruction.
     StackUnderflow {
@@ -60,6 +65,8 @@ pub enum IrError {
         inst_index: u32,
         /// Stack depth before the instruction.
         depth: u32,
+        /// Source span of the faulting instruction.
+        span: Span,
     },
     /// Same block reached on two CFG paths with different entry stack depths.
     JoinDepthMismatch {
@@ -71,6 +78,8 @@ pub enum IrError {
         expected: u32,
         /// Depth on the conflicting incoming edge.
         found: u32,
+        /// Source span of the jump that exposed the mismatch.
+        span: Span,
     },
 }
 
@@ -79,6 +88,20 @@ impl IrError {
     #[must_use]
     pub const fn code(&self) -> DiagnosticCode {
         DiagnosticCode::new("E4002")
+    }
+
+    /// Source span when available.
+    #[must_use]
+    pub const fn span(&self) -> Option<Span> {
+        match self {
+            Self::InstructionAfterTerminator { span, .. }
+            | Self::UnpatchedLoopExit { span, .. }
+            | Self::StackUnderflow { span, .. }
+            | Self::JoinDepthMismatch { span, .. } => Some(*span),
+            Self::EmptyFunction { .. }
+            | Self::MissingTerminator { .. }
+            | Self::InvalidJumpTarget { .. } => None,
+        }
     }
 }
 
@@ -101,6 +124,7 @@ impl fmt::Display for IrError {
                 def_index,
                 block,
                 inst_index,
+                ..
             } => {
                 write!(
                     f,
@@ -122,6 +146,7 @@ impl fmt::Display for IrError {
                 def_index,
                 block,
                 target,
+                ..
             } => {
                 write!(
                     f,
@@ -133,6 +158,7 @@ impl fmt::Display for IrError {
                 block,
                 inst_index,
                 depth,
+                ..
             } => {
                 write!(
                     f,
@@ -144,6 +170,7 @@ impl fmt::Display for IrError {
                 block,
                 expected,
                 found,
+                ..
             } => {
                 write!(
                     f,

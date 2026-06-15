@@ -420,11 +420,11 @@ impl TypeChecker<'_> {
                             .as_ref()
                             .map(|t| self.lower_ast_type_with_defs(t, type_defs))
                             .unwrap_or(self.unit);
-                        self.define_local(name.symbol, pty, BindingKind::Const, None);
+                        self.define_local(name.symbol, pty, BindingKind::Const, None, name.span);
                     }
                     Stmt::Var { name, ty, .. } => {
                         let pty = self.lower_ast_type_with_defs(ty, type_defs);
-                        self.define_local(name.symbol, pty, BindingKind::Var, None);
+                        self.define_local(name.symbol, pty, BindingKind::Var, None, name.span);
                     }
                     Stmt::Unsafe(body) | Stmt::Loop(body) => {
                         self.collect_layout_bindings_block(&body.inner, type_defs);

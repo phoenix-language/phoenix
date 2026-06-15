@@ -10,8 +10,9 @@ use crate::resolver::SourceModule;
 use phx_bytecode::BytecodeModule;
 use phx_diagnostics::{
     DiagnosticBag, DiagnosticStyle, IrBag, LintBag, LowerBag, ParseBag, PlainStyle, SpanContext,
-    TypeCheckBag, format_lints_styled, format_lower_error_styled, format_parse_bag_styled,
-    format_resolve_error_styled, format_typecheck_error_styled, join_diagnostics,
+    TypeCheckBag, format_ir_error_styled, format_lints_styled, format_lower_error_styled,
+    format_parse_bag_styled, format_resolve_error_styled, format_typecheck_error_styled,
+    join_diagnostics,
 };
 use phx_syntax::{Interner, parse};
 
@@ -370,14 +371,30 @@ fn format_lower_bag(
 
 fn format_ir_bag(
     bag: &IrBag,
-    _entry_source: Option<&str>,
-    _entry_path: Option<&str>,
-    _modules: Option<&[SourceModule]>,
+    entry_source: Option<&str>,
+    entry_path: Option<&str>,
+    modules: Option<&[SourceModule]>,
     style: &dyn DiagnosticStyle,
 ) -> String {
     let mut parts = Vec::new();
     for located in bag.errors() {
-        let body = style.error_header(located.error.code(), &located.error.to_string());
+        let body = if let Some(ms) =
+            source_for_module(entry_source, entry_path, modules, located.module)
+        {
+            let ctx = SpanContext {
+                file_path: Some(&ms.file_path),
+                logical_module: ms.logical_module.as_deref(),
+            };
+            format_ir_error_styled(ms.source, &located.error, style, ctx)
+        } else if let Some(src) = entry_source.filter(|_| located.module == 0) {
+            let ctx = SpanContext {
+                file_path: entry_path,
+                logical_module: None,
+            };
+            format_ir_error_styled(src, &located.error, style, ctx)
+        } else {
+            style.error_header(located.error.code(), &located.error.to_string())
+        };
         parts.push(body);
     }
     join_diagnostics(style, &parts)

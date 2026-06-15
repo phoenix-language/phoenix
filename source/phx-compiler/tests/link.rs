@@ -57,6 +57,17 @@ fn return_only() -> Vec<u8> {
     .expect("encode")
 }
 
+fn pop_then_return() -> Vec<u8> {
+    let mut code = Instruction {
+        opcode: Opcode::Pop,
+        operands: vec![],
+    }
+    .encode()
+    .expect("encode");
+    code.extend(return_only());
+    code
+}
+
 fn call_then_return(callee: u32) -> Vec<u8> {
     let mut code = Instruction {
         opcode: Opcode::Call,
@@ -64,14 +75,7 @@ fn call_then_return(callee: u32) -> Vec<u8> {
     }
     .encode()
     .expect("encode");
-    code.extend(
-        Instruction {
-            opcode: Opcode::Return,
-            operands: vec![],
-        }
-        .encode()
-        .expect("encode"),
-    );
+    code.extend(pop_then_return());
     code
 }
 
@@ -171,7 +175,7 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
         .encode()
         .expect("encode"),
     );
-    code_a.extend(return_only());
+    code_a.extend(pop_then_return());
 
     let mut code_b = Instruction {
         opcode: Opcode::Const,
@@ -195,7 +199,7 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
         .encode()
         .expect("encode"),
     );
-    code_b.extend(return_only());
+    code_b.extend(pop_then_return());
 
     let pool = ConstPool {
         entries: vec![ConstEntry {
@@ -317,7 +321,7 @@ fn link_rebases_make_str_const_operand() {
     .encode()
     .expect("encode");
     let mut code_b = make_str;
-    code_b.extend(return_only());
+    code_b.extend(pop_then_return());
 
     let pool_a = ConstPool {
         entries: vec![ConstEntry {
@@ -386,7 +390,28 @@ fn link_preserves_return_type_id_sentinels() {
             records: vec![unit_type],
         },
     );
-    let mut object_b = module_with_fn(1, return_only(), 0);
+    let mut object_b = module_with_tables(
+        1,
+        {
+            let s32_kind = u32::from(PrimitiveKind::S32 as u8);
+            let mut code = Instruction {
+                opcode: Opcode::Const,
+                operands: vec![0, s32_kind],
+            }
+            .encode()
+            .expect("encode");
+            code.extend(return_only());
+            code
+        },
+        1,
+        ConstPool {
+            entries: vec![ConstEntry {
+                tag: ConstTag::SignedInt,
+                payload: 0i32.to_le_bytes().to_vec(),
+            }],
+        },
+        TypeTable::default(),
+    );
     object_b.functions.functions[0].return_type_id = 1;
 
     let linked = link_modules(

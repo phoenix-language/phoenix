@@ -5,7 +5,9 @@
 //! [`crate::facade`] ([`crate::facade::check_file`], [`crate::facade::compile_to_module`]).
 
 pub use crate::codegen::{build_type_table, codegen, codegen_module};
-pub use crate::ir::{IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot};
+pub use crate::ir::{
+    IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot, SpannedInst,
+};
 #[cfg(any(debug_assertions, test))]
 pub use crate::ir::{validate_function, validate_ir};
 pub use crate::lower::lower;

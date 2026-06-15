@@ -33,7 +33,7 @@ fn bytecode_return_type_id(func: &IrFunction, typed: &TypedProgram) -> u32 {
         .blocks
         .iter()
         .flat_map(|block| &block.insts)
-        .filter_map(|inst| match inst {
+        .filter_map(|spanned| match &spanned.inst {
             IrInst::Return { ty } => Some(*ty),
             _ => None,
         })
@@ -118,8 +118,8 @@ pub fn collect_type_ids_from_ir(ir: &IrModule) -> HashSet<u32> {
 
 fn collect_type_ids_from_function(func: &IrFunction, used: &mut HashSet<u32>) {
     for block in &func.blocks {
-        for inst in &block.insts {
-            match inst {
+        for spanned in &block.insts {
+            match &spanned.inst {
                 IrInst::MakeStruct { type_id, .. }
                 | IrInst::MakeEnum { type_id, .. }
                 | IrInst::GetField { type_id, .. }

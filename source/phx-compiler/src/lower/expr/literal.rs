@@ -111,7 +111,7 @@ fn literal_prim_kind(ctx: &LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u8 {
 pub(super) fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
     if let Literal::String(s) = lit {
         let idx = ctx.intern_const(IrConst::Bytes(s.clone().into_bytes()));
-        ctx.emit(IrInst::MakeStr { pool_index: idx });
+        ctx.emit_here(IrInst::MakeStr { pool_index: idx });
         return;
     }
     if let Literal::ByteString(b) = lit {
@@ -121,18 +121,18 @@ pub(super) fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
         };
         for &byte in b {
             let idx = ctx.intern_const(IrConst::Int(i128::from(byte), PrimitiveKind::U8));
-            ctx.emit(IrInst::Const {
+            ctx.emit_here(IrInst::Const {
                 index: idx,
                 ty: elem_ty,
                 prim_kind: PrimitiveKind::U8.as_u8(),
             });
         }
         let len = u32::try_from(b.len()).unwrap_or(0);
-        ctx.emit(IrInst::MakeArray { len });
+        ctx.emit_here(IrInst::MakeArray { len });
         return;
     }
     let index = intern_literal(ctx, lit, ty);
-    ctx.emit(IrInst::Const {
+    ctx.emit_here(IrInst::Const {
         index,
         ty,
         prim_kind: literal_prim_kind(ctx, lit, ty),
@@ -143,7 +143,7 @@ pub(super) fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
             Ty::Primitive(phx_syntax::token::Keyword::F32)
         )
     {
-        ctx.emit(IrInst::Cast {
+        ctx.emit_here(IrInst::Cast {
             from_kind: PrimitiveKind::F64.as_u8(),
             to_kind: PrimitiveKind::F32.as_u8(),
         });
@@ -153,7 +153,7 @@ pub(super) fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
 pub(super) fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
     let symbol = ident.symbol;
     if let Some(binding) = ctx.layout.binding(symbol) {
-        ctx.emit(IrInst::LoadLocal {
+        ctx.emit_here(IrInst::LoadLocal {
             slot: binding.slot,
             ty,
             prim_kind: prim_kind_byte(ctx.typed, binding.ty),
@@ -162,7 +162,7 @@ pub(super) fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
     }
     if let Some(def) = lookup_resolution(&ctx.typed.resolved, ctx.module, ident.id) {
         if let Some((target_kind, target_id)) = fn_ptr_target(ctx.typed, def) {
-            ctx.emit(IrInst::MakeFnPtr {
+            ctx.emit_here(IrInst::MakeFnPtr {
                 target_kind,
                 target_id,
                 ty,
@@ -190,7 +190,7 @@ pub(super) fn lower_binary(
         BinOp::Gt => {
             lower_expr(ctx, right);
             lower_expr(ctx, left);
-            ctx.emit(IrInst::BinOp {
+            ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Lt,
                 result: result_ty,
                 prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -199,7 +199,7 @@ pub(super) fn lower_binary(
         BinOp::Ge => {
             lower_expr(ctx, left);
             lower_expr(ctx, right);
-            ctx.emit(IrInst::BinOp {
+            ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Ge,
                 result: result_ty,
                 prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -208,7 +208,7 @@ pub(super) fn lower_binary(
         BinOp::Le => {
             lower_expr(ctx, left);
             lower_expr(ctx, right);
-            ctx.emit(IrInst::BinOp {
+            ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Le,
                 result: result_ty,
                 prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -217,7 +217,7 @@ pub(super) fn lower_binary(
         BinOp::Ne => {
             lower_expr(ctx, left);
             lower_expr(ctx, right);
-            ctx.emit(IrInst::BinOp {
+            ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Ne,
                 result: result_ty,
                 prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -230,7 +230,7 @@ pub(super) fn lower_binary(
             lower_expr(ctx, left);
             lower_expr(ctx, right);
             if let Some(ir_op) = binop_to_ir(op) {
-                ctx.emit(IrInst::BinOp {
+                ctx.emit_here(IrInst::BinOp {
                     op: ir_op,
                     result: result_ty,
                     prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -247,7 +247,7 @@ pub(super) fn lower_binary(
             lower_expr(ctx, left);
             lower_expr(ctx, right);
             if let Some(ir_op) = binop_to_ir(op) {
-                ctx.emit(IrInst::BinOp {
+                ctx.emit_here(IrInst::BinOp {
                     op: ir_op,
                     result: result_ty,
                     prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -272,13 +272,13 @@ fn lower_short_circuit_bool(
 
     match op {
         BinOp::And => {
-            ctx.emit(IrInst::JumpIf {
+            ctx.emit_here(IrInst::JumpIf {
                 then_block: rhs_id,
                 else_block: short_id,
             });
         }
         BinOp::Or => {
-            ctx.emit(IrInst::JumpIf {
+            ctx.emit_here(IrInst::JumpIf {
                 then_block: short_id,
                 else_block: rhs_id,
             });
@@ -293,16 +293,16 @@ fn lower_short_circuit_bool(
     } else {
         ctx.intern_const(IrConst::Bool(true))
     };
-    ctx.emit(IrInst::Const {
+    ctx.emit_here(IrInst::Const {
         index: short_val,
         ty: bool_ty_id,
         prim_kind: prim_kind_byte(ctx.typed, bool_ty_id),
     });
-    ctx.emit(IrInst::Jump { target: merge_id });
+    ctx.emit_here(IrInst::Jump { target: merge_id });
 
     ctx.set_current(rhs_id);
     lower_expr(ctx, right);
-    ctx.emit(IrInst::Jump { target: merge_id });
+    ctx.emit_here(IrInst::Jump { target: merge_id });
 
     ctx.set_current(merge_id);
 }

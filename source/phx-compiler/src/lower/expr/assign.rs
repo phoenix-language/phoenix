@@ -69,7 +69,7 @@ pub(crate) fn lower_assign_expr(
     match &target.inner {
         Expr::Ident(ident) => {
             if let Some(binding) = ctx.layout.binding(ident.symbol) {
-                ctx.emit(IrInst::StoreLocal {
+                ctx.emit_here(IrInst::StoreLocal {
                     slot: binding.slot,
                     ty: binding.ty,
                     prim_kind: prim_kind_byte(ctx.typed, binding.ty),
@@ -80,7 +80,7 @@ pub(crate) fn lower_assign_expr(
             op: UnaryOp::Deref, ..
         } => {
             if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, value_ty) {
-                ctx.emit(IrInst::PtrStore {
+                ctx.emit_here(IrInst::PtrStore {
                     prim_kind: kind.as_u8(),
                     signed: primitive_load_signed(kind),
                 });
@@ -96,13 +96,13 @@ pub(crate) fn lower_assign_expr(
                         .layout
                         .struct_field_index(def, field.symbol, &args)
                         .unwrap_or(0);
-                    ctx.emit(IrInst::SetField {
+                    ctx.emit_here(IrInst::SetField {
                         type_id,
                         field_index,
                     });
                     if let Expr::Ident(ident) = &base.inner {
                         if binding_is_ref_to_struct(ctx, ident.symbol) {
-                            ctx.emit(IrInst::Pop);
+                            ctx.emit_here(IrInst::Pop);
                         } else {
                             store_base_local(ctx, base);
                         }
@@ -112,7 +112,7 @@ pub(crate) fn lower_assign_expr(
                 }
             } else if matches!(ops[0], PostfixOp::Index(_)) {
                 if let Some(kind) = prim_kind_for_index_store(ctx, value_ty, &target.inner) {
-                    ctx.emit(IrInst::IndexStore {
+                    ctx.emit_here(IrInst::IndexStore {
                         prim_kind: kind.as_u8(),
                         signed: primitive_load_signed(kind),
                     });

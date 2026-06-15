@@ -4,7 +4,7 @@ use phx_diagnostics::Span;
 use phx_syntax::ast::ident::{Ident, TypeName};
 use phx_syntax::ast::node_id::AstNodeId;
 use phx_syntax::ast::pat::Pattern;
-use phx_syntax::ast::stmt::{Block, BlockItem, Stmt};
+use phx_syntax::ast::stmt::{Block, BlockItem, Stmt, StmtNode};
 use phx_syntax::ast::{Node, PatternNode};
 
 use crate::ir::IrInst;
@@ -21,7 +21,7 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
     ctx.enter_scope();
     for item in &block.items {
         match item {
-            BlockItem::Stmt(stmt) => lower_block_stmt(ctx, &stmt.inner),
+            BlockItem::Stmt(stmt) => lower_block_stmt(ctx, stmt),
             BlockItem::Expr(expr) => lower_expr(ctx, expr),
             BlockItem::Import(_) => {}
         }
@@ -29,8 +29,9 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
     ctx.exit_scope();
 }
 
-fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
-    match stmt {
+fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &StmtNode) {
+    ctx.set_site(stmt.span);
+    match &stmt.inner {
         Stmt::Const { name, init, .. } | Stmt::Var { name, init, .. } => {
             if let Some(binding) = ctx.layout.binding(name.symbol) {
                 lower_expr_with_type(ctx, init, binding.ty);
@@ -38,11 +39,14 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
                 lower_expr(ctx, init);
             }
             if let Some(binding) = ctx.layout.binding(name.symbol) {
-                ctx.emit(IrInst::StoreLocal {
-                    slot: binding.slot,
-                    ty: binding.ty,
-                    prim_kind: prim_kind_byte(ctx.typed, binding.ty),
-                });
+                ctx.emit(
+                    name.span,
+                    IrInst::StoreLocal {
+                        slot: binding.slot,
+                        ty: binding.ty,
+                        prim_kind: prim_kind_byte(ctx.typed, binding.ty),
+                    },
+                );
             }
         }
         Stmt::Assign { expr } => {
@@ -51,30 +55,36 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &Stmt) {
         Stmt::Expr(expr) => {
             lower_expr(ctx, expr);
         }
-        Stmt::Return(expr) => lower_return(ctx, expr.as_ref()),
-        Stmt::While { cond, body } => lower_while(ctx, cond, &body.inner),
+        Stmt::Return(expr) => lower_return(ctx, stmt.span, expr.as_ref()),
+        Stmt::While { cond, body } => lower_while(ctx, stmt.span, cond, &body.inner),
         Stmt::ForIn { iter, body, .. } => {
             if let Some(plan) = ctx.layout.for_in_plans.get(ctx.for_in_index) {
-                lower_for_in(ctx, plan, iter, &body.inner);
+                lower_for_in(ctx, plan, stmt.span, iter, &body.inner);
                 ctx.for_in_index += 1;
             }
         }
-        Stmt::Loop(body) => lower_loop(ctx, &body.inner),
+        Stmt::Loop(body) => lower_loop(ctx, stmt.span, &body.inner),
         Stmt::Unsafe(body) => lower_block_value(ctx, &body.inner),
-        Stmt::Break { value, .. } => lower_break(ctx, value.as_ref()),
+        Stmt::Break { value, .. } => lower_break(ctx, stmt.span, value.as_ref()),
         Stmt::Continue { .. } => lower_continue(ctx),
     }
 }
 
 /// `while (cond) { body }` — header tests `cond`, body jumps back to header.
-fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &Block) {
+fn lower_while(
+    ctx: &mut LowerCtx<'_>,
+    stmt_span: Span,
+    cond: &phx_syntax::ast::ExprNode,
+    body: &Block,
+) {
+    ctx.set_site(stmt_span);
     let header = ctx.fresh_block();
     let body_id = ctx.fresh_block();
     let exit_slot = ctx.alloc_loop_exit_slot();
     let loop_scope = ctx.scope_depth;
     ctx.loop_body_scope_depths.push(loop_scope);
 
-    ctx.emit(IrInst::Jump { target: header });
+    ctx.emit_here(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
         exit_slot,
         continue_target: header,
@@ -82,7 +92,7 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
 
     ctx.set_current(header);
     lower_expr(ctx, cond);
-    ctx.emit(IrInst::JumpIf {
+    ctx.emit_here(IrInst::JumpIf {
         then_block: body_id,
         else_block: LowerCtx::loop_exit_target(exit_slot),
     });
@@ -90,7 +100,7 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
     ctx.set_current(body_id);
     lower_block_value(ctx, body);
     if !block_ends_with_unconditional_jump(ctx, ctx.current) {
-        ctx.emit(IrInst::Jump { target: header });
+        ctx.emit_here(IrInst::Jump { target: header });
     }
 
     ctx.pop_loop();
@@ -101,13 +111,14 @@ fn lower_while(ctx: &mut LowerCtx<'_>, cond: &phx_syntax::ast::ExprNode, body: &
 }
 
 /// `loop { body }` — body repeats until `break` (or `return`).
-fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
+fn lower_loop(ctx: &mut LowerCtx<'_>, stmt_span: Span, body: &Block) {
+    ctx.set_site(stmt_span);
     let header = ctx.fresh_block();
     let exit_slot = ctx.alloc_loop_exit_slot();
     let loop_scope = ctx.scope_depth;
     ctx.loop_body_scope_depths.push(loop_scope);
 
-    ctx.emit(IrInst::Jump { target: header });
+    ctx.emit_here(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
         exit_slot,
         continue_target: header,
@@ -116,7 +127,7 @@ fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
     ctx.set_current(header);
     lower_block_value(ctx, body);
     if !block_ends_with_unconditional_jump(ctx, ctx.current) {
-        ctx.emit(IrInst::Jump { target: header });
+        ctx.emit_here(IrInst::Jump { target: header });
     }
 
     ctx.pop_loop();
@@ -126,13 +137,14 @@ fn lower_loop(ctx: &mut LowerCtx<'_>, body: &Block) {
     ctx.set_current(exit);
 }
 
-fn lower_break(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>) {
+fn lower_break(ctx: &mut LowerCtx<'_>, stmt_span: Span, expr: Option<&phx_syntax::ast::ExprNode>) {
+    ctx.set_site(stmt_span);
     if let Some(e) = expr {
         lower_expr(ctx, e);
     }
     emit_scope_drops(ctx, ctx.scope_depth, loop_body_scope_depth(ctx));
     if let Some(labels) = ctx.innermost_loop() {
-        ctx.emit(IrInst::Jump {
+        ctx.emit_here(IrInst::Jump {
             target: LowerCtx::loop_exit_target(labels.exit_slot),
         });
     }
@@ -142,17 +154,19 @@ fn lower_break(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>)
 fn lower_for_in(
     ctx: &mut LowerCtx<'_>,
     plan: &ForInPlan,
+    stmt_span: Span,
     iter: &phx_syntax::ast::ExprNode,
     body: &Block,
 ) {
+    ctx.set_site(stmt_span);
     ctx.enter_scope();
 
     lower_expr(ctx, iter);
-    ctx.emit(IrInst::Call {
+    ctx.emit_here(IrInst::Call {
         callee: plan.into_iter_fn,
         ret: plan.iter_state_ty,
     });
-    ctx.emit(IrInst::StoreLocal {
+    ctx.emit_here(IrInst::StoreLocal {
         slot: plan.iter_temp_slot,
         ty: plan.iter_state_ty,
         prim_kind: prim_kind_byte(ctx.typed, plan.iter_state_ty),
@@ -165,26 +179,26 @@ fn lower_for_in(
     let loop_scope = ctx.scope_depth;
     ctx.loop_body_scope_depths.push(loop_scope);
 
-    ctx.emit(IrInst::Jump { target: header });
+    ctx.emit_here(IrInst::Jump { target: header });
     ctx.push_loop(LoopLabels {
         exit_slot,
         continue_target: header,
     });
 
     ctx.set_current(header);
-    ctx.emit(IrInst::AddressOfLocal {
+    ctx.emit_here(IrInst::AddressOfLocal {
         slot: plan.iter_temp_slot,
     });
-    ctx.emit(IrInst::Call {
+    ctx.emit_here(IrInst::Call {
         callee: plan.next_fn,
         ret: plan.option_ty,
     });
-    ctx.emit(IrInst::StoreLocal {
+    ctx.emit_here(IrInst::StoreLocal {
         slot: plan.option_match_temp,
         ty: plan.option_ty,
         prim_kind: prim_kind_byte(ctx.typed, plan.option_ty),
     });
-    let some_pat = some_binding_pattern(plan.binding, plan.some_variant);
+    let some_pat = some_binding_pattern(plan.binding, plan.some_variant, plan.stmt_span);
     emit_arm_condition(
         ctx,
         &some_pat.inner,
@@ -204,12 +218,12 @@ fn lower_for_in(
     );
     lower_block_value(ctx, body);
     if !block_ends_with_unconditional_jump(ctx, ctx.current) {
-        ctx.emit(IrInst::Jump { target: header });
+        ctx.emit_here(IrInst::Jump { target: header });
     }
 
     ctx.set_current(else_id);
     emit_scope_drops(ctx, ctx.scope_depth, loop_body_scope_depth(ctx));
-    ctx.emit(IrInst::Jump {
+    ctx.emit_here(IrInst::Jump {
         target: LowerCtx::loop_exit_target(exit_slot),
     });
 
@@ -224,8 +238,8 @@ fn lower_for_in(
 fn some_binding_pattern(
     binding: phx_syntax::Symbol,
     some_variant: phx_syntax::Symbol,
+    span: Span,
 ) -> PatternNode {
-    let span = Span::new(0, 0);
     let dummy_id = AstNodeId::from_raw(0);
     Node::new(
         Pattern::Tuple {
@@ -251,33 +265,39 @@ fn some_binding_pattern(
 
 fn lower_continue(ctx: &mut LowerCtx<'_>) {
     if let Some(labels) = ctx.innermost_loop() {
-        ctx.emit(IrInst::Jump {
+        ctx.emit_here(IrInst::Jump {
             target: labels.continue_target,
         });
     }
 }
 
-fn lower_return(ctx: &mut LowerCtx<'_>, expr: Option<&phx_syntax::ast::ExprNode>) {
+fn lower_return(ctx: &mut LowerCtx<'_>, stmt_span: Span, expr: Option<&phx_syntax::ast::ExprNode>) {
+    ctx.set_site(stmt_span);
     emit_scope_drops(ctx, ctx.scope_depth, 0);
     if let Some(e) = expr {
         lower_expr(ctx, e);
-        ctx.emit(IrInst::Return {
+        ctx.emit_here(IrInst::Return {
             ty: ctx.layout.return_type,
         });
     } else {
-        ctx.emit(IrInst::Return {
+        ctx.emit_here(IrInst::Return {
             ty: unit_ty(ctx.typed),
         });
     }
 }
 
 /// Emits [`IrInst::Return`] after the function body when the tail block does not already return.
-pub fn lower_function_return(ctx: &mut LowerCtx<'_>, _body: &Block, return_type: TypeId) {
+pub fn lower_function_return(
+    ctx: &mut LowerCtx<'_>,
+    body: &phx_syntax::ast::BlockNode,
+    return_type: TypeId,
+) {
     if block_ends_with_return(ctx, ctx.current) {
         return;
     }
+    ctx.set_site(body.span);
     emit_scope_drops(ctx, 0, 0);
-    ctx.emit(IrInst::Return { ty: return_type });
+    ctx.emit_here(IrInst::Return { ty: return_type });
 }
 
 fn block_ends_with_return(ctx: &LowerCtx<'_>, block: u32) -> bool {
@@ -287,5 +307,5 @@ fn block_ends_with_return(ctx: &LowerCtx<'_>, block: u32) -> bool {
     };
     b.insts
         .last()
-        .is_some_and(|inst| matches!(inst, IrInst::Return { .. }))
+        .is_some_and(|spanned| matches!(&spanned.inst, IrInst::Return { .. }))
 }

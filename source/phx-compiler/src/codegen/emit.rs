@@ -83,9 +83,16 @@ fn compute_block_starts(
     let mut offset = 0u32;
     for (block_id, block) in func.blocks.iter().enumerate() {
         starts[block_id] = offset;
-        for inst in &block.insts {
+        for spanned in &block.insts {
             scratch.clear();
-            emit_inst(&mut scratch, inst, pool, def_to_fn, &starts, type_remap)?;
+            emit_inst(
+                &mut scratch,
+                &spanned.inst,
+                pool,
+                def_to_fn,
+                &starts,
+                type_remap,
+            )?;
             offset = offset.saturating_add(u32::try_from(scratch.len()).unwrap_or(u32::MAX));
         }
     }
@@ -123,8 +130,15 @@ fn emit_blocks(
 ) -> Result<(Vec<u8>, u16), CodegenError> {
     let mut out = Vec::new();
     for block in &func.blocks {
-        for inst in &block.insts {
-            emit_inst(&mut out, inst, pool, def_to_fn, block_starts, type_remap)?;
+        for spanned in &block.insts {
+            emit_inst(
+                &mut out,
+                &spanned.inst,
+                pool,
+                def_to_fn,
+                block_starts,
+                type_remap,
+            )?;
         }
     }
     let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity).map_err(map_stack_sim_error)?;
@@ -359,8 +373,13 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::ir::{IrBasicBlock, IrFunction, IrFunctionId, IrInst, LocalSlot};
+    use crate::ir::{IrBasicBlock, IrFunction, IrFunctionId, IrInst, LocalSlot, SpannedInst};
     use crate::typeck::TypeId;
+    use phx_diagnostics::Span;
+
+    fn span_inst(inst: IrInst) -> SpannedInst {
+        SpannedInst::new(Span::new(0, 1), inst)
+    }
 
     fn minimal_func(insts: Vec<IrInst>) -> IrFunction {
         IrFunction {
@@ -369,7 +388,9 @@ mod tests {
             params: Vec::new(),
             return_type: TypeId::from_raw(0),
             local_count: 0,
-            blocks: vec![IrBasicBlock { insts }],
+            blocks: vec![IrBasicBlock {
+                insts: insts.into_iter().map(span_inst).collect(),
+            }],
         }
     }
 

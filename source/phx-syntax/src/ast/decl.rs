@@ -8,12 +8,15 @@ use crate::ast::expr::ExprNode;
 use crate::ast::ident::{Ident, Path, TypeName};
 use crate::ast::stmt::BlockNode;
 use crate::ast::types::{GenericParam, Type};
+use phx_diagnostics::Span;
 
 /// Function parameter.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Param {
     /// `self` / `mut self` / `self: T` / `mut self: T`.
     Receiver {
+        /// `self` / `mut self` keyword span.
+        span: Span,
         /// `mut` present.
         mut_: bool,
         /// Optional explicit type.

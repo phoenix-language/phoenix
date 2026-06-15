@@ -640,14 +640,16 @@ impl Parser<'_> {
             self.peek_kind(),
             TokenKind::Keyword(Keyword::Mut | Keyword::SelfLower)
         ) {
+            let start = self.pos;
             let mut_ = self.eat_keyword(Keyword::Mut);
             self.eat_keyword(Keyword::SelfLower);
+            let span = self.span_from(start);
             let ty = if self.eat_kind(&TokenKind::Colon) {
                 Some(self.parse_type()?)
             } else {
                 None
             };
-            return Ok(Param::Receiver { mut_, ty });
+            return Ok(Param::Receiver { span, mut_, ty });
         }
         let name = self.parse_ident()?;
         self.expect_kind(ExpectedToken::Punct(":"), &TokenKind::Colon)?;

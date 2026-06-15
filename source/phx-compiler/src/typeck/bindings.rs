@@ -44,6 +44,8 @@ pub struct DropEvent {
     pub drop_fn: DefId,
     /// Wire [`phx_bytecode::PrimitiveKind`] when the local is scalar.
     pub prim_kind: u8,
+    /// Source span of the binding being dropped.
+    pub span: Span,
 }
 
 /// Dense local slot index within a function (parameters + locals).
@@ -93,6 +95,8 @@ pub struct Binding {
     /// When `kind` is [`BindingKind::Const`] and the initializer was a UTF-8 `b"…"` literal,
     /// holds those bytes for compile-time `arr as str` lowering to rodata.
     pub utf8_rodata: Option<Vec<u8>>,
+    /// Source span where the binding was introduced.
+    pub declare_span: Span,
 }
 
 /// Layout of locals for one function (for IR/codegen).
@@ -199,11 +203,11 @@ impl FunctionLayoutBuilder {
 
     /// Allocates a slot to hold one `match` scrutinee for lowering.
     #[must_use]
-    pub fn alloc_match_scrutinee_temp(&mut self, ty: TypeId) -> LocalSlot {
+    pub fn alloc_match_scrutinee_temp(&mut self, ty: TypeId, declare_span: Span) -> LocalSlot {
         let serial = self.match_temp_serial;
         self.match_temp_serial += 1;
         let symbol = phx_syntax::scratch_binding_symbol(serial);
-        let slot = self.alloc(symbol, ty, BindingKind::MatchTemp, None);
+        let slot = self.alloc(symbol, ty, BindingKind::MatchTemp, None, declare_span);
         self.match_temp_slots.push(slot);
         slot
     }
@@ -231,6 +235,7 @@ impl FunctionLayoutBuilder {
         ty: TypeId,
         kind: BindingKind,
         utf8_rodata: Option<Vec<u8>>,
+        declare_span: Span,
     ) -> LocalSlot {
         let slot = LocalSlot::from_raw(self.next_slot);
         self.next_slot += 1;
@@ -241,6 +246,7 @@ impl FunctionLayoutBuilder {
             kind,
             scope_depth: self.scope_depth,
             utf8_rodata,
+            declare_span,
         });
         slot
     }

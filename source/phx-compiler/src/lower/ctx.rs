@@ -2,7 +2,7 @@
 
 use phx_syntax::Symbol;
 
-use crate::ir::{IrBasicBlock, IrConst, IrInst};
+use crate::ir::{IrBasicBlock, IrConst, IrInst, SpannedInst};
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
 use std::collections::HashSet;
 
@@ -58,6 +58,8 @@ pub struct LowerCtx<'a> {
     pub loop_body_scope_depths: Vec<u32>,
     /// Drop slots already emitted (avoids duplicate glue on branch merge).
     pub emitted_drop_slots: HashSet<LocalSlot>,
+    /// Current source site for internal lowering diagnostics.
+    pub site: Span,
 }
 
 impl<'a> LowerCtx<'a> {
@@ -69,6 +71,7 @@ impl<'a> LowerCtx<'a> {
         layout: &'a FunctionLayout,
         constants: &'a mut Vec<IrConst>,
         bag: &'a mut LowerBag,
+        site: Span,
     ) -> Self {
         Self {
             typed,
@@ -86,6 +89,7 @@ impl<'a> LowerCtx<'a> {
             scope_depth: 0,
             loop_body_scope_depths: Vec::new(),
             emitted_drop_slots: HashSet::new(),
+            site,
         }
     }
 
@@ -151,8 +155,8 @@ impl<'a> LowerCtx<'a> {
         pending: &[Option<u32>],
     ) {
         for block in blocks {
-            for inst in &mut block.insts {
-                match inst {
+            for spanned in &mut block.insts {
+                match &mut spanned.inst {
                     crate::ir::IrInst::Jump { target } => {
                         Self::patch_one_target(target, pending);
                     }
@@ -231,6 +235,7 @@ impl<'a> LowerCtx<'a> {
                 LowerError::ExprCursorDrift {
                     expected: self.layout.expr_end,
                     found: self.next_expr,
+                    span: self.site,
                 },
             );
         }
@@ -242,8 +247,13 @@ impl<'a> LowerCtx<'a> {
             *ty
         } else {
             if raw >= self.layout.expr_start && raw < self.layout.expr_end {
-                self.bag
-                    .push(self.module, LowerError::MissingExprType { expr_id: raw });
+                self.bag.push(
+                    self.module,
+                    LowerError::MissingExprType {
+                        expr_id: raw,
+                        span: self.site,
+                    },
+                );
             }
             unit_ty(self.typed)
         }
@@ -265,7 +275,7 @@ impl<'a> LowerCtx<'a> {
     }
 
     /// Appends a non-terminator or terminator to the current block.
-    pub fn emit(&mut self, inst: IrInst) {
+    pub fn emit(&mut self, span: Span, inst: IrInst) {
         let block = if let Ok(b) = usize::try_from(self.current) {
             b
         } else {
@@ -273,10 +283,20 @@ impl<'a> LowerCtx<'a> {
             return;
         };
         if let Some(b) = self.blocks.get_mut(block) {
-            b.insts.push(inst);
+            b.insts.push(SpannedInst::new(span, inst));
         } else {
             self.error_invalid_block(self.current);
         }
+    }
+
+    /// Appends an instruction at [`Self::site`].
+    pub fn emit_here(&mut self, inst: IrInst) {
+        self.emit(self.site, inst);
+    }
+
+    /// Updates the current lowering site for internal error attribution.
+    pub fn set_site(&mut self, span: Span) {
+        self.site = span;
     }
 
     /// Allocates a new empty basic block and returns its index.
@@ -422,7 +442,10 @@ mod tests {
     use super::*;
     use crate::compile_source;
     use phx_diagnostics::LowerError;
+    use phx_syntax::Span;
     use std::path::Path;
+
+    const TEST_SITE: Span = Span::new(0, 1);
 
     fn main_layout(typed: &TypedProgram) -> &FunctionLayout {
         typed
@@ -460,12 +483,19 @@ mod tests {
             .expect("main layout");
         let mut constants = Vec::new();
         let mut bag = LowerBag::new();
-        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        let mut ctx = LowerCtx::new(
+            &unit.typed,
+            module,
+            layout,
+            &mut constants,
+            &mut bag,
+            TEST_SITE,
+        );
         let _ = ctx.expr_ty();
         assert!(
             bag.errors()
                 .iter()
-                .any(|e| matches!(e.error, LowerError::MissingExprType { expr_id } if expr_id == expected_id)),
+                .any(|e| matches!(e.error, LowerError::MissingExprType { expr_id, .. } if expr_id == expected_id)),
             "expected MissingExprType for id {expected_id}, got {bag:?}"
         );
     }
@@ -478,7 +508,14 @@ mod tests {
         let module = main_module(&unit.typed);
         let mut constants = Vec::new();
         let mut bag = LowerBag::new();
-        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        let mut ctx = LowerCtx::new(
+            &unit.typed,
+            module,
+            layout,
+            &mut constants,
+            &mut bag,
+            TEST_SITE,
+        );
         ctx.next_expr = layout.expr_end.saturating_add(2);
         ctx.finish_expr_cursor();
         assert!(
@@ -488,6 +525,7 @@ mod tests {
                     LowerError::ExprCursorDrift {
                         expected,
                         found,
+                        ..
                     } if expected == layout.expr_end && found == layout.expr_end.saturating_add(2)
                 )
             }),
@@ -563,9 +601,16 @@ main :: () => {
         let module = main_module(&unit.typed);
         let mut constants = Vec::new();
         let mut bag = LowerBag::new();
-        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        let mut ctx = LowerCtx::new(
+            &unit.typed,
+            module,
+            layout,
+            &mut constants,
+            &mut bag,
+            TEST_SITE,
+        );
         ctx.current = 99;
-        ctx.emit(IrInst::Jump { target: 0 });
+        ctx.emit(TEST_SITE, IrInst::Jump { target: 0 });
         let insts_empty = ctx.blocks[0].insts.is_empty();
         drop(ctx);
         assert!(
@@ -588,7 +633,14 @@ main :: () => {
         let module = main_module(&unit.typed);
         let mut constants = Vec::new();
         let mut bag = LowerBag::new();
-        let mut ctx = LowerCtx::new(&unit.typed, module, layout, &mut constants, &mut bag);
+        let mut ctx = LowerCtx::new(
+            &unit.typed,
+            module,
+            layout,
+            &mut constants,
+            &mut bag,
+            TEST_SITE,
+        );
         ctx.set_current(99);
         let current = ctx.current;
         drop(ctx);

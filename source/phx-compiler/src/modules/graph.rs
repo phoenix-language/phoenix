@@ -206,7 +206,15 @@ pub(crate) fn topo_sort_with_pxi_escape(
                 .collect(),
         );
     }
-    let (span, module) = cycle_edge(edges, module_count).unwrap_or((Span::new(0, 0), 0));
+    let (span, module) = cycle_edge(edges, module_count).unwrap_or_else(|| {
+        debug_assert!(
+            false,
+            "cyclic import graph must expose at least one edge span"
+        );
+        edges
+            .first()
+            .map_or((Span::new(0, 1), 0), |&(_, _, span)| (span, 0))
+    });
     let cycle = format_cycle_trace(edges, modules, module);
     bag.push(module, ResolveError::CircularImport { span, cycle });
     None

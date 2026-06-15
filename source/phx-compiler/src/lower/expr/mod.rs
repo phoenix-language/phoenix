@@ -35,6 +35,7 @@ use r#match::{lower_block_expr, lower_if, lower_match};
 
 /// Lowers `expr` so its value is on the implicit stack.
 pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
+    ctx.set_site(expr.span);
     let ty = ctx.expr_ty();
     let expr_id = ExprId::from_raw(ctx.next_expr - 1);
     lower_expr_inner(ctx, &expr.inner, ty, expr_id);
@@ -42,6 +43,7 @@ pub fn lower_expr(ctx: &mut LowerCtx<'_>, expr: &ExprNode) {
 
 /// Lowers `expr` with an explicit type (generic impl templates without body `expr_types`).
 pub fn lower_expr_with_type(ctx: &mut LowerCtx<'_>, expr: &ExprNode, ty: TypeId) {
+    ctx.set_site(expr.span);
     let _ = ctx.expr_ty();
     let expr_id = ExprId::from_raw(ctx.next_expr - 1);
     lower_expr_inner(ctx, &expr.inner, ty, expr_id);
@@ -49,6 +51,7 @@ pub fn lower_expr_with_type(ctx: &mut LowerCtx<'_>, expr: &ExprNode, ty: TypeId)
 
 /// Lowers `expr` and returns its typeck-assigned type.
 pub(super) fn lower_expr_typed(ctx: &mut LowerCtx<'_>, expr: &ExprNode) -> TypeId {
+    ctx.set_site(expr.span);
     let ty = ctx.expr_ty();
     let expr_id = ExprId::from_raw(ctx.next_expr - 1);
     lower_expr_inner(ctx, &expr.inner, ty, expr_id);
@@ -71,14 +74,14 @@ pub(super) fn lower_expr_inner(
                 lower_expr(ctx, item);
             }
             let arity = u32::try_from(items.len()).unwrap_or(u32::MAX);
-            ctx.emit(IrInst::MakeTuple { arity });
+            ctx.emit_here(IrInst::MakeTuple { arity });
         }
         Expr::Array(items) => {
             for item in items {
                 lower_expr(ctx, item);
             }
             let len = u32::try_from(items.len()).unwrap_or(u32::MAX);
-            ctx.emit(IrInst::MakeArray { len });
+            ctx.emit_here(IrInst::MakeArray { len });
         }
         Expr::Unary { op, operand } => {
             use phx_syntax::ast::expr::UnaryOp;
@@ -86,7 +89,7 @@ pub(super) fn lower_expr_inner(
                 if let Expr::Ident(ident) = &operand.inner {
                     if let Some(slot) = crate::lower::ctx::slot_for_symbol(ctx.layout, ident.symbol)
                     {
-                        ctx.emit(IrInst::AddressOfLocal { slot });
+                        ctx.emit_here(IrInst::AddressOfLocal { slot });
                     }
                 }
                 return;
@@ -94,32 +97,32 @@ pub(super) fn lower_expr_inner(
             lower_expr(ctx, operand);
             match op {
                 UnaryOp::Neg => {
-                    ctx.emit(IrInst::Neg {
+                    ctx.emit_here(IrInst::Neg {
                         result: result_ty,
                         prim_kind: prim_kind_byte(ctx.typed, result_ty),
                     });
                 }
                 UnaryOp::Not => {
-                    ctx.emit(IrInst::Not {
+                    ctx.emit_here(IrInst::Not {
                         result: result_ty,
                         prim_kind: prim_kind_byte(ctx.typed, result_ty),
                     });
                 }
                 UnaryOp::BitNot => {
-                    ctx.emit(IrInst::BitNot {
+                    ctx.emit_here(IrInst::BitNot {
                         result: result_ty,
                         prim_kind: prim_kind_byte(ctx.typed, result_ty),
                     });
                 }
                 UnaryOp::Deref => {
                     if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, result_ty) {
-                        ctx.emit(IrInst::PtrLoad {
+                        ctx.emit_here(IrInst::PtrLoad {
                             prim_kind: kind.as_u8(),
                             signed: primitive_load_signed(kind),
                             result: result_ty,
                         });
                     } else if aggregate_deref_target(&ctx.typed.types, result_ty) {
-                        ctx.emit(IrInst::LoadAggViaLocalPtr);
+                        ctx.emit_here(IrInst::LoadAggViaLocalPtr);
                     }
                 }
                 UnaryOp::Ref | UnaryOp::RefMut => {
@@ -139,7 +142,7 @@ pub(super) fn lower_expr_inner(
                 if let Some(bytes) = utf8_bytes_for_str_cast(ctx, &expr.inner) {
                     let idx = ctx.intern_const(crate::ir::IrConst::Bytes(bytes));
                     let _ = ctx.expr_ty();
-                    ctx.emit(IrInst::MakeStr { pool_index: idx });
+                    ctx.emit_here(IrInst::MakeStr { pool_index: idx });
                     return;
                 }
             }
@@ -151,7 +154,7 @@ pub(super) fn lower_expr_inner(
                     if elem == slice_elem {
                         let elem_kind = primitive_kind_for_type(&ctx.typed.types, *elem)
                             .map_or(SLOT_KIND_AGG, phx_bytecode::PrimitiveKind::as_u8);
-                        ctx.emit(IrInst::MakeSlice { elem_kind });
+                        ctx.emit_here(IrInst::MakeSlice { elem_kind });
                     }
                 } else if matches!(ctx.typed.types.get(from_ty), Ty::Str) {
                     if let Ty::Slice(inner) = ctx.typed.types.get(result_ty) {
@@ -159,14 +162,14 @@ pub(super) fn lower_expr_inner(
                             ctx.typed.types.get(*inner),
                             Ty::Primitive(phx_syntax::token::Keyword::U8)
                         ) {
-                            ctx.emit(IrInst::StrAsSlice);
+                            ctx.emit_here(IrInst::StrAsSlice);
                         }
                     }
                 } else if let (Some(from_k), Some(to_k)) = (
                     primitive_kind_for_type(&ctx.typed.types, from_ty),
                     primitive_kind_for_type(&ctx.typed.types, result_ty),
                 ) {
-                    ctx.emit(IrInst::Cast {
+                    ctx.emit_here(IrInst::Cast {
                         from_kind: from_k.as_u8(),
                         to_kind: to_k.as_u8(),
                     });
@@ -219,7 +222,7 @@ pub(super) fn lower_expr_inner(
                             field_count = field_count.saturating_add(1);
                         }
                     }
-                    ctx.emit(IrInst::MakeStruct {
+                    ctx.emit_here(IrInst::MakeStruct {
                         type_id,
                         field_count,
                     });
@@ -262,7 +265,7 @@ pub(super) fn lower_expr_inner(
                         }
                     }
                     let payload_count = u32::try_from(payload.len()).unwrap_or(u32::MAX);
-                    ctx.emit(IrInst::MakeEnum {
+                    ctx.emit_here(IrInst::MakeEnum {
                         type_id,
                         variant_tag: variant.tag,
                         payload_count,

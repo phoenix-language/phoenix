@@ -31,7 +31,7 @@ impl TypeChecker<'_> {
         let s = self.check_expr_node(scrutinee);
         self.record_scrutinee_type_mono(s);
         if let Some(layout) = &mut self.layout {
-            let _ = layout.alloc_match_scrutinee_temp(s);
+            let _ = layout.alloc_match_scrutinee_temp(s, span);
         }
         let pre = self.ownership.clone();
         let mut arm_states = Vec::new();
@@ -291,6 +291,7 @@ impl TypeChecker<'_> {
         );
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_pattern(
         &mut self,
         pat: &Pattern,
@@ -312,7 +313,7 @@ impl TypeChecker<'_> {
                         self.error_enum_pattern_on_non_enum(scrutinee, span);
                     }
                 } else {
-                    self.define_local(ident.symbol, scrutinee, binding_kind, None);
+                    self.define_local(ident.symbol, scrutinee, binding_kind, None, ident.span);
                 }
             }
             Pattern::Struct { name, fields } => {
@@ -339,7 +340,13 @@ impl TypeChecker<'_> {
                             if let Some(p) = &field.pattern {
                                 self.check_pattern(&p.inner, fty, span, binding_kind);
                             } else {
-                                self.define_local(field.name.symbol, fty, binding_kind, None);
+                                self.define_local(
+                                    field.name.symbol,
+                                    fty,
+                                    binding_kind,
+                                    None,
+                                    field.name.span,
+                                );
                             }
                         }
                     }
@@ -362,7 +369,13 @@ impl TypeChecker<'_> {
                                 if let Some(p) = &field.pattern {
                                     self.check_pattern(&p.inner, *fty, span, binding_kind);
                                 } else {
-                                    self.define_local(field.name.symbol, *fty, binding_kind, None);
+                                    self.define_local(
+                                        field.name.symbol,
+                                        *fty,
+                                        binding_kind,
+                                        None,
+                                        field.name.span,
+                                    );
                                 }
                             }
                         }

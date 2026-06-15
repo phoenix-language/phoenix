@@ -1,6 +1,6 @@
 //! IR basic blocks.
 
-use super::inst::IrInst;
+use super::spanned::SpannedInst;
 
 /// A straight-line sequence of instructions ending in a terminator.
 ///
@@ -11,7 +11,7 @@ use super::inst::IrInst;
 pub struct IrBasicBlock {
     /// Instructions in order; the last non-fallthrough block must end in a terminator
     /// (`Return`, `Jump`, `JumpIf`, or `TrapGivenMismatch`).
-    pub insts: Vec<IrInst>,
+    pub insts: Vec<SpannedInst>,
 }
 
 impl IrBasicBlock {

@@ -3,7 +3,7 @@
 use phx_diagnostics::{IrBag, IrError, IrResult};
 
 use super::stack_effect::{analyze_ir_stack_cfg, is_ir_terminator};
-use super::{IrFunction, IrInst, IrModule};
+use super::{IrFunction, IrInst, IrModule, SpannedInst};
 use crate::typeck::TypedProgram;
 
 /// Placeholder base for loop exit targets before [`crate::lower::LowerCtx::patch_loop_exit_targets`].
@@ -49,19 +49,20 @@ fn validate_structure(func: &IrFunction) -> Result<(), IrError> {
         let block_u32 = u32::try_from(block_id).unwrap_or(u32::MAX);
         let mut seen_terminator = false;
 
-        for (inst_index, inst) in block.insts.iter().enumerate() {
+        for (inst_index, spanned) in block.insts.iter().enumerate() {
             let inst_u32 = u32::try_from(inst_index).unwrap_or(u32::MAX);
             if seen_terminator {
                 return Err(IrError::InstructionAfterTerminator {
                     def_index,
                     block: block_u32,
                     inst_index: inst_u32,
+                    span: spanned.span,
                 });
             }
 
-            validate_jump_targets(func, def_index, block_u32, inst, block_count)?;
+            validate_jump_targets(func, def_index, block_u32, spanned, block_count)?;
 
-            if is_ir_terminator(inst) {
+            if is_ir_terminator(&spanned.inst) {
                 seen_terminator = true;
             }
         }
@@ -82,15 +83,18 @@ fn validate_jump_targets(
     func: &IrFunction,
     def_index: u32,
     block: u32,
-    inst: &IrInst,
+    spanned: &SpannedInst,
     block_count: u32,
 ) -> Result<(), IrError> {
+    let inst = &spanned.inst;
+    let span = spanned.span;
     let check = |target: u32| -> Result<(), IrError> {
         if target >= LOOP_EXIT_TARGET_BASE {
             return Err(IrError::UnpatchedLoopExit {
                 def_index,
                 block,
                 target,
+                span,
             });
         }
         if target >= block_count {
@@ -131,9 +135,14 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::ir::{IrBasicBlock, IrFunctionId};
+    use crate::ir::{IrBasicBlock, IrFunctionId, SpannedInst};
     use crate::resolver::DefId;
     use crate::typeck::TypeId;
+    use phx_diagnostics::Span;
+
+    fn span_inst(inst: IrInst) -> SpannedInst {
+        SpannedInst::new(Span::new(0, 1), inst)
+    }
 
     fn minimal_func(blocks: Vec<IrBasicBlock>) -> IrFunction {
         IrFunction {
@@ -156,7 +165,7 @@ mod tests {
     #[test]
     fn missing_terminator_rejected() {
         let func = minimal_func(vec![IrBasicBlock {
-            insts: vec![IrInst::Pop],
+            insts: vec![span_inst(IrInst::Pop)],
         }]);
         match validate_structure(&func) {
             Err(IrError::MissingTerminator { block: 0, .. }) => {}
@@ -167,7 +176,7 @@ mod tests {
     #[test]
     fn invalid_jump_target_rejected() {
         let func = minimal_func(vec![IrBasicBlock {
-            insts: vec![IrInst::Jump { target: 99 }],
+            insts: vec![span_inst(IrInst::Jump { target: 99 })],
         }]);
         match validate_structure(&func) {
             Err(IrError::InvalidJumpTarget { target: 99, .. }) => {}
@@ -179,10 +188,10 @@ mod tests {
     fn inst_after_terminator_rejected() {
         let func = minimal_func(vec![IrBasicBlock {
             insts: vec![
-                IrInst::Return {
+                span_inst(IrInst::Return {
                     ty: TypeId::from_raw(0),
-                },
-                IrInst::Pop,
+                }),
+                span_inst(IrInst::Pop),
             ],
         }]);
         match validate_structure(&func) {
@@ -196,34 +205,34 @@ mod tests {
         let func = minimal_func(vec![
             IrBasicBlock {
                 insts: vec![
-                    IrInst::Const {
+                    span_inst(IrInst::Const {
                         index: 0,
                         ty: TypeId::from_raw(0),
                         prim_kind: 0,
-                    },
-                    IrInst::JumpIf {
+                    }),
+                    span_inst(IrInst::JumpIf {
                         then_block: 1,
                         else_block: 2,
-                    },
+                    }),
                 ],
             },
             IrBasicBlock {
-                insts: vec![IrInst::Jump { target: 3 }],
+                insts: vec![span_inst(IrInst::Jump { target: 3 })],
             },
             IrBasicBlock {
                 insts: vec![
-                    IrInst::Const {
+                    span_inst(IrInst::Const {
                         index: 0,
                         ty: TypeId::from_raw(0),
                         prim_kind: 0,
-                    },
-                    IrInst::Jump { target: 3 },
+                    }),
+                    span_inst(IrInst::Jump { target: 3 }),
                 ],
             },
             IrBasicBlock {
-                insts: vec![IrInst::Return {
+                insts: vec![span_inst(IrInst::Return {
                     ty: TypeId::from_raw(0),
-                }],
+                })],
             },
         ]);
         let typed = stub_typed();
@@ -236,9 +245,9 @@ mod tests {
     #[test]
     fn unpatched_loop_exit_rejected() {
         let func = minimal_func(vec![IrBasicBlock {
-            insts: vec![IrInst::Jump {
+            insts: vec![span_inst(IrInst::Jump {
                 target: LOOP_EXIT_TARGET_BASE,
-            }],
+            })],
         }]);
         match validate_structure(&func) {
             Err(IrError::UnpatchedLoopExit { .. }) => {}

@@ -315,6 +315,7 @@ impl AstGen {
 
     fn receiver_param(&mut self) -> Param {
         Param::Receiver {
+            span: Span::new(0, 1),
             mut_: false,
             ty: Some(self.type_ref_self()),
         }

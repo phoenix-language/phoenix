@@ -5,7 +5,7 @@ use phx_syntax::token::Keyword;
 use super::layout::{ProgramLayout, TraitInstKey};
 use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
-use crate::resolver::{DefId, ResolvedProgram};
+use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Returns the interned unit type.
 #[must_use]
@@ -176,12 +176,12 @@ fn enum_is_copyable(
 #[must_use]
 pub fn implements_drop_for_def(
     layout: &ProgramLayout,
-    _resolved: &ResolvedProgram,
+    resolved: &ResolvedProgram,
     std_traits: &StdTraitKernel,
     def: DefId,
     args: &[TypeId],
 ) -> bool {
-    let Some(drop_trait) = std_traits.drop_trait else {
+    let Some(drop_trait) = drop_trait_def(resolved, layout, std_traits) else {
         return false;
     };
     layout_has_trait_impl(layout, def, args, drop_trait, &[])
@@ -209,12 +209,12 @@ pub fn implements_drop(
 #[must_use]
 pub fn resolve_drop_fn(
     layout: &ProgramLayout,
-    _resolved: &ResolvedProgram,
+    resolved: &ResolvedProgram,
     std_traits: &StdTraitKernel,
     type_def: DefId,
     type_args: &[TypeId],
 ) -> Option<DefId> {
-    let drop_trait = std_traits.drop_trait?;
+    let drop_trait = drop_trait_def(resolved, layout, std_traits)?;
     let mut matches: Vec<DefId> = layout
         .trait_methods
         .iter()
@@ -236,6 +236,31 @@ pub fn resolve_drop_fn(
 
 fn implementer_args_match(key_args: &[TypeId], concrete_args: &[TypeId]) -> bool {
     key_args == concrete_args || (key_args.is_empty() && !concrete_args.is_empty())
+}
+
+fn drop_trait_def(
+    resolved: &ResolvedProgram,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+) -> Option<DefId> {
+    if let Some(def) = std_traits.drop_trait {
+        return Some(def);
+    }
+    resolved.defs.iter().enumerate().find_map(|(i, d)| {
+        if d.kind != DefKind::Trait || !resolved.interner.resolves_to(d.name, "Drop") {
+            return None;
+        }
+        let trait_def = DefId::try_from_index(i).ok()?;
+        let has_impl = layout
+            .trait_impls
+            .iter()
+            .any(|key| key.trait_def == trait_def)
+            || layout
+                .trait_methods
+                .keys()
+                .any(|(key, _)| key.trait_def == trait_def);
+        has_impl.then_some(trait_def)
+    })
 }
 
 fn layout_has_trait_impl(

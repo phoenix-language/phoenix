@@ -15,9 +15,11 @@ fn lower_trait_default_emits_inherited_method() {
     );
     let ir = lower(&unit.typed).expect("lower trait_default");
     let has_call = ir.functions.iter().any(|f| {
-        f.blocks
-            .iter()
-            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Call { .. })))
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|s| matches!(&s.inst, IrInst::Call { .. }))
+        })
     });
     assert!(
         has_call,
@@ -34,14 +36,14 @@ fn lower_heap_slice_emits_make_slice_from_ptr_not_call() {
         f.blocks.iter().any(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::MakeSliceFromPtr { .. }))
+                .any(|s| matches!(&s.inst, IrInst::MakeSliceFromPtr { .. }))
         })
     });
     let slice_def = unit.typed.intrinsic_kernel.slice_from_raw_parts;
     let has_call = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
-            b.insts.iter().any(|i| {
-                if let IrInst::Call { callee, .. } = i {
+            b.insts.iter().any(|s| {
+                if let IrInst::Call { callee, .. } = &s.inst {
                     slice_def == Some(*callee)
                 } else {
                     false
@@ -68,7 +70,7 @@ fn lower_heap_slice_store_emits_index_store() {
         f.blocks.iter().any(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::IndexStore { .. }))
+                .any(|s| matches!(&s.inst, IrInst::IndexStore { .. }))
         })
     });
     assert!(
@@ -86,17 +88,17 @@ fn lower_heap_slice_nested_index_store_emits_index_store() {
         f.blocks.iter().any(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::IndexStore { .. }))
+                .any(|s| matches!(&s.inst, IrInst::IndexStore { .. }))
         })
     });
     let has_call_before_store = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
             let mut saw_call = false;
-            for inst in &b.insts {
-                if matches!(inst, IrInst::Call { .. }) {
+            for spanned in &b.insts {
+                if matches!(&spanned.inst, IrInst::Call { .. }) {
                     saw_call = true;
                 }
-                if saw_call && matches!(inst, IrInst::IndexStore { .. }) {
+                if saw_call && matches!(&spanned.inst, IrInst::IndexStore { .. }) {
                     return true;
                 }
             }
@@ -121,12 +123,12 @@ fn lower_heap_dealloc_emits_free_not_call() {
     let has_free = ir.functions.iter().any(|f| {
         f.blocks
             .iter()
-            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Free)))
+            .any(|b| b.insts.iter().any(|s| matches!(&s.inst, IrInst::Free)))
     });
     let has_dealloc_call = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
-            b.insts.iter().any(|i| {
-                if let IrInst::Call { callee, .. } = i {
+            b.insts.iter().any(|s| {
+                if let IrInst::Call { callee, .. } = &s.inst {
                     unit.typed.intrinsic_kernel.dealloc_bytes == Some(*callee)
                 } else {
                     false
@@ -147,14 +149,16 @@ fn lower_heap_alloc_emits_alloc_not_call() {
     let unit = phx_compiler::check_file(&path).expect("typecheck heap_alloc");
     let ir = lower(&unit.typed).expect("lower heap_alloc");
     let has_alloc = ir.functions.iter().any(|f| {
-        f.blocks
-            .iter()
-            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Alloc { .. })))
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|s| matches!(&s.inst, IrInst::Alloc { .. }))
+        })
     });
     let has_alloc_call = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
-            b.insts.iter().any(|i| {
-                if let IrInst::Call { callee, .. } = i {
+            b.insts.iter().any(|s| {
+                if let IrInst::Call { callee, .. } = &s.inst {
                     unit.typed.intrinsic_kernel.alloc_bytes == Some(*callee)
                 } else {
                     false
@@ -183,7 +187,7 @@ fn lower_std_try_emits_question_mark_unwrap() {
             && f.blocks.iter().any(|b| {
                 b.insts
                     .iter()
-                    .any(|i| matches!(i, IrInst::MatchTag { .. } | IrInst::GetField { .. }))
+                    .any(|s| matches!(&s.inst, IrInst::MatchTag { .. } | IrInst::GetField { .. }))
             })
     });
     assert!(

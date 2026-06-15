@@ -3,7 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use phx_bytecode::{Opcode, StackEffectError, apply_stack_effect};
-use phx_diagnostics::IrError;
+use phx_diagnostics::{IrError, Span};
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
 use crate::resolver::DefId;
@@ -56,6 +56,7 @@ pub fn apply_ir_stack_effect_typed(
     def_index: u32,
     block: u32,
     inst_index: u32,
+    span: Span,
 ) -> Result<(), IrError> {
     let map_underflow = |depth_before: u32, e: StackEffectError| match e {
         StackEffectError::Underflow => IrError::StackUnderflow {
@@ -63,6 +64,7 @@ pub fn apply_ir_stack_effect_typed(
             block,
             inst_index,
             depth: depth_before,
+            span,
         },
         StackEffectError::MissingCallArity | StackEffectError::MissingFieldCount => {
             IrError::StackUnderflow {
@@ -70,6 +72,7 @@ pub fn apply_ir_stack_effect_typed(
                 block,
                 inst_index,
                 depth: depth_before,
+                span,
             }
         }
     };
@@ -368,23 +371,25 @@ pub fn analyze_ir_stack_cfg(func: &IrFunction, typed: &TypedProgram) -> Result<(
         let mut depth = *entry_depth.get(&block_id).unwrap_or(&0);
 
         let mut block_terminates = false;
-        for (inst_index, inst) in block.insts.iter().enumerate() {
+        for (inst_index, spanned) in block.insts.iter().enumerate() {
             apply_ir_stack_effect_typed(
-                inst,
+                &spanned.inst,
                 &mut depth,
                 typed,
                 def_index,
                 block_id,
                 u32::try_from(inst_index).unwrap_or(u32::MAX),
+                spanned.span,
             )?;
 
-            match inst {
+            match &spanned.inst {
                 IrInst::Jump { target } => {
                     enqueue_ir_edge_strict(
                         def_index,
                         block_id,
                         *target,
                         depth,
+                        spanned.span,
                         &mut entry_depth,
                         &mut worklist,
                     )?;
@@ -399,6 +404,7 @@ pub fn analyze_ir_stack_cfg(func: &IrFunction, typed: &TypedProgram) -> Result<(
                         block_id,
                         *then_block,
                         depth,
+                        spanned.span,
                         &mut entry_depth,
                         &mut worklist,
                     )?;
@@ -407,6 +413,7 @@ pub fn analyze_ir_stack_cfg(func: &IrFunction, typed: &TypedProgram) -> Result<(
                         block_id,
                         *else_block,
                         depth,
+                        spanned.span,
                         &mut entry_depth,
                         &mut worklist,
                     )?;
@@ -422,11 +429,16 @@ pub fn analyze_ir_stack_cfg(func: &IrFunction, typed: &TypedProgram) -> Result<(
         if block.insts.is_empty() || !block_terminates {
             let next = block_id.saturating_add(1);
             if (next as usize) < func.blocks.len() {
+                let fallthrough_span = block
+                    .insts
+                    .last()
+                    .map_or(Span::new(0, 1), |spanned| spanned.span);
                 enqueue_ir_edge_strict(
                     def_index,
                     block_id,
                     next,
                     depth,
+                    fallthrough_span,
                     &mut entry_depth,
                     &mut worklist,
                 )?;
@@ -473,11 +485,11 @@ pub fn compute_ir_stack_max(
         max_stack = max_stack.max(depth);
 
         let mut block_terminates = false;
-        for inst in &block.insts {
-            apply_ir_stack_effect_emit(inst, &mut depth, def_to_fn, fn_arity)?;
+        for spanned in &block.insts {
+            apply_ir_stack_effect_emit(&spanned.inst, &mut depth, def_to_fn, fn_arity)?;
             max_stack = max_stack.max(depth);
 
-            match inst {
+            match &spanned.inst {
                 IrInst::Jump { target } => {
                     enqueue_ir_edge_max(
                         block_id,
@@ -575,6 +587,7 @@ fn enqueue_ir_edge_strict(
     from: u32,
     target: u32,
     depth: u32,
+    span: Span,
     entry_depth: &mut HashMap<u32, u32>,
     worklist: &mut VecDeque<u32>,
 ) -> Result<(), IrError> {
@@ -590,18 +603,20 @@ fn enqueue_ir_edge_strict(
                     block: target,
                     expected: existing,
                     found: depth,
+                    span,
                 });
             }
         }
         return Ok(());
     }
-    try_enqueue_ir_block_strict(def_index, target, depth, entry_depth, worklist)
+    try_enqueue_ir_block_strict(def_index, target, depth, span, entry_depth, worklist)
 }
 
 fn try_enqueue_ir_block_strict(
     def_index: u32,
     target: u32,
     depth: u32,
+    span: Span,
     entry_depth: &mut HashMap<u32, u32>,
     worklist: &mut VecDeque<u32>,
 ) -> Result<(), IrError> {
@@ -617,6 +632,7 @@ fn try_enqueue_ir_block_strict(
                 block: target,
                 expected: existing,
                 found: depth,
+                span,
             });
         }
     }

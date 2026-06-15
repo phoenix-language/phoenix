@@ -190,9 +190,11 @@ fn std_try_lowers_match_tag_for_question_mark() {
     );
     let ir = lower(&typed).expect("lower");
     let has_match_tag = ir.functions.iter().any(|f| {
-        f.blocks
-            .iter()
-            .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::MatchTag { .. })))
+        f.blocks.iter().any(|b| {
+            b.insts
+                .iter()
+                .any(|s| matches!(&s.inst, IrInst::MatchTag { .. }))
+        })
     });
     assert!(has_match_tag, "expected MatchTag in IR for ? lowering");
 }
@@ -223,8 +225,12 @@ fn std_try_read_config_ir_has_try_unwrap_sequence() {
         panic!("read_config function not found in IR");
     };
     let insts: Vec<_> = f.blocks.iter().flat_map(|b| &b.insts).collect();
-    let has_match = insts.iter().any(|i| matches!(i, IrInst::MatchTag { .. }));
-    let has_get_field = insts.iter().any(|i| matches!(i, IrInst::GetField { .. }));
+    let has_match = insts
+        .iter()
+        .any(|s| matches!(&s.inst, IrInst::MatchTag { .. }));
+    let has_get_field = insts
+        .iter()
+        .any(|s| matches!(&s.inst, IrInst::GetField { .. }));
     assert!(has_match, "read_config should lower MatchTag for ?");
     assert!(
         has_get_field,
@@ -232,7 +238,7 @@ fn std_try_read_config_ir_has_try_unwrap_sequence() {
     );
     let store_count = insts
         .iter()
-        .filter(|i| matches!(i, IrInst::StoreLocal { .. }))
+        .filter(|s| matches!(&s.inst, IrInst::StoreLocal { .. }))
         .count();
     assert!(
         store_count >= 2,
@@ -325,8 +331,10 @@ fn std_try_from_read_config_lowers_from_on_err_path() {
         panic!("read_config function not found in IR");
     };
     let insts: Vec<_> = f.blocks.iter().flat_map(|b| &b.insts).collect();
-    let has_call = insts.iter().any(|i| matches!(i, IrInst::Call { .. }));
-    let has_make_enum = insts.iter().any(|i| matches!(i, IrInst::MakeEnum { .. }));
+    let has_call = insts.iter().any(|s| matches!(&s.inst, IrInst::Call { .. }));
+    let has_make_enum = insts
+        .iter()
+        .any(|s| matches!(&s.inst, IrInst::MakeEnum { .. }));
     assert!(
         has_call,
         "read_config should lower Call to From::from on ? failure path"

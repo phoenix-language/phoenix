@@ -23,12 +23,15 @@ fn emit_drops_at_depth(ctx: &mut LowerCtx<'_>, depth: u32) {
     events.sort_by_key(|e| e.slot.index());
     for event in events.into_iter().rev() {
         ctx.emitted_drop_slots.insert(event.slot);
-        ctx.emit(IrInst::DropLocal {
-            slot: event.slot,
-            ty: event.ty,
-            drop_fn: event.drop_fn,
-            prim_kind: event.prim_kind,
-        });
+        ctx.emit(
+            event.span,
+            IrInst::DropLocal {
+                slot: event.slot,
+                ty: event.ty,
+                drop_fn: event.drop_fn,
+                prim_kind: event.prim_kind,
+            },
+        );
     }
 }
 

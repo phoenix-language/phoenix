@@ -31,7 +31,7 @@ pub(super) fn lower_if(
     }
     lower_block_expr(ctx, then_block);
     if !block_ends_with_unconditional_jump(ctx, then_id) {
-        ctx.emit(IrInst::Jump { target: merge_id });
+        ctx.emit_here(IrInst::Jump { target: merge_id });
     }
 
     ctx.set_current(else_id);
@@ -43,7 +43,7 @@ pub(super) fn lower_if(
         lower_else_if_chain(ctx, else_ifs, else_block);
     }
     if !block_ends_with_unconditional_jump(ctx, else_id) {
-        ctx.emit(IrInst::Jump { target: merge_id });
+        ctx.emit_here(IrInst::Jump { target: merge_id });
     }
 
     ctx.set_current(merge_id);
@@ -60,7 +60,7 @@ pub(super) fn lower_if_condition_test(
     match condition {
         IfCondition::Bool(cond) => {
             lower_expr(ctx, cond);
-            ctx.emit(IrInst::JumpIf {
+            ctx.emit_here(IrInst::JumpIf {
                 then_block: then_id,
                 else_block: else_id,
             });
@@ -77,7 +77,7 @@ pub(super) fn lower_if_condition_test(
                 .find(|b| b.slot == temp)
                 .map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
             lower_expr(ctx, scrutinee);
-            ctx.emit(IrInst::StoreLocal {
+            ctx.emit_here(IrInst::StoreLocal {
                 slot: temp,
                 ty: temp_ty,
                 prim_kind: prim_kind_byte(ctx.typed, temp_ty),
@@ -96,7 +96,7 @@ pub(crate) fn block_ends_with_unconditional_jump(ctx: &LowerCtx<'_>, block: u32)
     };
     b.insts
         .last()
-        .is_some_and(|inst| matches!(inst, IrInst::Jump { .. } | IrInst::Return { .. }))
+        .is_some_and(|spanned| matches!(&spanned.inst, IrInst::Jump { .. } | IrInst::Return { .. }))
 }
 
 fn lower_else_if_chain(
@@ -117,7 +117,7 @@ fn lower_else_if_chain(
     }
     lower_block_expr(ctx, first_block);
     if !block_ends_with_unconditional_jump(ctx, then_id) {
-        ctx.emit(IrInst::Jump { target: merge_id });
+        ctx.emit_here(IrInst::Jump { target: merge_id });
     }
 
     ctx.set_current(else_id);
@@ -129,7 +129,7 @@ fn lower_else_if_chain(
         lower_else_if_chain(ctx, rest, final_else);
     }
     if !block_ends_with_unconditional_jump(ctx, else_id) {
-        ctx.emit(IrInst::Jump { target: merge_id });
+        ctx.emit_here(IrInst::Jump { target: merge_id });
     }
 
     ctx.set_current(merge_id);
@@ -137,7 +137,7 @@ fn lower_else_if_chain(
 
 pub(super) fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[MatchArm]) {
     if arms.is_empty() {
-        ctx.emit(IrInst::TrapGivenMismatch);
+        ctx.emit_here(IrInst::TrapGivenMismatch);
         return;
     }
 
@@ -150,7 +150,7 @@ pub(super) fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[
         .map_or_else(|| unit_ty(ctx.typed), |b| b.ty);
 
     lower_expr(ctx, scrutinee);
-    ctx.emit(IrInst::StoreLocal {
+    ctx.emit_here(IrInst::StoreLocal {
         slot: temp,
         ty: temp_ty,
         prim_kind: prim_kind_byte(ctx.typed, temp_ty),
@@ -165,7 +165,7 @@ pub(super) fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[
     let trap_id = ctx.fresh_block();
     let merge_id = ctx.fresh_block();
 
-    ctx.emit(IrInst::Jump {
+    ctx.emit_here(IrInst::Jump {
         target: test_blocks[0],
     });
 
@@ -190,18 +190,18 @@ pub(super) fn lower_match(ctx: &mut LowerCtx<'_>, scrutinee: &ExprNode, arms: &[
         if let Some(guard) = &arm.guard {
             let guarded_body = ctx.fresh_block();
             lower_expr(ctx, guard);
-            ctx.emit(IrInst::JumpIf {
+            ctx.emit_here(IrInst::JumpIf {
                 then_block: guarded_body,
                 else_block: fail_id,
             });
             ctx.set_current(guarded_body);
         }
         lower_expr(ctx, &arm.body);
-        ctx.emit(IrInst::Jump { target: merge_id });
+        ctx.emit_here(IrInst::Jump { target: merge_id });
     }
 
     ctx.set_current(trap_id);
-    ctx.emit(IrInst::TrapGivenMismatch);
+    ctx.emit_here(IrInst::TrapGivenMismatch);
 
     ctx.set_current(merge_id);
 }
@@ -217,93 +217,93 @@ pub(crate) fn emit_arm_condition(
 ) {
     match pat {
         Pattern::Wildcard => {
-            ctx.emit(IrInst::Jump { target: body_id });
+            ctx.emit_here(IrInst::Jump { target: body_id });
         }
         Pattern::Ident(ident) => {
             if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, ident.symbol)
             {
-                ctx.emit(IrInst::LoadLocal {
+                ctx.emit_here(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
                     prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                 });
-                ctx.emit(IrInst::MatchTag {
+                ctx.emit_here(IrInst::MatchTag {
                     type_id,
                     variant_tag: tag,
                 });
-                ctx.emit(IrInst::JumpIf {
+                ctx.emit_here(IrInst::JumpIf {
                     then_block: body_id,
                     else_block: fail_id,
                 });
             } else {
-                ctx.emit(IrInst::Jump { target: body_id });
+                ctx.emit_here(IrInst::Jump { target: body_id });
             }
         }
         Pattern::Literal(lit) => {
-            ctx.emit(IrInst::LoadLocal {
+            ctx.emit_here(IrInst::LoadLocal {
                 slot: temp,
                 ty: temp_ty,
                 prim_kind: prim_kind_byte(ctx.typed, temp_ty),
             });
             let index = intern_literal(ctx, lit, temp_ty);
             let bool_id = bool_ty(ctx.typed);
-            ctx.emit(IrInst::Const {
+            ctx.emit_here(IrInst::Const {
                 index,
                 ty: temp_ty,
                 prim_kind: prim_kind_byte(ctx.typed, temp_ty),
             });
-            ctx.emit(IrInst::BinOp {
+            ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Eq,
                 result: bool_id,
                 prim_kind: prim_kind_byte(ctx.typed, bool_id),
             });
-            ctx.emit(IrInst::JumpIf {
+            ctx.emit_here(IrInst::JumpIf {
                 then_block: body_id,
                 else_block: fail_id,
             });
         }
         Pattern::Struct { name, .. } => {
             if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, name.symbol) {
-                ctx.emit(IrInst::LoadLocal {
+                ctx.emit_here(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
                     prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                 });
-                ctx.emit(IrInst::MatchTag {
+                ctx.emit_here(IrInst::MatchTag {
                     type_id,
                     variant_tag: tag,
                 });
-                ctx.emit(IrInst::JumpIf {
+                ctx.emit_here(IrInst::JumpIf {
                     then_block: body_id,
                     else_block: fail_id,
                 });
             } else if struct_def_by_name(&ctx.typed.resolved, name.symbol).is_some() {
-                ctx.emit(IrInst::Jump { target: body_id });
+                ctx.emit_here(IrInst::Jump { target: body_id });
             } else {
-                ctx.emit(IrInst::Jump { target: fail_id });
+                ctx.emit_here(IrInst::Jump { target: fail_id });
             }
         }
         Pattern::Tuple { name, .. } => {
             if let Some((type_id, tag, _)) = enum_variant_for_scrutinee(ctx, temp_ty, name.symbol) {
-                ctx.emit(IrInst::LoadLocal {
+                ctx.emit_here(IrInst::LoadLocal {
                     slot: temp,
                     ty: temp_ty,
                     prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                 });
-                ctx.emit(IrInst::MatchTag {
+                ctx.emit_here(IrInst::MatchTag {
                     type_id,
                     variant_tag: tag,
                 });
-                ctx.emit(IrInst::JumpIf {
+                ctx.emit_here(IrInst::JumpIf {
                     then_block: body_id,
                     else_block: fail_id,
                 });
             } else {
-                ctx.emit(IrInst::Jump { target: fail_id });
+                ctx.emit_here(IrInst::Jump { target: fail_id });
             }
         }
         Pattern::Range { .. } => {
-            ctx.emit(IrInst::Jump { target: fail_id });
+            ctx.emit_here(IrInst::Jump { target: fail_id });
         }
     }
 }
@@ -338,13 +338,13 @@ pub(crate) fn bind_match_pattern(
             }
             if let Some(binding) = ctx.layout.binding(ident.symbol) {
                 if !value_on_stack {
-                    ctx.emit(IrInst::LoadLocal {
+                    ctx.emit_here(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
                         prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                     });
                 }
-                ctx.emit(IrInst::StoreLocal {
+                ctx.emit_here(IrInst::StoreLocal {
                     slot: binding.slot,
                     ty: binding.ty,
                     prim_kind: prim_kind_byte(ctx.typed, binding.ty),
@@ -360,13 +360,13 @@ pub(crate) fn bind_match_pattern(
                         .layout
                         .struct_field_index(def, field.name.symbol, &[])
                         .unwrap_or(0);
-                    ctx.emit(IrInst::LoadLocal {
+                    ctx.emit_here(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
                         prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                     });
                     let result_ty = field_result_ty(ctx, def, field.name.symbol);
-                    ctx.emit(IrInst::GetField {
+                    ctx.emit_here(IrInst::GetField {
                         type_id,
                         field_index,
                         result: result_ty,
@@ -374,7 +374,7 @@ pub(crate) fn bind_match_pattern(
                     if let Some(p) = &field.pattern {
                         bind_match_pattern(ctx, &p.inner, temp, result_ty, true);
                     } else if let Some(binding) = ctx.layout.binding(field.name.symbol) {
-                        ctx.emit(IrInst::StoreLocal {
+                        ctx.emit_here(IrInst::StoreLocal {
                             slot: binding.slot,
                             ty: result_ty,
                             prim_kind: prim_kind_byte(ctx.typed, result_ty),
@@ -388,13 +388,13 @@ pub(crate) fn bind_match_pattern(
                     let Some(pat_field) = fields.iter().find(|f| f.name.symbol == *fname) else {
                         continue;
                     };
-                    ctx.emit(IrInst::LoadLocal {
+                    ctx.emit_here(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
                         prim_kind: prim_kind_byte(ctx.typed, temp_ty),
                     });
                     let field_index = u32::try_from(i).unwrap_or(u32::MAX);
-                    ctx.emit(IrInst::GetField {
+                    ctx.emit_here(IrInst::GetField {
                         type_id,
                         field_index,
                         result: *fty,
@@ -402,7 +402,7 @@ pub(crate) fn bind_match_pattern(
                     if let Some(p) = &pat_field.pattern {
                         bind_match_pattern(ctx, &p.inner, temp, *fty, true);
                     } else if let Some(binding) = ctx.layout.binding(pat_field.name.symbol) {
-                        ctx.emit(IrInst::StoreLocal {
+                        ctx.emit_here(IrInst::StoreLocal {
                             slot: binding.slot,
                             ty: *fty,
                             prim_kind: prim_kind_byte(ctx.typed, *fty),
@@ -416,7 +416,7 @@ pub(crate) fn bind_match_pattern(
                 enum_variant_for_scrutinee(ctx, temp_ty, name.symbol)
             {
                 for (i, p) in patterns.iter().enumerate() {
-                    ctx.emit(IrInst::LoadLocal {
+                    ctx.emit_here(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
                         prim_kind: prim_kind_byte(ctx.typed, temp_ty),
@@ -425,7 +425,7 @@ pub(crate) fn bind_match_pattern(
                         .get(i)
                         .copied()
                         .unwrap_or_else(|| unit_ty(ctx.typed));
-                    ctx.emit(IrInst::GetField {
+                    ctx.emit_here(IrInst::GetField {
                         type_id,
                         field_index: u32::try_from(i).unwrap_or(u32::MAX),
                         result: result_ty,

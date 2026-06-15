@@ -461,14 +461,25 @@ fn append_ancillary_text(
 
 /// Formats an IR validation error with a source caret when possible.
 #[must_use]
-pub fn format_ir_error(err: &IrError) -> String {
-    format_ir_error_styled(err, &PlainStyle)
+pub fn format_ir_error(source: &str, err: &IrError) -> String {
+    format_ir_error_styled(source, err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats an IR validation error with styling.
+/// Formats an IR validation error with styling and file context.
 #[must_use]
-pub fn format_ir_error_styled(err: &IrError, style: &dyn crate::render::DiagnosticStyle) -> String {
-    style.error_header(err.code(), &err.to_string())
+pub fn format_ir_error_styled(
+    source: &str,
+    err: &IrError,
+    style: &dyn crate::render::DiagnosticStyle,
+    ctx: SpanContext<'_>,
+) -> String {
+    let code = err.code();
+    let message = err.to_string();
+    if let Some(span) = err.span() {
+        render_diagnostic(style, source, span, code, &message, ctx)
+    } else {
+        style.error_header(code, &message)
+    }
 }
 
 /// Formats a lowering error with a source caret when possible.

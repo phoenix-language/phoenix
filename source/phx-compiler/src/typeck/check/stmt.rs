@@ -396,6 +396,7 @@ impl TypeChecker<'_> {
                 ty: binding.ty,
                 drop_fn,
                 prim_kind,
+                span: binding.declare_span,
             });
         }
         if let Some(layout) = &mut self.layout {
@@ -470,6 +471,7 @@ impl TypeChecker<'_> {
             })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_function_body(
         &mut self,
         f: &Function,
@@ -520,9 +522,9 @@ impl TypeChecker<'_> {
                         .and_then(|params| params.get(param_index).copied())
                         .unwrap_or_else(|| self.lower_ast_type_with_defs(ty, &type_defs));
                     param_index += 1;
-                    self.define_local(name.symbol, pty, BindingKind::Param, None);
+                    self.define_local(name.symbol, pty, BindingKind::Param, None, name.span);
                 }
-                Param::Receiver { ty, .. } => {
+                Param::Receiver { ty, span, .. } => {
                     let pty = specialized_param_types
                         .as_ref()
                         .and_then(|params| params.get(param_index).copied())
@@ -533,7 +535,7 @@ impl TypeChecker<'_> {
                         .or(self.impl_self_type)
                         .unwrap_or(self.unit);
                     param_index += 1;
-                    self.define_local(impl_receiver_symbol(), pty, BindingKind::Param, None);
+                    self.define_local(impl_receiver_symbol(), pty, BindingKind::Param, None, *span);
                 }
             }
         }
@@ -541,7 +543,13 @@ impl TypeChecker<'_> {
             let needs_implicit_self = function_body_uses_impl_receiver(&f.body.inner);
             if needs_implicit_self {
                 if let Some(self_ty) = self.impl_self_type {
-                    self.define_local(impl_receiver_symbol(), self_ty, BindingKind::Param, None);
+                    self.define_local(
+                        impl_receiver_symbol(),
+                        self_ty,
+                        BindingKind::Param,
+                        None,
+                        f.name.span,
+                    );
                 }
             }
         }
@@ -588,7 +596,7 @@ impl TypeChecker<'_> {
         let mut last = self.unit;
         for item in &block.items {
             last = match item {
-                BlockItem::Stmt(stmt) => self.check_block_stmt_value(&stmt.inner),
+                BlockItem::Stmt(stmt) => self.check_block_stmt_value(stmt),
                 BlockItem::Expr(expr) => self.check_expr_node(expr),
                 BlockItem::Import(_) => self.unit,
             };
@@ -597,8 +605,11 @@ impl TypeChecker<'_> {
         last
     }
 
-    pub(in crate::typeck::check) fn check_block_stmt_value(&mut self, stmt: &Stmt) -> TypeId {
-        match stmt {
+    pub(in crate::typeck::check) fn check_block_stmt_value(
+        &mut self,
+        stmt: &phx_syntax::ast::StmtNode,
+    ) -> TypeId {
+        match &stmt.inner {
             Stmt::Expr(expr) => {
                 if matches!(expr.inner, Expr::Assign { .. }) {
                     let _ = self.check_expr_node(expr);
@@ -607,15 +618,19 @@ impl TypeChecker<'_> {
                     self.check_expr_node(expr)
                 }
             }
-            Stmt::Return(expr) => self.check_return(expr.as_ref()),
-            other => {
-                self.check_stmt(other);
+            Stmt::Return(expr) => self.check_return(stmt.span, expr.as_ref()),
+            _ => {
+                self.check_stmt(stmt);
                 self.unit
             }
         }
     }
 
-    pub(in crate::typeck::check) fn check_return(&mut self, expr: Option<&ExprNode>) -> TypeId {
+    pub(in crate::typeck::check) fn check_return(
+        &mut self,
+        span: Span,
+        expr: Option<&ExprNode>,
+    ) -> TypeId {
         let current = self.layout_scope_depth();
         self.plan_drops_for_scope_depths(current, 0);
         if let Some(e) = expr {
@@ -635,7 +650,7 @@ impl TypeChecker<'_> {
         } else {
             if let Some(ret) = self.fn_ret {
                 if !self.types_equal(ret, self.unit) {
-                    self.error_mismatch(self.unit, ret, Span::new(0, 0), MismatchKind::Return);
+                    self.error_mismatch(self.unit, ret, span, MismatchKind::Return);
                 }
             }
             self.unit
@@ -643,8 +658,8 @@ impl TypeChecker<'_> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(in crate::typeck::check) fn check_stmt(&mut self, stmt: &Stmt) {
-        match stmt {
+    pub(in crate::typeck::check) fn check_stmt(&mut self, stmt: &phx_syntax::ast::StmtNode) {
+        match &stmt.inner {
             Stmt::Const { name, ty, init } => {
                 let expected = ty.as_ref().map(|t| self.lower_ast_type(t));
                 self.ctor_expected = expected;
@@ -665,7 +680,13 @@ impl TypeChecker<'_> {
                         }
                     }
                 }
-                self.define_local(name.symbol, got, BindingKind::Const, Some(&init.inner));
+                self.define_local(
+                    name.symbol,
+                    got,
+                    BindingKind::Const,
+                    Some(&init.inner),
+                    name.span,
+                );
             }
             Stmt::Var { name, ty, init } => {
                 let expected = self.lower_ast_type(ty);
@@ -684,7 +705,13 @@ impl TypeChecker<'_> {
                     );
                 }
                 self.move_if_non_copyable(init, got);
-                self.define_local(name.symbol, expected, BindingKind::Var, Some(&init.inner));
+                self.define_local(
+                    name.symbol,
+                    expected,
+                    BindingKind::Var,
+                    Some(&init.inner),
+                    name.span,
+                );
             }
             Stmt::Assign { expr } => {
                 let _ = self.check_expr_node(expr);
@@ -693,7 +720,7 @@ impl TypeChecker<'_> {
                 let _ = self.check_expr_node(expr);
             }
             Stmt::Return(expr) => {
-                let _ = self.check_return(expr.as_ref());
+                let _ = self.check_return(stmt.span, expr.as_ref());
             }
             Stmt::Break { value, span } => {
                 if self.loop_depth == 0 {
@@ -963,14 +990,21 @@ impl TypeChecker<'_> {
                 iter_state_ty,
                 BindingKind::Var,
                 None,
+                span,
             );
-            let option_match_temp = layout.alloc_match_scrutinee_temp(option_ty);
+            let option_match_temp = layout.alloc_match_scrutinee_temp(option_ty, span);
             layout.enter_scope();
             (iter_temp_slot, option_match_temp)
         } else {
             return;
         };
-        self.define_local(binding.symbol, item_ty, BindingKind::Var, None);
+        self.define_local(
+            binding.symbol,
+            item_ty,
+            BindingKind::Var,
+            None,
+            binding.span,
+        );
         self.with_loop_body(body, |this| this.check_block(body));
         if let Some(layout) = &mut self.layout {
             layout.exit_scope();

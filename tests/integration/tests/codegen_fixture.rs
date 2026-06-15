@@ -18,7 +18,7 @@ fn codegen_heap_slice_emits_make_slice_from_ptr_opcode() {
             f.blocks.iter().any(|b| {
                 b.insts
                     .iter()
-                    .any(|i| matches!(i, IrInst::MakeSliceFromPtr { .. }))
+                    .any(|s| matches!(&s.inst, IrInst::MakeSliceFromPtr { .. }))
             })
         }),
         "expected IrInst::MakeSliceFromPtr in heap_slice"
@@ -42,7 +42,7 @@ fn codegen_heap_slice_store_emits_index_store_opcode() {
             f.blocks.iter().any(|b| {
                 b.insts
                     .iter()
-                    .any(|i| matches!(i, IrInst::IndexStore { .. }))
+                    .any(|s| matches!(&s.inst, IrInst::IndexStore { .. }))
             })
         }),
         "expected IrInst::IndexStore in heap_slice_store"
@@ -79,7 +79,7 @@ fn codegen_heap_dealloc_emits_free_opcode() {
         ir.functions.iter().any(|f| {
             f.blocks
                 .iter()
-                .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Free)))
+                .any(|b| b.insts.iter().any(|s| matches!(&s.inst, IrInst::Free)))
         }),
         "expected IrInst::Free in heap_dealloc"
     );
@@ -99,17 +99,21 @@ fn codegen_heap_alloc_emits_alloc_opcode() {
     let ir = lower(&unit.typed).expect("lower heap_alloc");
     assert!(
         ir.functions.iter().any(|f| {
-            f.blocks
-                .iter()
-                .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::Alloc { .. })))
+            f.blocks.iter().any(|b| {
+                b.insts
+                    .iter()
+                    .any(|s| matches!(&s.inst, IrInst::Alloc { .. }))
+            })
         }),
         "expected IrInst::Alloc in heap_alloc"
     );
     assert!(
         ir.functions.iter().any(|f| {
-            f.blocks
-                .iter()
-                .any(|b| b.insts.iter().any(|i| matches!(i, IrInst::PtrStore { .. })))
+            f.blocks.iter().any(|b| {
+                b.insts
+                    .iter()
+                    .any(|s| matches!(&s.inst, IrInst::PtrStore { .. }))
+            })
         }),
         "expected IrInst::PtrStore in heap_alloc"
     );

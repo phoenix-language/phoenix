@@ -43,12 +43,12 @@ fn lower_sample_produces_ir() {
     for f in &ir.functions {
         max_locals = max_locals.max(f.local_count);
         for block in &f.blocks {
-            for inst in &block.insts {
-                any_add |= has_add(inst);
-                any_call |= has_call(inst);
-                any_const |= has_const(inst);
-                any_jump_if |= has_jump_if(inst);
-                if has_store(inst) {
+            for spanned in &block.insts {
+                any_add |= has_add(&spanned.inst);
+                any_call |= has_call(&spanned.inst);
+                any_const |= has_const(&spanned.inst);
+                any_jump_if |= has_jump_if(&spanned.inst);
+                if has_store(&spanned.inst) {
                     store_count += 1;
                 }
             }
@@ -67,6 +67,26 @@ fn lower_sample_produces_ir() {
 }
 
 #[test]
+fn lower_sample_ir_instructions_have_source_spans() {
+    let source = include_str!("../../../tests/cli/fixtures/sample.phx");
+    let unit = compile_source(source, Some(Path::new("sample.phx")))
+        .unwrap_or_else(|e| panic!("compile sample.phx: {e}"));
+    let ir = lower(&unit.typed).expect("lower");
+    for f in &ir.functions {
+        for block in &f.blocks {
+            for spanned in &block.insts {
+                assert!(
+                    !spanned.span.is_empty(),
+                    "expected non-empty span on IR instruction {:?} in function def {:?}",
+                    spanned.inst,
+                    f.def
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn lower_control_flow_emits_loops() {
     let source = include_str!("../../../tests/cli/fixtures/control_flow.phx");
     let unit = compile_source(source, Some(Path::new("control_flow.phx")))
@@ -77,11 +97,11 @@ fn lower_control_flow_emits_loops() {
     let mut jump_if_count = 0u32;
     for f in &ir.functions {
         for block in &f.blocks {
-            for inst in &block.insts {
-                if matches!(inst, IrInst::Jump { .. }) {
+            for spanned in &block.insts {
+                if matches!(&spanned.inst, IrInst::Jump { .. }) {
                     jump_count += 1;
                 }
-                if matches!(inst, IrInst::JumpIf { .. }) {
+                if matches!(&spanned.inst, IrInst::JumpIf { .. }) {
                     jump_if_count += 1;
                 }
             }
@@ -107,7 +127,7 @@ fn loop_back_edge_on_body_tail_not_header() {
         !header
             .insts
             .iter()
-            .any(|i| matches!(i, IrInst::Jump { target: 1 })),
+            .any(|s| matches!(&s.inst, IrInst::Jump { target: 1 })),
         "loop header must not contain the back-edge jump"
     );
     let tail = main
@@ -116,14 +136,17 @@ fn loop_back_edge_on_body_tail_not_header() {
         .find(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::Jump { target: 1 }))
-                && !b.insts.iter().any(|i| matches!(i, IrInst::JumpIf { .. }))
+                .any(|s| matches!(&s.inst, IrInst::Jump { target: 1 }))
+                && !b
+                    .insts
+                    .iter()
+                    .any(|s| matches!(&s.inst, IrInst::JumpIf { .. }))
         })
         .expect("body tail merge block should jump back to header");
     assert!(
         tail.insts
             .last()
-            .is_some_and(|i| matches!(i, IrInst::Jump { target: 1 })),
+            .is_some_and(|s| matches!(&s.inst, IrInst::Jump { target: 1 })),
         "back-edge must be the tail block terminator"
     );
 }
@@ -142,7 +165,7 @@ fn explicit_return_emits_single_return() {
         .blocks
         .iter()
         .flat_map(|b| &b.insts)
-        .filter(|i| matches!(i, IrInst::Return { .. }))
+        .filter(|s| matches!(&s.inst, IrInst::Return { .. }))
         .count()
         .try_into()
         .unwrap_or(u32::MAX);
@@ -166,12 +189,12 @@ fn const_fold_byte_array_as_str_emits_make_str_not_make_array() {
         .blocks
         .iter()
         .flat_map(|b| &b.insts)
-        .any(|i| matches!(i, IrInst::MakeStr { .. }));
+        .any(|s| matches!(&s.inst, IrInst::MakeStr { .. }));
     let make_array_for_cast = main
         .blocks
         .iter()
         .flat_map(|b| &b.insts)
-        .filter(|i| matches!(i, IrInst::MakeArray { .. }))
+        .filter(|s| matches!(&s.inst, IrInst::MakeArray { .. }))
         .count();
     assert!(make_str, "const-folded arr as str should emit MakeStr");
     assert_eq!(
@@ -194,7 +217,7 @@ fn lower_generic_fn_emits_call() {
             .iter()
             .flat_map(|f| &f.blocks)
             .flat_map(|b| &b.insts)
-            .any(|i| matches!(i, IrInst::Call { .. })),
+            .any(|s| matches!(&s.inst, IrInst::Call { .. })),
         "expected Call in main"
     );
     let _ = source;
@@ -212,7 +235,7 @@ fn lower_generic_struct_emits_make_struct() {
             .iter()
             .flat_map(|f| &f.blocks)
             .flat_map(|b| &b.insts)
-            .any(|i| matches!(i, IrInst::MakeStruct { .. })),
+            .any(|s| matches!(&s.inst, IrInst::MakeStruct { .. })),
         "expected MakeStruct for generic struct literal"
     );
 }
@@ -232,7 +255,7 @@ fn lower_dual_generic_fn_instantiation_emits_three_functions() {
         .iter()
         .flat_map(|f| &f.blocks)
         .flat_map(|b| &b.insts)
-        .filter(|i| matches!(i, IrInst::Call { .. }))
+        .filter(|s| matches!(&s.inst, IrInst::Call { .. }))
         .count();
     assert!(
         call_count >= 2,
@@ -256,9 +279,9 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
     assert!(
         ir.functions.iter().any(|f| {
             f.blocks.iter().any(|b| {
-                b.insts.iter().any(|i| {
+                b.insts.iter().any(|s| {
                     matches!(
-                        i,
+                        &s.inst,
                         IrInst::MatchTag {
                             type_id,
                             variant_tag: 1,
@@ -288,9 +311,9 @@ fn lower_two_param_enum_match_emits_match_tag_with_specialized_type_id() {
     assert!(
         ir.functions.iter().any(|f| {
             f.blocks.iter().any(|b| {
-                b.insts.iter().any(|i| {
+                b.insts.iter().any(|s| {
                     matches!(
-                        i,
+                        &s.inst,
                         IrInst::MatchTag {
                             type_id,
                             variant_tag: 0,
@@ -313,14 +336,14 @@ fn lower_fn_pointer_emits_make_fn_ptr_and_call_indirect() {
         f.blocks.iter().any(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::MakeFnPtr { .. }))
+                .any(|s| matches!(&s.inst, IrInst::MakeFnPtr { .. }))
         })
     });
     let has_indirect = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
             b.insts
                 .iter()
-                .any(|i| matches!(i, IrInst::CallIndirect { .. }))
+                .any(|s| matches!(&s.inst, IrInst::CallIndirect { .. }))
         })
     });
     assert!(has_make, "expected MakeFnPtr when passing function by name");
@@ -345,16 +368,17 @@ main :: () => { { const w = Wrapper {}; } };
     let has_drop = main.blocks.iter().any(|b| {
         b.insts
             .iter()
-            .any(|i| matches!(i, IrInst::DropLocal { .. }))
+            .any(|s| matches!(&s.inst, IrInst::DropLocal { .. }))
     });
     assert!(has_drop, "expected DropLocal in main for scope-exit glue");
 }
 
 #[test]
 fn lower_for_in_emits_iterator_protocol() {
-    let source = include_str!("../../../tests/cli/fixtures/for_in.phx");
-    let unit = compile_source(source, Some(Path::new("for_in.phx")))
-        .unwrap_or_else(|e| panic!("compile for_in.phx: {e}"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/cli/fixtures/std_iter/src/main.phx");
+    let unit =
+        phx_compiler::check_file(&path).unwrap_or_else(|e| panic!("check_file std_iter: {e}"));
     let ir = lower(&unit.typed).expect("lower");
     let main = ir
         .functions
@@ -363,21 +387,23 @@ fn lower_for_in_emits_iterator_protocol() {
         .expect("main");
     let insts: Vec<_> = main.blocks.iter().flat_map(|b| &b.insts).collect();
     assert!(
-        insts.iter().any(|i| matches!(i, IrInst::Call { .. })),
+        insts.iter().any(|s| matches!(&s.inst, IrInst::Call { .. })),
         "expected into_iter / next Call"
     );
     assert!(
         insts
             .iter()
-            .any(|i| matches!(i, IrInst::AddressOfLocal { .. })),
+            .any(|s| matches!(&s.inst, IrInst::AddressOfLocal { .. })),
         "expected AddressOfLocal for &mut __iter.next()"
     );
     assert!(
-        insts.iter().any(|i| matches!(i, IrInst::Jump { .. })),
+        insts.iter().any(|s| matches!(&s.inst, IrInst::Jump { .. })),
         "expected loop Jump"
     );
     assert!(
-        insts.iter().any(|i| matches!(i, IrInst::JumpIf { .. })),
+        insts
+            .iter()
+            .any(|s| matches!(&s.inst, IrInst::JumpIf { .. })),
         "expected if-const Some JumpIf"
     );
 }

@@ -56,9 +56,10 @@ pub(crate) fn lower_one_function(
         .get(&layout.def)
         .and_then(|base| typed.resolved.defs.get(base.index() as usize))
         .map_or(def_record.module, |base| base.module);
-    let mut ctx = LowerCtx::new(typed, module, layout, constants, bag);
+    let mut ctx = LowerCtx::new(typed, module, layout, constants, bag, source.body.span);
+    ctx.set_site(source.body.span);
     lower_block_value(&mut ctx, &source.body.inner);
-    lower_function_return(&mut ctx, &source.body.inner, layout.return_type);
+    lower_function_return(&mut ctx, &source.body, layout.return_type);
     ctx.finish_expr_cursor();
     if ctx.bag.has_errors() {
         return None;

@@ -134,8 +134,8 @@ fn lower_logical_short_circuit_emits_jump_if() {
     let mut jump_if_count = 0u32;
     for f in &ir.functions {
         for block in &f.blocks {
-            for inst in &block.insts {
-                if matches!(inst, IrInst::JumpIf { .. }) {
+            for spanned in &block.insts {
+                if matches!(&spanned.inst, IrInst::JumpIf { .. }) {
                     jump_if_count += 1;
                 }
             }
@@ -156,9 +156,9 @@ fn lower_match_emits_eq_and_jump_if() {
     let mut jump_if_count = 0u32;
     for f in &ir.functions {
         for block in &f.blocks {
-            for inst in &block.insts {
+            for spanned in &block.insts {
                 if matches!(
-                    inst,
+                    &spanned.inst,
                     IrInst::BinOp {
                         op: IrBinOp::Eq,
                         ..
@@ -166,7 +166,7 @@ fn lower_match_emits_eq_and_jump_if() {
                 ) {
                     eq_count += 1;
                 }
-                if matches!(inst, IrInst::JumpIf { .. }) {
+                if matches!(&spanned.inst, IrInst::JumpIf { .. }) {
                     jump_if_count += 1;
                 }
             }
@@ -196,11 +196,15 @@ fn codegen_enum_struct_match_emits_tag_and_get_field() {
         .flat_map(|b| &b.insts)
         .collect();
     assert!(
-        insts.iter().any(|i| matches!(i, IrInst::MatchTag { .. })),
+        insts
+            .iter()
+            .any(|s| matches!(&s.inst, IrInst::MatchTag { .. })),
         "struct-variant match should emit MatchTag"
     );
     assert!(
-        insts.iter().any(|i| matches!(i, IrInst::GetField { .. })),
+        insts
+            .iter()
+            .any(|s| matches!(&s.inst, IrInst::GetField { .. })),
         "struct-variant bind should emit GetField"
     );
     let module = codegen(&ir, &unit.typed).expect("codegen");
@@ -217,14 +221,14 @@ fn codegen_struct_point_emits_make_struct() {
         .iter()
         .flat_map(|f| &f.blocks)
         .flat_map(|b| &b.insts)
-        .any(|i| matches!(i, IrInst::MakeStruct { .. }));
+        .any(|s| matches!(&s.inst, IrInst::MakeStruct { .. }));
     assert!(has_make, "struct literal should emit MakeStruct");
     let has_get = ir
         .functions
         .iter()
         .flat_map(|f| &f.blocks)
         .flat_map(|b| &b.insts)
-        .any(|i| matches!(i, IrInst::GetField { .. }));
+        .any(|s| matches!(&s.inst, IrInst::GetField { .. }));
     assert!(has_get, "field read should emit GetField");
     let module = codegen(&ir, &unit.typed).expect("codegen");
     verify(&module).expect("struct_point bytecode should verify");
@@ -256,7 +260,7 @@ fn assign_to_var_emits_store_local() {
         .iter()
         .flat_map(|f| &f.blocks)
         .flat_map(|b| &b.insts)
-        .filter(|inst| matches!(inst, IrInst::StoreLocal { .. }))
+        .filter(|s| matches!(&s.inst, IrInst::StoreLocal { .. }))
         .count();
     assert!(stores >= 2, "var init and assign should both StoreLocal");
 }
@@ -268,9 +272,9 @@ fn greater_than_lowers_via_swapped_lt() {
     let ir = lower(&unit.typed).expect("lower");
     let has_lt = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
-            b.insts.iter().any(|i| {
+            b.insts.iter().any(|s| {
                 matches!(
-                    i,
+                    &s.inst,
                     IrInst::BinOp {
                         op: IrBinOp::Lt,
                         ..
@@ -402,7 +406,7 @@ fn codegen_generic_impl_method_calls_specialized_get_not_main() {
         .iter()
         .flat_map(|f| &f.blocks)
         .flat_map(|b| &b.insts)
-        .filter_map(|i| match i {
+        .filter_map(|s| match &s.inst {
             IrInst::Call { callee, .. } => Some(*callee),
             _ => None,
         })

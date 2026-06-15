@@ -98,8 +98,8 @@ fn localize_module_constants(
     let mut used = HashSet::new();
     for func in &*functions {
         for block in &func.blocks {
-            for inst in &block.insts {
-                match inst {
+            for spanned in &block.insts {
+                match &spanned.inst {
                     IrInst::Const { index, .. } | IrInst::MakeStr { pool_index: index } => {
                         used.insert(*index);
                     }
@@ -157,8 +157,8 @@ fn localize_module_constants(
 
     for func in &mut *functions {
         for block in &mut func.blocks {
-            for inst in &mut block.insts {
-                match inst {
+            for spanned in &mut block.insts {
+                match &mut spanned.inst {
                     IrInst::Const { index, .. } | IrInst::MakeStr { pool_index: index } => {
                         if let Some(&new) = remap.get(index) {
                             *index = new;
@@ -210,10 +210,15 @@ fn localize_module_constants(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::ir::{IrBasicBlock, IrConst, IrFunctionId, IrInst};
+    use crate::ir::{IrBasicBlock, IrConst, IrFunctionId, IrInst, SpannedInst};
     use crate::resolver::DefId;
     use crate::typeck::TypeId;
     use phx_bytecode::PrimitiveKind;
+    use phx_diagnostics::Span;
+
+    fn span_inst(inst: IrInst) -> SpannedInst {
+        SpannedInst::new(Span::new(0, 1), inst)
+    }
 
     #[test]
     fn localize_module_constants_keeps_only_referenced_literals() {
@@ -230,16 +235,16 @@ mod tests {
             local_count: 0,
             blocks: vec![IrBasicBlock {
                 insts: vec![
-                    IrInst::Const {
+                    span_inst(IrInst::Const {
                         index: 2,
                         ty: TypeId::from_raw(0),
                         prim_kind: PrimitiveKind::S32 as u8,
-                    },
-                    IrInst::Const {
+                    }),
+                    span_inst(IrInst::Const {
                         index: 0,
                         ty: TypeId::from_raw(0),
                         prim_kind: PrimitiveKind::S32 as u8,
-                    },
+                    }),
                 ],
             }],
         }];
@@ -248,16 +253,16 @@ mod tests {
         assert_eq!(
             functions[0].blocks[0].insts,
             vec![
-                IrInst::Const {
+                span_inst(IrInst::Const {
                     index: 1,
                     ty: TypeId::from_raw(0),
                     prim_kind: PrimitiveKind::S32 as u8,
-                },
-                IrInst::Const {
+                }),
+                span_inst(IrInst::Const {
                     index: 0,
                     ty: TypeId::from_raw(0),
                     prim_kind: PrimitiveKind::S32 as u8,
-                },
+                }),
             ]
         );
     }

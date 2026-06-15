@@ -1754,6 +1754,7 @@ impl TypeChecker<'_> {
                 scrutinee_ty,
                 payload,
                 TryFailureMode::ReturnScrutinee,
+                span,
             );
             return payload;
         }
@@ -1799,6 +1800,7 @@ impl TypeChecker<'_> {
                 scrutinee_ty,
                 ok_in,
                 TryFailureMode::ReturnScrutinee,
+                span,
             );
             return ok_in;
         }
@@ -1830,6 +1832,7 @@ impl TypeChecker<'_> {
                     return_result_ty: fn_ret,
                     from_fn,
                 },
+                span,
             );
             return ok_in;
         }
@@ -1850,6 +1853,7 @@ impl TypeChecker<'_> {
         scrutinee_ty: TypeId,
         success_ty: TypeId,
         failure_mode: TryFailureMode,
+        declare_span: Span,
     ) {
         let Ty::Named { def, args } = self.types.get(scrutinee_ty).clone() else {
             return;
@@ -1869,7 +1873,7 @@ impl TypeChecker<'_> {
         let Some(layout) = &mut self.layout else {
             return;
         };
-        let temp_slot = layout.alloc_match_scrutinee_temp(scrutinee_ty);
+        let temp_slot = layout.alloc_match_scrutinee_temp(scrutinee_ty, declare_span);
         self.try_sites.insert(
             expr_id,
             TrySiteMeta {
@@ -2551,7 +2555,7 @@ impl TypeChecker<'_> {
                 let s = self.check_expr_node(scrutinee);
                 self.record_scrutinee_type_mono(s);
                 if let Some(layout) = &mut self.layout {
-                    let _ = layout.alloc_match_scrutinee_temp(s);
+                    let _ = layout.alloc_match_scrutinee_temp(s, scrutinee.span);
                 }
                 let kind = if *mutable {
                     BindingKind::Var

@@ -494,7 +494,7 @@ impl Resolver<'_> {
         self.resolve_generics(&f.generics);
         let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
         if in_impl && !has_receiver {
-            self.define_value(impl_receiver_symbol(), Span::new(0, 0), DefKind::Param);
+            self.define_value(impl_receiver_symbol(), f.name.span, DefKind::Param);
         }
         self.resolve_params(&f.params);
         if let Some(ret) = &f.ret {
@@ -529,8 +529,8 @@ impl Resolver<'_> {
     fn resolve_params(&mut self, params: &[Param]) {
         for param in params {
             match param {
-                Param::Receiver { ty, .. } => {
-                    self.define_value(impl_receiver_symbol(), Span::new(0, 0), DefKind::Param);
+                Param::Receiver { span, ty, .. } => {
+                    self.define_value(impl_receiver_symbol(), *span, DefKind::Param);
                     if let Some(t) = ty {
                         self.resolve_type_node(t);
                     }
@@ -854,12 +854,8 @@ impl Resolver<'_> {
                             self.define_value(name.symbol, name_span_ident(name), DefKind::Param);
                             self.resolve_type_node(ty);
                         }
-                        Param::Receiver { ty, .. } => {
-                            self.define_value(
-                                impl_receiver_symbol(),
-                                Span::new(0, 0),
-                                DefKind::Param,
-                            );
+                        Param::Receiver { span, ty, .. } => {
+                            self.define_value(impl_receiver_symbol(), *span, DefKind::Param);
                             if let Some(t) = ty {
                                 self.resolve_type_node(t);
                             }

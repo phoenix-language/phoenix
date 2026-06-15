@@ -276,6 +276,7 @@ impl<'a> TypeChecker<'a> {
         ty: TypeId,
         kind: BindingKind,
         init: Option<&Expr>,
+        declare_span: Span,
     ) {
         self.ownership.define(symbol, ty);
         if let Some(layout) = &mut self.layout {
@@ -284,7 +285,7 @@ impl<'a> TypeChecker<'a> {
             } else {
                 None
             };
-            let _ = layout.alloc(symbol, ty, kind, utf8_rodata);
+            let _ = layout.alloc(symbol, ty, kind, utf8_rodata, declare_span);
         }
     }
 
