@@ -188,7 +188,7 @@ impl<'a> TypeChecker<'a> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let saved = self.type_defs.clone();
-        push_generics(&mut self.type_defs, &self.resolved.defs, module, generics);
+        push_generics(&mut self.type_defs, self.resolved, module, generics);
         let result = f(self);
         self.type_defs = saved;
         result

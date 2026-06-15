@@ -5,7 +5,7 @@ use phx_syntax::ast::ident::TypeName;
 use phx_syntax::ast::types::Type;
 
 use super::types::{Ty, TypeId, TypeInterner};
-use crate::resolver::{DefId, DefKind};
+use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
 
 pub type TypeDefMap = std::collections::HashMap<phx_syntax::Symbol, DefId>;
 
@@ -123,13 +123,22 @@ pub fn build_type_def_map(defs: &[crate::resolver::Def]) -> TypeDefMap {
 /// Pushes generic params into `type_defs` for the duration of a scope.
 pub fn push_generics(
     type_defs: &mut TypeDefMap,
-    defs: &[crate::resolver::Def],
+    resolved: &ResolvedProgram,
     module: u32,
     generics: Option<&[phx_syntax::ast::types::GenericParam]>,
 ) {
     if let Some(params) = generics {
         for param in params {
-            if let Some(id) = find_generic_param(defs, module, param.name.symbol) {
+            let key = ResolutionKey {
+                module,
+                node_id: param.name.id,
+            };
+            let id = resolved
+                .resolutions
+                .get(&key)
+                .copied()
+                .or_else(|| find_generic_param(&resolved.defs, module, param.name.symbol));
+            if let Some(id) = id {
                 type_defs.insert(param.name.symbol, id);
             }
         }

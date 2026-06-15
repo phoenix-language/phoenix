@@ -945,7 +945,6 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-054 | - [x]  | Major        | phx-vm          | Use-after-free reads zeros instead of trapping                           |
 | PHX-055 | - [x]  | Minor        | phx-vm          | Verify-before-execute not enforced at library boundary                   |
 | PHX-056 | - [x]  | Minor        | phx-vm          | `VmError` carries no `(function_id, pc)`                                 |
-| PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
 | PHX-057 | - [x]  | Suggestion   | phx-vm          | Interpreter God module; no `ExecutionContext` abstraction                |
 | PHX-058 | - [x]  | Minor        | phx             | ICE handler discards panic message                                       |
 | PHX-059 | - [x]  | Minor        | phx-cli         | Lints only run on `phx check`, not `compile`/`run`/`build`               |
@@ -953,5 +952,5 @@ Three-layer harness (fixtures → `phx-test` lib → `tests/integration`) with g
 | PHX-061 | - [x]  | Major        | tests           | Coverage gaps on Critical findings — regression suite expanded (2026-06-14) |
 | PHX-062 | - [x]  | Minor        | tests           | Fixture-gated tests silently pass when fixture is missing (2026-06-14)   |
 | PHX-063 | - [x]  | Major        | cross-cutting   | IR spans via `SpannedInst`; backend diagnostics cite source              |
-
+| PHX-070 | - [ ]  | Deferred     | cross-cutting   | Bytecode source maps / debugger (section 5 symbols)                      |
 

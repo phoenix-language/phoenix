@@ -57,13 +57,7 @@ pub fn validate_instantiation_bounds(
     let mut ok = true;
     for ((param, &param_def), &concrete) in generic_params.iter().zip(param_defs).zip(concrete_args)
     {
-        if let Ty::Named {
-            def: concrete_def,
-            args,
-        } = types.get(concrete)
-            && *concrete_def == param_def
-            && args.is_empty()
-        {
+        if should_skip_unresolved_generic_bound(resolved, types, param_def, concrete) {
             continue;
         }
         let Some(bounds) = param.bounds.as_ref() else {
@@ -81,11 +75,12 @@ pub fn validate_instantiation_bounds(
                 ok = false;
                 continue;
             };
-            if std_traits
-                .trait_def_for_symbol(&resolved.interner, trait_symbol)
-                .is_some_and(|def| std_traits.is_copyable_trait(def))
-                && trait_arg_nodes.is_none()
-            {
+            let is_copyable_bound = trait_arg_nodes.is_none()
+                && (resolved.interner.resolves_to(trait_symbol, "Copyable")
+                    || std_traits
+                        .trait_def_for_symbol(&resolved.interner, trait_symbol)
+                        .is_some_and(|def| std_traits.is_copyable_trait(def)));
+            if is_copyable_bound {
                 if !type_satisfies_copyable(types, layout, std_traits, concrete) {
                     let type_name = format_type_name(resolved, types, concrete);
                     bag.push(
@@ -186,6 +181,36 @@ fn resolve_trait_def(
             None
         }
     })
+}
+
+fn should_skip_unresolved_generic_bound(
+    resolved: &ResolvedProgram,
+    types: &TypeInterner,
+    param_def: DefId,
+    concrete: TypeId,
+) -> bool {
+    let Ty::Named {
+        def: concrete_def,
+        args,
+    } = types.get(concrete)
+    else {
+        return false;
+    };
+    if !args.is_empty() {
+        return false;
+    }
+    if *concrete_def == param_def {
+        return true;
+    }
+    let Some(param_record) = resolved.defs.get(param_def.index() as usize) else {
+        return false;
+    };
+    let Some(concrete_record) = resolved.defs.get(concrete_def.index() as usize) else {
+        return false;
+    };
+    param_record.kind == DefKind::GenericParam
+        && concrete_record.kind == DefKind::GenericParam
+        && param_record.name == concrete_record.name
 }
 
 fn type_satisfies_copyable(

@@ -476,7 +476,11 @@ impl Resolver<'_> {
                     );
                     continue;
                 }
-                self.define_type(param.name.symbol, span, DefKind::GenericParam);
+                if let Some(def_id) =
+                    self.define_type(param.name.symbol, span, DefKind::GenericParam)
+                {
+                    self.record_resolution(param.name.id, Some(def_id));
+                }
                 if let Some(bounds) = &param.bounds {
                     for bound in bounds {
                         self.resolve_trait_bound(bound);

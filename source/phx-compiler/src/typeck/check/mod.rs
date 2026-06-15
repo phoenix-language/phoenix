@@ -127,12 +127,22 @@ pub struct TypeChecker<'a> {
     fn_effective_unsafe: HashMap<DefId, bool>,
 }
 
+/// Maximum tuple-struct field index pre-interned for layout collection (`"0"` …).
+const TUPLE_FIELD_SYMBOL_LIMIT: usize = 64;
+
+fn seed_tuple_field_symbols(interner: &mut phx_syntax::Interner) {
+    for i in 0..TUPLE_FIELD_SYMBOL_LIMIT {
+        let _ = interner.intern(&i.to_string());
+    }
+}
+
 /// Runs type checking on `resolved`.
 ///
 /// # Errors
 ///
 /// Returns [`TypeCheckBag`] when one or more type errors were collected.
 pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
+    seed_tuple_field_symbols(&mut resolved.interner);
     let mut checker = TypeChecker::new(&resolved);
     checker.check_program();
     let mono_insts = checker.take_mono_insts();

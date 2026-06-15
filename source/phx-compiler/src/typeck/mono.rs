@@ -613,13 +613,21 @@ fn generic_param_defs(
     let module = resolved.defs[base.index() as usize].module;
     let mut defs = Vec::new();
     for param in params {
-        let id = resolved.defs.iter().enumerate().find_map(|(i, d)| {
-            if d.kind == DefKind::GenericParam && d.name == param.name.symbol && d.module == module
-            {
-                Some(DefId::from_raw(u32::try_from(i).ok()?))
-            } else {
-                None
-            }
+        let key = ResolutionKey {
+            module,
+            node_id: param.name.id,
+        };
+        let id = resolved.resolutions.get(&key).copied().or_else(|| {
+            resolved.defs.iter().enumerate().find_map(|(i, d)| {
+                if d.kind == DefKind::GenericParam
+                    && d.name == param.name.symbol
+                    && d.module == module
+                {
+                    Some(DefId::from_raw(u32::try_from(i).ok()?))
+                } else {
+                    None
+                }
+            })
         })?;
         defs.push(id);
     }

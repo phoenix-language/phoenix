@@ -486,7 +486,7 @@ impl TypeChecker<'_> {
         let saved_type_defs = self.type_defs.clone();
         push_generics(
             &mut self.type_defs,
-            &self.resolved.defs,
+            self.resolved,
             module,
             f.generics.as_deref(),
         );

@@ -248,7 +248,11 @@ impl TypeChecker<'_> {
         trait_def: DefId,
         span: Span,
     ) {
-        let conflicts = if self.std_trait_kernel.is_copyable_trait(trait_def) {
+        let is_copyable_trait = self.std_trait_kernel.is_copyable_trait(trait_def)
+            || crate::typeck::builtins::is_copyable_trait_def(self.resolved, trait_def);
+        let is_drop_trait = self.std_trait_kernel.is_drop_trait(trait_def)
+            || crate::typeck::builtins::is_drop_trait_def(self.resolved, trait_def);
+        let conflicts = if is_copyable_trait {
             implements_drop_for_def(
                 &self.program_layout,
                 self.resolved,
@@ -256,14 +260,14 @@ impl TypeChecker<'_> {
                 type_def,
                 &[],
             )
-        } else if self.std_trait_kernel.is_drop_trait(trait_def) {
-            self.program_layout.trait_impls.iter().any(|key| {
-                key.implementer == type_def
-                    && self.std_trait_kernel.is_copyable_trait(key.trait_def)
-            }) || self.program_layout.trait_methods.keys().any(|(key, _)| {
-                key.implementer == type_def
-                    && self.std_trait_kernel.is_copyable_trait(key.trait_def)
-            })
+        } else if is_drop_trait {
+            crate::typeck::builtins::implements_copyable_for_def(
+                &self.program_layout,
+                self.resolved,
+                &self.std_trait_kernel,
+                type_def,
+                &[],
+            )
         } else {
             false
         };
@@ -322,7 +326,7 @@ impl TypeChecker<'_> {
         let saved_defs = self.type_defs.clone();
         push_generics(
             &mut self.type_defs,
-            &self.resolved.defs,
+            self.resolved,
             self.current_module,
             generics,
         );

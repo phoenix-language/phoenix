@@ -28,43 +28,94 @@ use crate::typeck::types::is_error_type;
 use crate::typeck::types::{Ty, TypeId};
 
 impl TypeChecker<'_> {
+    fn lower_resolved_named_type(
+        &mut self,
+        name: &phx_syntax::ast::ident::TypeName,
+        generics: &Option<Vec<Node<Type>>>,
+        type_defs: &TypeDefMap,
+        span: Span,
+    ) -> Option<TypeId> {
+        let def = self.lookup_resolution(name.id)?;
+        let args = generics
+            .as_ref()
+            .map(|gs| {
+                gs.iter()
+                    .map(|g| self.lower_ast_type_with_defs(g, type_defs))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if args.is_empty() {
+            let id = self.types.intern(&Ty::Named {
+                def,
+                args: Vec::new(),
+            });
+            return Some(if let Some(subst) = &self.subst {
+                Substitution::apply(&mut self.types, id, subst)
+            } else {
+                id
+            });
+        }
+        Some(self.resolve_instantiated_named(def, args, span))
+    }
+
+    fn lower_self_assoc_type(
+        &mut self,
+        member: &phx_syntax::ast::ident::TypeName,
+        span: Span,
+    ) -> TypeId {
+        if let Some(&concrete) = self.impl_assoc_types.get(&member.symbol) {
+            return concrete;
+        }
+        if let Some(&abstract_ty) = self.trait_assoc_abstract.get(&member.symbol) {
+            return abstract_ty;
+        }
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::UnknownType {
+                symbol_index: member.symbol.index(),
+                span,
+            },
+        );
+        self.poison_type()
+    }
+
+    fn lower_named_type_prefix(
+        &mut self,
+        name: &phx_syntax::ast::ident::TypeName,
+        generics: &Option<Vec<Node<Type>>>,
+        type_defs: &TypeDefMap,
+        span: Span,
+    ) -> Option<TypeId> {
+        if self.is_self_type_name(name.symbol) {
+            if let Some(self_ty) = self.impl_self_type {
+                if let Some(gs) = generics {
+                    if !gs.is_empty() {
+                        self.bag.push(
+                            self.current_module,
+                            TypeCheckError::UnsupportedFeature {
+                                feature: "generic arguments on Self",
+                                span,
+                            },
+                        );
+                    }
+                }
+                return Some(self_ty);
+            }
+        }
+        self.lower_resolved_named_type(name, generics, type_defs, span)
+    }
+
     pub(in crate::typeck::check) fn lower_ast_type_with_defs(
         &mut self,
         ty: &Node<Type>,
         type_defs: &TypeDefMap,
     ) -> TypeId {
         if let Type::SelfAssoc { member } = &ty.inner {
-            if let Some(&concrete) = self.impl_assoc_types.get(&member.symbol) {
-                return concrete;
-            }
-            if let Some(&abstract_ty) = self.trait_assoc_abstract.get(&member.symbol) {
-                return abstract_ty;
-            }
-            self.bag.push(
-                self.current_module,
-                TypeCheckError::UnknownType {
-                    symbol_index: member.symbol.index(),
-                    span: ty.span,
-                },
-            );
-            return self.poison_type();
+            return self.lower_self_assoc_type(member, ty.span);
         }
         if let Type::Named { name, generics } = &ty.inner {
-            if self.is_self_type_name(name.symbol) {
-                if let Some(self_ty) = self.impl_self_type {
-                    if let Some(gs) = generics {
-                        if !gs.is_empty() {
-                            self.bag.push(
-                                self.current_module,
-                                TypeCheckError::UnsupportedFeature {
-                                    feature: "generic arguments on Self",
-                                    span: ty.span,
-                                },
-                            );
-                        }
-                    }
-                    return self_ty;
-                }
+            if let Some(id) = self.lower_named_type_prefix(name, generics, type_defs, ty.span) {
+                return id;
             }
         }
         let id = match &ty.inner {
@@ -442,7 +493,7 @@ impl TypeChecker<'_> {
                 let saved_defs = self.type_defs.clone();
                 push_generics(
                     &mut self.type_defs,
-                    &self.resolved.defs,
+                    self.resolved,
                     self.current_module,
                     generics.as_deref(),
                 );
@@ -738,7 +789,7 @@ impl TypeChecker<'_> {
             .map_or(self.current_module, |d| d.module);
         push_generics(
             &mut self.type_defs,
-            &self.resolved.defs,
+            self.resolved,
             trait_module,
             Some(&generics),
         );

@@ -238,6 +238,67 @@ fn implementer_args_match(key_args: &[TypeId], concrete_args: &[TypeId]) -> bool
     key_args == concrete_args || (key_args.is_empty() && !concrete_args.is_empty())
 }
 
+/// Returns whether `trait_def` is the compiler-bootstrapped or user `Copyable` trait.
+#[must_use]
+pub fn is_copyable_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
+    resolved
+        .defs
+        .get(trait_def.index() as usize)
+        .is_some_and(|d| {
+            d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Copyable")
+        })
+}
+
+/// Returns whether `trait_def` is the std or user `Drop` trait.
+#[must_use]
+pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
+    resolved
+        .defs
+        .get(trait_def.index() as usize)
+        .is_some_and(|d| d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Drop"))
+}
+
+/// Returns whether `def` with `args` has a `Copyable` trait impl in `layout`.
+#[must_use]
+pub fn implements_copyable_for_def(
+    layout: &ProgramLayout,
+    resolved: &ResolvedProgram,
+    std_traits: &StdTraitKernel,
+    def: DefId,
+    args: &[TypeId],
+) -> bool {
+    let Some(copyable_trait) = copyable_trait_def(resolved, layout, std_traits) else {
+        return false;
+    };
+    layout_has_trait_impl(layout, def, args, copyable_trait, &[])
+        || (!args.is_empty() && layout_has_trait_impl(layout, def, &[], copyable_trait, &[]))
+}
+
+fn copyable_trait_def(
+    resolved: &ResolvedProgram,
+    layout: &ProgramLayout,
+    std_traits: &StdTraitKernel,
+) -> Option<DefId> {
+    if let Some(def) = std_traits.copyable_trait {
+        return Some(def);
+    }
+    resolved.defs.iter().enumerate().find_map(|(i, d)| {
+        if d.kind != DefKind::Trait || !resolved.interner.resolves_to(d.name, "Copyable") {
+            return None;
+        }
+        let trait_def = DefId::try_from_index(i).ok()?;
+        let has_impl = layout
+            .trait_impls
+            .iter()
+            .any(|key| key.trait_def == trait_def)
+            || layout
+                .trait_methods
+                .keys()
+                .any(|(key, _)| key.trait_def == trait_def);
+        has_impl.then_some(trait_def)
+    })
+}
+
 fn drop_trait_def(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,

@@ -1392,7 +1392,16 @@ impl TypeChecker<'_> {
     ) -> Vec<DefId> {
         params
             .iter()
-            .filter_map(|param| self.find_def(module, param.name.symbol, DefKind::GenericParam))
+            .filter_map(|param| {
+                self.resolved
+                    .resolutions
+                    .get(&crate::resolver::ResolutionKey {
+                        module,
+                        node_id: param.name.id,
+                    })
+                    .copied()
+                    .or_else(|| self.find_def(module, param.name.symbol, DefKind::GenericParam))
+            })
             .collect()
     }
 
@@ -1902,34 +1911,32 @@ impl TypeChecker<'_> {
         fn_module: u32,
     ) -> Option<Vec<TypeId>> {
         if let Some(nodes) = generic_nodes {
-            return self.with_pushed_generics(fn_module, fn_generics, |this| {
-                let type_defs = this.type_defs.clone();
-                if nodes.len() > param_defs.len() {
-                    this.bag.push(
-                        this.current_module,
-                        TypeCheckError::ArityMismatch {
-                            expected: param_defs.len(),
-                            found: nodes.len(),
-                            span,
-                        },
-                    );
-                    return None;
-                }
-                if nodes.len() < param_defs.len() {
-                    return this.complete_generic_args_from_ast(
-                        fn_generics,
-                        param_defs,
-                        nodes,
-                        fn_module,
+            if nodes.len() > param_defs.len() {
+                self.bag.push(
+                    self.current_module,
+                    TypeCheckError::ArityMismatch {
+                        expected: param_defs.len(),
+                        found: nodes.len(),
                         span,
-                    );
-                }
-                let mut concrete_args = Vec::new();
-                for ty_node in nodes {
-                    concrete_args.push(this.lower_ast_type_with_defs(ty_node, &type_defs));
-                }
-                Some(concrete_args)
-            });
+                    },
+                );
+                return None;
+            }
+            if nodes.len() < param_defs.len() {
+                return self.complete_generic_args_from_ast(
+                    fn_generics,
+                    param_defs,
+                    nodes,
+                    fn_module,
+                    span,
+                );
+            }
+            let type_defs = self.type_defs.clone();
+            let mut concrete_args = Vec::new();
+            for ty_node in nodes {
+                concrete_args.push(self.lower_ast_type_with_defs(ty_node, &type_defs));
+            }
+            return Some(concrete_args);
         }
         let mut infer = InferenceCtx::new();
         let mut subst = Substitution::new();

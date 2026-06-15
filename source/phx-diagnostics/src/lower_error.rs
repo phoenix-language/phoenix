@@ -217,7 +217,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(err.code(), DiagnosticCode::new("E4002"));
-        assert!(err.span().is_none());
+        assert!(err.span().is_some());
         assert!(err.to_string().contains("id 7"), "{}", err);
     }
 
@@ -229,7 +229,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(err.code(), DiagnosticCode::new("E4002"));
-        assert!(err.span().is_none());
+        assert!(err.span().is_some());
         assert!(err.to_string().contains("expected 10"), "{}", err);
         assert!(err.to_string().contains("found 12"), "{}", err);
     }
