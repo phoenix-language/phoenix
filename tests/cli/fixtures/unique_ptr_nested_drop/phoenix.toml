@@ -1,0 +1,9 @@
+[project]
+name = "unique_ptr_nested_drop"
+version = "0.1.0"
+description = "UniquePtr nested Drop — inner element drop before dealloc"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

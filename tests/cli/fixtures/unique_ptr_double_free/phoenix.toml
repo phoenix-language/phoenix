@@ -1,0 +1,9 @@
+[project]
+name = "unique_ptr_double_free"
+version = "0.1.0"
+description = "UniquePtr double-free via manual dealloc after Drop"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

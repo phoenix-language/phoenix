@@ -6,7 +6,8 @@
 
 use phx_test::{
     NEG_CHECK_FIXTURES, PhxCli, SMOKE_FIXTURES, cli_fixture, cli_modules_dir, cli_project,
-    fixture_fs_lock, project_bin_path, repo_root, rm_project_build_unlocked, shared_cli,
+    cli_project_main, fixture_fs_lock, project_bin_path, repo_root, rm_project_build_unlocked,
+    shared_cli,
 };
 
 fn e2e<F: FnOnce(&PhxCli)>(f: F) {
@@ -524,9 +525,57 @@ fn build_unique_ptr_drop_smoke() {
 }
 
 #[test]
+fn build_unique_ptr_move() {
+    e2e(|cli| {
+        rm_project_build_unlocked("unique_ptr_move");
+        let project = cli_project("unique_ptr_move");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/unique_ptr_move.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_unique_ptr_uaf() {
+    e2e(|cli| {
+        rm_project_build_unlocked("unique_ptr_uaf");
+        let project = cli_project("unique_ptr_uaf");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/unique_ptr_uaf.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_unique_ptr_double_free() {
+    e2e(|cli| {
+        rm_project_build_unlocked("unique_ptr_double_free");
+        let project = cli_project("unique_ptr_double_free");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/unique_ptr_double_free.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
+fn build_unique_ptr_nested_drop() {
+    e2e(|cli| {
+        rm_project_build_unlocked("unique_ptr_nested_drop");
+        let project = cli_project("unique_ptr_nested_drop");
+        cli.build_ok(&project);
+        assert!(
+            project
+                .join("build/bin/unique_ptr_nested_drop.phx0")
+                .is_file()
+        );
+    });
+}
+
+#[test]
 fn check_unique_ptr_use_after_move_fails() {
     e2e(|cli| {
-        cli.check_fails(&cli_fixture("unique_ptr_use_after_move.phx"))
+        cli.check_fails(&cli_project_main("unique_ptr_move_in"))
             .assert_contains("moved");
     });
 }

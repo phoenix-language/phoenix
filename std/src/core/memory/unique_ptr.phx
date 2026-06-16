@@ -25,6 +25,10 @@ UniquePtr :: <t> impl {
             *self.ptr
         };
     };
+
+    as_ptr :: (self: &Self) => *mut t {
+        self.ptr
+    };
 };
 
 UniquePtr :: <t> impl :: Drop {

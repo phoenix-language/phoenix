@@ -85,7 +85,6 @@ pub const NEG_CHECK_FIXTURES: &[(&str, &str)] = &[
     ("for_in_bad.phx", "IntoIter"),
     ("derive_bad.phx", "unsupported derive trait"),
     ("newtype_bad.phx", "type mismatch"),
-    ("unique_ptr_use_after_move.phx", "moved"),
 ];
 
 /// Captured output from a `phx` subprocess invocation.

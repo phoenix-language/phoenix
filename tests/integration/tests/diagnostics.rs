@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use phx_test::{
-    assert_golden, cli_fixture, cli_modules_dir, format_check_file, format_check_with_module_root,
-    format_compile_source, integration_diagnostics_dir,
+    assert_golden, cli_fixture, cli_modules_dir, cli_project_main, format_check_file,
+    format_check_with_module_root, format_compile_source, integration_diagnostics_dir,
 };
 
 fn diagnostics_dir() -> PathBuf {
@@ -83,7 +83,7 @@ fn golden_pow_unsupported() {
 
 #[test]
 fn golden_unique_ptr_use_after_move() {
-    let path = cli_fixture("unique_ptr_use_after_move.phx");
+    let path = cli_project_main("unique_ptr_move_in");
     assert_golden(
         &diagnostics_dir(),
         "unique_ptr_use_after_move",
