@@ -391,6 +391,15 @@ pub enum TypeCheckError {
         /// Attribute span.
         span: Span,
     },
+    /// Generic type nesting exceeds the monomorphization depth limit.
+    GenericNestingTooDeep {
+        /// Measured nesting depth.
+        depth: usize,
+        /// Configured maximum depth.
+        limit: usize,
+        /// Related source span.
+        span: Span,
+    },
 }
 
 impl fmt::Display for TypeCheckError {

@@ -301,6 +301,11 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "use `#[lang_item(name = \"...\", kind = \"intrinsic\"|\"enum\"|\"trait\")]` on std definitions",
             ));
         }
+        TypeCheckError::GenericNestingTooDeep { .. } => {
+            out.helps.push(String::from(
+                "reduce `:: <...>` nesting or flatten wrapper types; monomorphization is limited to 64 generic layers",
+            ));
+        }
         TypeCheckError::InternalError { .. } | TypeCheckError::ProgramTooLarge { .. } => {}
     }
     out

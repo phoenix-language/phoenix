@@ -26,6 +26,7 @@ mod primitive;
 mod std_kernel;
 mod subst;
 mod trait_defaults;
+mod type_depth;
 mod type_size;
 mod types;
 mod unify;

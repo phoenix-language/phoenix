@@ -34,6 +34,9 @@ use crate::typeck::ops::{check_binary, check_cast, check_unary};
 use crate::typeck::ownership::OwnershipTracker;
 use crate::typeck::std_kernel::{TryFailureMode, TrySiteMeta};
 use crate::typeck::subst::Substitution;
+use crate::typeck::type_depth::{
+    MAX_GENERIC_TYPE_NESTING, check_named_instantiation_depth, max_depth_of_args,
+};
 use crate::typeck::types::{ExprId, Ty, TypeId};
 use crate::typeck::unify::unify_branch;
 use phx_syntax::token::Keyword;
@@ -714,7 +717,7 @@ impl TypeChecker<'_> {
             }
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
-            self.record_mono_inst(fn_def, mono_args, method.id);
+            self.record_mono_inst(fn_def, mono_args, method.id, span);
             return Substitution::apply(&mut self.types, ret, &subst, self.resolved);
         }
         if generics.is_some() {
@@ -905,7 +908,19 @@ impl TypeChecker<'_> {
         base_fn: DefId,
         args: Vec<TypeId>,
         site: phx_syntax::AstNodeId,
+        span: Span,
     ) {
+        if let Err(depth) = max_depth_of_args(&self.types, &args) {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::GenericNestingTooDeep {
+                    depth,
+                    limit: MAX_GENERIC_TYPE_NESTING,
+                    span,
+                },
+            );
+            return;
+        }
         if let Some(inst) = self
             .mono_insts
             .iter_mut()
@@ -927,7 +942,19 @@ impl TypeChecker<'_> {
         base_def: DefId,
         kind: TypeMonoKind,
         args: Vec<TypeId>,
+        span: Span,
     ) {
+        if let Err(depth) = check_named_instantiation_depth(&self.types, base_def, &args) {
+            self.bag.push(
+                self.current_module,
+                TypeCheckError::GenericNestingTooDeep {
+                    depth,
+                    limit: MAX_GENERIC_TYPE_NESTING,
+                    span,
+                },
+            );
+            return;
+        }
         if self
             .type_mono_insts
             .iter()
@@ -996,7 +1023,11 @@ impl TypeChecker<'_> {
     }
 
     /// Ensures monomorphized layout exists when matching on a generic enum scrutinee.
-    pub(in crate::typeck::check) fn record_scrutinee_type_mono(&mut self, scrutinee: TypeId) {
+    pub(in crate::typeck::check) fn record_scrutinee_type_mono(
+        &mut self,
+        scrutinee: TypeId,
+        span: Span,
+    ) {
         let Ty::Named { def, args } = self.types.get(scrutinee).clone() else {
             return;
         };
@@ -1008,10 +1039,10 @@ impl TypeChecker<'_> {
         };
         match kind {
             TypeMonoKind::Enum if self.program_layout.enums.contains_key(&def) => {
-                self.record_type_mono_inst(def, kind, args);
+                self.record_type_mono_inst(def, kind, args, span);
             }
             TypeMonoKind::Struct if self.program_layout.structs.contains_key(&def) => {
-                self.record_type_mono_inst(def, kind, args);
+                self.record_type_mono_inst(def, kind, args, span);
             }
             _ => {}
         }
@@ -1207,7 +1238,7 @@ impl TypeChecker<'_> {
         let Some(args) = self.complete_generic_args(base, args, span) else {
             return self.poison_type();
         };
-        self.record_type_mono_inst(base, kind, args.clone());
+        self.record_type_mono_inst(base, kind, args.clone(), span);
         if kind == TypeMonoKind::Alias {
             let mut subst = Substitution::new();
             for (param, arg) in param_defs.iter().zip(&args) {
@@ -1351,7 +1382,12 @@ impl TypeChecker<'_> {
             ) else {
                 return self.unit;
             };
-            self.record_type_mono_inst(struct_def, TypeMonoKind::Struct, concrete_args.clone());
+            self.record_type_mono_inst(
+                struct_def,
+                TypeMonoKind::Struct,
+                concrete_args.clone(),
+                span,
+            );
             concrete_args
         };
         let struct_ty = self.types.intern(&Ty::Named {
@@ -1997,6 +2033,7 @@ impl TypeChecker<'_> {
                         from_fn,
                         vec![err_in],
                         phx_syntax::AstNodeId::synthetic(expr_id.index()),
+                        span,
                     );
                 }
             }
@@ -2319,7 +2356,7 @@ impl TypeChecker<'_> {
         }
         let site = callee_name_use_id(base);
         if let Some(site) = site {
-            self.record_mono_inst(fn_def, concrete_args, site);
+            self.record_mono_inst(fn_def, concrete_args, site, span);
         }
         ret
     }
@@ -2372,7 +2409,7 @@ impl TypeChecker<'_> {
         }) else {
             return self.unit;
         };
-        self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, concrete_args.clone());
+        self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, concrete_args.clone(), span);
         let enum_ty = self.types.intern(&Ty::Named {
             def: enum_def,
             args: concrete_args.clone(),
@@ -2604,7 +2641,7 @@ impl TypeChecker<'_> {
             }
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
-            self.record_mono_inst(fn_def, mono_args.clone(), name.id);
+            self.record_mono_inst(fn_def, mono_args.clone(), name.id, span);
             self.method_call_sites.insert(
                 site_id,
                 MethodCallSiteMeta {
@@ -2822,7 +2859,7 @@ impl TypeChecker<'_> {
                 scrutinee,
             } => {
                 let s = self.check_expr_node(scrutinee);
-                self.record_scrutinee_type_mono(s);
+                self.record_scrutinee_type_mono(s, scrutinee.span);
                 if let Some(layout) = &mut self.layout {
                     let _ = layout.alloc_match_scrutinee_temp(s, scrutinee.span);
                 }

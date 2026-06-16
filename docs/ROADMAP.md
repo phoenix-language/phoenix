@@ -110,7 +110,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Single source of method resolution: typeck records callee `DefId` + mono args; lowering consumes it | PHX-038 | Delete `resolve_method_callee_for_ty` duplication |
 | Align `#derive` with docs (`Debug` documented or removed); track generic derive as a feature | PHX-029 | Doc/code sync; generic derive needed before std types can derive |
 | `[INFRA]` Update stale design docs: V0-063 trait defaults and V0-064 Result match are implemented | PHX-032 | Docs are the source of truth — keep them true |
-| `[FEATURE]` Mono guardrail: recursion-depth limit with diagnostic for pathological generic nesting | — | Currently relies on finite call sites only |
+| `[FEATURE]` Mono guardrail: recursion-depth limit with diagnostic for pathological generic nesting | — | **Shipped:** max depth 64, `E2046` at instantiation + mono pass |
 | `[INFRA]` CI exercise: monomorphization of `Option<T>`/`Result<T,E>`/`DynamicArray<T>` through trait calls | PHX-061 | — |
 
 ---

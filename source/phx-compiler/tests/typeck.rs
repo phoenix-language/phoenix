@@ -1893,3 +1893,52 @@ fn missing_fn_def_emits_internal_error_instead_of_def_zero() {
         bag.errors()
     );
 }
+
+fn inner_nest_type_name(wraps: usize) -> String {
+    let mut ty = "s32".to_string();
+    for _ in 0..wraps {
+        ty = format!("Nest<{ty}> ");
+    }
+    ty
+}
+
+fn nested_generic_value(wraps: usize) -> String {
+    let mut val = "1".to_string();
+    for w in 1..=wraps {
+        let arg = inner_nest_type_name(w - 1);
+        val = format!("Nest :: <{arg}> {{ v: {val} }}");
+    }
+    val
+}
+
+#[test]
+fn generic_nesting_within_limit_ok() {
+    let val = nested_generic_value(20);
+    let source = format!("Nest :: <t> struct {{ v: t }}; main :: () => {{ const _x = {val}; }};");
+    compile_ok(&source);
+}
+
+#[test]
+fn generic_nesting_depth_sixty_five_errors() {
+    let val = nested_generic_value(65);
+    let source = format!("Nest :: <t> struct {{ v: t }}; main :: () => {{ const _x = {val}; }};");
+    let bag = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || typeck_err(&source))
+        .expect("spawn nesting depth test thread")
+        .join()
+        .expect("join nesting depth test thread");
+    assert!(
+        bag.errors().iter().any(|e| {
+            matches!(
+                &e.error,
+                TypeCheckError::GenericNestingTooDeep {
+                    depth: 65,
+                    limit: 64,
+                    ..
+                }
+            )
+        }),
+        "expected GenericNestingTooDeep, got {bag}"
+    );
+}

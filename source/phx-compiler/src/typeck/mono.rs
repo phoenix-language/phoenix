@@ -11,6 +11,10 @@ use super::check::TypeChecker;
 use super::layout::{EnumLayout, StructLayout, TypeMonoKey, VariantKind, VariantLayout};
 use super::mangle;
 use super::subst::Substitution;
+use super::type_depth::{
+    MAX_GENERIC_TYPE_NESTING, check_named_instantiation_depth, check_type_nesting_depth,
+    max_depth_of_args,
+};
 use super::types::TypeId;
 use crate::resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram};
 use crate::typeck::{MethodCallSiteMeta, TypedProgram};
@@ -218,6 +222,17 @@ fn monomorphize_functions(
         ) {
             continue;
         }
+        if let Err(depth) = max_depth_of_args(&typed.types, &inst.args) {
+            bag.push(
+                base_def.module,
+                TypeCheckError::GenericNestingTooDeep {
+                    depth,
+                    limit: MAX_GENERIC_TYPE_NESTING,
+                    span: base_def.span,
+                },
+            );
+            continue;
+        }
         let mut subst = Substitution::new();
         for (param, arg) in param_defs.iter().zip(&inst.args) {
             subst.insert(*param, *arg);
@@ -409,6 +424,18 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
         ) {
             continue;
         }
+        if let Err(depth) = check_named_instantiation_depth(&typed.types, inst.base_def, &inst.args)
+        {
+            bag.push(
+                base_def.module,
+                TypeCheckError::GenericNestingTooDeep {
+                    depth,
+                    limit: MAX_GENERIC_TYPE_NESTING,
+                    span: base_def.span,
+                },
+            );
+            continue;
+        }
 
         let key = TypeMonoKey::new(inst.base_def, inst.args.clone());
         if typed.layout.specialized_type_ids.contains_key(&key) {
@@ -422,12 +449,14 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
 
         match inst.kind {
             TypeMonoKind::Struct => {
-                specialize_struct(typed, inst.base_def, &key, &subst, next_type_id);
-                next_type_id = next_type_id.saturating_add(1);
+                if specialize_struct(typed, inst.base_def, &key, &subst, next_type_id, bag) {
+                    next_type_id = next_type_id.saturating_add(1);
+                }
             }
             TypeMonoKind::Enum => {
-                specialize_enum(typed, inst.base_def, &key, &subst, next_type_id);
-                next_type_id = next_type_id.saturating_add(1);
+                if specialize_enum(typed, inst.base_def, &key, &subst, next_type_id, bag) {
+                    next_type_id = next_type_id.saturating_add(1);
+                }
             }
             TypeMonoKind::Alias => {}
         }
@@ -440,9 +469,13 @@ fn specialize_struct(
     key: &TypeMonoKey,
     subst: &Substitution,
     type_id: u32,
-) {
+    bag: &mut TypeCheckBag,
+) -> bool {
+    let base_def = &typed.resolved.defs[base.index() as usize];
+    let span = base_def.span;
+    let module = base_def.module;
     let Some(template) = typed.layout.structs.get(&base).cloned() else {
-        return;
+        return false;
     };
     let fields: Vec<_> = template
         .fields
@@ -454,6 +487,19 @@ fn specialize_struct(
             )
         })
         .collect();
+    for (_, ty) in &fields {
+        if let Err(depth) = check_type_nesting_depth(&typed.types, *ty) {
+            bag.push(
+                module,
+                TypeCheckError::GenericNestingTooDeep {
+                    depth,
+                    limit: MAX_GENERIC_TYPE_NESTING,
+                    span,
+                },
+            );
+            return false;
+        }
+    }
     typed
         .layout
         .specialized_structs
@@ -462,6 +508,7 @@ fn specialize_struct(
         .layout
         .specialized_type_ids
         .insert(key.clone(), type_id);
+    true
 }
 
 fn specialize_enum(
@@ -470,9 +517,13 @@ fn specialize_enum(
     key: &TypeMonoKey,
     subst: &Substitution,
     type_id: u32,
-) {
+    bag: &mut TypeCheckBag,
+) -> bool {
+    let base_def = &typed.resolved.defs[base.index() as usize];
+    let span = base_def.span;
+    let module = base_def.module;
     let Some(template) = typed.layout.enums.get(&base).cloned() else {
-        return;
+        return false;
     };
     let variants: Vec<VariantLayout> = template
         .variants
@@ -508,6 +559,26 @@ fn specialize_enum(
             }
         })
         .collect();
+    for variant in &variants {
+        let types_to_check: Vec<TypeId> = match &variant.kind {
+            VariantKind::Unit => vec![],
+            VariantKind::Tuple(ts) => ts.clone(),
+            VariantKind::Struct(fs) => fs.iter().map(|(_, t)| *t).collect(),
+        };
+        for ty in types_to_check {
+            if let Err(depth) = check_type_nesting_depth(&typed.types, ty) {
+                bag.push(
+                    module,
+                    TypeCheckError::GenericNestingTooDeep {
+                        depth,
+                        limit: MAX_GENERIC_TYPE_NESTING,
+                        span,
+                    },
+                );
+                return false;
+            }
+        }
+    }
     typed.layout.specialized_enums.insert(
         key.clone(),
         EnumLayout {
@@ -519,6 +590,7 @@ fn specialize_enum(
         .layout
         .specialized_type_ids
         .insert(key.clone(), type_id);
+    true
 }
 
 fn find_function(resolved: &ResolvedProgram, def: DefId) -> Option<&Function> {

@@ -379,6 +379,9 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
             format!("duplicate language item `{kind}` named `{name}`")
         }
         TypeCheckError::LangItemInvalid { detail, .. } => detail.clone(),
+        TypeCheckError::GenericNestingTooDeep { depth, limit, .. } => {
+            format!("generic type nesting too deep (depth {depth}, limit {limit})")
+        }
     }
 }
 

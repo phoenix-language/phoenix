@@ -423,6 +423,9 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E2043" => Some("`#[lang_item]` may only appear on standard library definitions."),
         "E2044" => Some("Each language item `(kind, name)` may be declared at most once."),
         "E2045" => Some("Invalid `#[lang_item]` attribute (unknown kind or name)."),
+        "E2046" => Some(
+            "Generic type nesting exceeds the monomorphization depth limit (64 layers); flatten wrappers or reduce `:: <...>` nesting.",
+        ),
         "E3001" => Some("The parser encountered unexpected tokens."),
         "E3002" => Some("Input ended before the parser found a required token."),
         "E3003" => Some("The syntax is recognized but not supported in this compiler version."),

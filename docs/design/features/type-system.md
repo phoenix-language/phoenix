@@ -224,6 +224,7 @@ Phoenix uses **compile-time monomorphization** as the **permanent** generics str
 | Specialization | Each distinct `(template, args…)` gets mangled symbols such as `id$s32` and concrete [`ProgramLayout`](../../../source/phx-compiler/src/typeck/layout.rs) entries for lowering |
 | Trait bounds | Checked when concrete type arguments are known (monomorphization / type instantiation) |
 | Trait dispatch | Static (monomorphized) only; `dyn Trait` reserved for explicit runtime polymorphism |
+| Nesting depth | At most **64** generic layers per monomorphized type (`E2046`); enforced at instantiation sites and during monomorphization |
 
 Type parameters in templates are checked once; the monomorphization pass validates trait bounds, re-checks specialized bodies where needed, and emits substituted struct/enum layouts for each collected type instantiation.
 

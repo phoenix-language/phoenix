@@ -97,7 +97,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 - [x] **Heap cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); `phoenix.toml` `[vm] heap_cap` and `phx run --heap-cap` (suffix strings like `64mb`, `1gb`). **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
 
-- [ ] **Mono guardrail for pathological generic nesting** — Recursion-depth limit with diagnostic (ROADMAP M4 follow-up); protects std generic authoring. **Owner:** compiler (mono). **Gate:** Std v0.
+- [x] **Mono guardrail for pathological generic nesting** — Max **64** generic nesting layers; `E2046 GenericNestingTooDeep` at instantiation sites and monomorphization (ROADMAP M4 follow-up). **Owner:** compiler (mono). **Gate:** Std v0.
 
 ---
 

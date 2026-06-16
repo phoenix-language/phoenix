@@ -29,7 +29,7 @@ impl TypeChecker<'_> {
         span: Span,
     ) -> TypeId {
         let s = self.check_expr_node(scrutinee);
-        self.record_scrutinee_type_mono(s);
+        self.record_scrutinee_type_mono(s, span);
         if let Some(layout) = &mut self.layout {
             let _ = layout.alloc_match_scrutinee_temp(s, span);
         }
@@ -595,7 +595,7 @@ impl TypeChecker<'_> {
             "missing explicit type arguments on generic enum struct literal",
         );
         if !type_args.is_empty() {
-            self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, type_args.clone());
+            self.record_type_mono_inst(enum_def, TypeMonoKind::Enum, type_args.clone(), span);
         }
         let enum_ty = if type_args.is_empty() {
             self.types.intern(&Ty::Named {

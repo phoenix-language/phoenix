@@ -78,6 +78,7 @@ typecheck_error_registry! {
     LangItemReserved => "E2043",
     LangItemDuplicate => "E2044",
     LangItemInvalid => "E2045",
+    GenericNestingTooDeep => "E2046",
 }
 
 #[cfg(test)]
