@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::byte_size;
+
 /// Package kind from `[project] type`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageType {
@@ -46,6 +48,8 @@ pub struct ProjectConfig {
     pub bundle_std: bool,
     /// When true (default), inject std prelude bindings when std is linked.
     pub prelude: bool,
+    /// `[vm] heap_cap` — VM linear heap byte cap for `phx run` (unset → 64 MiB default at run).
+    pub vm_heap_cap_bytes: Option<usize>,
 }
 
 impl ProjectConfig {
@@ -209,6 +213,7 @@ impl std::fmt::Display for ProjectError {
 
 impl std::error::Error for ProjectError {}
 
+#[allow(clippy::too_many_lines)]
 fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut name: Option<String> = None;
     let mut version = "0.0.0".to_owned();
@@ -223,6 +228,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut dependencies: HashMap<String, PathDependency> = HashMap::new();
     let mut bundle_std = true;
     let mut prelude = true;
+    let mut vm_heap_cap_bytes: Option<usize> = None;
 
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -261,6 +267,9 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
                 _ => {}
             },
             "build" if key == "dir" => build_dir = PathBuf::from(value),
+            "vm" if key == "heap_cap" => {
+                vm_heap_cap_bytes = Some(parse_heap_cap_value(value)?);
+            }
             "dependencies" => {
                 if key == "path" {
                     let Some(ref dk) = dep_key else {
@@ -309,6 +318,13 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         dependencies,
         bundle_std,
         prelude,
+        vm_heap_cap_bytes,
+    })
+}
+
+fn parse_heap_cap_value(value: &str) -> Result<usize, ProjectError> {
+    byte_size::parse_byte_size(value).map_err(|e| ProjectError::Invalid {
+        message: format!("invalid vm.heap_cap: {e}"),
     })
 }
 
@@ -486,5 +502,81 @@ wrong = {{ path = "{}" }}
 
         let _ = std::fs::remove_dir_all(&lib_dir);
         let _ = std::fs::remove_dir_all(&app_dir);
+    }
+
+    #[test]
+    fn parse_vm_heap_cap_integer() {
+        let dir = temp_project("vm_cap_int");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "demo"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[vm]
+heap_cap = 32
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
+        let cfg = ProjectConfig::load(&dir).unwrap();
+        assert_eq!(cfg.vm_heap_cap_bytes, Some(32));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_vm_heap_cap_suffix() {
+        let dir = temp_project("vm_cap_suffix");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "demo"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[vm]
+heap_cap = "64mb"
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
+        let cfg = ProjectConfig::load(&dir).unwrap();
+        assert_eq!(cfg.vm_heap_cap_bytes, Some(64 * 1024 * 1024));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reject_invalid_vm_heap_cap() {
+        let dir = temp_project("vm_cap_bad");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "demo"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[vm]
+heap_cap = "foo"
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
+        let err = ProjectConfig::load(&dir).unwrap_err();
+        assert!(
+            matches!(err, ProjectError::Invalid { .. }),
+            "expected invalid config, got {err:?}"
+        );
+        assert!(err.to_string().contains("vm.heap_cap"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

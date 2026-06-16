@@ -121,6 +121,8 @@ pub struct RunCommandArgs {
     pub skip_build: bool,
     /// After run, print `main` local slots to stderr (MVP debug channel).
     pub dump_main: bool,
+    /// VM linear heap byte cap override (`--heap-cap`).
+    pub heap_cap: Option<usize>,
 }
 
 /// Argument parse failure with a user-facing message.
@@ -349,6 +351,15 @@ fn parse_run_flags(iter: &mut impl Iterator<Item = String>) -> Result<RunCommand
             "--build" => args.force_build = true,
             "--no-build" => args.skip_build = true,
             "--dump-main" => args.dump_main = true,
+            "--heap-cap" => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| ParseError::new("missing value for --heap-cap"))?;
+                args.heap_cap = Some(parse_heap_cap_arg(&value)?);
+            }
+            s if let Some(value) = s.strip_prefix("--heap-cap=") => {
+                args.heap_cap = Some(parse_heap_cap_arg(value)?);
+            }
             "--emit-interface-only" => {
                 return Err(ParseError::new(
                     "`phx run` does not support --emit-interface-only (no runnable artifact)",
@@ -376,6 +387,10 @@ fn parse_dep_spec(spec: &str) -> Result<(String, PathBuf), ParseError> {
         )));
     }
     Ok((name.to_owned(), PathBuf::from(path)))
+}
+
+fn parse_heap_cap_arg(value: &str) -> Result<usize, ParseError> {
+    phx_compiler::parse_byte_size(value).map_err(|e| ParseError::new(format!("--heap-cap: {e}")))
 }
 
 /// Parses process arguments (skips the program name).

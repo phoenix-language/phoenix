@@ -7,3 +7,6 @@ module_src = "src"
 
 [build]
 dir = "build"
+
+[vm]
+heap_cap = 32

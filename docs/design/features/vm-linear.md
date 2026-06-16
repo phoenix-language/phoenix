@@ -298,7 +298,17 @@ The MVP interpreter enforces **bounded** VM heap growth so hostile or buggy byte
 | Single allocation size | `u32` (~4 GiB max per call) | Language and `ALLOC` operand width; cap applies before this ceiling |
 | Heap pointer values | `u64` | Offsets into the VM linear heap, not host addresses |
 
-**64 MiB is a bootstrap default**, not a long-term product ceiling — it is enough for early std fixtures but will be tight for large buffers, parsers, and growable collections. Before std workloads ship at scale, revisit the default (e.g. raise to hundreds of MiB or tie to host RAM) and **expose user configuration**: project-level settings (e.g. `phx.toml` / build manifest) and/or CLI flags (`phx run --heap-cap=…`) that wire into [`VmRuntime::heap_cap`](../../source/phx-vm/src/context.rs). Until that ships, embedders and tests may use `Machine::with_heap_cap` / `run_captured_with_heap_cap` (`#[doc(hidden)]`).
+**64 MiB is a bootstrap default**, not a long-term product ceiling — it is enough for early std fixtures but will be tight for large buffers, parsers, and growable collections. **User configuration (shipped):**
+
+| Source | Example | Precedence |
+|---|---|---|
+| `phx run --heap-cap <size>` | `phx run --heap-cap=128mb` | Highest (overrides project) |
+| `phoenix.toml` `[vm] heap_cap` | `heap_cap = "1gb"` or `heap_cap = 67108864` | Project default when flag omitted |
+| Built-in default | `DEFAULT_HEAP_CAP_BYTES` (64 MiB) | When neither is set |
+
+Sizes accept bare byte integers or binary suffix strings (`k`/`kb`/`kib`, `m`/`mb`/`mib`, `g`/`gb`/`gib`; case-insensitive). Parsed by [`parse_byte_size`](../../source/phx-compiler/src/byte_size.rs) and applied via [`run_with_heap_cap`](../../source/phx-vm/src/lib.rs) / [`VmRuntime::heap_cap`](../../source/phx-vm/src/context.rs).
+
+Integration tests that inspect `main` locals may still use `run_captured_with_heap_cap` (`#[doc(hidden)]`).
 
 `u32` in bytecode operands and `alloc_bytes(size: u32)` index portable file layout and per-call size — they do **not** make Phoenix a 32-bit platform; the host VM runs on 64-bit Rust with `usize`/`u64` internally.
 

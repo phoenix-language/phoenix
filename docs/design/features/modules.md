@@ -268,6 +268,9 @@ math = { path = "../math" }
 
 [build]
 dir = "build"
+
+[vm]
+heap_cap = "64mb"
 ```
 
 | Field | Default | Meaning |
@@ -281,6 +284,7 @@ dir = "build"
 | `project.module_src` | `"src"` | Source root (relative to project root) |
 | `dependencies.<key>.path` | — | Filesystem path to dependency root (must contain `phoenix.toml`) |
 | `build.dir` | `"build"` | Artifact root |
+| `vm.heap_cap` | *(unset → 64 MiB at run)* | VM linear heap cap for `phx run`; integer bytes or suffix string (`"64mb"`, `"1gb"`) |
 
 **Validation:**
 
@@ -402,6 +406,7 @@ Transitive importers are rebuilt in reverse dependency order.
 | `--module-src <dir>` | `check`, `run` (standalone) | Module root for `#import` |
 | `--build` | `build`, `run` | Force full rebuild |
 | `--no-build` | `run` | Skip build; load existing `build/bin` artifact |
+| `--heap-cap <size>` | `run` | VM heap byte cap (e.g. `64mb`, `1gb`); overrides `phoenix.toml` `[vm] heap_cap` |
 | `--emit-interface-only` | `build`, `check` | After successful type-check, write `build/pxi/*.pxi` and `manifest.json` only; skip per-module `.phx0` codegen and link. `phx run` rejects this flag. |
 
 When fresh `.pxi` files exist under `build/` or `build/deps/`, importers seed cross-module types from v2 structured `type` objects instead of re-parsing dependency bodies.

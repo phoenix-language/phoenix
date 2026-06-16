@@ -95,7 +95,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 - [x] **DynamicArray misuse fixtures (UAF, double-free)** — Exercise PHX-054 ledger checks under std collection patterns (2026-06-15). **Ref:** ROADMAP M6. **Owner:** tests + VM. **Gate:** Std v0.
 
-- [ ] **Heap   cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); expose project/CLI tuning for std stress tests. **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
+- [x] **Heap cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); `phoenix.toml` `[vm] heap_cap` and `phx run --heap-cap` (suffix strings like `64mb`, `1gb`). **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
 
 - [ ] **Mono guardrail for pathological generic nesting** — Recursion-depth limit with diagnostic (ROADMAP M4 follow-up); protects std generic authoring. **Owner:** compiler (mono). **Gate:** Std v0.
 

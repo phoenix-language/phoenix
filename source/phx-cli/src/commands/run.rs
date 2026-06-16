@@ -10,7 +10,7 @@ use phx_compiler::{
     load_project_binary,
 };
 use phx_diagnostics::DiagnosticStyle;
-use phx_vm::{Value, run_captured};
+use phx_vm::{DEFAULT_HEAP_CAP_BYTES, Value, run_captured_with_heap_cap, run_with_heap_cap};
 
 use crate::args::RunCommandArgs;
 use crate::color::ColorChoice;
@@ -51,11 +51,29 @@ pub fn run_run(
             args.skip_build,
             verbose,
             dump_main,
+            resolve_heap_cap(args.heap_cap, Some(&config)),
         ),
-        CompileMode::Standalone { options } => {
-            run_standalone(&reporter, &style, &options, verbose, dump_main)
+        CompileMode::Standalone { options } => run_standalone(
+            &reporter,
+            &style,
+            &options,
+            verbose,
+            dump_main,
+            resolve_heap_cap(args.heap_cap, None),
+        ),
+    }
+}
+
+fn resolve_heap_cap(cli: Option<usize>, config: Option<&phx_compiler::ProjectConfig>) -> usize {
+    if let Some(cap) = cli {
+        return cap;
+    }
+    if let Some(config) = config {
+        if let Some(cap) = config.vm_heap_cap_bytes {
+            return cap;
         }
     }
+    DEFAULT_HEAP_CAP_BYTES
 }
 
 #[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
@@ -68,6 +86,7 @@ fn run_project(
     skip_build: bool,
     verbose: bool,
     dump_main: bool,
+    heap_cap: usize,
 ) -> CliExit {
     if !skip_build {
         reporter.verbose(verbose, "building project...");
@@ -95,7 +114,7 @@ fn run_project(
             return CliExit::Compile;
         }
     };
-    execute_module(reporter, &module, verbose, dump_main)
+    execute_module(reporter, &module, verbose, dump_main, heap_cap)
 }
 
 fn run_standalone(
@@ -104,6 +123,7 @@ fn run_standalone(
     options: &phx_compiler::StandaloneOptions,
     verbose: bool,
     dump_main: bool,
+    heap_cap: usize,
 ) -> CliExit {
     let source = match fs::read_to_string(&options.entry) {
         Ok(s) => s,
@@ -146,7 +166,7 @@ fn run_standalone(
             return CliExit::Compile;
         }
     };
-    execute_module(reporter, &module, verbose, dump_main)
+    execute_module(reporter, &module, verbose, dump_main, heap_cap)
 }
 
 fn execute_module(
@@ -154,6 +174,7 @@ fn execute_module(
     module: &phx_bytecode::BytecodeModule,
     verbose: bool,
     dump_main: bool,
+    heap_cap: usize,
 ) -> CliExit {
     reporter.verbose(verbose, "verifying bytecode...");
     let verified = match verify(module) {
@@ -165,7 +186,7 @@ fn execute_module(
     };
     reporter.verbose(verbose, "running...");
     if dump_main {
-        match run_captured(verified) {
+        match run_captured_with_heap_cap(verified, heap_cap) {
             Ok(capture) => {
                 dump_main_locals(capture.main_locals.as_slice());
                 CliExit::Ok
@@ -175,7 +196,7 @@ fn execute_module(
                 CliExit::Runtime
             }
         }
-    } else if let Err(e) = phx_vm::run(verified) {
+    } else if let Err(e) = run_with_heap_cap(verified, heap_cap) {
         reporter.runtime_error(&e.to_string());
         CliExit::Runtime
     } else {

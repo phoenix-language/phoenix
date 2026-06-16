@@ -3,7 +3,8 @@
 #![allow(clippy::expect_used)]
 
 use phx_test::{
-    ExpectedLocal, assert_main_locals, fixture_fs_lock, force_build_project, require_cli_project,
+    ExpectedLocal, PhxCli, assert_main_locals, fixture_fs_lock, force_build_project,
+    require_cli_project,
 };
 use phx_vm::run;
 
@@ -49,4 +50,71 @@ fn heap_alloc_oom_with_low_heap_cap() {
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_alloc_oom");
     let err = run_captured_with_heap_cap(verified, 32).expect_err("heap cap exceeded");
     assert_eq!(err.kind, VmErrorKind::OutOfMemory);
+}
+
+#[test]
+fn heap_alloc_oom_cli_heap_cap_flag() {
+    let _lock = fixture_fs_lock();
+    let root = require_cli_project("heap_alloc_oom");
+    force_build_project("heap_alloc_oom");
+    let cli = PhxCli::ensure_built();
+    let root_arg = root.to_string_lossy();
+    cli.run(&[
+        "run",
+        "--no-build",
+        "--project-root",
+        &root_arg,
+        "--heap-cap",
+        "32",
+    ])
+    .assert_failure()
+    .assert_contains("heap allocation exceeded cap");
+}
+
+#[test]
+fn heap_alloc_oom_cli_heap_cap_equals_form() {
+    let _lock = fixture_fs_lock();
+    let root = require_cli_project("heap_alloc_oom");
+    force_build_project("heap_alloc_oom");
+    let cli = PhxCli::ensure_built();
+    let root_arg = root.to_string_lossy();
+    cli.run(&[
+        "run",
+        "--no-build",
+        "--project-root",
+        &root_arg,
+        "--heap-cap=32",
+    ])
+    .assert_failure()
+    .assert_contains("heap allocation exceeded cap");
+}
+
+#[test]
+fn heap_alloc_oom_from_phoenix_toml_vm_section() {
+    let _lock = fixture_fs_lock();
+    let root = require_cli_project("heap_alloc_oom");
+    force_build_project("heap_alloc_oom");
+    let cli = PhxCli::ensure_built();
+    let root_arg = root.to_string_lossy();
+    cli.run(&["run", "--no-build", "--project-root", &root_arg])
+        .assert_failure()
+        .assert_contains("heap allocation exceeded cap");
+}
+
+#[test]
+fn heap_alloc_cli_heap_cap_suffix_runs_ok() {
+    let _lock = fixture_fs_lock();
+    let root = require_cli_project("heap_alloc");
+    force_build_project("heap_alloc");
+    let cli = PhxCli::ensure_built();
+    let root_arg = root.to_string_lossy();
+    cli.run(&[
+        "run",
+        "--no-build",
+        "--project-root",
+        &root_arg,
+        "--heap-cap",
+        "64mb",
+    ])
+    .assert_success();
 }

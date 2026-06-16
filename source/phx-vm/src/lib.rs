@@ -47,6 +47,15 @@ pub fn run(verified: VerifiedModule<'_>) -> Result<(), VmError> {
     interpreter::interpret(verified)
 }
 
+/// Runs a verified `module` with a custom VM linear heap byte cap.
+///
+/// # Errors
+///
+/// Returns [`VmError`] when execution fails or the heap cap is exceeded.
+pub fn run_with_heap_cap(verified: VerifiedModule<'_>, heap_cap: usize) -> Result<(), VmError> {
+    run_captured_with_heap_cap(verified, heap_cap).map(|_| ())
+}
+
 /// Runs `module` without a verification token (mutation / VM error-path tests only).
 ///
 /// # Errors

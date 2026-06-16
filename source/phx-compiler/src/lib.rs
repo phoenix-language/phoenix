@@ -20,6 +20,7 @@
 
 mod attrs;
 mod build;
+mod byte_size;
 mod cfg;
 mod codegen;
 mod compile;
@@ -43,6 +44,7 @@ pub use build::{
     BuildError, BuildOptions, BuildResult, build_project, emit_interfaces_from_compiled,
     load_project_binary,
 };
+pub use byte_size::{ByteSizeError, parse_byte_size};
 pub use cfg::{CompileCfg, strip_cfg};
 pub use compile::{
     CompileError, DiagnosticContext, check_file, check_file_with_module_path, check_project_file,
