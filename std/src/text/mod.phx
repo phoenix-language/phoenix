@@ -1,0 +1,3 @@
+// std::text — owned UTF-8 containers.
+
+pub mod string;

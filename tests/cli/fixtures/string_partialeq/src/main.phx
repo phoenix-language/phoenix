@@ -1,0 +1,11 @@
+#import std::text::string::String;
+
+main :: () => {
+    var a: String = String::from_str("hi");
+    var b: String = String::from_str("hi");
+    var c: String = String::from_str("ho");
+    const same: bool = a.eq(&b);
+    const diff: bool = a.eq(&c);
+    const check_same: bool = same;
+    const check_diff: bool = diff;
+};

@@ -23,6 +23,8 @@ pub struct IntrinsicKernel {
     pub dealloc_bytes: Option<DefId>,
     /// `std::core::slice::slice_from_raw_parts`
     pub slice_from_raw_parts: Option<DefId>,
+    /// `std::core::slice::len`
+    pub slice_len: Option<DefId>,
     /// `std::core::mem::size_of`
     pub size_of: Option<DefId>,
 }
@@ -36,6 +38,8 @@ pub enum IntrinsicSite {
     DeallocBytes,
     /// `slice_from_raw_parts(ptr, len)` → `MAKE_SLICE_FROM_PTR` opcode.
     SliceFromRawParts,
+    /// `len(slice)` → `SLICE_LEN` opcode.
+    SliceLen,
     /// `size_of::<T>()` → compile-time `u32` constant.
     SizeOf,
 }
@@ -69,6 +73,7 @@ impl IntrinsicKernel {
                 "slice_from_raw_parts",
                 DefKind::Fn,
             );
+            kernel.slice_len = find_def(resolved, &resolved.interner, mod_id, "len", DefKind::Fn);
         }
         if let Some(mod_id) = module_id(resolved, STD_MEM_MODULE) {
             kernel.size_of = find_def(resolved, &resolved.interner, mod_id, "size_of", DefKind::Fn);
@@ -85,6 +90,8 @@ impl IntrinsicKernel {
             Some(IntrinsicSite::DeallocBytes)
         } else if self.slice_from_raw_parts == Some(def) {
             Some(IntrinsicSite::SliceFromRawParts)
+        } else if self.slice_len == Some(def) {
+            Some(IntrinsicSite::SliceLen)
         } else if self.size_of == Some(def) {
             Some(IntrinsicSite::SizeOf)
         } else {
@@ -98,6 +105,7 @@ impl IntrinsicKernel {
         self.alloc_bytes == Some(def)
             || self.dealloc_bytes == Some(def)
             || self.slice_from_raw_parts == Some(def)
+            || self.slice_len == Some(def)
             || self.size_of == Some(def)
     }
 }

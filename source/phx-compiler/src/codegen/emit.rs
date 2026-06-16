@@ -376,6 +376,9 @@ fn emit_inst(
         IrInst::StrAsSlice => {
             out.extend(encode(Opcode::StrAsSlice, &[])?);
         }
+        IrInst::SliceLen => {
+            out.extend(encode(Opcode::SliceLen, &[])?);
+        }
         IrInst::TrapGivenMismatch => {
             out.extend(encode(Opcode::Trap, &[])?);
         }

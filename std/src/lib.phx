@@ -3,6 +3,7 @@
 
 pub mod core;
 pub mod collections;
+pub mod text;
 pub mod ffi;
 
 pub version :: () => s32 { 1 };

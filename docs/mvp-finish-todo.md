@@ -87,7 +87,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 - [x] **Generic `#derive` for std types** — `DynamicArray<T>` and similar need `PartialEq`/`Debug` without hand-written impls. **Ref:** PHX-030, ROADMAP Deferred. **Owner:** compiler (derive). **Gate:** Std v0.
 
-- [ ] **Owned `String` over `DynamicArray<u8>`** — Std v0 module per completion roadmap order #4; no primitive owned string in core. **Ref:** `type-system.md`, `mvp.md`. **Owner:** std. **Gate:** Std v0.
+- [x] **Owned `String` over `DynamicArray<u8>`** — Std v0 module per completion roadmap order #4; no primitive owned string in core. **Ref:** `type-system.md`, `mvp.md`. **Owner:** std. **Gate:** Std v0.
 
 - [ ] `**text::fmt` minimal formatting** — Depends on `String` + `Display`; post-collections. **Owner:** std. **Gate:** Std v0.
 
@@ -95,7 +95,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 - [x] **DynamicArray misuse fixtures (UAF, double-free)** — Exercise PHX-054 ledger checks under std collection patterns (2026-06-15). **Ref:** ROADMAP M6. **Owner:** tests + VM. **Gate:** Std v0.
 
-- [ ] **Heap cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); expose project/CLI tuning for std stress tests. **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
+- [ ] **Heap   cap configuration follow-up** — Default 64 MiB cap ships (PHX-053); expose project/CLI tuning for std stress tests. **Ref:** ROADMAP M6, `vm-linear.md`. **Owner:** VM + CLI. **Gate:** Std v0 (operational).
 
 - [ ] **Mono guardrail for pathological generic nesting** — Recursion-depth limit with diagnostic (ROADMAP M4 follow-up); protects std generic authoring. **Owner:** compiler (mono). **Gate:** Std v0.
 

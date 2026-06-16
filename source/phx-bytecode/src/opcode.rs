@@ -113,6 +113,8 @@ pub enum Opcode {
     /// Store primitive into indexed aggregate or heap slice. Stack: `[agg, index, value] → []`
     /// — operands: `prim_kind`, `signed` (0/1).
     IndexStore = 50,
+    /// Read length from slice or `str` aggregate. Stack: `[slice] → [len: u32]`
+    SliceLen = 51,
 }
 
 impl Opcode {
@@ -174,6 +176,7 @@ impl Opcode {
             48 => Ok(Self::MakeSliceFromPtr),
             49 => Ok(Self::Free),
             50 => Ok(Self::IndexStore),
+            51 => Ok(Self::SliceLen),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }

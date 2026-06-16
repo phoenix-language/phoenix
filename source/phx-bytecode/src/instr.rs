@@ -125,6 +125,7 @@ impl Instruction {
             | Opcode::MakeSlice
             | Opcode::AddressOfLocal
             | Opcode::StrAsSlice
+            | Opcode::SliceLen
             | Opcode::MakeFnPtr
             | Opcode::LoadAggViaLocalPtr
             | Opcode::MakeSliceFromPtr

@@ -133,6 +133,7 @@ fn localize_module_constants(
                     | IrInst::Free
                     | IrInst::Pop
                     | IrInst::StrAsSlice
+                    | IrInst::SliceLen
                     | IrInst::TrapGivenMismatch
                     | IrInst::DropLocal { .. }
                     | IrInst::MakeSlice { .. }
@@ -194,6 +195,7 @@ fn localize_module_constants(
                     | IrInst::Free
                     | IrInst::Pop
                     | IrInst::StrAsSlice
+                    | IrInst::SliceLen
                     | IrInst::TrapGivenMismatch
                     | IrInst::DropLocal { .. }
                     | IrInst::MakeSlice { .. }

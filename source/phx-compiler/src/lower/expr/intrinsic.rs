@@ -29,6 +29,9 @@ pub(super) fn lower_intrinsic_call(
             };
             ctx.emit_here(IrInst::MakeSliceFromPtr { elem_kind });
         }
+        IntrinsicSite::SliceLen => {
+            ctx.emit_here(IrInst::SliceLen);
+        }
         IntrinsicSite::SizeOf => {
             let bytes = ctx
                 .typed

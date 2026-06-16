@@ -79,6 +79,7 @@ pub fn apply_stack_effect(
         | Opcode::MatchTag
         | Opcode::MakeSlice
         | Opcode::StrAsSlice
+        | Opcode::SliceLen
         | Opcode::PtrLoad
         | Opcode::LoadAggViaLocalPtr
         | Opcode::Alloc => require_depth(*depth, 1)?,

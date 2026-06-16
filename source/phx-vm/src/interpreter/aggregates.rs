@@ -264,6 +264,22 @@ pub(super) fn exec_str_as_slice(
     Ok(())
 }
 
+/// Reads the element count from a slice or `str` aggregate.
+pub(super) fn exec_slice_len(
+    ctx: &mut ExecutionContext,
+    runtime: &VmRuntime,
+) -> Result<(), VmErrorKind> {
+    let agg = ctx.stack.pop().ok_or(VmErrorKind::StackUnderflow)?;
+    let handle = agg.as_agg().ok_or(VmErrorKind::InvalidAggregate)?;
+    let len = match runtime.aggregate(handle) {
+        Some(Aggregate::Slice { len, .. } | Aggregate::Str { len, .. }) => *len,
+        _ => return Err(VmErrorKind::InvalidAggregate),
+    };
+    let u32_len = u32::try_from(len).unwrap_or(u32::MAX);
+    ctx.stack.push(Value::Scalar(ScalarValue::U32(u32_len)));
+    Ok(())
+}
+
 /// Loads an element by index from tuple, array, or slice.
 pub(super) fn exec_index(
     ctx: &mut ExecutionContext,

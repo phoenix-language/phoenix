@@ -132,7 +132,10 @@ impl TypeChecker<'_> {
         span: Span,
         expr_id: ExprId,
     ) -> TypeId {
-        if site != IntrinsicSite::SizeOf && self.unsafe_depth == 0 {
+        if site != IntrinsicSite::SizeOf
+            && site != IntrinsicSite::SliceLen
+            && self.unsafe_depth == 0
+        {
             let name = self
                 .resolved
                 .defs
@@ -212,6 +215,38 @@ impl TypeChecker<'_> {
                 let ret = self.types.intern(&Ty::Slice(inner));
                 self.intrinsic_call_sites.insert(expr_id, site);
                 ret
+            }
+            IntrinsicSite::SliceLen => {
+                let u32_ty = int_literal_type(&mut self.types, true);
+                let unit_ret = self.unit;
+                if args.len() != 1 {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::ArityMismatch {
+                            expected: 1,
+                            found: args.len(),
+                            span,
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return unit_ret;
+                }
+                let slice_ty = self.check_expr_node(&args[0]);
+                let Ty::Slice(_) = self.types.get(slice_ty).clone() else {
+                    self.bag.push(
+                        self.current_module,
+                        TypeCheckError::Mismatch {
+                            expected: "[T]".to_owned(),
+                            found: self.format_ty_diagnostic(slice_ty),
+                            span: args[0].span,
+                            kind: MismatchKind::Argument { index: 0 },
+                        },
+                    );
+                    self.intrinsic_call_sites.insert(expr_id, site);
+                    return unit_ret;
+                };
+                self.intrinsic_call_sites.insert(expr_id, site);
+                u32_ty
             }
             IntrinsicSite::SizeOf => {
                 let u32_ty = int_literal_type(&mut self.types, true);

@@ -277,6 +277,7 @@ fn terminators_successors(inst: &Instruction, next: Option<&(u32, Instruction)>)
         | Opcode::AddressOfLocal
         | Opcode::MakeStr
         | Opcode::StrAsSlice
+        | Opcode::SliceLen
         | Opcode::MakeFnPtr
         | Opcode::CallIndirect
         | Opcode::LoadAggViaLocalPtr

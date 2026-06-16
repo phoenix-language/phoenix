@@ -261,6 +261,8 @@ pub enum IrInst {
     },
     /// Convert `str` to `[u8]` slice view. Stack: `[str] → [slice]`
     StrAsSlice,
+    /// Read length from slice or `str` aggregate. Stack: `[slice] → [u32]`
+    SliceLen,
     /// Pop runtime `size: u32`, push heap address. Stack: `[size] → [ptr]`
     Alloc {
         /// Result pointer type.

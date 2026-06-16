@@ -866,6 +866,7 @@ fn verify_operands(
             }
         }
         Opcode::StrAsSlice
+        | Opcode::SliceLen
         | Opcode::Index
         | Opcode::Pop
         | Opcode::Return

@@ -156,6 +156,7 @@ fn collect_type_ids_from_function(func: &IrFunction, used: &mut HashSet<u32>) {
                 | IrInst::Pop
                 | IrInst::MakeStr { .. }
                 | IrInst::StrAsSlice
+                | IrInst::SliceLen
                 | IrInst::TrapGivenMismatch
                 | IrInst::DropLocal { .. }
                 | IrInst::MakeSlice { .. }

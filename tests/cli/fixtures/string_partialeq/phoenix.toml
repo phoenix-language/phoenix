@@ -1,0 +1,9 @@
+[project]
+name = "string_partialeq"
+version = "0.1.0"
+description = "Std String PartialEq smoke test"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

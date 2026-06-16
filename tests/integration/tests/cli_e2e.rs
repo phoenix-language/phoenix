@@ -327,6 +327,36 @@ fn build_std_generic_derive() {
 }
 
 #[test]
+fn build_string_smoke() {
+    e2e(|cli| {
+        rm_project_build_unlocked("string_smoke");
+        let project = cli_project("string_smoke");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/string_smoke.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_string_clone() {
+    e2e(|cli| {
+        rm_project_build_unlocked("string_clone");
+        let project = cli_project("string_clone");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/string_clone.phx0").is_file());
+    });
+}
+
+#[test]
+fn build_string_partialeq() {
+    e2e(|cli| {
+        rm_project_build_unlocked("string_partialeq");
+        let project = cli_project("string_partialeq");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/string_partialeq.phx0").is_file());
+    });
+}
+
+#[test]
 fn build_std_prelude() {
     e2e(|cli| {
         rm_project_build_unlocked("std_prelude");

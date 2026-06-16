@@ -1,0 +1,133 @@
+// std::text::string — owned UTF-8 buffer (same representation as DynamicArray<u8>).
+
+#import std::core::alloc::alloc_bytes;
+#import std::core::clone::Clone;
+#import std::core::cmp::PartialEq;
+#import std::core::drop::Drop;
+#import std::core::memory::allocator::{Allocator, Global, Layout};
+#import std::core::slice::slice_from_raw_parts;
+
+pub String :: struct {
+    ptr: *mut u8,
+    len: u32,
+    cap: u32,
+    alloc: Global,
+};
+
+String :: impl {
+    empty :: () => String {
+        unsafe {
+            const alloc: Global = Global {};
+            const byte_size: u32 = 16u;
+            const layout: Layout = Layout { size: byte_size, align: 1u };
+            var mut_alloc: Global = alloc;
+            const ptr: *mut u8 = mut_alloc.alloc(layout);
+            String { ptr: ptr, len: 0u, cap: 16u, alloc: mut_alloc }
+        };
+    };
+
+    from_str :: (s: str) => String {
+        #import std::core::slice::len;
+        var out: String = String::empty();
+        const sl: [u8] = s as [u8];
+        const n: u32 = len(sl);
+        var i: u32 = 0u;
+        while i < n {
+            out.push(sl[i]);
+            i = i + 1u;
+        };
+        out;
+    };
+
+    len :: (self: &Self) => u32 {
+        self.len
+    };
+
+    push :: (self: &mut Self, byte: u8) => () {
+        if self.len >= self.cap {
+            self.grow();
+        };
+        unsafe {
+            const sl: [u8] = slice_from_raw_parts(self.ptr, self.cap);
+            sl[self.len] = byte;
+        };
+        self.len = self.len + 1u;
+    };
+
+    get :: (self: &Self, index: u32) => u8 {
+        unsafe {
+            const sl: [u8] = slice_from_raw_parts(self.ptr, self.len);
+            sl[index]
+        };
+    };
+
+    grow :: (self: &mut Self) => () {
+        const doubled_cap: u32 = self.cap * 2u;
+        unsafe {
+            const new_ptr: *mut u8 = alloc_bytes(doubled_cap);
+            var new_sl: [u8] = slice_from_raw_parts(new_ptr, self.len);
+            var old_sl: [u8] = slice_from_raw_parts(self.ptr, self.len);
+            var i: u32 = 0u;
+            while i < self.len {
+                new_sl[i] = old_sl[i];
+                i = i + 1u;
+            };
+            if self.cap > 0u {
+                const old_layout: Layout = Layout { size: self.cap, align: 1u };
+                var mut_alloc: Global = self.alloc;
+                mut_alloc.dealloc(self.ptr, old_layout);
+            };
+            self.ptr = new_ptr;
+            self.cap = doubled_cap;
+        };
+    };
+};
+
+String :: impl :: Clone {
+    clone :: (self: &Self) => Self {
+        var out: String = String::empty();
+        var i: u32 = 0u;
+        while i < self.len {
+            unsafe {
+                const sl: [u8] = slice_from_raw_parts(self.ptr, self.len);
+                out.push(sl[i]);
+            };
+            i = i + 1u;
+        };
+        out;
+    };
+};
+
+bytes_equal :: (a: &String, b: &String) => bool {
+    var i: u32 = 0u;
+    var same: bool = true;
+    while i < a.len() {
+        if a.get(i) != b.get(i) {
+            same = false;
+        };
+        i = i + 1u;
+    };
+    same;
+};
+
+String :: impl :: PartialEq {
+    eq :: (self: &Self, other: &Self) => bool {
+        if self.len() != other.len() {
+            false
+        } else {
+            bytes_equal(self, other)
+        }
+    };
+};
+
+String :: impl :: Drop {
+    drop :: (self) => () {
+        if self.cap > 0u {
+            const layout: Layout = Layout { size: self.cap, align: 1u };
+            unsafe {
+                var mut_alloc: Global = self.alloc;
+                mut_alloc.dealloc(self.ptr, layout);
+            };
+        };
+    };
+};

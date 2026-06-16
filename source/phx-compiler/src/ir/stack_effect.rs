@@ -185,6 +185,9 @@ pub fn apply_ir_stack_effect_typed(
         IrInst::StrAsSlice => {
             apply(Opcode::StrAsSlice, depth)?;
         }
+        IrInst::SliceLen => {
+            apply(Opcode::SliceLen, depth)?;
+        }
         IrInst::AddressOfLocal { .. } => {
             apply(Opcode::AddressOfLocal, depth)?;
         }
@@ -313,6 +316,9 @@ pub fn apply_ir_stack_effect_emit(
         }
         IrInst::StrAsSlice => {
             let _ = apply_stack_effect(Opcode::StrAsSlice, stack, None, none);
+        }
+        IrInst::SliceLen => {
+            let _ = apply_stack_effect(Opcode::SliceLen, stack, None, none);
         }
         IrInst::AddressOfLocal { .. } => {
             let _ = apply_stack_effect(Opcode::AddressOfLocal, stack, None, none);

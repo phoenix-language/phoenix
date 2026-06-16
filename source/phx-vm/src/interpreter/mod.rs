@@ -236,6 +236,9 @@ fn dispatch_opcode(
         Opcode::StrAsSlice => {
             aggregates::exec_str_as_slice(&mut machine.ctx, &mut machine.runtime)?;
         }
+        Opcode::SliceLen => {
+            aggregates::exec_slice_len(&mut machine.ctx, &machine.runtime)?;
+        }
         Opcode::Index => aggregates::exec_index(&mut machine.ctx, &machine.runtime, module)?,
         Opcode::IndexStore => {
             aggregates::exec_index_store(&mut machine.ctx, &mut machine.runtime, inst)?;

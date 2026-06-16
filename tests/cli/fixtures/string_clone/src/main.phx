@@ -1,0 +1,14 @@
+#import std::text::string::String;
+#import std::core::clone::Clone;
+
+main :: () => {
+    var a: String = String::from_str("abc");
+    var b: String = a.clone();
+    a.push(120u as u8);
+    const a_len: u32 = a.len();
+    const b_len: u32 = b.len();
+    const b_first: u8 = b.get(0u);
+    const check_a_len: u32 = a_len;
+    const check_b_len: u32 = b_len;
+    const check_b_first: u8 = b_first;
+};
