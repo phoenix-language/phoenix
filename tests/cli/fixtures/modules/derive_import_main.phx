@@ -2,7 +2,7 @@
 
 mod cmp;
 
-#derive(PartialEq)
+#[derive(PartialEq)]
 Container :: <t> struct {
     len: u32,
 };

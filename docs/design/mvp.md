@@ -50,13 +50,13 @@ Post-MVP runtime note: `main` is syntactically a normal function but bootstraps 
 | Ownership safety model | full borrow checker and ownership verifier |
 | Runtime sophistication | JIT, hot reload |
 | Standard library breadth | collections, formatting, rich text/string APIs, **std I/O** (`File.read`, networking), **`Option` / `Result` / error propagation (`?`)** |
-| Compile-time generation | `@derive(...)` semantic codegen (post-MVP); **`#derive` / `#[derive]` on structs and enums** is shipped ([V0-056](language-v0.md#v0-056--derive-minimal)) |
-| Deferred grammar/semantics | default trait body codegen, associated-type bounds, heap alloc surface syntax, full borrow checker, **generic `#derive`**, additional derive traits — see [features/grammar-deferred.md](features/grammar-deferred.md) |
+| Compile-time generation | `@derive(...)` semantic codegen (post-MVP); **`#[derive]` on structs and enums** is shipped ([V0-056](language-v0.md#v0-056--derive-minimal)) |
+| Deferred grammar/semantics | default trait body codegen, associated-type bounds, heap alloc surface syntax, full borrow checker, additional derive traits — see [features/grammar-deferred.md](features/grammar-deferred.md) |
 
 ## Lexer and identifiers (MVP)
 
 - **ASCII identifiers only** — `snake_case` value names and `PascalCase` type names use ASCII rules; Unicode identifiers are post-MVP ([features/ast-roadmap.md](features/ast-roadmap.md)).
-- **Deferred syntax is parsed, not lowered** — `for-in`, ranges, lambdas, `@` directives, and `#derive` on **functions/traits** build AST nodes; typeck reports `UnsupportedFeature` where semantics are not wired. **`#derive` / `#[derive]` on structs and enums** expands before resolution ([V0-056](language-v0.md#v0-056--derive-minimal)). Bracket item attributes (`#[cfg]`, `#[deprecated]`, `#[allow]`, `#[must_use]`) are implemented per [compiler-directives.md](features/compiler-directives.md).
+- **Deferred syntax is parsed, not lowered** — `for-in`, ranges, lambdas, `@` directives, and `#[derive]` on **functions/traits** are rejected at typeck. **`#[derive]` on structs and enums** expands before resolution ([V0-056](language-v0.md#v0-056--derive-minimal)). `#derive(...)` is a parse error. Bracket item attributes (`#[cfg]`, `#[deprecated]`, `#[allow]`, `#[must_use]`) are implemented per [compiler-directives.md](features/compiler-directives.md).
 
 ## Core Primitive Policy (Text View, Not Owned String)
 

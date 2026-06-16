@@ -2,7 +2,7 @@ PartialEq :: trait {
     eq :: (self: &Self, other: &Self) => bool;
 };
 
-#derive(PartialEq)
+#[derive(PartialEq)]
 Point :: struct {
     x: s32,
     y: s32,

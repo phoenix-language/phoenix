@@ -541,7 +541,7 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
             0,
             phx_diagnostics::ResolveError::InvalidCfg {
                 span: err.span,
-                message: format!("invalid `#derive`: {}", err.message),
+                message: format!("invalid `#[derive]`: {}", err.message),
             },
         );
         return Err(CompileError::Resolve {

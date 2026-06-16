@@ -2,7 +2,7 @@ Point :: struct {
     x: s32,
 };
 
-#derive(Clone)
+#[derive(Clone)]
 Point :: struct {
     x: s32,
 };

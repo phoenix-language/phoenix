@@ -33,7 +33,7 @@ pub struct DeprecatedMeta {
 /// Map from definition id to item attribute metadata.
 pub type DefAttrs = HashMap<DefId, ItemAttrs>;
 
-/// Merges `#[derive(...)]` from bracket attributes into each item's `#derive` list.
+/// Collects `#[derive(...)]` from bracket attributes into each item's derive list.
 pub fn merge_bracket_derives_into_program(program: &mut Program, interner: &Interner) {
     for item in &mut program.items {
         merge_bracket_derives_into_decl(&mut item.inner.decl, &item.inner.attrs, interner);
@@ -62,7 +62,7 @@ fn merge_bracket_derives_into_decl(
     }
 }
 
-/// Merges `#[derive(...)]` traits from bracket attributes into a derive list.
+/// Collects `#[derive(...)]` traits from bracket attributes into a derive list.
 #[must_use]
 pub fn derive_from_bracket_attrs(
     interner: &Interner,

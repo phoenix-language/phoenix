@@ -82,6 +82,16 @@ fn golden_pow_unsupported() {
 }
 
 #[test]
+fn golden_hash_derive_invalid() {
+    let path = diagnostics_dir().join("hash_derive_invalid.phx");
+    assert_golden(
+        &diagnostics_dir(),
+        "hash_derive_invalid",
+        &format_check_file(&path),
+    );
+}
+
+#[test]
 fn golden_unique_ptr_use_after_move() {
     let path = cli_project_main("unique_ptr_move_in");
     assert_golden(

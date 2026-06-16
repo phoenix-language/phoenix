@@ -494,7 +494,7 @@ impl TypeChecker<'_> {
 
     pub(in crate::typeck::check) fn check_function(&mut self, f: &Function) {
         if !f.derives.is_empty() {
-            self.push_unsupported("#derive directive", f.body.span);
+            self.push_unsupported("#[derive] attribute", f.body.span);
         }
         let is_generic = f.generics.as_ref().is_some_and(|g| !g.is_empty());
         if is_generic {

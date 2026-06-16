@@ -320,7 +320,7 @@ Wire the compiler to std-defined types — **not** new `Ty::Option` / `Ty::Resul
 
 ### V0-039 — Item attributes and conditional compilation
 
-- Bracket item attributes `#[...]` alongside existing `#keyword` directives (`#import`, `#unsafe`, `#derive`, …).
+- Bracket item attributes `#[...]` alongside existing `#keyword` directives (`#import`, `#unsafe`, …).
 - v1 attributes: `#[cfg(...)]`, `#[deprecated(...)]`, `#[allow(...)]`, `#[must_use]`.
 - `#[cfg]` strips inactive items before resolve; host `target_os` / `target_arch` / `debug_assertions` defaults.
 - Deprecated and must-use produce warnings (not errors); `#[allow(...)]` suppresses within scope.
@@ -528,12 +528,12 @@ Polish and capabilities that make the project legible to new contributors and un
 
 ---
 
-### V0-056 — `#derive(...)` (minimal)
+### V0-056 — `#[derive(...)]` (minimal)
 
-- `#derive(Copyable, Debug, PartialEq)` (or agreed subset) expands to trait `impl`s at compile time.
-- Derive list and supported traits documented.
+- `#[derive(Copyable, Debug, PartialEq)]` (or agreed subset) expands to trait `impl`s at compile time.
+- Derive list and supported traits documented. `#derive(...)` is not valid syntax (bracket attributes only).
 
-**Acceptance:** Struct with `#derive(PartialEq)` compares equal for identical fields; unsupported derives error clearly.
+**Acceptance:** Struct with `#[derive(PartialEq)]` compares equal for identical fields; unsupported derives error clearly; `#derive` rejected at parse with fix hint.
 
 **Refs:** [grammar-deferred.md](features/grammar-deferred.md), [traits.md](features/traits.md)
 
@@ -545,7 +545,7 @@ Polish and capabilities that make the project legible to new contributors and un
 
 - Rust-style **tuple structs**: `Millimeters :: struct(u32);` — distinct from transparent `type Alias = T`.
 - Construct with ctor call `Millimeters(500)`; access via `.0` / impl methods; no implicit assignability with inner field types.
-- `#derive` on tuple structs; tuple field postfix `.0` in [grammar.ebnf](grammar.ebnf).
+- `#[derive]` on tuple structs; tuple field postfix `.0` in [grammar.ebnf](grammar.ebnf).
 
 **Acceptance:** `millimeters.phx` — derive + impl + ctor + pass to `fn(Millimeters)`; negative fixture rejects implicit inner use; `just pre-commit` green.
 

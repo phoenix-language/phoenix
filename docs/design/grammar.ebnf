@@ -16,7 +16,7 @@
    MVP vs parse-only:
    - MVP: core types, control flow, trait/impl syntax, explicit casts (as),
      borrow types (&T, &mut T), #import, unsafe keyword, extern "C".
-   - Parse-only (semantics deferred): #derive, @spawn/@send/@receive/@reply,
+   - Parse-only (semantics deferred): @spawn/@send/@receive/@reply,
      for-in, ranges, lambdas. See features/grammar-deferred.md.
 
    Expression precedence (lowest to highest):
@@ -107,8 +107,8 @@ function_decl      = { fn_directive } , [ "unsafe" ] , function_decl_body ;
 
 extern_block       = [ "pub" ] , "extern" , string_literal , "{" , { function_signature , ";" } , "}" ;
 extern_item_decl   = [ "pub" ] , "extern" , string_literal , function_signature ;
-fn_directive       = "#inline" | "#cold" | "#hot" | derive_directive ;
-derive_directive   = "#derive" , "(" , type_identifier , { "," , type_identifier } , ")" ;
+fn_directive       = "#inline" | "#cold" | "#hot" ;
+(* derive: item attribute #[derive(Trait, …)] only — see attribute production *)
 
 function_decl_body = identifier , "::" , [ generic_params ] , "(" , [ param_list ] , ")" ,
                      [ "=>" , type_expr ] , block ;

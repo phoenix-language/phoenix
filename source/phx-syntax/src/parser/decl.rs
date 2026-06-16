@@ -146,12 +146,9 @@ impl Parser<'_> {
     /// Parses `type`, `const`, `var`, `fn`, or `Name :: struct/enum/trait/impl`.
     fn parse_top_level_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
         if matches!(self.peek_kind(), TokenKind::HashDerive) {
-            let derives = self.parse_derive_directives()?;
-            if matches!(self.peek_kind(), TokenKind::TypeIdent(_)) {
-                return self.parse_named_decl_with_derives(derives);
-            }
-            let func = self.parse_function_decl_with_derives(derives, false)?;
-            return Ok(TopLevelDecl::Function(func));
+            return Err(
+                self.reject_unsupported("`#derive(...)`; use `#[derive(...)]` on the item instead")
+            );
         }
         if matches!(
             self.peek_kind(),
@@ -241,11 +238,10 @@ impl Parser<'_> {
 
     /// Parses `Name :: struct | enum | trait | impl`.
     fn parse_named_decl(&mut self) -> Result<TopLevelDecl, ParseError> {
-        let derives = self.parse_derive_directives()?;
-        self.parse_named_decl_with_derives(derives)
+        self.parse_named_decl_with_derives(Vec::new())
     }
 
-    /// Parses `Name :: struct | enum | trait | impl` with leading `#derive` already consumed.
+    /// Parses `Name :: struct | enum | trait | impl` (derive list filled from `#[derive]` later).
     fn parse_named_decl_with_derives(
         &mut self,
         derives: Vec<DeriveDirective>,
@@ -520,17 +516,11 @@ impl Parser<'_> {
 
     /// Parses a full function (directives, name, sig, body).
     fn parse_function_decl_body(&mut self, name_only: bool) -> Result<Function, ParseError> {
-        let _leading_attrs = self.parse_attribute_list()?;
-        let derives = self.parse_derive_directives()?;
-        self.parse_function_decl_with_derives(derives, name_only)
-    }
-
-    /// Parses a function after `#derive` directives are already consumed.
-    fn parse_function_decl_with_derives(
-        &mut self,
-        derives: Vec<DeriveDirective>,
-        name_only: bool,
-    ) -> Result<Function, ParseError> {
+        if matches!(self.peek_kind(), TokenKind::HashDerive) {
+            return Err(
+                self.reject_unsupported("`#derive(...)`; use `#[derive(...)]` on the item instead")
+            );
+        }
         let attrs = if name_only {
             Vec::new()
         } else {
@@ -555,7 +545,7 @@ impl Parser<'_> {
         let body = self.parse_block()?;
         Ok(Function {
             attrs,
-            derives,
+            derives: Vec::new(),
             directives,
             unsafe_,
             name,
@@ -599,22 +589,6 @@ impl Parser<'_> {
             }
         }
         dirs
-    }
-
-    /// Parses leading `#derive(Trait, …)` attributes.
-    pub(crate) fn parse_derive_directives(&mut self) -> Result<Vec<DeriveDirective>, ParseError> {
-        let mut derives = Vec::new();
-        while matches!(self.peek_kind(), TokenKind::HashDerive) {
-            self.bump();
-            self.expect_kind(ExpectedToken::Punct("("), &TokenKind::LParen)?;
-            let mut traits = vec![self.parse_type_name()?];
-            while self.eat_kind(&TokenKind::Comma) {
-                traits.push(self.parse_type_name()?);
-            }
-            self.expect_kind(ExpectedToken::Punct(")"), &TokenKind::RParen)?;
-            derives.push(DeriveDirective { traits });
-        }
-        Ok(derives)
     }
 
     /// Parses `(param, …)`.

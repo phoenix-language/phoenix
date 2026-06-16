@@ -1,4 +1,4 @@
-#derive(PartialEq, Copyable)
+#[derive(PartialEq, Copyable)]
 Rect :: struct {
     w: s32,
     h: s32,

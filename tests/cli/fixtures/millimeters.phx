@@ -2,7 +2,7 @@ PartialEq :: trait {
     eq :: (self: &Self, other: &Self) => bool;
 };
 
-#derive(PartialEq)
+#[derive(PartialEq)]
 Millimeters :: struct(s32);
 
 Millimeters :: impl {

@@ -1,4 +1,4 @@
-//! Tests for `#derive` expansion.
+//! Tests for `#[derive]` expansion.
 
 #![allow(clippy::expect_used)]
 
@@ -33,20 +33,20 @@ fn expand_source(source: &str) -> phx_syntax::SourceFile {
 #[test]
 fn expand_partialeq_adds_impl() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Point :: struct { x: s32, y: s32 }; main :: () => { };";
+                  #[derive(PartialEq)] Point :: struct { x: s32, y: s32 }; main :: () => { };";
     assert_eq!(expand_and_count_impls(source), 1);
 }
 
 #[test]
 fn expand_enum_partialeq_adds_impl() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Color :: enum { Red, Green(s32) }; main :: () => { };";
+                  #[derive(PartialEq)] Color :: enum { Red, Green(s32) }; main :: () => { };";
     assert_eq!(expand_and_count_impls(source), 1);
 }
 
 #[test]
 fn expand_unsupported_trait_errors() {
-    let parsed = parse("#derive(Clone) Point :: struct { x: s32 }; main :: () => { };");
+    let parsed = parse("#[derive(Clone)] Point :: struct { x: s32 }; main :: () => { };");
     assert!(!parsed.has_errors());
     let mut file = parsed.value;
     let err = expand_derives(&mut file.program, &mut file.interner).expect_err("clone");
@@ -56,14 +56,14 @@ fn expand_unsupported_trait_errors() {
 #[test]
 fn expand_debug_adds_impl() {
     let source = "Debug :: trait { fmt :: (self: &Self) => [u8; 32]; }; \
-                  #derive(Debug) Point :: struct { x: s32, y: s32 }; main :: () => { };";
+                  #[derive(Debug)] Point :: struct { x: s32, y: s32 }; main :: () => { };";
     assert_eq!(expand_and_count_impls(source), 1);
 }
 
 #[test]
 fn expand_generic_struct_partialeq_adds_bounded_impl() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Box :: <t> struct { v: t }; main :: () => { };";
+                  #[derive(PartialEq)] Box :: <t> struct { v: t }; main :: () => { };";
     assert_eq!(expand_and_count_impls(source), 1);
     let file = expand_source(source);
     let impl_item = file
@@ -84,14 +84,14 @@ fn expand_generic_struct_partialeq_adds_bounded_impl() {
 #[test]
 fn expand_generic_enum_partialeq_adds_impl() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Maybe :: <t> enum { None, Some(t) }; main :: () => { };";
+                  #[derive(PartialEq)] Maybe :: <t> enum { None, Some(t) }; main :: () => { };";
     assert_eq!(expand_and_count_impls(source), 1);
 }
 
 #[test]
 fn derive_partialeq_typechecks() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Point :: struct { x: s32, y: s32 }; \
+                  #[derive(PartialEq)] Point :: struct { x: s32, y: s32 }; \
                   main :: () => { const p = Point { x: 1, y: 2 }; const q = Point { x: 1, y: 2 }; \
                   const _: bool = p.eq(&q); };";
     let parsed = parse(source);
@@ -105,7 +105,7 @@ fn derive_partialeq_typechecks() {
 #[test]
 fn derive_enum_partialeq_typechecks() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Shape :: enum { Nil(), Point(s32, s32) }; \
+                  #[derive(PartialEq)] Shape :: enum { Nil(), Point(s32, s32) }; \
                   main :: () => { const a = Nil(); const b = Nil(); const _: bool = a.eq(&b); };";
     let parsed = parse(source);
     assert!(!parsed.has_errors());
@@ -118,7 +118,7 @@ fn derive_enum_partialeq_typechecks() {
 #[test]
 fn derive_generic_struct_partialeq_typechecks() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Box :: <t> struct { v: s32 }; \
+                  #[derive(PartialEq)] Box :: <t> struct { v: s32 }; \
                   main :: () => { const a = Box :: <s32> { v: 1 }; const b = Box :: <s32> { v: 1 }; \
                   const _: bool = a.eq(&b); };";
     let parsed = parse(source);
@@ -132,7 +132,7 @@ fn derive_generic_struct_partialeq_typechecks() {
 #[test]
 fn derive_generic_enum_partialeq_typechecks() {
     let source = "PartialEq :: trait { eq :: (self: &Self, other: &Self) => bool; }; \
-                  #derive(PartialEq) Maybe :: <t> enum { None, Other(s32) }; \
+                  #[derive(PartialEq)] Maybe :: <t> enum { None, Other(s32) }; \
                   main :: () => { const a: Maybe<s32> = Other(1); const b: Maybe<s32> = Other(1); \
                   const _: bool = a.eq(&b); };";
     let parsed = parse(source);

@@ -221,7 +221,7 @@ pub fn load_program_with_context(
                 current_module,
                 ResolveError::InvalidCfg {
                     span: err.span,
-                    message: format!("invalid `#derive`: {}", err.message),
+                    message: format!("invalid `#[derive]`: {}", err.message),
                 },
             );
             continue;

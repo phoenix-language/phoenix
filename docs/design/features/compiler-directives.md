@@ -13,8 +13,8 @@ This split is the canonical direction. Older drafts that used `@` for both are l
 
 | Category | Sigil / form | Purpose | MVP status |
 |---|---|---|---|
-| Compile-time keywords | `#` | import, unsafe regions, optimization hints | `#import` wired end-to-end; `#derive` codegen ([V0-056](../language-v0.md#v0-056--derive-minimal)); `#unsafe`, `#inline` / `#cold` / `#hot` parse-only |
-| Item attributes | `#[...]` | conditional compilation, deprecation, lint policy | **Implemented** ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)): `cfg`, `deprecated`, `allow`, `must_use` |
+| Compile-time keywords | `#` | import, unsafe regions, optimization hints | `#import` wired end-to-end; `#unsafe`, `#inline` / `#cold` / `#hot` parse-only |
+| Item attributes | `#[...]` | conditional compilation, deprecation, lint policy, derive codegen | **Implemented** ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)): `cfg`, `deprecated`, `allow`, `must_use`; `#[derive]` ([V0-056](../language-v0.md#v0-056--derive-minimal)) |
 | Runtime | `@` | runtime VM actions (especially actor runtime actions) | post-MVP heavy semantics |
 
 ---
@@ -66,20 +66,6 @@ copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 
 **Effectively-unsafe functions require `unsafe` at the call site:** top-level `unsafe fn`, methods of an `unsafe trait`, and explicit `unsafe fn` methods on safe traits. Same rule as intrinsics — wrap the call in `unsafe { … }` or declare the enclosing function `unsafe`. See [traits.md](traits.md#unsafe-trait-and-unsafe-impl-option-b).
 
-### `#derive(...)` (V0-056)
-
-Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and **enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)), including **generic** types. Also accepted as `#[derive(...)]` (see Item attributes below).
-
-| Supported trait | Generated impl |
-|---|---|
-| `Copyable` | Empty marker impl when all fields / variant payloads are Copyable-eligible |
-| `PartialEq` | `eq :: (self: &Self, other: &Self) => bool` — field- or variant-wise `==` |
-| `Debug` | `fmt :: (self: &Self) => [u8; 32]` — placeholder type-name buffer (not full formatting) |
-
-**Generic bound inference:** each type parameter that appears directly as a field or enum-payload type gets the derived trait as a bound on the synthesized impl (e.g. `Box :: <t: PartialEq> impl :: PartialEq`). `Debug` adds no extra bounds.
-
-**Rejected:** unknown traits (`Clone`, `Eq`, …), duplicate derive or existing manual impl, derive on functions/traits/impl methods.
-
 ---
 
 ## Item attributes (`#[...]`)
@@ -102,7 +88,19 @@ main :: () => {
 };
 ```
 
-`#derive(Debug, PartialEq)` and `#[derive(Debug, PartialEq)]` are equivalent.
+### `#[derive(...)]` (V0-056)
+
+Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and **enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)), including **generic** types. **`#derive(...)` is not valid syntax** — use bracket attributes only.
+
+| Supported trait | Generated impl |
+|---|---|
+| `Copyable` | Empty marker impl when all fields / variant payloads are Copyable-eligible |
+| `PartialEq` | `eq :: (self: &Self, other: &Self) => bool` — field- or variant-wise `==` |
+| `Debug` | `fmt :: (self: &Self) => [u8; 32]` — placeholder type-name buffer (not full formatting) |
+
+**Generic bound inference:** each type parameter that appears directly as a field or enum-payload type gets the derived trait as a bound on the synthesized impl (e.g. `Box :: <t: PartialEq> impl :: PartialEq`). `Debug` adds no extra bounds.
+
+**Rejected:** `#derive(...)` (parse error with fix hint), unknown traits (`Clone`, `Eq`, …), duplicate derive or existing manual impl, `#[derive]` on functions/traits/impl methods.
 
 ### `#[cfg(...)]`
 

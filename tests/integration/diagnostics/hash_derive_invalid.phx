@@ -1,0 +1,11 @@
+PartialEq :: trait {
+    eq :: (self: &Self, other: &Self) => bool;
+};
+
+#derive(PartialEq)
+Point :: struct {
+    x: s32,
+    y: s32,
+};
+
+main :: () => {};

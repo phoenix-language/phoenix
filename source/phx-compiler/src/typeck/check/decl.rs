@@ -313,7 +313,7 @@ impl TypeChecker<'_> {
                 for m in members {
                     if let ImplMember::Method(f) = m {
                         if !f.derives.is_empty() {
-                            self.push_unsupported("#derive on impl method", f.body.span);
+                            self.push_unsupported("#[derive] on impl method", f.body.span);
                         }
                     }
                 }

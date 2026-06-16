@@ -1,4 +1,4 @@
-//! Generic `#derive` fixture build and VM run.
+//! Generic `#[derive]` fixture build and VM run.
 
 #![allow(clippy::expect_used)]
 

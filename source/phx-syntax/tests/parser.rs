@@ -1534,18 +1534,27 @@ fn deferred_parse_at_reply() {
 }
 
 #[test]
-fn deferred_parse_hash_derive_top_level() {
-    assert_ok("#derive(Clone)\nmain :: () => { };");
+fn reject_hash_derive_top_level() {
+    assert_unsupported(
+        "#derive(Clone)\nmain :: () => { };",
+        "`#derive(...)`; use `#[derive(...)]` on the item instead",
+    );
 }
 
 #[test]
-fn parse_hash_derive_before_struct() {
-    assert_ok("#derive(PartialEq)\nPoint :: struct { x: s32 }; main :: () => { };");
+fn reject_hash_derive_before_struct() {
+    assert_unsupported(
+        "#derive(PartialEq)\nPoint :: struct { x: s32 }; main :: () => { };",
+        "`#derive(...)`; use `#[derive(...)]` on the item instead",
+    );
 }
 
 #[test]
-fn deferred_parse_hash_derive_on_fn() {
-    assert_ok("#derive(Clone)\nf :: () => { }; main :: () => { };");
+fn reject_hash_derive_on_fn() {
+    assert_unsupported(
+        "#derive(Clone)\nf :: () => { }; main :: () => { };",
+        "`#derive(...)`; use `#[derive(...)]` on the item instead",
+    );
 }
 
 // -----------------------------------------------------------------------------

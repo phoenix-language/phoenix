@@ -1,6 +1,6 @@
 Copyable :: trait {};
 
-#derive(Copyable)
+#[derive(Copyable)]
 Box :: <t> struct {
     v: t,
 };

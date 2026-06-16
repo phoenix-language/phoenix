@@ -165,7 +165,7 @@ See also [grammer.md](../grammer.md#explicit-casts) for surface syntax and prece
 - Access: tuple fields `value.0`, `value.1`, … or inherent impl methods; single-field may also use `expr as Inner` / `inner as Wrapper`.
 - Assignability: `Millimeters` and `u32` do **not** unify; `const x: u32 = length` is an error without `.0` / method / cast.
 - Runtime repr: same as a struct with anonymous fields (zero-cost for primitive fields).
-- `Copyable` / move semantics follow field types; `#derive(Copyable, PartialEq, Debug)` supported on tuple structs (non-generic).
+- `Copyable` / move semantics follow field types; `#[derive(Copyable, PartialEq, Debug)]` supported on tuple structs (non-generic).
 - Generics: `Pair :: struct<t>(t, t);` monomorphizes like record structs.
 
 **Accepted example (V0-057):**

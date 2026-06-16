@@ -69,7 +69,7 @@ main :: () => {
 };
 ```
 
-When all fields are Copyable, `#derive(Copyable)` or compiler-known Copyable applies to the tuple struct as a whole. Use `.0`, `.1`, … or inherent impl methods to access inner values; implicit unwrap to inner types is rejected ([type-system.md](type-system.md#type-aliases-vs-opaque-newtypes-phased)).
+When all fields are Copyable, `#[derive(Copyable)]` or compiler-known Copyable applies to the tuple struct as a whole. Use `.0`, `.1`, … or inherent impl methods to access inner values; implicit unwrap to inner types is rejected ([type-system.md](type-system.md#type-aliases-vs-opaque-newtypes-phased)).
 
 ### Clone (standard library trait)
 

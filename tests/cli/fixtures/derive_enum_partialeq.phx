@@ -2,7 +2,7 @@ PartialEq :: trait {
     eq :: (self: &Self, other: &Self) => bool;
 };
 
-#derive(PartialEq)
+#[derive(PartialEq)]
 Shape :: enum {
     Nil(),
     Point(s32, s32),

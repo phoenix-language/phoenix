@@ -31,7 +31,7 @@ pub enum Param {
     },
 }
 
-/// `#derive(Trait, …)` — parsed; codegen deferred.
+/// `#[derive(Trait, …)]` — collected from bracket attributes before expansion.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DeriveDirective {
     /// Trait names to derive.
@@ -145,7 +145,7 @@ pub struct FunctionSig {
 pub struct Function {
     /// Bracket attributes (`#[...]`).
     pub attrs: Vec<Node<Attribute>>,
-    /// `#derive` attributes (no codegen in MVP).
+    /// `#[derive]` traits collected from bracket attributes (expanded before resolve).
     pub derives: Vec<DeriveDirective>,
     /// Directives (`#inline`, …).
     pub directives: Vec<FnDirective>,
@@ -184,7 +184,7 @@ pub enum TopLevelDecl {
     Struct {
         /// Type name.
         name: TypeName,
-        /// `#derive` attributes.
+        /// `#[derive]` traits collected from bracket attributes.
         derives: Vec<DeriveDirective>,
         /// Generic parameters.
         generics: Option<Vec<GenericParam>>,
@@ -195,7 +195,7 @@ pub enum TopLevelDecl {
     Enum {
         /// Type name.
         name: TypeName,
-        /// `#derive` attributes.
+        /// `#[derive]` traits collected from bracket attributes.
         derives: Vec<DeriveDirective>,
         /// Generic parameters.
         generics: Option<Vec<GenericParam>>,
@@ -215,7 +215,7 @@ pub enum TopLevelDecl {
     Trait {
         /// Trait name.
         name: TypeName,
-        /// `#derive` attributes.
+        /// `#[derive]` traits collected from bracket attributes.
         derives: Vec<DeriveDirective>,
         /// `unsafe trait` — all methods are effectively `unsafe fn`.
         unsafe_: bool,

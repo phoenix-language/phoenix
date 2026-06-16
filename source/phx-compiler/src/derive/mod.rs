@@ -1,4 +1,4 @@
-//! `#derive(...)` expansion before name resolution.
+//! `#[derive(...)]` expansion before name resolution.
 //!
 //! Synthesizes trait `impl` items for supported derives on structs and enums.
 
@@ -20,7 +20,7 @@ use phx_syntax::ast::{AstNodeId, BlockNode, ExprNode, Node, PatternNode};
 use phx_syntax::token::{IntegerSuffix, Keyword};
 use phx_syntax::{InternError, Interner, Program, Symbol, impl_receiver_symbol};
 
-/// Failure while expanding `#derive(...)`.
+/// Failure while expanding `#[derive(...)]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeriveError {
     /// Related source span.
@@ -58,7 +58,7 @@ impl DeriveTrait {
     }
 }
 
-/// Expands `#derive` / `#[derive]` on structs and enums into synthetic trait impl items.
+/// Expands `#[derive(...)]` on structs and enums into synthetic trait impl items.
 ///
 /// # Errors
 ///

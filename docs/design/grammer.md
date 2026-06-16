@@ -71,7 +71,8 @@ Declarations use `Name :: kind` — for example `Point :: struct`, `PartialEq ::
 
 ## Directive sigils (forward model)
 
-- `#...` compile-time directives (`#import`, `#inline`, `#derive`, etc.)
+- `#...` compile-time directives (`#import`, `#inline`, etc.)
+- `#[...]` item attributes (`#[derive]`, `#[cfg]`, etc.)
 - `@...` runtime directives (`@spawn`, `@send`, `@receive`, `@reply`)
 
 MVP does not require directive-heavy semantics; this split is a language direction to keep compile-time and runtime behavior visually distinct.
@@ -168,7 +169,7 @@ const y: s32 = p.1;
 
 Single-field tuple structs may also convert with explicit `as` when repr-identical (`500 as Millimeters`, `m as s32`). Multi-field tuple structs require `.N` access or inherent impl methods — no implicit assignability with inner field types.
 
-`#derive(Copyable, PartialEq, Debug)` applies to tuple structs the same as record structs ([traits.md — Derive](features/traits.md#derive-v0-056)).
+`#[derive(Copyable, PartialEq, Debug)]` applies to tuple structs the same as record structs ([traits.md — Derive](features/traits.md#derive-v0-056)).
 
 ---
 

@@ -386,7 +386,7 @@ pub enum TokenKind<'src> {
     HashCold,
     /// `#hot`
     HashHot,
-    /// `#derive`
+    /// `#derive` (lexed for diagnostics; use `#[derive(...)]` instead)
     HashDerive,
     /// `@spawn`
     AtSpawn,
