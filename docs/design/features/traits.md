@@ -33,7 +33,7 @@ Float caveat:
 - `f32`/`f64` should generally implement `PartialEq` and `PartialOrd`.
 - They should not imply total-order `Eq`/`Ord` by default unless a separate total-order wrapper is used.
 
-`#derive(Copyable, PartialEq, Debug)` on structs and enums is **shipped** ([V0-056](../language-v0.md#v0-056--derive-minimal), [Derive (V0-056)](#derive-v0-056)) — generic types and additional traits remain deferred.
+`#derive(Copyable, PartialEq, Debug)` on structs and enums is **shipped** ([V0-056](../language-v0.md#v0-056--derive-minimal), [Derive (V0-056)](#derive-v0-056)), including generic types with inferred bounds; `Clone`/`Eq` and custom derives remain deferred.
 
 Conversion traits (`From`, `Into`, `TryFrom`, `TryInto`) are required for ergonomic std error handling and for `?` with mismatched error types — see [error-handling.md](error-handling.md#error-conversion-from--into--v0-058).
 
@@ -429,7 +429,7 @@ Suggested baseline (design target, not MVP implementation guarantee):
 
 ## Derive (V0-056)
 
-`#derive(...)` and `#[derive(...)]` expand to trait impls at compile time (before name resolution). Supported traits: **`Copyable`**, **`PartialEq`**, **`Debug`** on record structs, **tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and enums. Traits must be in scope via prelude or `#import` (e.g. `std::core::cmp::PartialEq`).
+`#derive(...)` and `#[derive(...)]` expand to trait impls at compile time (before name resolution). Supported traits: **`Copyable`**, **`PartialEq`**, **`Debug`** on record structs, **tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and enums (generic or not). Traits must be in scope via prelude or `#import` (e.g. `std::core::cmp::PartialEq`).
 
 ```phoenix
 #derive(PartialEq, Copyable)
@@ -437,6 +437,16 @@ Point :: struct {
   x: s32,
   y: s32,
 }
+```
+
+Generic types infer trait bounds on type parameters that appear in fields or variant payloads:
+
+```phoenix
+#derive(PartialEq)
+Box :: <t> struct {
+  v: t,
+}
+// expands to Box :: <t: PartialEq> impl :: PartialEq { … }
 ```
 
 Tuple structs ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)) use the same derive allowlist:
@@ -452,7 +462,9 @@ Millimeters :: struct(s32);
 | `PartialEq` | Record struct: pairwise `==` on named fields; **tuple struct:** `self.0 == other.0 && …`; enum: variant tag + payload comparison |
 | `Debug` | Placeholder `fmt` returning a 32-byte type-name buffer |
 
-Generic types, `Clone`/`Eq`, and custom derives are out of scope for V0-056.
+**V0 limitation:** field-wise `PartialEq` on heap-owning containers (e.g. `DynamicArray<t>`, `UniquePtr<t>`) compares **container metadata** (`ptr`, `len`, `cap`, `alloc`), not element values. Enum value semantics (`Option`, `Result`) are correct.
+
+`Clone`/`Eq` and custom derives remain out of scope for V0-056.
 
 ---
 

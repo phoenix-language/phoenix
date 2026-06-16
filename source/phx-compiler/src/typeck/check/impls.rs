@@ -116,7 +116,8 @@ impl TypeChecker<'_> {
         let saved_impl_self = self.impl_self_type;
         if let Some(type_def) = self.impl_type_for_method(base_fn) {
             let impl_count = self
-                .find_inherent_impl_generics(type_def)
+                .impl_type_for_method(base_fn)
+                .and_then(|type_def| self.generic_params_for_impl_type(type_def))
                 .map(|params| params.len())
                 .unwrap_or(0);
             if impl_count > 0 && mono_args.len() >= impl_count {
@@ -320,7 +321,7 @@ impl TypeChecker<'_> {
     ) -> Vec<phx_syntax::ast::types::GenericParam> {
         let mut params = self
             .impl_type_for_method(base_fn)
-            .and_then(|type_def| self.find_inherent_impl_generics(type_def))
+            .and_then(|type_def| self.generic_params_for_impl_type(type_def))
             .unwrap_or_default();
         if let Some(generics) = f.generics.as_ref() {
             params.extend(generics.clone());
@@ -698,7 +699,7 @@ pub(in crate::typeck::check) fn find_trait_method_def(
     implementer_args: &[TypeId],
     method: Symbol,
 ) -> Option<DefId> {
-    let mut matches: Vec<DefId> = layout
+    let mut exact: Vec<DefId> = layout
         .trait_methods
         .iter()
         .filter(|((key, m), _)| {
@@ -708,10 +709,29 @@ pub(in crate::typeck::check) fn find_trait_method_def(
         })
         .map(|(_, f)| *f)
         .collect();
-    matches.sort_by_key(|d| d.index());
-    matches.dedup();
-    if matches.len() == 1 {
-        Some(matches[0])
+    exact.sort_by_key(|d| d.index());
+    exact.dedup();
+    if exact.len() == 1 {
+        return Some(exact[0]);
+    }
+    if !exact.is_empty() {
+        return None;
+    }
+    let mut template: Vec<DefId> = layout
+        .trait_methods
+        .iter()
+        .filter(|((key, m), _)| {
+            key.implementer == type_def
+                && key.implementer_args.is_empty()
+                && !implementer_args.is_empty()
+                && *m == method
+        })
+        .map(|(_, f)| *f)
+        .collect();
+    template.sort_by_key(|d| d.index());
+    template.dedup();
+    if template.len() == 1 {
+        Some(template[0])
     } else {
         None
     }

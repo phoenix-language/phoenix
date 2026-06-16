@@ -1,10 +1,17 @@
 // std::core::memory::allocator — Layout, Allocator trait, VM-backed impl (V0-066).
 
 #import std::core::alloc::{alloc_bytes, dealloc_bytes};
+#import std::core::cmp::PartialEq;
 
 pub Layout :: struct {
     size: u32,
     align: u32,
+};
+
+Layout :: impl :: PartialEq {
+    eq :: (self: &Self, other: &Self) => bool {
+        self.size == other.size && self.align == other.align
+    };
 };
 
 pub Allocator :: unsafe trait {

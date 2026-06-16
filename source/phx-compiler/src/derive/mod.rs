@@ -2,6 +2,8 @@
 //!
 //! Synthesizes trait `impl` items for supported derives on structs and enums.
 
+use std::collections::HashSet;
+
 use phx_diagnostics::Span;
 use phx_syntax::ast::decl::{
     DeriveDirective, EnumVariant, Function, ImplMember, Param, StructBody, TopLevelDecl,
@@ -60,8 +62,8 @@ impl DeriveTrait {
 ///
 /// # Errors
 ///
-/// Returns [`DeriveError`] for unsupported traits, generics, or duplicate impls.
-pub fn expand_derives(program: &mut Program, interner: &Interner) -> Result<(), DeriveError> {
+/// Returns [`DeriveError`] for unsupported traits or duplicate impls.
+pub fn expand_derives(program: &mut Program, interner: &mut Interner) -> Result<(), DeriveError> {
     crate::attrs::merge_bracket_derives_into_program(program, interner);
     let existing = collect_existing_impls(&program.items, interner);
     let taken = std::mem::take(&mut program.items);
@@ -146,8 +148,63 @@ fn trait_symbol(trait_: Option<&Node<Type>>) -> Option<Symbol> {
     }
 }
 
+fn visit_type_param_refs(ty: &Type, param_syms: &HashSet<Symbol>, required: &mut HashSet<Symbol>) {
+    if let Type::Named {
+        name,
+        generics: None,
+    } = ty
+        && param_syms.contains(&name.symbol)
+    {
+        required.insert(name.symbol);
+    }
+}
+
+fn required_param_bounds(
+    shape: TypeShape<'_>,
+    generic_params: Option<&[GenericParam]>,
+) -> HashSet<Symbol> {
+    let Some(params) = generic_params.filter(|p| !p.is_empty()) else {
+        return HashSet::new();
+    };
+    let param_syms: HashSet<Symbol> = params.iter().map(|p| p.name.symbol).collect();
+    let mut required = HashSet::new();
+    match shape {
+        TypeShape::Struct(body) => match body {
+            StructBody::Fields(fields) => {
+                for field in fields {
+                    visit_type_param_refs(&field.ty.inner, &param_syms, &mut required);
+                }
+            }
+            StructBody::Tuple(types) => {
+                for ty in types {
+                    visit_type_param_refs(&ty.inner, &param_syms, &mut required);
+                }
+            }
+            StructBody::Unit => {}
+        },
+        TypeShape::Enum(variants) => {
+            for variant in variants {
+                match &variant.kind {
+                    Variant::Unit => {}
+                    Variant::Tuple(types) => {
+                        for ty in types {
+                            visit_type_param_refs(&ty.inner, &param_syms, &mut required);
+                        }
+                    }
+                    Variant::Struct(fields) => {
+                        for field in fields {
+                            visit_type_param_refs(&field.ty.inner, &param_syms, &mut required);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    required
+}
+
 fn expand_type_derives(
-    interner: &Interner,
+    interner: &mut Interner,
     existing: &[(Symbol, Symbol)],
     type_name: &TypeName,
     generics: Option<&[GenericParam]>,
@@ -155,15 +212,8 @@ fn expand_type_derives(
     derives: &[DeriveDirective],
     span: Span,
 ) -> Result<Vec<Node<TopLevelItem>>, DeriveError> {
-    if generics.is_some_and(|g| !g.is_empty()) {
-        return Err(DeriveError {
-            span,
-            message: "derive is not supported on generic types yet".to_string(),
-        });
-    }
-    let mut builder = AstGen::new(interner, span);
     let mut seen = Vec::new();
-    let mut impls = Vec::new();
+    let mut planned = Vec::new();
     for dir in derives {
         for trait_name in &dir.traits {
             let Some(kind) = DeriveTrait::parse(interner, trait_name.symbol) else {
@@ -184,9 +234,6 @@ fn expand_type_derives(
             if existing
                 .iter()
                 .any(|(t, tr)| *t == type_name.symbol && interner.resolves_to(*tr, kind.as_str()))
-                || impls
-                    .iter()
-                    .any(|item| impl_trait_kind(item, interner) == Some(kind))
             {
                 let type_display = interner.resolve_display(type_name.symbol);
                 return Err(DeriveError {
@@ -199,13 +246,35 @@ fn expand_type_derives(
                 });
             }
             seen.push(kind);
-            let item = match kind {
-                DeriveTrait::Copyable => builder.copyable_impl(type_name)?,
-                DeriveTrait::PartialEq => builder.partialeq_impl(type_name, shape)?,
-                DeriveTrait::Debug => builder.debug_impl(type_name, interner)?,
-            };
-            impls.push(item);
+            planned.push(kind);
         }
+    }
+    let mut builder = AstGen::new(interner, span);
+    let mut impls = Vec::with_capacity(planned.len());
+    for kind in planned {
+        if impls
+            .iter()
+            .any(|item| impl_trait_kind(item, builder.interner) == Some(kind))
+        {
+            let type_display = builder.interner.resolve_display(type_name.symbol);
+            return Err(DeriveError {
+                span,
+                message: format!(
+                    "cannot derive {}: `{type_display}` already implements {}",
+                    kind.as_str(),
+                    kind.as_str()
+                ),
+            });
+        }
+        let required = required_param_bounds(shape, generics);
+        let item = match kind {
+            DeriveTrait::Copyable => builder.copyable_impl(type_name, generics, &required)?,
+            DeriveTrait::PartialEq => {
+                builder.partialeq_impl(type_name, shape, generics, &required)?
+            }
+            DeriveTrait::Debug => builder.debug_impl(type_name, generics)?,
+        };
+        impls.push(item);
     }
     Ok(impls)
 }
@@ -217,17 +286,17 @@ fn impl_trait_kind(item: &Node<TopLevelItem>, interner: &Interner) -> Option<Der
     trait_symbol(trait_.as_ref()).and_then(|s| DeriveTrait::parse(interner, s))
 }
 
-struct AstGen {
-    interner: Interner,
+struct AstGen<'a> {
+    interner: &'a mut Interner,
     span: Span,
     next_id: u32,
     failed: Option<DeriveError>,
 }
 
-impl AstGen {
-    fn new(interner: &Interner, span: Span) -> Self {
+impl<'a> AstGen<'a> {
+    fn new(interner: &'a mut Interner, span: Span) -> Self {
         Self {
-            interner: interner.clone(),
+            interner,
             span,
             next_id: 0x4_000_000,
             failed: None,
@@ -338,8 +407,14 @@ impl AstGen {
         })
     }
 
-    fn copyable_impl(&mut self, type_name: &TypeName) -> Result<Node<TopLevelItem>, DeriveError> {
-        let item = self.trait_impl(type_name, "Copyable", Vec::new());
+    fn copyable_impl(
+        &mut self,
+        type_name: &TypeName,
+        generic_params: Option<&[GenericParam]>,
+        required: &HashSet<Symbol>,
+    ) -> Result<Node<TopLevelItem>, DeriveError> {
+        let impl_generics = self.impl_generics_with_bounds(generic_params, required, "Copyable");
+        let item = self.trait_impl(type_name, "Copyable", Vec::new(), impl_generics);
         self.finish(item)
     }
 
@@ -347,32 +422,99 @@ impl AstGen {
         &mut self,
         type_name: &TypeName,
         shape: TypeShape<'_>,
+        generic_params: Option<&[GenericParam]>,
+        required: &HashSet<Symbol>,
     ) -> Result<Node<TopLevelItem>, DeriveError> {
+        let impl_generics = self.impl_generics_with_bounds(generic_params, required, "PartialEq");
         let body = match shape {
             TypeShape::Struct(body) => self.struct_partialeq_body(type_name, body),
-            TypeShape::Enum(variants) => self.enum_partialeq_body(type_name, variants),
+            TypeShape::Enum(variants) => {
+                self.enum_partialeq_body(type_name, variants, generic_params)
+            }
         };
         let eq_params = vec![self.receiver_param(), self.named_ref_self_param("other")];
         let eq_ret = self.type_bool();
         let method = self.trait_method("eq", eq_params, eq_ret, body);
-        let item = self.trait_impl(type_name, "PartialEq", vec![ImplMember::Method(method)]);
+        let item = self.trait_impl(
+            type_name,
+            "PartialEq",
+            vec![ImplMember::Method(method)],
+            impl_generics,
+        );
         self.finish(item)
     }
 
     fn debug_impl(
         &mut self,
         type_name: &TypeName,
-        interner: &Interner,
+        generic_params: Option<&[GenericParam]>,
     ) -> Result<Node<TopLevelItem>, DeriveError> {
-        let name = interner.resolve(type_name.symbol).unwrap_or("<?>");
+        let name = self.interner.resolve(type_name.symbol).unwrap_or("<?>");
         let bytes = debug_name_bytes(name);
         let array_expr = self.u8_array_literal(&bytes);
         let block = self.expr_block(array_expr);
         let fmt_params = vec![self.receiver_param()];
         let fmt_ret = self.type_u8_array_32();
         let method = self.trait_method("fmt", fmt_params, fmt_ret, block);
-        let item = self.trait_impl(type_name, "Debug", vec![ImplMember::Method(method)]);
+        let impl_generics =
+            self.impl_generics_with_bounds(generic_params, &HashSet::new(), "Debug");
+        let item = self.trait_impl(
+            type_name,
+            "Debug",
+            vec![ImplMember::Method(method)],
+            impl_generics,
+        );
         self.finish(item)
+    }
+
+    fn impl_generics_with_bounds(
+        &mut self,
+        params: Option<&[GenericParam]>,
+        required: &HashSet<Symbol>,
+        trait_name: &str,
+    ) -> Option<Vec<GenericParam>> {
+        let params = params.filter(|p| !p.is_empty())?;
+        let mut out = Vec::with_capacity(params.len());
+        for param in params {
+            let mut merged = param.clone();
+            if required.contains(&param.name.symbol) {
+                let bound = self.trait_type(trait_name);
+                let already_bound = merged.bounds.as_ref().is_some_and(|bounds| {
+                    bounds.iter().any(|b| {
+                        matches!(
+                            &b.inner,
+                            Type::Named { name, generics: None }
+                            if self.interner.resolves_to(name.symbol, trait_name)
+                        )
+                    })
+                });
+                if !already_bound {
+                    match &mut merged.bounds {
+                        Some(bounds) => bounds.push(bound),
+                        None => merged.bounds = Some(vec![bound]),
+                    }
+                }
+            }
+            out.push(merged);
+        }
+        Some(out)
+    }
+
+    fn generic_type_args(&mut self, params: &[GenericParam]) -> Vec<Node<Type>> {
+        params
+            .iter()
+            .map(|param| {
+                let name = TypeName {
+                    symbol: param.name.symbol,
+                    span: param.name.span,
+                    id: self.alloc_id(),
+                };
+                self.node(Type::Named {
+                    name,
+                    generics: None,
+                })
+            })
+            .collect()
     }
 
     fn trait_impl(
@@ -380,6 +522,7 @@ impl AstGen {
         type_name: &TypeName,
         trait_name: &str,
         members: Vec<ImplMember>,
+        generics: Option<Vec<GenericParam>>,
     ) -> Node<TopLevelItem> {
         let type_copy = TypeName {
             symbol: type_name.symbol,
@@ -392,7 +535,7 @@ impl AstGen {
             pub_: false,
             decl: TopLevelDecl::Impl {
                 type_name: type_copy,
-                generics: None,
+                generics,
                 unsafe_: false,
                 trait_: Some(trait_ty),
                 members,
@@ -426,30 +569,40 @@ impl AstGen {
         })
     }
 
-    fn enum_rhs_if_const(
+    fn enum_rhs_match_arm(
         &mut self,
         type_name: &TypeName,
         variant: &EnumVariant,
         idx: usize,
         lhs_bindings: &[Ident],
         rhs: &Ident,
+        generic_params: Option<&[GenericParam]>,
     ) -> ExprNode {
         let (rhs_pat, rhs_bindings) = self.variant_pattern(type_name, variant, "b", idx);
-        let then_body = self.variant_payload_eq(variant, lhs_bindings, &rhs_bindings);
-        let then_block = self.expr_block(then_body);
+        let then_body =
+            self.variant_payload_eq(variant, lhs_bindings, &rhs_bindings, generic_params);
         let else_tail = self.bool_lit(false);
-        let else_block = self.expr_block(else_tail);
         let rhs_scrutinee = self.ident_expr(rhs);
-        self.node(Expr::If {
-            condition: Box::new(IfCondition::Pattern {
-                mutable: false,
-                pattern: rhs_pat,
-                scrutinee: rhs_scrutinee,
-            }),
-            then_block,
-            else_ifs: Vec::new(),
-            else_block: Some(else_block),
-        })
+        let wildcard = self.wildcard_pattern();
+        self.match_expr(
+            rhs_scrutinee,
+            vec![
+                MatchArm {
+                    pattern: rhs_pat,
+                    guard: None,
+                    body: then_body,
+                },
+                MatchArm {
+                    pattern: wildcard,
+                    guard: None,
+                    body: else_tail,
+                },
+            ],
+        )
+    }
+
+    fn wildcard_pattern(&mut self) -> PatternNode {
+        self.node(Pattern::Wildcard)
     }
 
     fn struct_partialeq_body(&mut self, type_name: &TypeName, body: &StructBody) -> BlockNode {
@@ -458,7 +611,7 @@ impl AstGen {
             StructBody::Fields(fields) => {
                 let comps: Vec<ExprNode> = fields
                     .iter()
-                    .map(|f| self.field_eq(&f.name, &f.name))
+                    .map(|f| self.field_eq_typed(&f.name, &f.name, &f.ty.inner))
                     .collect();
                 self.and_chain_or_true(comps)
             }
@@ -466,7 +619,7 @@ impl AstGen {
                 let comps: Vec<ExprNode> = (0..types.len())
                     .map(|i| {
                         let field = self.ident(&i.to_string());
-                        self.field_eq(&field, &field)
+                        self.field_eq_typed(&field, &field, &types[i].inner)
                     })
                     .collect();
                 self.and_chain_or_true(comps)
@@ -476,14 +629,20 @@ impl AstGen {
         self.expr_block(expr)
     }
 
-    fn enum_partialeq_body(&mut self, type_name: &TypeName, variants: &[EnumVariant]) -> BlockNode {
+    fn enum_partialeq_body(
+        &mut self,
+        type_name: &TypeName,
+        variants: &[EnumVariant],
+        generic_params: Option<&[GenericParam]>,
+    ) -> BlockNode {
         let lhs = self.ident("__derived_lhs");
         let rhs = self.ident("__derived_rhs");
-        let ty = self.type_named(type_name);
+        let ty = self.type_named(type_name, generic_params);
         let mut lhs_arms = Vec::with_capacity(variants.len());
         for (i, v) in variants.iter().enumerate() {
             let (lhs_pat, lhs_bindings) = self.variant_pattern(type_name, v, "a", i);
-            let body = self.enum_rhs_if_const(type_name, v, i, &lhs_bindings, &rhs);
+            let body =
+                self.enum_rhs_match_arm(type_name, v, i, &lhs_bindings, &rhs, generic_params);
             lhs_arms.push(MatchArm {
                 pattern: lhs_pat,
                 guard: None,
@@ -515,15 +674,22 @@ impl AstGen {
         })
     }
 
-    fn type_named(&mut self, type_name: &TypeName) -> Node<Type> {
+    fn type_named(
+        &mut self,
+        type_name: &TypeName,
+        generic_params: Option<&[GenericParam]>,
+    ) -> Node<Type> {
         let name_id = self.alloc_id();
+        let generic_args = generic_params
+            .filter(|params| !params.is_empty())
+            .map(|params| self.generic_type_args(params));
         self.node(Type::Named {
             name: TypeName {
                 symbol: type_name.symbol,
                 span: type_name.span,
                 id: name_id,
             },
-            generics: None,
+            generics: generic_args,
         })
     }
 
@@ -597,13 +763,26 @@ impl AstGen {
         variant: &EnumVariant,
         self_bindings: &[Ident],
         other_bindings: &[Ident],
+        generic_params: Option<&[GenericParam]>,
     ) -> ExprNode {
         match &variant.kind {
-            Variant::Tuple(_) | Variant::Struct(_) => {
+            Variant::Tuple(types) => {
                 let comps: Vec<ExprNode> = self_bindings
                     .iter()
                     .zip(other_bindings.iter())
-                    .map(|(a, b)| self.ident_eq(a, b))
+                    .zip(types.iter())
+                    .map(|((a, b), ty)| self.ident_eq_typed(a, b, &ty.inner, generic_params))
+                    .collect();
+                self.and_chain_or_true(comps)
+            }
+            Variant::Struct(fields) => {
+                let comps: Vec<ExprNode> = self_bindings
+                    .iter()
+                    .zip(other_bindings.iter())
+                    .zip(fields.iter())
+                    .map(|((a, b), field)| {
+                        self.ident_eq_typed(a, b, &field.ty.inner, generic_params)
+                    })
                     .collect();
                 self.and_chain_or_true(comps)
             }
@@ -618,15 +797,32 @@ impl AstGen {
         }
     }
 
-    fn field_eq(&mut self, field: &Ident, other_field: &Ident) -> ExprNode {
+    fn field_eq_typed(&mut self, field: &Ident, other_field: &Ident, ty: &Type) -> ExprNode {
         let self_base = self.self_expr();
         let other_base = self.other_expr();
         let lhs = self.field_access(self_base, field);
         let rhs = self.field_access(other_base, other_field);
+        if self.is_global_type(ty) {
+            return self.bool_lit(true);
+        }
         self.bin_eq(lhs, rhs)
     }
 
-    fn ident_eq(&mut self, a: &Ident, b: &Ident) -> ExprNode {
+    fn is_global_type(&self, ty: &Type) -> bool {
+        matches!(
+            ty,
+            Type::Named { name, generics: None }
+                if self.interner.resolves_to(name.symbol, "Global")
+        )
+    }
+
+    fn ident_eq_typed(
+        &mut self,
+        a: &Ident,
+        b: &Ident,
+        _ty: &Type,
+        _generic_params: Option<&[GenericParam]>,
+    ) -> ExprNode {
         let lhs = self.ident_expr(a);
         let rhs = self.ident_expr(b);
         self.bin_eq(lhs, rhs)
@@ -639,10 +835,22 @@ impl AstGen {
         while exprs.len() > 1 {
             let rhs = exprs.pop()?;
             let lhs = exprs.pop()?;
-            let merged = self.bin_and(lhs, rhs);
+            let merged = self.if_bool_and(lhs, rhs);
             exprs.push(merged);
         }
         exprs.pop()
+    }
+
+    fn if_bool_and(&mut self, lhs: ExprNode, rhs: ExprNode) -> ExprNode {
+        let then_block = self.expr_block(rhs);
+        let false_lit = self.bool_lit(false);
+        let else_block = self.expr_block(false_lit);
+        self.node(Expr::If {
+            condition: Box::new(IfCondition::Bool(lhs)),
+            then_block,
+            else_ifs: Vec::new(),
+            else_block: Some(else_block),
+        })
     }
 
     fn match_expr(&mut self, scrutinee: ExprNode, arms: Vec<MatchArm>) -> ExprNode {
@@ -697,14 +905,6 @@ impl AstGen {
         })
     }
 
-    fn bin_and(&mut self, left: ExprNode, right: ExprNode) -> ExprNode {
-        self.node(Expr::Binary {
-            op: BinOp::And,
-            left: Box::new(left),
-            right: Box::new(right),
-        })
-    }
-
     fn bool_lit(&mut self, value: bool) -> ExprNode {
         self.node(Expr::Literal(Literal::Bool(value)))
     }
@@ -712,12 +912,7 @@ impl AstGen {
     fn u8_array_literal(&mut self, bytes: &[u8; 32]) -> ExprNode {
         let items: Vec<ExprNode> = bytes
             .iter()
-            .map(|&b| {
-                self.node(Expr::Literal(Literal::Int(IntLit {
-                    value: i128::from(b),
-                    suffix: IntegerSuffix::None,
-                })))
-            })
+            .map(|&b| self.node(Expr::Literal(Literal::ByteChar(b))))
             .collect();
         self.node(Expr::Array(items))
     }
@@ -737,9 +932,9 @@ mod tests {
 
     #[test]
     fn finish_surfaces_intern_table_full_error() {
-        let interner = Interner::new();
+        let mut interner = Interner::new();
         let span = Span::new(0, 4);
-        let mut ast_gen = AstGen::new(&interner, span);
+        let mut ast_gen = AstGen::new(&mut interner, span);
         ast_gen.failed = Some(DeriveError {
             span,
             message: "identifier intern table is full during derive expansion".to_string(),
@@ -767,9 +962,9 @@ mod tests {
 
     #[test]
     fn intern_sym_poison_after_failure_does_not_overwrite_error() {
-        let interner = Interner::new();
+        let mut interner = Interner::new();
         let span = Span::new(0, 1);
-        let mut ast_gen = AstGen::new(&interner, span);
+        let mut ast_gen = AstGen::new(&mut interner, span);
         ast_gen.failed = Some(DeriveError {
             span,
             message: "identifier intern table is full during derive expansion".to_string(),

@@ -317,6 +317,16 @@ fn build_std_traits() {
 }
 
 #[test]
+fn build_std_generic_derive() {
+    e2e(|cli| {
+        rm_project_build_unlocked("std_generic_derive");
+        let project = cli_project("std_generic_derive");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/std_generic_derive.phx0").is_file());
+    });
+}
+
+#[test]
 fn build_std_prelude() {
     e2e(|cli| {
         rm_project_build_unlocked("std_prelude");

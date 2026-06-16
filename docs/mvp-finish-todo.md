@@ -85,7 +85,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 - [x] **`UniquePtr<T, A>` end-to-end** — Allocate, move, drop dealloc, use-after-move diagnostic; aligns with [allocator.md](design/features/allocator.md). **Owner:** std + compiler. **Gate:** Std v0.
 
-- [ ] **Generic `#derive` for std types** — `DynamicArray<T>` and similar need `PartialEq`/`Debug` without hand-written impls. Explicitly deferred in [grammar-deferred.md](design/features/grammar-deferred.md); track as Std v0 prerequisite. **Ref:** PHX-030, ROADMAP Deferred. **Owner:** compiler (derive). **Gate:** Std v0.
+- [x] **Generic `#derive` for std types** — `DynamicArray<T>` and similar need `PartialEq`/`Debug` without hand-written impls. **Ref:** PHX-030, ROADMAP Deferred. **Owner:** compiler (derive). **Gate:** Std v0.
 
 - [ ] **Owned `String` over `DynamicArray<u8>`** — Std v0 module per completion roadmap order #4; no primitive owned string in core. **Ref:** `type-system.md`, `mvp.md`. **Owner:** std. **Gate:** Std v0.
 

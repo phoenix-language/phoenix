@@ -569,6 +569,44 @@ pub(crate) fn generic_param_defs_for_fn_base(
     generic_param_defs(resolved, Some(&params), base)
 }
 
+/// Returns whether `args` satisfy generic bounds on `base_fn`'s declaring impl or function.
+#[must_use]
+pub(crate) fn fn_instantiation_bounds_hold(
+    resolved: &ResolvedProgram,
+    layout: &super::layout::ProgramLayout,
+    types: &mut super::types::TypeInterner,
+    std_traits: &super::std_trait_kernel::StdTraitKernel,
+    value_types: &std::collections::HashMap<DefId, TypeId>,
+    base_fn: DefId,
+    args: &[TypeId],
+) -> bool {
+    let Some(param_defs) = generic_param_defs_for_fn_base(resolved, base_fn) else {
+        return true;
+    };
+    if param_defs.len() != args.len() {
+        return false;
+    }
+    let Some(f) = find_function(resolved, base_fn) else {
+        return true;
+    };
+    let base_def = &resolved.defs[base_fn.index() as usize];
+    let combined_generics = combined_generic_params(resolved, base_fn, f);
+    let mut bag = TypeCheckBag::new();
+    validate_instantiation_bounds(
+        resolved,
+        layout,
+        types,
+        std_traits,
+        value_types,
+        Some(&combined_generics),
+        &param_defs,
+        args,
+        base_def.module,
+        base_def.span,
+        &mut bag,
+    )
+}
+
 fn combined_generic_params(
     resolved: &ResolvedProgram,
     base: DefId,

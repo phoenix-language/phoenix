@@ -247,10 +247,14 @@ pub(crate) fn emit_arm_condition(
             });
             let index = intern_literal(ctx, lit, temp_ty);
             let bool_id = bool_ty(ctx.typed);
+            let prim_kind = ctx.constants.last().map_or(
+                prim_kind_byte(ctx.typed, temp_ty),
+                crate::lower::ctx::ir_const_prim_kind,
+            );
             ctx.emit_here(IrInst::Const {
                 index,
                 ty: temp_ty,
-                prim_kind: prim_kind_byte(ctx.typed, temp_ty),
+                prim_kind,
             });
             ctx.emit_here(IrInst::BinOp {
                 op: IrBinOp::Eq,

@@ -68,7 +68,7 @@ copy_bytes :: (dst: *mut u8, src: *u8, n: u32) => ()
 
 ### `#derive(...)` (V0-056)
 
-Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and **enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)). Also accepted as `#[derive(...)]` (see Item attributes below).
+Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](../language-v0.md#v0-057--opaque--newtype-wrappers)), and **enums** ([V0-056](../language-v0.md#v0-056--derive-minimal)), including **generic** types. Also accepted as `#[derive(...)]` (see Item attributes below).
 
 | Supported trait | Generated impl |
 |---|---|
@@ -76,7 +76,9 @@ Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](..
 | `PartialEq` | `eq :: (self: &Self, other: &Self) => bool` — field- or variant-wise `==` |
 | `Debug` | `fmt :: (self: &Self) => [u8; 32]` — placeholder type-name buffer (not full formatting) |
 
-**Rejected:** generic types, unknown traits (`Clone`, `Eq`, …), duplicate derive or existing manual impl, derive on functions/traits/impl methods.
+**Generic bound inference:** each type parameter that appears directly as a field or enum-payload type gets the derived trait as a bound on the synthesized impl (e.g. `Box :: <t: PartialEq> impl :: PartialEq`). `Debug` adds no extra bounds.
+
+**Rejected:** unknown traits (`Clone`, `Eq`, …), duplicate derive or existing manual impl, derive on functions/traits/impl methods.
 
 ---
 

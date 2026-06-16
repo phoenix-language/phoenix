@@ -975,6 +975,17 @@ impl TypeChecker<'_> {
             {
                 continue;
             }
+            if !crate::typeck::mono::fn_instantiation_bounds_hold(
+                self.resolved,
+                &self.program_layout,
+                &mut self.types,
+                &self.std_trait_kernel,
+                &self.value_types,
+                base_fn,
+                args,
+            ) {
+                continue;
+            }
             self.mono_insts.push(MonoInst {
                 base_fn,
                 args: args.to_vec(),
@@ -1460,6 +1471,30 @@ impl TypeChecker<'_> {
         let record = self.resolved.defs.get(param_def.index() as usize)?;
         let module = record.module;
         let name = record.name;
+        let param_name = self.resolved.interner.resolve(name)?;
+
+        let impl_type = self
+            .active_trait_impl
+            .map(|(type_def, _)| type_def)
+            .or_else(|| {
+                self.mono_template_def
+                    .and_then(|fn_def| self.impl_type_for_method(fn_def))
+            });
+        if let Some(impl_type) = impl_type {
+            if let Some(impl_generics) = self.find_trait_impl_generics(impl_type) {
+                for gp in &impl_generics {
+                    if self
+                        .resolved
+                        .interner
+                        .resolve(gp.name.symbol)
+                        .is_some_and(|n| n == param_name)
+                    {
+                        return gp.bounds.clone();
+                    }
+                }
+            }
+        }
+
         for mod_item in &self.resolved.modules {
             if mod_item.id != module {
                 continue;
@@ -1487,9 +1522,30 @@ impl TypeChecker<'_> {
             let items = self.find_trait_items(trait_def)?;
             for item in items {
                 if let TraitItem::Method(sig) = item {
-                    if sig.name.symbol == method {
+                    let Some(method_name) = self.resolved.interner.resolve(method) else {
+                        continue;
+                    };
+                    if self
+                        .resolved
+                        .interner
+                        .resolve(sig.name.symbol)
+                        .is_some_and(|name| name == method_name)
+                    {
                         let trait_module = self.resolved.defs[trait_def.index() as usize].module;
-                        return self.find_def(trait_module, method, DefKind::Fn);
+                        return self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
+                            if d.module != trait_module || d.kind != DefKind::Fn {
+                                return None;
+                            }
+                            if self
+                                .resolved
+                                .interner
+                                .resolve(d.name)
+                                .is_none_or(|n| n != method_name)
+                            {
+                                return None;
+                            }
+                            u32::try_from(i).ok().map(DefId::from_raw)
+                        });
                     }
                 }
             }
@@ -1610,11 +1666,33 @@ impl TypeChecker<'_> {
                 ImplMember::Method(_) => None,
             })
             .collect();
+        let impl_has_method = |required: Symbol| {
+            let Some(required_name) = self.resolved.interner.resolve(required) else {
+                return false;
+            };
+            impl_methods.iter().any(|method| {
+                self.resolved
+                    .interner
+                    .resolve(*method)
+                    .is_some_and(|name| name == required_name)
+            })
+        };
+        let impl_has_assoc = |required: Symbol| {
+            let Some(required_name) = self.resolved.interner.resolve(required) else {
+                return false;
+            };
+            impl_assoc.iter().any(|assoc| {
+                self.resolved
+                    .interner
+                    .resolve(*assoc)
+                    .is_some_and(|name| name == required_name)
+            })
+        };
         let type_display = self.symbol_name(type_name.symbol);
         let trait_display = self.symbol_name(trait_symbol);
         for item in trait_items {
             match item {
-                TraitItem::AssociatedType(name) if !impl_assoc.contains(&name.symbol) => {
+                TraitItem::AssociatedType(name) if !impl_has_assoc(name.symbol) => {
                     let assoc_display = self.symbol_name(name.symbol);
                     self.bag.push(
                         self.current_module,
@@ -1628,7 +1706,7 @@ impl TypeChecker<'_> {
                 }
                 TraitItem::AssociatedType(_) => {}
                 TraitItem::Method(sig) => {
-                    if sig.body.is_some() || impl_methods.contains(&sig.name.symbol) {
+                    if sig.body.is_some() || impl_has_method(sig.name.symbol) {
                         continue;
                     }
                     let method_display = self.symbol_name(sig.name.symbol);
@@ -1680,15 +1758,60 @@ impl TypeChecker<'_> {
         None
     }
 
+    pub(in crate::typeck::check) fn find_trait_impl_generics(
+        &self,
+        type_def: DefId,
+    ) -> Option<Vec<phx_syntax::ast::types::GenericParam>> {
+        let def = self.resolved.defs.get(type_def.index() as usize)?;
+        for module in &self.resolved.modules {
+            if module.id != def.module {
+                continue;
+            }
+            for item in &module.program.items {
+                if let TopLevelDecl::Impl {
+                    type_name,
+                    generics,
+                    trait_,
+                    ..
+                } = &item.inner.decl
+                {
+                    if trait_.is_none() {
+                        continue;
+                    }
+                    if let Some(struct_def) = self
+                        .find_def(module.id, type_name.symbol, DefKind::Struct)
+                        .or_else(|| self.find_def(module.id, type_name.symbol, DefKind::Enum))
+                    {
+                        if struct_def == type_def {
+                            return generics.clone();
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Generic parameters for checking or monomorphizing methods on `type_def`.
+    pub(in crate::typeck::check) fn generic_params_for_impl_type(
+        &self,
+        type_def: DefId,
+    ) -> Option<Vec<phx_syntax::ast::types::GenericParam>> {
+        self.find_inherent_impl_generics(type_def)
+            .or_else(|| self.find_trait_impl_generics(type_def))
+            .or_else(|| generic_params_for_def(self.resolved, type_def))
+    }
+
     pub(in crate::typeck::check) fn impl_generic_param_defs(&self, type_def: DefId) -> Vec<DefId> {
         let module = self
             .resolved
             .defs
             .get(type_def.index() as usize)
             .map_or(self.current_module, |d| d.module);
-        self.find_inherent_impl_generics(type_def)
-            .map(|params| self.generic_param_defs_from_ast(module, &params))
-            .unwrap_or_default()
+        if let Some(params) = self.generic_params_for_impl_type(type_def) {
+            return self.generic_param_defs_from_ast(module, &params);
+        }
+        generic_param_defs_for_type(self.resolved, type_def).unwrap_or_default()
     }
 
     pub(in crate::typeck::check) fn receiver_type_args(

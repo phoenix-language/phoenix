@@ -215,7 +215,7 @@ pub fn load_program_with_context(
             );
             continue;
         }
-        if let Err(err) = expand_derives(&mut program, &interner) {
+        if let Err(err) = expand_derives(&mut program, &mut interner) {
             let current_module = u32::try_from(modules_raw.len()).unwrap_or(u32::MAX);
             bag.push(
                 current_module,

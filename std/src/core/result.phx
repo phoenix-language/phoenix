@@ -1,3 +1,7 @@
+#import std::core::cmp::PartialEq;
+#import std::core::fmt::Debug;
+
+#[derive(PartialEq, Debug)]
 pub Result :: <ok, err> enum {
     Ok(ok),
     Err(err),

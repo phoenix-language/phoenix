@@ -1,0 +1,10 @@
+[project]
+name = "std_generic_derive"
+version = "0.1.0"
+description = "Generic derive on std Option and Result"
+type = "bin"
+module_src = "src"
+prelude = true
+
+[build]
+dir = "build"

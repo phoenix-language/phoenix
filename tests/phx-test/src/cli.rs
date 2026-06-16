@@ -65,6 +65,8 @@ pub const SMOKE_FIXTURES: &[&str] = &[
     "drop.phx",
     "derive_partialeq.phx",
     "derive_enum_partialeq.phx",
+    "derive_generic_struct.phx",
+    "derive_generic_enum.phx",
     "attr_bracket_derive.phx",
     "millimeters.phx",
     "tuple_struct_two_field.phx",
@@ -84,6 +86,7 @@ pub const NEG_CHECK_FIXTURES: &[(&str, &str)] = &[
     ("extern_unsafe.phx", "unsafe"),
     ("for_in_bad.phx", "IntoIter"),
     ("derive_bad.phx", "unsupported derive trait"),
+    ("derive_generic_bad.phx", "trait bound"),
     ("newtype_bad.phx", "type mismatch"),
 ];
 

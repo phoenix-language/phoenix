@@ -40,7 +40,7 @@ pub fn check_binary(
         | phx_syntax::ast::expr::BinOp::Le
         | phx_syntax::ast::expr::BinOp::Gt
         | phx_syntax::ast::expr::BinOp::Ge => {
-            if is_primitive(ty) {
+            if is_primitive(ty) || matches!(ty, Ty::Ptr { .. } | Ty::Named { .. }) {
                 Some(BinOpResult {
                     result: bool_type(types),
                 })

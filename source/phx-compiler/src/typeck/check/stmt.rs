@@ -518,7 +518,7 @@ impl TypeChecker<'_> {
         let impl_lookup_def = self.mono_template_def.unwrap_or(def);
         let impl_generics = self
             .impl_type_for_method(impl_lookup_def)
-            .and_then(|type_def| self.find_inherent_impl_generics(type_def));
+            .and_then(|type_def| self.generic_params_for_impl_type(type_def));
         let scoped_generics = impl_generics.as_deref().or(f.generics.as_deref());
         push_generics(&mut self.type_defs, self.resolved, module, scoped_generics);
         let type_defs = self.type_defs.clone();

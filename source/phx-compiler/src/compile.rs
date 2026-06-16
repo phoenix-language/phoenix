@@ -535,7 +535,7 @@ pub fn compile_source(source: &str, path: Option<&Path>) -> Result<CompilationUn
             prior_parse,
         });
     }
-    if let Err(err) = expand_derives(&mut source_file.program, &source_file.interner) {
+    if let Err(err) = expand_derives(&mut source_file.program, &mut source_file.interner) {
         let mut bag = DiagnosticBag::new();
         bag.push(
             0,

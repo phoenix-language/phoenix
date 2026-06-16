@@ -5,7 +5,10 @@
 #import std::core::drop::Drop;
 #import std::core::slice::slice_from_raw_parts;
 #import std::core::mem::size_of;
+#import std::core::cmp::PartialEq;
+#import std::core::fmt::Debug;
 
+#[derive(PartialEq, Debug)]
 pub DynamicArray :: <t> struct {
     ptr: *mut u8,
     len: u32,

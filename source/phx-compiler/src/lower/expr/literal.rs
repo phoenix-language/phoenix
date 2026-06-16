@@ -11,7 +11,7 @@ use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{LowerCtx, bool_ty, lookup_resolution, prim_kind_byte};
 use crate::resolver::DefKind;
 use crate::typeck::{BindingKind, Ty, TypeId, primitive_kind_for_type};
-use phx_bytecode::{PrimitiveKind, SLOT_KIND_AGG, ScalarValue};
+use phx_bytecode::{PrimitiveKind, ScalarValue};
 
 use super::lower_expr;
 
@@ -35,10 +35,7 @@ pub(super) fn intern_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) 
             ctx.intern_const(IrConst::Float(f.value, kind))
         }
         Literal::Bool(b) => ctx.intern_const(IrConst::Bool(*b)),
-        Literal::ByteChar(c) => {
-            let u8_ty = primitive_kind_for_type(&ctx.typed.types, ty).unwrap_or(PrimitiveKind::U8);
-            ctx.intern_const(IrConst::Int(i128::from(*c), u8_ty))
-        }
+        Literal::ByteChar(c) => ctx.intern_const(IrConst::Int(i128::from(*c), PrimitiveKind::U8)),
         Literal::ByteString(b) => ctx.intern_const(IrConst::Bytes(b.clone())),
         Literal::String(s) => ctx.intern_const(IrConst::Bytes(s.clone().into_bytes())),
     }
@@ -91,25 +88,6 @@ pub(super) fn utf8_bytes_for_str_cast(ctx: &LowerCtx<'_>, expr: &Expr) -> Option
     }
 }
 
-fn literal_prim_kind(ctx: &LowerCtx<'_>, lit: &Literal, ty: TypeId) -> u8 {
-    if let Some(k) = primitive_kind_for_type(&ctx.typed.types, ty) {
-        return k.as_u8();
-    }
-    match lit {
-        Literal::Int(i) => {
-            if i.suffix == IntegerSuffix::Unsigned {
-                PrimitiveKind::U32.as_u8()
-            } else {
-                PrimitiveKind::S32.as_u8()
-            }
-        }
-        Literal::Float(_) => PrimitiveKind::F64.as_u8(),
-        Literal::Bool(_) => PrimitiveKind::Bool.as_u8(),
-        Literal::ByteChar(_) => PrimitiveKind::U8.as_u8(),
-        _ => SLOT_KIND_AGG,
-    }
-}
-
 pub(super) fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
     if let Literal::String(s) = lit {
         let idx = ctx.intern_const(IrConst::Bytes(s.clone().into_bytes()));
@@ -134,10 +112,14 @@ pub(super) fn lower_literal(ctx: &mut LowerCtx<'_>, lit: &Literal, ty: TypeId) {
         return;
     }
     let index = intern_literal(ctx, lit, ty);
+    let Some(stored) = ctx.constants.last() else {
+        return;
+    };
+    let prim_kind = crate::lower::ctx::ir_const_prim_kind(stored);
     ctx.emit_here(IrInst::Const {
         index,
         ty,
-        prim_kind: literal_prim_kind(ctx, lit, ty),
+        prim_kind,
     });
     if matches!(lit, Literal::Float(_))
         && matches!(
@@ -307,10 +289,14 @@ fn lower_short_circuit_bool(
     } else {
         ctx.intern_const(IrConst::Bool(true))
     };
+    let prim_kind = ctx.constants.last().map_or(
+        PrimitiveKind::Bool.as_u8(),
+        crate::lower::ctx::ir_const_prim_kind,
+    );
     ctx.emit_here(IrInst::Const {
         index: short_val,
         ty: bool_ty_id,
-        prim_kind: prim_kind_byte(ctx.typed, bool_ty_id),
+        prim_kind,
     });
     ctx.emit_here(IrInst::Jump { target: merge_id });
 

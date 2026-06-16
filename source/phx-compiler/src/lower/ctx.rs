@@ -389,6 +389,16 @@ pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
     }
 }
 
+/// Wire primitive kind for an interned literal (must match const-pool tagging).
+#[must_use]
+pub fn ir_const_prim_kind(lit: &IrConst) -> u8 {
+    match lit {
+        IrConst::Int(_, kind) | IrConst::Float(_, kind) => kind.as_u8(),
+        IrConst::Bool(_) => phx_bytecode::PrimitiveKind::Bool.as_u8(),
+        IrConst::Bytes(_) => SLOT_KIND_AGG,
+    }
+}
+
 /// Maps slot for symbol in layout.
 #[must_use]
 pub fn slot_for_symbol(layout: &FunctionLayout, symbol: Symbol) -> Option<LocalSlot> {
