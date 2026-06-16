@@ -1,3 +1,4 @@
+#[lang_item(name = "Clone", kind = "trait")]
 pub Clone :: trait {
     clone :: (self: &Self) => Self;
 };

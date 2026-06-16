@@ -328,6 +328,7 @@ pub fn line_col(source: &str, byte: u32) -> (u32, u32) {
 }
 
 /// Short explanation for `phx explain E####`.
+#[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn explain_code(code: &str) -> Option<&'static str> {
     match code {
@@ -419,6 +420,9 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E2039" => Some("The compiler hit an internal type-check invariant (please report)."),
         "E2041" => Some("A std `Result` value was discarded without handling."),
         "E2042" => Some("A std `Option` value was discarded without handling."),
+        "E2043" => Some("`#[lang_item]` may only appear on standard library definitions."),
+        "E2044" => Some("Each language item `(kind, name)` may be declared at most once."),
+        "E2045" => Some("Invalid `#[lang_item]` attribute (unknown kind or name)."),
         "E3001" => Some("The parser encountered unexpected tokens."),
         "E3002" => Some("Input ended before the parser found a required token."),
         "E3003" => Some("The syntax is recognized but not supported in this compiler version."),

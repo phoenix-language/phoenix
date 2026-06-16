@@ -50,6 +50,23 @@ fn std_convert_typechecks() {
 
 // from build_std_error.rs
 #[test]
+fn std_lang_items_registered_in_std_lib() {
+    let _lock = fixture_fs_lock();
+    let root = require_std_project();
+    let config = ProjectConfig::load(&root).expect("load std");
+    let entry = config.default_entry_file();
+    let ctx = phx_compiler::ProgramLoadContext::from_config(&config);
+    let mut bag = DiagnosticBag::new();
+    let loaded = load_program_with_context(&entry, &ctx, None, &mut bag).expect("load std");
+    let resolved = resolve_loaded_program(loaded).expect("resolve std");
+    let typed = type_check(resolved).expect("typecheck std");
+    assert!(typed.lang_items.option_enum.is_some());
+    assert!(typed.lang_items.result_enum.is_some());
+    assert!(typed.lang_items.alloc_bytes.is_some());
+    assert!(typed.lang_items.copyable_trait.is_some());
+}
+
+#[test]
 fn std_lib_builds_with_core_error_trait() {
     let _lock = fixture_fs_lock();
     let root = require_std_project();

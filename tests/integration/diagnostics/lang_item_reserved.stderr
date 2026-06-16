@@ -1,0 +1,7 @@
+error[E2043]: `#[lang_item]` is reserved for the standard library
+  --> lang_item_reserved.phx:1:1
+   |
+ 1 | #[lang_item(name = "Copyable", kind = "trait")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove `#[lang_item(...)]`; only `std::` modules may declare language items

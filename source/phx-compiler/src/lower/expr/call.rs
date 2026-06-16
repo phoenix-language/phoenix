@@ -515,7 +515,7 @@ fn lower_try_convert_err(
         );
         return;
     };
-    let Some(err_tag) = ctx.typed.std_kernel.failure_tag_for(
+    let Some(err_tag) = ctx.typed.lang_items.failure_tag_for(
         &ctx.typed.layout,
         &ctx.typed.types,
         *return_result_ty,
@@ -548,7 +548,7 @@ fn emit_call_or_intrinsic(
         lower_intrinsic_call(ctx, site, result_ty, expr_id);
         return;
     }
-    if let Some(site) = ctx.typed.intrinsic_kernel.site_for_call(callee) {
+    if let Some(site) = ctx.typed.lang_items.site_for_call(callee) {
         lower_intrinsic_call(ctx, site, result_ty, expr_id);
         return;
     }

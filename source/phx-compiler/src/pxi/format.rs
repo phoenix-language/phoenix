@@ -7,6 +7,15 @@ use super::hash::digest_bytes;
 use super::type_ast::{PxiType, parse_type_value};
 use crate::resolver::DefKind;
 
+/// Language item marker carried in `.pxi` exports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PxiLangItem {
+    /// Stable language item name.
+    pub name: String,
+    /// Item category (`intrinsic`, `enum`, `trait`, `variant`).
+    pub kind: String,
+}
+
 /// One exported symbol in a `.pxi` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiExport {
@@ -22,6 +31,8 @@ pub struct PxiExport {
     pub ty: Option<PxiType>,
     /// Global PHX0 `function_id` for `fn` exports (format v2, optional for backward compat).
     pub function_id: Option<u32>,
+    /// Compiler language item marker when present.
+    pub lang_item: Option<PxiLangItem>,
 }
 
 /// Builds a stable export id for `.pxi` and link maps.
@@ -87,9 +98,20 @@ impl PxiFile {
                 .map(|id| format!(", \"function_id\": {id}"))
                 .unwrap_or_default();
             if let Some(ty) = &e.ty {
+                let lang_item = e
+                    .lang_item
+                    .as_ref()
+                    .map(|li| {
+                        format!(
+                            ", \"lang_item\": {{\"name\": {}, \"kind\": {}}}",
+                            json_string(&li.name),
+                            json_string(&li.kind)
+                        )
+                    })
+                    .unwrap_or_default();
                 let _ = writeln!(
                     out,
-                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}{fn_id}, \"type\": {}}}{comma}",
+                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}{fn_id}{lang_item}, \"type\": {}}}{comma}",
                     json_string(&e.export_id),
                     json_string(&e.name),
                     json_string(&e.kind),
@@ -97,9 +119,20 @@ impl PxiFile {
                     ty.to_json()
                 );
             } else {
+                let lang_item = e
+                    .lang_item
+                    .as_ref()
+                    .map(|li| {
+                        format!(
+                            ", \"lang_item\": {{\"name\": {}, \"kind\": {}}}",
+                            json_string(&li.name),
+                            json_string(&li.kind)
+                        )
+                    })
+                    .unwrap_or_default();
                 let _ = writeln!(
                     out,
-                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}{fn_id}}}{comma}",
+                    "    {{\"export_id\": {}, \"name\": {}, \"kind\": {}, \"signature\": {}{fn_id}{lang_item}}}{comma}",
                     json_string(&e.export_id),
                     json_string(&e.name),
                     json_string(&e.kind),
@@ -393,6 +426,18 @@ where
     Ok(items)
 }
 
+fn parse_lang_item_field(chunk: &str) -> Option<PxiLangItem> {
+    let key = "\"lang_item\"";
+    let pos = chunk.find(key)?;
+    let after = &chunk[pos + key.len()..];
+    let brace = after.find('{')?;
+    let obj_end = find_matching_brace(after, brace)?;
+    let obj = &after[brace..=obj_end];
+    let name = extract_field_string(obj, "name")?;
+    let kind = extract_field_string(obj, "kind")?;
+    Some(PxiLangItem { name, kind })
+}
+
 fn parse_exports(logical_module: &str, text: &str) -> Result<Vec<PxiExport>, PxiError> {
     parse_json_object_array(text, "exports", |chunk| {
         parse_export_object(logical_module, chunk)
@@ -413,6 +458,7 @@ fn parse_export_object(logical_module: &str, chunk: &str) -> Result<PxiExport, P
         .unwrap_or_else(|| stable_export_id(logical_module, &name, &kind));
     let ty = parse_export_type(chunk);
     let function_id = extract_field_u32(chunk, "function_id");
+    let lang_item = parse_lang_item_field(chunk);
     Ok(PxiExport {
         export_id,
         name,
@@ -420,6 +466,7 @@ fn parse_export_object(logical_module: &str, chunk: &str) -> Result<PxiExport, P
         signature: sig,
         ty,
         function_id,
+        lang_item,
     })
 }
 
@@ -523,6 +570,7 @@ mod tests {
                 signature: "(s32, s32) => s32".to_owned(),
                 ty: None,
                 function_id: Some(0),
+                lang_item: None,
             }],
             dependencies: vec![PxiDependency {
                 logical_module: "core".to_owned(),

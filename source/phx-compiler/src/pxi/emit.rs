@@ -145,6 +145,13 @@ fn push_export(
         signature,
         ty,
         function_id,
+        lang_item: typed
+            .lang_items
+            .marker_for_def(def_id)
+            .map(|m| super::format::PxiLangItem {
+                name: m.name,
+                kind: m.kind.as_str().to_owned(),
+            }),
     });
 }
 

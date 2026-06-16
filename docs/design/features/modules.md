@@ -137,6 +137,8 @@ std = { path = "../std" }   # key MUST equal std's project.name
 
 **`std::core` convention:** language-foundation types and traits live under `std::core::*` (e.g. `std::core::option::Option`), not at the `std` package root. The root module (`std`) stays thin (`version` only for now).
 
+**Language items:** definitions the compiler treats specially (`alloc_bytes`, `Option`, `Copyable`, …) are marked with `#[lang_item]` in std source and recorded in `.pxi` ([lang-items.md](lang-items.md)). Only modules under `std::` may carry these markers.
+
 Contributor workflow: [`std/README.md`](../../../std/README.md). Smoke consumer: `tests/cli/fixtures/std_smoke/`.
 
 ---

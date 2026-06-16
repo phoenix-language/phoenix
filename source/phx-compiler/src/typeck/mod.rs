@@ -24,7 +24,6 @@ mod ops;
 mod ownership;
 mod primitive;
 mod std_kernel;
-mod std_trait_kernel;
 mod subst;
 mod trait_defaults;
 mod type_size;
@@ -39,16 +38,16 @@ pub(crate) use mono::{
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};
 pub use check::type_check;
 pub use display::format_type;
-pub use intrinsic_kernel::{IntrinsicKernel, IntrinsicSite};
+pub use intrinsic_kernel::IntrinsicSite;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use mangle::mangle_export_id;
 pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
-pub use std_kernel::{StdKernel, TryFailureMode, TrySiteMeta};
-pub use std_trait_kernel::StdTraitKernel;
+pub use std_kernel::{TryFailureMode, TrySiteMeta};
 pub use trait_defaults::lookup_function;
 pub use type_size::type_byte_size;
 pub use types::{ExprId, Ty, TypeId, TypeInterner};
 
+use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, ResolvedProgram};
 use phx_diagnostics::Span;
 
@@ -83,10 +82,8 @@ pub struct TypedProgram {
     pub mono_insts: Vec<MonoInst>,
     /// Expanded monomorphized alias types keyed by `(template, args)`.
     pub specialized_aliases: std::collections::HashMap<layout::TypeMonoKey, TypeId>,
-    /// Std `Option` / `Result` kernel for `?` sugar (empty when std is not linked).
-    pub std_kernel: StdKernel,
-    /// Std core trait definition ids (empty when std is not linked).
-    pub std_trait_kernel: StdTraitKernel,
+    /// Language item registry (`Option`, intrinsics, core traits).
+    pub lang_items: LangItemRegistry,
     /// `expr?` lowering metadata keyed by postfix expression id.
     pub try_sites: std::collections::HashMap<ExprId, TrySiteMeta>,
     /// Indirect fn pointer call sites keyed by postfix `Call` expression id.
@@ -95,8 +92,6 @@ pub struct TypedProgram {
     pub intrinsic_call_sites: std::collections::HashMap<ExprId, IntrinsicSite>,
     /// Compile-time `size_of` results keyed by postfix `Call` expression id.
     pub size_of_literals: std::collections::HashMap<ExprId, u32>,
-    /// Std / VM intrinsic definition ids.
-    pub intrinsic_kernel: IntrinsicKernel,
     /// Compiler builtin method sites on primitives (`eq`, `clone`).
     pub primitive_method_sites: std::collections::HashMap<ExprId, PrimitiveMethodSite>,
     /// Trait associated fn call sites (`Target::from`) → callee fn def.

@@ -10,6 +10,7 @@ use phx_syntax::ast::lit::Literal;
 
 use super::StructFields;
 use super::TypeChecker;
+use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 use crate::typeck::IndirectCallMeta;
 use crate::typeck::MethodCallSiteMeta;
@@ -17,13 +18,12 @@ use crate::typeck::PrimitiveMethodSite;
 use crate::typeck::bindings::{BindingKind, FunctionLayout};
 use crate::typeck::builtins::{bool_type, implements_drop, is_copyable, unit};
 use crate::typeck::display::{format_type, format_type_diagnostic};
-use crate::typeck::intrinsic_kernel::{IntrinsicKernel, IntrinsicSite};
+use crate::typeck::intrinsic_kernel::IntrinsicSite;
 use crate::typeck::layout::{ProgramLayout, TypeMonoKey};
 use crate::typeck::lower_ty::{build_type_def_map, error_type, push_generics};
 use crate::typeck::mono::{MonoInst, TypeMonoInst};
 use crate::typeck::ownership::OwnershipTracker;
-use crate::typeck::std_kernel::{StdKernel, TrySiteMeta};
-use crate::typeck::std_trait_kernel::StdTraitKernel;
+use crate::typeck::std_kernel::TrySiteMeta;
 use crate::typeck::subst::Substitution;
 use crate::typeck::trait_defaults;
 use crate::typeck::types::{ExprId, Ty, TypeId, TypeInterner};
@@ -95,8 +95,7 @@ impl<'a> TypeChecker<'a> {
             mono_insts: Vec::new(),
             type_mono_insts: Vec::new(),
             specialized_aliases: HashMap::new(),
-            std_kernel: StdKernel::default(),
-            std_trait_kernel: StdTraitKernel::default(),
+            lang_items: LangItemRegistry::default(),
             try_sites: HashMap::new(),
             primitive_method_sites: HashMap::new(),
             associated_fn_sites: HashMap::new(),
@@ -104,7 +103,6 @@ impl<'a> TypeChecker<'a> {
             indirect_call_sites: HashMap::new(),
             intrinsic_call_sites: HashMap::new(),
             size_of_literals: HashMap::new(),
-            intrinsic_kernel: IntrinsicKernel::default(),
             unsafe_depth: 0,
             pending_inherited_defs: Vec::new(),
             inherited_trait_methods: HashMap::new(),
@@ -130,17 +128,12 @@ impl<'a> TypeChecker<'a> {
             &self.types,
             &self.program_layout,
             self.resolved,
-            &self.std_trait_kernel,
+            &self.lang_items,
             ty,
         ) {
             return false;
         }
-        is_copyable(
-            &self.types,
-            &self.program_layout,
-            &self.std_trait_kernel,
-            ty,
-        )
+        is_copyable(&self.types, &self.program_layout, &self.lang_items, ty)
     }
     pub(crate) fn take_mono_insts(&mut self) -> Vec<MonoInst> {
         std::mem::take(&mut self.mono_insts)
@@ -163,18 +156,9 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    /// Reuses std kernel metadata from the template type-check pass during monomorphization.
-    pub(crate) fn seed_std_kernel(&mut self, kernel: &StdKernel) {
-        self.std_kernel = kernel.clone();
-    }
-
-    /// Reuses std trait kernel from the template pass during monomorphization.
-    pub(crate) fn seed_intrinsic_kernel(&mut self, kernel: &IntrinsicKernel) {
-        self.intrinsic_kernel = kernel.clone();
-    }
-
-    pub(crate) fn seed_std_trait_kernel(&mut self, kernel: &StdTraitKernel) {
-        self.std_trait_kernel = kernel.clone();
+    /// Reuses language item registry from the template pass during monomorphization.
+    pub(crate) fn seed_lang_items(&mut self, registry: &LangItemRegistry) {
+        self.lang_items = registry.clone();
     }
 
     /// Reuses template-pass value types (fn sigs, struct types, …) during mono body re-checks.
@@ -351,8 +335,7 @@ impl<'a> TypeChecker<'a> {
         Vec<FunctionLayout>,
         ProgramLayout,
         HashMap<TypeMonoKey, TypeId>,
-        StdKernel,
-        StdTraitKernel,
+        LangItemRegistry,
         HashMap<ExprId, TrySiteMeta>,
         HashMap<ExprId, PrimitiveMethodSite>,
         HashMap<ExprId, DefId>,
@@ -361,7 +344,6 @@ impl<'a> TypeChecker<'a> {
         HashMap<ExprId, IndirectCallMeta>,
         HashMap<ExprId, IntrinsicSite>,
         HashMap<ExprId, u32>,
-        IntrinsicKernel,
         Vec<crate::resolver::Def>,
         trait_defaults::InheritedTraitMethods,
         HashMap<DefId, bool>,
@@ -374,8 +356,7 @@ impl<'a> TypeChecker<'a> {
             self.functions,
             self.program_layout,
             self.specialized_aliases,
-            self.std_kernel,
-            self.std_trait_kernel,
+            self.lang_items,
             self.try_sites,
             self.primitive_method_sites,
             self.associated_fn_sites,
@@ -384,7 +365,6 @@ impl<'a> TypeChecker<'a> {
             self.indirect_call_sites,
             self.intrinsic_call_sites,
             self.size_of_literals,
-            self.intrinsic_kernel,
             self.pending_inherited_defs,
             self.inherited_trait_methods,
             self.fn_effective_unsafe,

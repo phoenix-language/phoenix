@@ -1,6 +1,8 @@
+#[lang_item(name = "PartialEq", kind = "trait")]
 pub PartialEq :: trait {
     eq :: (self: &Self, other: &Self) => bool;
 };
 
+#[lang_item(name = "Eq", kind = "trait")]
 pub Eq :: trait {
 };

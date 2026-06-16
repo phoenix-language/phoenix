@@ -1,10 +1,12 @@
 #import std::core::option::{Option, Some, None};
 
+#[lang_item(name = "Iterator", kind = "trait")]
 pub Iterator :: trait {
     type Item;
     next :: (self: &mut Self) => Option<Self::Item>;
 };
 
+#[lang_item(name = "IntoIter", kind = "trait")]
 pub IntoIter :: trait {
     type Item;
     type IntoIter;

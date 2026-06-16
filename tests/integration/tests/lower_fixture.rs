@@ -39,7 +39,7 @@ fn lower_heap_slice_emits_make_slice_from_ptr_not_call() {
                 .any(|s| matches!(&s.inst, IrInst::MakeSliceFromPtr { .. }))
         })
     });
-    let slice_def = unit.typed.intrinsic_kernel.slice_from_raw_parts;
+    let slice_def = unit.typed.lang_items.slice_from_raw_parts;
     let has_call = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
             b.insts.iter().any(|s| {
@@ -161,7 +161,7 @@ fn lower_heap_dealloc_emits_free_not_call() {
         f.blocks.iter().any(|b| {
             b.insts.iter().any(|s| {
                 if let IrInst::Call { callee, .. } = &s.inst {
-                    unit.typed.intrinsic_kernel.dealloc_bytes == Some(*callee)
+                    unit.typed.lang_items.dealloc_bytes == Some(*callee)
                 } else {
                     false
                 }
@@ -191,7 +191,7 @@ fn lower_heap_alloc_emits_alloc_not_call() {
         f.blocks.iter().any(|b| {
             b.insts.iter().any(|s| {
                 if let IrInst::Call { callee, .. } = &s.inst {
-                    unit.typed.intrinsic_kernel.alloc_bytes == Some(*callee)
+                    unit.typed.lang_items.alloc_bytes == Some(*callee)
                 } else {
                     false
                 }

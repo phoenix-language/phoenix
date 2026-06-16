@@ -26,6 +26,7 @@ mod compile;
 mod derive;
 pub mod facade;
 mod ir;
+mod lang_items;
 mod link;
 mod lint;
 mod lower;
@@ -50,6 +51,9 @@ pub use compile::{
 };
 pub use derive::{DeriveError, expand_derives};
 pub use facade::{CheckOutput, CompileOutput};
+pub use lang_items::{
+    LangItemKind, LangItemMarker, LangItemRegistry, build_lang_item_registry, lang_item_from_attrs,
+};
 pub use link::{LinkError, LinkInput, link_modules};
 pub use modules::{
     LoadedModule, LoadedProgram, ProgramLoadContext, load_program_with_context,
@@ -59,7 +63,7 @@ pub use phx_bytecode::BytecodeModule;
 pub use project::{
     BuildLayout, PackageType, ProjectConfig, ProjectError, discover_project, resolve_project,
 };
-pub use pxi::{PxiExport, PxiFile, PxiType, digest_bytes, digest_file};
+pub use pxi::{PxiExport, PxiFile, PxiLangItem, PxiType, digest_bytes, digest_file};
 pub use standalone::{
     StandaloneOptions, check_standalone_unit_with_context, check_standalone_with_context,
     compile_standalone_with_context,

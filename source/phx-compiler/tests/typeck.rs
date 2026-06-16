@@ -862,13 +862,13 @@ main :: () => { for x in R { n: 0 } { const _ = x; }; };
 }
 
 #[test]
-fn user_from_trait_not_in_std_kernel() {
+fn user_from_trait_not_in_lang_items() {
     let typed = typed_program(
         "From :: <source> trait { from :: (value: source) => Self; }; main :: () => { };",
     );
     assert!(
-        typed.std_trait_kernel.from_trait.is_none(),
-        "user-defined From must not populate std trait kernel"
+        typed.lang_items.from_trait.is_none(),
+        "user-defined From must not populate language item registry"
     );
 }
 

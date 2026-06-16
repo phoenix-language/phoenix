@@ -1,5 +1,6 @@
 #import std::core::result::Result;
 
+#[lang_item(name = "From", kind = "trait")]
 pub From :: <source> trait {
     from :: (value: source) => Self;
 };

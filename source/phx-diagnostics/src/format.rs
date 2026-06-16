@@ -372,6 +372,13 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
         TypeCheckError::DiscardedStdOption { .. } => {
             "discarded `Option` value must be handled".to_owned()
         }
+        TypeCheckError::LangItemReserved { .. } => {
+            "`#[lang_item]` is reserved for the standard library".to_owned()
+        }
+        TypeCheckError::LangItemDuplicate { kind, name, .. } => {
+            format!("duplicate language item `{kind}` named `{name}`")
+        }
+        TypeCheckError::LangItemInvalid { detail, .. } => detail.clone(),
     }
 }
 

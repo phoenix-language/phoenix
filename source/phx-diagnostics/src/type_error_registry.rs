@@ -75,6 +75,9 @@ typecheck_error_registry! {
     ProgramTooLarge => "E2040",
     DiscardedStdResult => "E2041",
     DiscardedStdOption => "E2042",
+    LangItemReserved => "E2043",
+    LangItemDuplicate => "E2044",
+    LangItemInvalid => "E2045",
 }
 
 #[cfg(test)]

@@ -15,13 +15,11 @@ use phx_syntax::ast::{ExprNode, Node};
 
 use super::StructFields;
 use super::TypeChecker;
+use crate::lang_items::build_lang_item_registry;
 use crate::resolver::{DefId, DefKind, ResolutionKey};
 use crate::typeck::bounds::trait_bound_head;
-use crate::typeck::intrinsic_kernel::IntrinsicKernel;
 use crate::typeck::layout::{EnumLayout, StructLayout, VariantKind, VariantLayout, VariantMeta};
 use crate::typeck::lower_ty::{TypeDefMap, lower_type, push_generics};
-use crate::typeck::std_kernel::StdKernel;
-use crate::typeck::std_trait_kernel::StdTraitKernel;
 use crate::typeck::subst::Substitution;
 use crate::typeck::trait_defaults;
 use crate::typeck::types::is_error_type;
@@ -290,9 +288,7 @@ impl TypeChecker<'_> {
 
     pub(in crate::typeck::check) fn check_program(&mut self) {
         self.collect_decls();
-        self.std_kernel = StdKernel::build(self.resolved, &self.program_layout);
-        self.std_trait_kernel = StdTraitKernel::build(self.resolved, &self.program_layout);
-        self.intrinsic_kernel = IntrinsicKernel::build(self.resolved);
+        self.lang_items = build_lang_item_registry(self.resolved, &mut self.bag);
         self.validate_type_aliases();
         for module in &self.resolved.modules {
             self.current_module = module.id;

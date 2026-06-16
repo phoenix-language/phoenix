@@ -109,6 +109,8 @@ pub struct ResolvedProgram {
     pub main_fn: Option<DefId>,
     /// Structured types from fresh dependency `.pxi` v2 (imported `DefId` → type).
     pub import_types: std::collections::HashMap<DefId, crate::pxi::PxiType>,
+    /// Language item markers from dependency `.pxi` (imported `DefId` → marker).
+    pub import_lang_items: std::collections::HashMap<DefId, crate::lang_items::LangItemMarker>,
     /// Item attribute metadata keyed by definition id.
     pub def_attrs: crate::attrs::DefAttrs,
 }
@@ -139,6 +141,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         import_env: None,
         shared_interner: None,
         import_types: None,
+        import_lang_items: None,
         def_attrs: crate::attrs::DefAttrs::new(),
         def_table_full: false,
     };
@@ -165,6 +168,7 @@ pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
         closures: resolver.closures,
         main_fn: resolver.main_fn,
         import_types: HashMap::new(),
+        import_lang_items: HashMap::new(),
         def_attrs: resolver.def_attrs,
     })
 }
@@ -197,6 +201,8 @@ pub(crate) struct Resolver<'a> {
     pub(crate) shared_interner: Option<&'a mut Interner>,
     /// Imported type table from dependency `.pxi` files.
     pub(crate) import_types: Option<&'a mut HashMap<DefId, PxiType>>,
+    /// Language item markers from dependency `.pxi` files.
+    pub(crate) import_lang_items: Option<&'a mut HashMap<DefId, crate::lang_items::LangItemMarker>>,
     /// Item attribute metadata collected during definition collection.
     pub(crate) def_attrs: crate::attrs::DefAttrs,
     /// Set after the definition table exceeds `u32::MAX`; further defs are skipped.

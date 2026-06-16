@@ -30,6 +30,7 @@ Readers must accept v1 and v2. Writers emit v2 from the current compiler.
 - **`function_id`** (v2, `fn` exports only): global PHX0 `function_id` assigned at per-module codegen; consumers use this for cross-package `Call` operands when linking prebuilt dependency objects.
 - **`signature`**: human-readable type string (unchanged from v1; used for manifest diff).
 - **`type`** (v2 only): structured type tree (below).
+- **`lang_item`** (v2 optional): `{ "name": "...", "kind": "..." }` when the export is a compiler language item ([lang-items.md](lang-items.md)); omitted for ordinary exports. Backward compatible — readers ignore unknown fields.
 
 ## Structured `type` (v2)
 

@@ -27,6 +27,7 @@ fn pxi_v2_type_json_round_trip() {
             signature: "(s32, s32) => s32".to_owned(),
             ty: Some(ty.clone()),
             function_id: None,
+            lang_item: None,
         }],
         dependencies: vec![],
     };
@@ -90,6 +91,35 @@ fn math_lib_pxi_exports_mangled_generic_specialization() {
     assert!(id_s32.export_id.contains('$'));
     let ty = id_s32.ty.as_ref().expect("structured fn type");
     assert!(matches!(ty, PxiType::Fn { .. }));
+}
+
+#[test]
+fn pxi_lang_item_round_trip() {
+    let pxi = PxiFile {
+        format_version: 2,
+        logical_module: "std::core::alloc".to_owned(),
+        source_hash: "h".to_owned(),
+        origin: None,
+        exports: vec![PxiExport {
+            export_id: "std::core::alloc::alloc_bytes::fn".to_owned(),
+            name: "alloc_bytes".to_owned(),
+            kind: "fn".to_owned(),
+            signature: "(u32) => *mut u8".to_owned(),
+            ty: None,
+            function_id: None,
+            lang_item: Some(phx_compiler::PxiLangItem {
+                name: "alloc_bytes".to_owned(),
+                kind: "intrinsic".to_owned(),
+            }),
+        }],
+        dependencies: vec![],
+    };
+    let json = pxi.to_json();
+    assert!(json.contains("\"lang_item\""));
+    let back = PxiFile::parse(&json).expect("parse");
+    let li = back.exports[0].lang_item.as_ref().expect("lang_item field");
+    assert_eq!(li.name, "alloc_bytes");
+    assert_eq!(li.kind, "intrinsic");
 }
 
 #[test]

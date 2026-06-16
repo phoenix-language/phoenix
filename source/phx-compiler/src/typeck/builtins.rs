@@ -3,8 +3,8 @@
 use phx_syntax::token::Keyword;
 
 use super::layout::{ProgramLayout, TraitInstKey};
-use super::std_trait_kernel::StdTraitKernel;
 use super::types::{Ty, TypeId, TypeInterner};
+use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Returns the interned unit type.
@@ -56,7 +56,7 @@ pub fn str_type(types: &mut TypeInterner) -> TypeId {
 pub fn is_copyable(
     types: &TypeInterner,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     id: TypeId,
 ) -> bool {
     is_copyable_inner(types, layout, std_traits, id, &mut Vec::new())
@@ -65,7 +65,7 @@ pub fn is_copyable(
 fn is_copyable_inner(
     types: &TypeInterner,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     id: TypeId,
     seen: &mut Vec<TypeId>,
 ) -> bool {
@@ -101,7 +101,7 @@ fn is_copyable_inner(
 fn struct_is_copyable(
     types: &TypeInterner,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     struct_def: DefId,
 ) -> bool {
     // `struct_is_copyable` is called without `ResolvedProgram`; std `Drop` id is sufficient
@@ -136,7 +136,7 @@ fn struct_is_copyable(
 fn enum_is_copyable(
     types: &TypeInterner,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     enum_def: DefId,
 ) -> bool {
     if let Some(drop_trait) = std_traits.drop_trait {
@@ -177,7 +177,7 @@ fn enum_is_copyable(
 pub fn implements_drop_for_def(
     layout: &ProgramLayout,
     resolved: &ResolvedProgram,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     def: DefId,
     args: &[TypeId],
 ) -> bool {
@@ -194,7 +194,7 @@ pub fn implements_drop(
     types: &TypeInterner,
     layout: &ProgramLayout,
     resolved: &ResolvedProgram,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     id: TypeId,
 ) -> bool {
     match types.get(id) {
@@ -210,7 +210,7 @@ pub fn implements_drop(
 pub fn resolve_drop_fn(
     layout: &ProgramLayout,
     resolved: &ResolvedProgram,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     type_def: DefId,
     type_args: &[TypeId],
 ) -> Option<DefId> {
@@ -263,7 +263,7 @@ pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
 pub fn implements_copyable_for_def(
     layout: &ProgramLayout,
     resolved: &ResolvedProgram,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     def: DefId,
     args: &[TypeId],
 ) -> bool {
@@ -277,7 +277,7 @@ pub fn implements_copyable_for_def(
 fn copyable_trait_def(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
 ) -> Option<DefId> {
     if let Some(def) = std_traits.copyable_trait {
         return Some(def);
@@ -302,7 +302,7 @@ fn copyable_trait_def(
 fn drop_trait_def(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
 ) -> Option<DefId> {
     if let Some(def) = std_traits.drop_trait {
         return Some(def);

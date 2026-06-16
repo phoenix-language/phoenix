@@ -23,18 +23,18 @@ use std::collections::HashMap;
 use phx_diagnostics::{Span, TypeCheckBag};
 use phx_syntax::Symbol;
 
+use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, ResolvedProgram};
 use crate::typeck::IndirectCallMeta;
 use crate::typeck::MethodCallSiteMeta;
 use crate::typeck::PrimitiveMethodSite;
 use crate::typeck::bindings::{FunctionLayout, FunctionLayoutBuilder};
-use crate::typeck::intrinsic_kernel::{IntrinsicKernel, IntrinsicSite};
+use crate::typeck::intrinsic_kernel::IntrinsicSite;
 use crate::typeck::layout::{ProgramLayout, TypeMonoKey};
 use crate::typeck::lower_ty::TypeDefMap;
 use crate::typeck::mono::{MonoInst, TypeMonoInst};
 use crate::typeck::ownership::OwnershipTracker;
-use crate::typeck::std_kernel::{StdKernel, TrySiteMeta};
-use crate::typeck::std_trait_kernel::StdTraitKernel;
+use crate::typeck::std_kernel::TrySiteMeta;
 use crate::typeck::subst::Substitution;
 use crate::typeck::trait_defaults;
 use crate::typeck::types::{ExprId, TypeId, TypeInterner};
@@ -95,10 +95,8 @@ pub struct TypeChecker<'a> {
     type_mono_insts: Vec<TypeMonoInst>,
     /// Expanded alias types keyed by monomorphization key (filled during checking).
     specialized_aliases: HashMap<TypeMonoKey, TypeId>,
-    /// Std `Option` / `Result` ids for `?` sugar.
-    std_kernel: StdKernel,
-    /// Std core trait ids for bound checking.
-    std_trait_kernel: StdTraitKernel,
+    /// Compiler-known std definitions (intrinsics, `Option`/`Result`, traits).
+    lang_items: LangItemRegistry,
     /// `expr?` sites for lowering.
     try_sites: HashMap<ExprId, TrySiteMeta>,
     /// Primitive trait method sites for lowering.
@@ -113,8 +111,6 @@ pub struct TypeChecker<'a> {
     intrinsic_call_sites: HashMap<ExprId, IntrinsicSite>,
     /// Compile-time `size_of` results keyed by postfix `Call` expression id.
     size_of_literals: HashMap<ExprId, u32>,
-    /// Kernel of std intrinsic definition ids.
-    intrinsic_kernel: IntrinsicKernel,
     /// Nesting depth of `unsafe` blocks and `unsafe fn` bodies.
     unsafe_depth: u32,
     /// Pending synthetic fn defs for inherited trait defaults (merged into resolved at finish).
@@ -157,8 +153,7 @@ pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, 
         functions,
         layout,
         specialized_aliases,
-        std_kernel,
-        std_trait_kernel,
+        lang_items,
         try_sites,
         primitive_method_sites,
         associated_fn_sites,
@@ -167,7 +162,6 @@ pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, 
         indirect_call_sites,
         intrinsic_call_sites,
         size_of_literals,
-        intrinsic_kernel,
         pending_inherited_defs,
         inherited_trait_methods,
         fn_effective_unsafe,
@@ -188,8 +182,7 @@ pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, 
         specialized_from: HashMap::new(),
         mono_insts: Vec::new(),
         specialized_aliases,
-        std_kernel,
-        std_trait_kernel,
+        lang_items,
         try_sites,
         primitive_method_sites,
         associated_fn_sites,
@@ -198,7 +191,6 @@ pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, 
         indirect_call_sites,
         intrinsic_call_sites,
         size_of_literals,
-        intrinsic_kernel,
         inherited_trait_methods,
         fn_effective_unsafe,
     };

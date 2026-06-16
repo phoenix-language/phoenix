@@ -48,12 +48,12 @@ impl TypeChecker<'_> {
         else {
             return;
         };
-        if self.std_kernel.is_std_result(&self.types, ty) {
+        if self.lang_items.is_std_result(&self.types, ty) {
             self.bag.push(
                 self.current_module,
                 TypeCheckError::DiscardedStdResult { span: expr.span },
             );
-        } else if self.std_kernel.is_std_option(&self.types, ty) {
+        } else if self.lang_items.is_std_option(&self.types, ty) {
             self.bag.push(
                 self.current_module,
                 TypeCheckError::DiscardedStdOption { span: expr.span },
@@ -398,7 +398,7 @@ impl TypeChecker<'_> {
                 &self.types,
                 &self.program_layout,
                 self.resolved,
-                &self.std_trait_kernel,
+                &self.lang_items,
                 binding.ty,
             ) {
                 continue;
@@ -409,7 +409,7 @@ impl TypeChecker<'_> {
             let Some(drop_fn) = resolve_drop_fn(
                 &self.program_layout,
                 self.resolved,
-                &self.std_trait_kernel,
+                &self.lang_items,
                 def,
                 &args,
             ) else {
@@ -493,7 +493,7 @@ impl TypeChecker<'_> {
             .iter()
             .any(|((key, method), &def)| {
                 def == lookup_def
-                    && (self.std_trait_kernel.is_drop_trait(key.trait_def)
+                    && (self.lang_items.is_drop_trait(key.trait_def)
                         || crate::typeck::builtins::is_drop_trait_def(self.resolved, key.trait_def))
                     && self.resolved.interner.resolves_to(*method, "drop")
             })
@@ -507,7 +507,7 @@ impl TypeChecker<'_> {
         emit_layout: bool,
         check_body: bool,
     ) {
-        if self.intrinsic_kernel.is_intrinsic_fn(def) {
+        if self.lang_items.is_intrinsic_fn(def) {
             return;
         }
         let module = self
@@ -888,7 +888,7 @@ impl TypeChecker<'_> {
         if !type_satisfies_trait_inst(
             &self.program_layout,
             &self.types,
-            &self.std_trait_kernel,
+            &self.lang_items,
             iter_ty,
             into_iter_trait,
             &[],
@@ -985,7 +985,7 @@ impl TypeChecker<'_> {
         if !type_satisfies_trait_inst(
             &self.program_layout,
             &self.types,
-            &self.std_trait_kernel,
+            &self.lang_items,
             iter_state_ty,
             iterator_trait,
             &[],

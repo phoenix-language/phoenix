@@ -1,3 +1,4 @@
+#[lang_item(name = "Debug", kind = "trait")]
 pub Debug :: trait {
     fmt :: (self: &Self) => [u8; 32];
 };

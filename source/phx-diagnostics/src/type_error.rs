@@ -368,6 +368,29 @@ pub enum TypeCheckError {
         /// Discarded expression span.
         span: Span,
     },
+    /// `#[lang_item]` used outside the standard library.
+    LangItemReserved {
+        /// Attribute span.
+        span: Span,
+    },
+    /// Duplicate `(kind, name)` language item registration.
+    LangItemDuplicate {
+        /// Item kind string.
+        kind: String,
+        /// Item name.
+        name: String,
+        /// Duplicate declaration span.
+        span: Span,
+        /// First declaration span.
+        previous_span: Span,
+    },
+    /// Invalid `#[lang_item]` attribute.
+    LangItemInvalid {
+        /// Detail message.
+        detail: String,
+        /// Attribute span.
+        span: Span,
+    },
 }
 
 impl fmt::Display for TypeCheckError {

@@ -97,6 +97,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             import_env: None,
             shared_interner: None,
             import_types: None,
+            import_lang_items: None,
             def_attrs: crate::attrs::DefAttrs::new(),
             def_table_full: false,
         };
@@ -173,6 +174,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
     let mut resolutions = HashMap::new();
     let mut closures = HashMap::new();
     let mut import_types: HashMap<DefId, PxiType> = HashMap::new();
+    let mut import_lang_items: HashMap<DefId, crate::lang_items::LangItemMarker> = HashMap::new();
     for (idx, module) in modules.iter().enumerate() {
         if phase1_skip.contains(&module.id.index()) {
             continue;
@@ -193,6 +195,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             &mut interner,
             &mut bag,
             &mut import_types,
+            &mut import_lang_items,
             prelude_enabled,
             &package_name,
         );
@@ -217,6 +220,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
             import_env: Some(import_env),
             shared_interner: Some(&mut interner),
             import_types: Some(&mut import_types),
+            import_lang_items: Some(&mut import_lang_items),
             def_attrs: crate::attrs::DefAttrs::new(),
             def_table_full: false,
         };
@@ -290,6 +294,7 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
         closures,
         main_fn,
         import_types,
+        import_lang_items,
         def_attrs,
     })
 }
@@ -362,12 +367,14 @@ fn apply_reexports(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_import_bindings(
     module: &LoadedModule,
     env: &ProgramImportEnv<'_>,
     interner: &mut Interner,
     bag: &mut DiagnosticBag,
     import_types: &mut HashMap<DefId, PxiType>,
+    import_lang_items: &mut HashMap<DefId, crate::lang_items::LangItemMarker>,
     prelude_enabled: bool,
     workspace_name: &str,
 ) -> Vec<(Symbol, DefId, bool, Span)> {
@@ -386,6 +393,7 @@ fn build_import_bindings(
             dep_names: env.dep_names,
             interner,
             import_types,
+            import_lang_items,
             bag,
             submodules: env.submodules,
         };

@@ -67,7 +67,7 @@ impl TypeChecker<'_> {
     }
 
     pub(in crate::typeck::check) fn resolve_trait_def_by_name(&self, name: &str) -> Option<DefId> {
-        self.std_trait_kernel
+        self.lang_items
             .trait_def_for_name(&self.resolved.interner, name)
     }
 
@@ -75,7 +75,7 @@ impl TypeChecker<'_> {
         &mut self,
         item_ty: TypeId,
     ) -> Option<TypeId> {
-        let option_def = self.std_kernel.option_enum?;
+        let option_def = self.lang_items.option_enum?;
         Some(self.types.intern(&Ty::Named {
             def: option_def,
             args: vec![item_ty],
@@ -86,7 +86,7 @@ impl TypeChecker<'_> {
         &self,
         _option_ty: TypeId,
     ) -> Option<Symbol> {
-        let v = self.std_kernel.some_variant?;
+        let v = self.lang_items.some_variant?;
         Some(self.resolved.defs.get(v.index() as usize)?.name)
     }
     pub(in crate::typeck::check) fn check_assign_expr(
@@ -796,7 +796,7 @@ impl TypeChecker<'_> {
                     let callee_def = self.callee_def_from_expr(base);
                     if let (Some(def), Some(site)) = (
                         callee_def,
-                        callee_def.and_then(|d| self.intrinsic_kernel.site_for_call(d)),
+                        callee_def.and_then(|d| self.lang_items.site_for_call(d)),
                     ) {
                         if generics.is_some() && site != IntrinsicSite::SizeOf {
                             self.bag.push(
@@ -979,7 +979,7 @@ impl TypeChecker<'_> {
                 self.resolved,
                 &self.program_layout,
                 &mut self.types,
-                &self.std_trait_kernel,
+                &self.lang_items,
                 &self.value_types,
                 base_fn,
                 args,
@@ -1102,7 +1102,7 @@ impl TypeChecker<'_> {
             self.resolved,
             &self.program_layout,
             &mut self.types,
-            &self.std_trait_kernel,
+            &self.lang_items,
             &self.value_types,
             generic_params_for_def(self.resolved, base_def).as_deref(),
             &param_defs,
@@ -1915,16 +1915,16 @@ impl TypeChecker<'_> {
             );
             return self.unit;
         };
-        if self.std_kernel.is_std_result(&self.types, scrutinee_ty)
-            && self.std_kernel.is_std_result(&self.types, fn_ret)
+        if self.lang_items.is_std_result(&self.types, scrutinee_ty)
+            && self.lang_items.is_std_result(&self.types, fn_ret)
         {
             return self.check_result_try_expr(scrutinee_ty, fn_ret, span, expr_id);
         }
-        if self.std_kernel.is_std_option(&self.types, scrutinee_ty)
-            && self.std_kernel.is_std_option(&self.types, fn_ret)
+        if self.lang_items.is_std_option(&self.types, scrutinee_ty)
+            && self.lang_items.is_std_option(&self.types, fn_ret)
             && self.types_equal(scrutinee_ty, fn_ret)
         {
-            let Some(payload) = self.std_kernel.option_payload_ty(&self.types, scrutinee_ty) else {
+            let Some(payload) = self.lang_items.option_payload_ty(&self.types, scrutinee_ty) else {
                 return self.unit;
             };
             self.record_try_site(
@@ -1954,11 +1954,11 @@ impl TypeChecker<'_> {
         span: Span,
         expr_id: ExprId,
     ) -> TypeId {
-        let Some((ok_in, err_in)) = self.std_kernel.result_ok_err_tys(&self.types, scrutinee_ty)
+        let Some((ok_in, err_in)) = self.lang_items.result_ok_err_tys(&self.types, scrutinee_ty)
         else {
             return self.unit;
         };
-        let Some((ok_out, err_out)) = self.std_kernel.result_ok_err_tys(&self.types, fn_ret) else {
+        let Some((ok_out, err_out)) = self.lang_items.result_ok_err_tys(&self.types, fn_ret) else {
             return self.unit;
         };
         if !self.types_equal(ok_in, ok_out) {
@@ -1985,7 +1985,7 @@ impl TypeChecker<'_> {
         if let Some(from_fn) = resolve_from_fn_for_error(
             &self.program_layout,
             &self.types,
-            &self.std_trait_kernel,
+            &self.lang_items,
             self.resolved,
             err_out,
             err_in,
@@ -2037,13 +2037,13 @@ impl TypeChecker<'_> {
             return;
         };
         let Some(success_tag) =
-            self.std_kernel
+            self.lang_items
                 .success_tag_for(&self.program_layout, &self.types, scrutinee_ty)
         else {
             return;
         };
         let Some(failure_tag) =
-            self.std_kernel
+            self.lang_items
                 .failure_tag_for(&self.program_layout, &self.types, scrutinee_ty)
         else {
             return;
@@ -2666,8 +2666,8 @@ impl TypeChecker<'_> {
         site_id: ExprId,
     ) -> TypeId {
         if self.resolved.interner.resolves_to(name.symbol, "eq") {
-            if let Some(eq_trait) = self.std_trait_kernel.partial_eq_trait {
-                if self.std_trait_kernel.primitive_satisfies(kw, eq_trait) {
+            if let Some(eq_trait) = self.lang_items.partial_eq_trait {
+                if self.lang_items.primitive_satisfies(kw, eq_trait) {
                     if args.len() == 1 {
                         let got = self.check_expr_node(&args[0]);
                         if !self.types_equal(got, receiver) {
@@ -2695,8 +2695,8 @@ impl TypeChecker<'_> {
             }
         }
         if self.resolved.interner.resolves_to(name.symbol, "clone") {
-            if let Some(clone_trait) = self.std_trait_kernel.clone_trait {
-                if self.std_trait_kernel.primitive_satisfies(kw, clone_trait) {
+            if let Some(clone_trait) = self.lang_items.clone_trait {
+                if self.lang_items.primitive_satisfies(kw, clone_trait) {
                     if !args.is_empty() {
                         self.bag.push(
                             self.current_module,

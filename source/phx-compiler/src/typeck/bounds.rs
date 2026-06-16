@@ -11,10 +11,10 @@ use phx_syntax::ast::types::GenericParam;
 use super::builtins::is_copyable;
 use super::layout::{ProgramLayout, TraitInstKey};
 use super::lower_ty::{build_type_def_map, lower_type};
-use super::std_trait_kernel::StdTraitKernel;
 use super::subst::Substitution;
 use super::types::{Ty, TypeId, TypeInterner};
 use super::unify::AliasEnv;
+use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Validates that each concrete type argument satisfies the corresponding generic parameter bounds.
@@ -26,7 +26,7 @@ pub fn validate_instantiation_bounds(
     resolved: &ResolvedProgram,
     layout: &ProgramLayout,
     types: &mut TypeInterner,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     value_types: &HashMap<DefId, TypeId>,
     generics: Option<&[GenericParam]>,
     param_defs: &[DefId],
@@ -170,7 +170,7 @@ fn lower_trait_bound_args(
 
 fn resolve_trait_def(
     resolved: &ResolvedProgram,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     trait_symbol: phx_syntax::Symbol,
 ) -> Option<DefId> {
     if let Some(def) = std_traits.trait_def_for_symbol(&resolved.interner, trait_symbol) {
@@ -218,7 +218,7 @@ fn should_skip_unresolved_generic_bound(
 fn type_satisfies_copyable(
     types: &TypeInterner,
     layout: &ProgramLayout,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     concrete: TypeId,
 ) -> bool {
     is_copyable(types, layout, std_traits, concrete)
@@ -229,7 +229,7 @@ fn type_satisfies_copyable(
 pub fn type_satisfies_trait_inst(
     layout: &ProgramLayout,
     types: &TypeInterner,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     concrete: TypeId,
     trait_def: DefId,
     trait_args: &[TypeId],
@@ -301,7 +301,7 @@ fn layout_has_trait_impl(
 pub fn resolve_from_fn_for_error(
     layout: &ProgramLayout,
     types: &TypeInterner,
-    std_traits: &StdTraitKernel,
+    std_traits: &LangItemRegistry,
     resolved: &ResolvedProgram,
     err_out: TypeId,
     err_in: TypeId,
@@ -391,11 +391,12 @@ mod tests {
             closures: HashMap::new(),
             main_fn: None,
             import_types: HashMap::new(),
+            import_lang_items: HashMap::new(),
             def_attrs: DefAttrs::new(),
         };
         let layout = ProgramLayout::default();
         let mut types = TypeInterner::default();
-        let std_traits = StdTraitKernel::default();
+        let std_traits = LangItemRegistry::default();
         let value_types = HashMap::new();
         let span = Span::new(0, 0);
         let mut bag = TypeCheckBag::new();

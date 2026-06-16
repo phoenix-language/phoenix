@@ -361,15 +361,15 @@ impl TypeChecker<'_> {
         trait_def: DefId,
         span: Span,
     ) {
-        let is_copyable_trait = self.std_trait_kernel.is_copyable_trait(trait_def)
+        let is_copyable_trait = self.lang_items.is_copyable_trait(trait_def)
             || crate::typeck::builtins::is_copyable_trait_def(self.resolved, trait_def);
-        let is_drop_trait = self.std_trait_kernel.is_drop_trait(trait_def)
+        let is_drop_trait = self.lang_items.is_drop_trait(trait_def)
             || crate::typeck::builtins::is_drop_trait_def(self.resolved, trait_def);
         let conflicts = if is_copyable_trait {
             implements_drop_for_def(
                 &self.program_layout,
                 self.resolved,
-                &self.std_trait_kernel,
+                &self.lang_items,
                 type_def,
                 &[],
             )
@@ -377,7 +377,7 @@ impl TypeChecker<'_> {
             crate::typeck::builtins::implements_copyable_for_def(
                 &self.program_layout,
                 self.resolved,
-                &self.std_trait_kernel,
+                &self.lang_items,
                 type_def,
                 &[],
             )

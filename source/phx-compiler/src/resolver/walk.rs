@@ -580,6 +580,9 @@ impl Resolver<'_> {
         let Some(import_types) = self.import_types.as_deref_mut() else {
             return;
         };
+        let Some(import_lang_items) = self.import_lang_items.as_deref_mut() else {
+            return;
+        };
         let Some(module) = env
             .modules
             .iter()
@@ -600,6 +603,7 @@ impl Resolver<'_> {
             dep_names: env.dep_names,
             interner,
             import_types,
+            import_lang_items,
             bag: &mut self.bag,
             submodules: env.submodules,
         };

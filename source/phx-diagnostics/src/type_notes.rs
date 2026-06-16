@@ -285,6 +285,22 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "handle the value with `match`, `if const` / `if var`, or `?` inside a compatible return type",
             ));
         }
+        TypeCheckError::LangItemReserved { .. } => {
+            out.helps.push(String::from(
+                "remove `#[lang_item(...)]`; only `std::` modules may declare language items",
+            ));
+        }
+        TypeCheckError::LangItemDuplicate { previous_span, .. } => {
+            out.notes.push(TypeCheckNote {
+                text: "previous language item declaration".to_owned(),
+                span: Some(*previous_span),
+            });
+        }
+        TypeCheckError::LangItemInvalid { .. } => {
+            out.helps.push(String::from(
+                "use `#[lang_item(name = \"...\", kind = \"intrinsic\"|\"enum\"|\"trait\")]` on std definitions",
+            ));
+        }
         TypeCheckError::InternalError { .. } | TypeCheckError::ProgramTooLarge { .. } => {}
     }
     out

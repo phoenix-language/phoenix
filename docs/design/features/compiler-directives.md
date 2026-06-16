@@ -14,7 +14,7 @@ This split is the canonical direction. Older drafts that used `@` for both are l
 | Category | Sigil / form | Purpose | MVP status |
 |---|---|---|---|
 | Compile-time keywords | `#` | import, unsafe regions, optimization hints | `#import` wired end-to-end; `#unsafe`, `#inline` / `#cold` / `#hot` parse-only |
-| Item attributes | `#[...]` | conditional compilation, deprecation, lint policy, derive codegen | **Implemented** ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)): `cfg`, `deprecated`, `allow`, `must_use`; `#[derive]` ([V0-056](../language-v0.md#v0-056--derive-minimal)) |
+| Item attributes | `#[...]` | conditional compilation, deprecation, lint policy, derive codegen, language items | **Implemented** ([V0-039](../language-v0.md#v0-039--item-attributes-and-conditional-compilation)): `cfg`, `deprecated`, `allow`, `must_use`; `#[derive]` ([V0-056](../language-v0.md#v0-056--derive-minimal)); `#[lang_item]` ([lang-items.md](lang-items.md)) |
 | Runtime | `@` | runtime VM actions (especially actor runtime actions) | post-MVP heavy semantics |
 
 ---
@@ -101,6 +101,17 @@ Compiler-generated trait impls on **record structs, tuple structs** ([V0-057](..
 **Generic bound inference:** each type parameter that appears directly as a field or enum-payload type gets the derived trait as a bound on the synthesized impl (e.g. `Box :: <t: PartialEq> impl :: PartialEq`). `Debug` adds no extra bounds.
 
 **Rejected:** `#derive(...)` (parse error with fix hint), unknown traits (`Clone`, `Eq`, …), duplicate derive or existing manual impl, `#[derive]` on functions/traits/impl methods.
+
+### `#[lang_item(name = "...", kind = "...")]`
+
+Marks a std definition as a **language item** the compiler recognizes (intrinsics, `Option`/`Result`, core traits). See [lang-items.md](lang-items.md).
+
+```phoenix
+#[lang_item(name = "alloc_bytes", kind = "intrinsic")]
+pub alloc_bytes :: (size: u32) => *mut u8 { ... };
+```
+
+**Rejected outside `std::`:** user crates cannot attach `#[lang_item]` (reserved for the standard library).
 
 ### `#[cfg(...)]`
 

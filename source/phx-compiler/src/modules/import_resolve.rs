@@ -7,6 +7,7 @@ use phx_syntax::Interner;
 use phx_syntax::Symbol;
 use phx_syntax::ast::decl::{ImportDirective, ImportItem};
 
+use crate::lang_items::{LangItemKind, LangItemMarker};
 use crate::project::BuildLayout;
 use crate::pxi::{PxiFile, PxiType};
 use crate::resolver::{Def, DefId, DefKind};
@@ -40,6 +41,8 @@ pub(crate) struct ImportResolveCtx<'a> {
     pub interner: &'a mut Interner,
     /// Structured types from dependency `.pxi` for imported defs.
     pub import_types: &'a mut HashMap<DefId, PxiType>,
+    /// Language item markers from dependency `.pxi` for imported defs.
+    pub import_lang_items: &'a mut HashMap<DefId, LangItemMarker>,
     /// Diagnostic bag.
     pub bag: &'a mut DiagnosticBag,
     /// Submodule graph for visibility checks.
@@ -106,6 +109,7 @@ pub(crate) fn resolve_import_directive(
             }
             let is_type = is_type_def(ctx.defs, def_id);
             attach_pxi_type(ctx, &key, dep_idx, def_id, sym);
+            attach_pxi_lang_item(ctx, &key, dep_idx, def_id, sym);
             bindings.push((sym, def_id, is_type, span));
         }
         return bindings;
@@ -144,6 +148,7 @@ pub(crate) fn resolve_import_directive(
             }
             let is_type = is_type_def(ctx.defs, def_id);
             attach_pxi_type(ctx, &key, dep_idx, def_id, sym);
+            attach_pxi_lang_item(ctx, &key, dep_idx, def_id, sym);
             bindings.push((sym, def_id, is_type, span));
         } else if find_private_in_module(ctx.defs, u32::try_from(dep_idx).unwrap_or(u32::MAX), sym)
             .is_some()
@@ -188,6 +193,54 @@ fn attach_pxi_type(
         return;
     };
     ctx.import_types.insert(def_id, ty);
+}
+
+fn attach_pxi_lang_item(
+    ctx: &mut ImportResolveCtx<'_>,
+    logical_path: &str,
+    dep_idx: usize,
+    def_id: DefId,
+    sym: Symbol,
+) {
+    let Some(marker) = pxi_lang_item_for_export(
+        ctx.layout,
+        logical_path,
+        &ctx.modules[dep_idx],
+        ctx.workspace_name,
+        ctx.dep_names,
+        ctx.interner,
+        sym,
+    ) else {
+        return;
+    };
+    ctx.import_lang_items.insert(def_id, marker);
+}
+
+fn pxi_lang_item_for_export(
+    layout: Option<&BuildLayout>,
+    logical_path: &str,
+    dep_module: &LoadedModule,
+    workspace_package: &str,
+    dep_names: &[&str],
+    interner: &Interner,
+    sym: Symbol,
+) -> Option<LangItemMarker> {
+    let layout = layout?;
+    let pxi_path = layout
+        .module_artifacts_resolved(logical_path, workspace_package, dep_names)
+        .pxi;
+    let pxi = PxiFile::read_from_path(&pxi_path).ok()?;
+    if !pxi.source_is_fresh(&dep_module.filesystem) {
+        return None;
+    }
+    let name = interner.resolve(sym).unwrap_or("<?>");
+    let exp = pxi.exports.iter().find(|e| e.name == name)?;
+    let li = exp.lang_item.as_ref()?;
+    let kind = LangItemKind::parse(&li.kind)?;
+    Some(LangItemMarker {
+        name: li.name.clone(),
+        kind,
+    })
 }
 
 fn pxi_type_for_export(

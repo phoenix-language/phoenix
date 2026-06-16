@@ -124,7 +124,7 @@ fn patch_specialized_drop_fns(typed: &mut TypedProgram) {
             let Some(template_drop) = super::builtins::resolve_drop_fn(
                 &typed.layout,
                 &typed.resolved,
-                &typed.std_trait_kernel,
+                &typed.lang_items,
                 def,
                 &args,
             ) else {
@@ -207,7 +207,7 @@ fn monomorphize_functions(
             &typed.resolved,
             &typed.layout,
             &mut typed.types,
-            &typed.std_trait_kernel,
+            &typed.lang_items,
             &typed.value_types,
             Some(&combined_generics),
             &param_defs,
@@ -293,9 +293,7 @@ fn monomorphize_functions(
         );
         checker.set_expr_id_base(expr_base);
         checker.seed_layout_tables(&typed.layout);
-        checker.seed_std_kernel(&typed.std_kernel);
-        checker.seed_std_trait_kernel(&typed.std_trait_kernel);
-        checker.seed_intrinsic_kernel(&typed.intrinsic_kernel);
+        checker.seed_lang_items(&typed.lang_items);
         checker.seed_value_types(&typed.value_types);
         checker.seed_fn_effective_unsafe(&typed.fn_effective_unsafe);
         checker.check_function_specialized(&f, spec_def, inst.base_fn, &inst.args);
@@ -400,7 +398,7 @@ fn monomorphize_types(typed: &mut TypedProgram, insts: &[TypeMonoInst], bag: &mu
             &typed.resolved,
             &typed.layout,
             &mut typed.types,
-            &typed.std_trait_kernel,
+            &typed.lang_items,
             &typed.value_types,
             generic_params.as_deref(),
             &param_defs,
@@ -575,7 +573,7 @@ pub(crate) fn fn_instantiation_bounds_hold(
     resolved: &ResolvedProgram,
     layout: &super::layout::ProgramLayout,
     types: &mut super::types::TypeInterner,
-    std_traits: &super::std_trait_kernel::StdTraitKernel,
+    std_traits: &crate::lang_items::LangItemRegistry,
     value_types: &std::collections::HashMap<DefId, TypeId>,
     base_fn: DefId,
     args: &[TypeId],

@@ -2,6 +2,7 @@
 #import std::core::fmt::Debug;
 
 #[derive(PartialEq, Debug)]
+#[lang_item(name = "Result", kind = "enum")]
 pub Result :: <ok, err> enum {
     Ok(ok),
     Err(err),

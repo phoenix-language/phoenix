@@ -2,9 +2,11 @@
 
 pub type Bytes = u8;
 
+#[lang_item(name = "alloc_bytes", kind = "intrinsic")]
 pub alloc_bytes :: (size: u32) => *mut u8 {
     const _ = size;
 };
 
+#[lang_item(name = "dealloc_bytes", kind = "intrinsic")]
 pub dealloc_bytes :: (ptr: *mut u8, size: u32) => () {
 };
