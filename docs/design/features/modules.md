@@ -12,7 +12,7 @@ Phoenix has no `mod { ... }` or `use` blocks. **Files are modules.** Folders are
 | **M1 (MVP modules)** | **Block-scoped `#import`** — same forms as file scope; names visible only inside the enclosing block (see [Scoped imports](#scoped-imports-mvp)) |
 | **M2** | `phoenix.toml` project root, `build/` artifacts, `.pxi` interfaces, incremental rebuild, PHX0 linker, path dependencies, `phx build` / `phx run` |
 
-**Deferred (post-M2):** relative `./` / `../` imports, `import { x as y }` aliases, [module namespace import values](#module-namespace-import-values-post-mvp), [qualified paths without `#import`](#qualified-paths-without-import), registry / URL dependencies.
+**Deferred (post-M2):** relative `./` / `../` imports, `import { x as y }` aliases, [module namespace import values](#module-namespace-import-values-post-mvp), [qualified paths without `#import`](#qualified-paths-without-import), registry / URL dependencies, [distribution / packaging evolution](#distribution-and-packaging-evolution).
 
 ---
 
@@ -410,6 +410,89 @@ Transitive importers are rebuilt in reverse dependency order.
 | `--emit-interface-only` | `build`, `check` | After successful type-check, write `build/pxi/*.pxi` and `manifest.json` only; skip per-module `.phx0` codegen and link. `phx run` rejects this flag. |
 
 When fresh `.pxi` files exist under `build/` or `build/deps/`, importers seed cross-module types from v2 structured `type` objects instead of re-parsing dependency bodies.
+
+---
+
+## Distribution and packaging evolution
+
+**Status:** notes for future design — not implemented.
+
+### Build workspace vs ship artifact
+
+M2 separates **compiler workspace** artifacts from **distribution** artifacts:
+
+| Role | Paths | Ship? |
+|------|-------|-------|
+| Incremental cache | `build/manifest.json`, per-module `build/phx0/`, `build/pxi/` | No — treat like `target/` (Rust) or `target/classes/` (Java) |
+| Dependency prebuild | `build/deps/{name}/…` | No — consumer linker input only |
+| Runnable application | `build/bin/{project.name}.phx0` | **Yes** — self-contained linked PHX0; `phx run` loads only this file |
+| Linkable library | `build/lib/{project.name}.phx0` | **Yes** — for downstream static link at **their** build time |
+
+The linker already merges workspace objects and path-dependency objects into one [`BytecodeModule`](vm-linear.md). Runtime does not load per-module `.phx0` or `.pxi` files. PHX0 `version_major` / `version_minor` in the file header are the primary format-compatibility gate.
+
+**Design choice (M2):** static link at build time (Rust/C++-style), not runtime module loading (JVM/Erlang-style). Tradeoffs:
+
+- **Pros:** whole-program verify-before-run; no missing-dependency failures at runtime; simpler VM loader.
+- **Cons:** no per-module hot reload without new loader work; library consumers re-link when deps change; distribution story is implicit (`copy build/bin/foo.phx0`) rather than productized.
+
+### Comparison with other VM bytecode models (informing packaging)
+
+| Ecosystem | Dev-time layout | Typical ship unit | Link / load |
+|-----------|-----------------|-------------------|-------------|
+| Java | many `.class` | `.jar` (zip) | runtime class loading |
+| .NET | assemblies (`.dll`) | NuGet or single-file publish | runtime assembly load; optional AOT bundle |
+| Erlang/BEAM | `.beam` per module | OTP release tarball | runtime module load |
+| Phoenix (M2) | `phx0/` + `pxi/` + manifest | linked `.phx0` in `bin/` or `lib/` | **static link** at consumer build |
+
+Phoenix can keep a multi-file **build** tree for separate compilation and incremental rebuilds while standardizing a single-file (or archive) **ship** format — same pattern as Java (many classes → one jar).
+
+### Evolution paths (for later thinking)
+
+Ordered roughly by cost vs impact. None of these replace the M2 separate-compile model unless explicitly chosen.
+
+#### 1. Document + CLI polish (low cost)
+
+- Treat `build/` as opaque cache; `.gitignore` everywhere; document that **`build/bin/*.phx0`** (apps) and **`build/lib/*.phx0`** (libs) are the public outputs.
+- Optional `phx build` mode or flag that copies the linked artifact to a `dist/` directory (e.g. `dist/myapp.phx0`) without `pxi/`, `phx0/`, or `manifest.json`.
+- Clear error when someone points `phx run` at a per-module object (no `main` entry) vs a linked binary.
+
+**Open questions:** default `dist/` layout; whether to embed `project.version` in the filename.
+
+#### 2. Phoenix archive format (medium cost)
+
+Introduce a packaged library/application format (working name: **`.phxar`**):
+
+- Single file on disk (zip or tar) containing one or more linked `.phx0` images plus metadata (`package` name, version, PHX0 format version, export summary).
+- Analogous to a Java `.jar` or a NuGet package — one download unit for a registry or path cache.
+- Compiler unpacks to a content-addressed or named cache under `build/deps/` for consumers; not required at runtime for fully linked apps.
+
+**Open questions:** archive layout spec; whether `.pxi` is embedded for separate compile of dependents or only the linked `lib/*.phx0`; signing / provenance.
+
+#### 3. Fat binary with embedded metadata (medium cost)
+
+Extend the linked PHX0 image (or a thin wrapper) with optional sections:
+
+- Package id, version, dependency versions, minimum VM capabilities.
+- Optional debug sidecar reference ([debug.md](debug.md) already sketches `.phx0.debug` sibling files).
+
+Single file to ship; no external `manifest.json` for end users. Build-time manifest remains for incremental compile.
+
+**Open questions:** new PHX0 section kinds vs wrapper format; ABI stability guarantees for `lib` images across compiler versions.
+
+#### 4. Runtime dynamic loading (high cost, post-MVP)
+
+VM loads multiple PHX0 modules at runtime (Erlang `.beam` / JVM classloader model):
+
+- Enables module-granular hot reload aligned with [vm-linear.md](vm-linear.md) post-MVP vision.
+- Requires runtime symbol resolution, cross-module `function_id` policy, load order, and strict ABI/version contracts.
+
+**Open questions:** static vs dynamic default; interaction with ownership and verifier (per-module verify vs whole-program); whether `.pxi` becomes a load-time manifest.
+
+### Decisions deferred
+
+- Registry / URL dependencies (`.pxi` `origin` field is reserved).
+- Whether library distribution is always **source + `.pxi`**, **linked `lib/*.phx0`**, or **`.phxar`** — or all three with different use cases.
+- Single-file publish for apps only vs unified format for apps and libs.
 
 ---
 

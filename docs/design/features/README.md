@@ -13,7 +13,7 @@ Deep dives for language features that go beyond surface syntax. Start with [gram
 | [messages.md](messages.md) | Post-MVP actor message ownership model |
 | [error-handling.md](error-handling.md) | `Result`, `?`, no exceptions |
 | [runtime-transparency.md](runtime-transparency.md) | Runtime transparency principle; pure vs schedulable I/O vs actors |
-| [modules.md](modules.md) | File-based modules, `pub`, `#import` |
+| [modules.md](modules.md) | File-based modules, `pub`, `#import`, build layout, [distribution evolution](modules.md#distribution-and-packaging-evolution) |
 | [compiler-directives.md](compiler-directives.md) | `#` compile-time vs `@` runtime directives |
 | [concurrency.md](concurrency.md) | Scheduler, schedulable I/O, explicit actors |
 | [../research/concurrency-models-research.md](../research/concurrency-models-research.md) | Cross-language concurrency research (informing post-MVP design) |
