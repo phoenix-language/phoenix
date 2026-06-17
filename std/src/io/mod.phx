@@ -1,0 +1,13 @@
+// std::io — pre-scheduler stdout bridge (see docs/design/features/io-bridge.md).
+
+#import std::ffi::c_ssize;
+
+extern "C" {
+    phoenix_write_stdout :: (s: str) => c_ssize;
+};
+
+pub write_stdout :: (s: str) => () {
+    unsafe {
+        const _written: c_ssize = phoenix_write_stdout(s);
+    };
+};

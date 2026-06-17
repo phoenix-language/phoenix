@@ -19,12 +19,14 @@
 //! Matches codegen: binary ops pop `b` then `a` and push `op(a, b)`; call pops arguments with the
 //! first parameter taken from the lower stack position.
 
+mod builtin_foreign;
 mod context;
 mod error;
 mod foreign;
 mod frame;
 mod interpreter;
 
+pub use builtin_foreign::{PHOENIX_WRITE_STDOUT, register_builtin_foreign_stubs};
 pub use context::{DEFAULT_HEAP_CAP_BYTES, ExecutionContext, Machine, VmRuntime};
 pub use error::{VmError, VmErrorKind};
 pub use foreign::{

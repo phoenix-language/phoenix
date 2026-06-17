@@ -1,0 +1,7 @@
+// Demo: hello_print — stdout via pre-scheduler I/O bridge.
+
+#import std::io::write_stdout;
+
+main :: () => {
+    write_stdout("hello phoenix\n");
+};

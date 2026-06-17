@@ -10,7 +10,10 @@ use phx_compiler::{
     load_project_binary,
 };
 use phx_diagnostics::DiagnosticStyle;
-use phx_vm::{DEFAULT_HEAP_CAP_BYTES, Value, run_captured_with_heap_cap, run_with_heap_cap};
+use phx_vm::{
+    DEFAULT_HEAP_CAP_BYTES, Value, register_builtin_foreign_stubs, run_captured_with_heap_cap,
+    run_with_heap_cap,
+};
 
 use crate::args::RunCommandArgs;
 use crate::color::ColorChoice;
@@ -185,6 +188,7 @@ fn execute_module(
         }
     };
     reporter.verbose(verbose, "running...");
+    register_builtin_foreign_stubs();
     if dump_main {
         match run_captured_with_heap_cap(verified, heap_cap) {
             Ok(capture) => {

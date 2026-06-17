@@ -113,7 +113,7 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
 
 - [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
 
-- [ ] **Std I/O and networking** — Blocked on scheduler. **Owner:** std + VM. **Gate:** Post-MVP.
+- [ ] **Std I/O and networking** — Blocked on scheduler. Pre-scheduler stdout bridge shipped via [`io-bridge.md`](design/features/io-bridge.md). **Owner:** std + VM. **Gate:** Post-MVP.
 
 - [ ] **JIT / hot reload** — Post-MVP per `mvp.md`. **Owner:** VM. **Gate:** Post-MVP.
 

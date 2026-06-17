@@ -327,6 +327,16 @@ fn build_std_generic_derive() {
 }
 
 #[test]
+fn build_hello_print() {
+    e2e(|cli| {
+        rm_project_build_unlocked("hello_print");
+        let project = cli_project("hello_print");
+        cli.build_ok(&project);
+        assert!(project.join("build/bin/hello_print.phx0").is_file());
+    });
+}
+
+#[test]
 fn build_string_smoke() {
     e2e(|cli| {
         rm_project_build_unlocked("string_smoke");
@@ -768,6 +778,16 @@ fn panic_ice_debug_prints_message_and_backtrace() {
 
 fn rm_example_build(project_root: &std::path::Path) {
     let _ = std::fs::remove_dir_all(project_root.join("build"));
+}
+
+#[test]
+fn examples_hello_print_run() {
+    e2e(|cli| {
+        let root = cli.example_project("hello_print");
+        rm_example_build(&root);
+        cli.build_ok(&root);
+        cli.run_no_build_ok(&root);
+    });
 }
 
 #[test]

@@ -2,11 +2,19 @@
 
 Small, contributor-facing examples for Language v0 (V0-052). Each `main.phx` begins with a one-line README comment.
 
-MVP has no standard I/O. Use `phx run --dump-main` to print `main` local slots to stderr after a successful run (documented VM debug channel).
+For programs without stdout I/O, use `phx run --dump-main` to print `main` local slots to stderr after a successful run (documented VM debug channel).
+
+## hello_print
+
+Writes `hello` to the terminal via the pre-scheduler I/O bridge (`std::io::write_stdout`).
+
+```bash
+just phx run --project-root examples/hello_print
+```
 
 ## hello
 
-`str` literal and byte indexing.
+`str` literal and byte indexing (no stdout).
 
 ```bash
 just phx run examples/hello/src/main.phx --dump-main

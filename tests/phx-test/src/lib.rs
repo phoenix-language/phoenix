@@ -16,8 +16,8 @@ pub mod project;
 pub mod semantics;
 
 pub use cli::{
-    NEG_CHECK_FIXTURES, PhxCli, PhxOutput, SMOKE_FIXTURES, project_bin_path, rm_project_build,
-    rm_project_build_unlocked, shared_cli,
+    NEG_CHECK_FIXTURES, PhxCli, PhxOutput, SMOKE_FIXTURES, phx_bin_path, project_bin_path,
+    rm_project_build, rm_project_build_unlocked, shared_cli,
 };
 pub use compile::{compile_ok, expect_compile_err, expect_resolve_err, expect_typeck_err};
 pub use fixtures::{

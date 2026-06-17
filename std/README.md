@@ -84,7 +84,15 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::core::iter` | `src/core/iter.phx` | `pub Iterator`, `IntoIter`, `Range`, `RangeIter` (V0-055) |
 
-Future subsystem modules (e.g. `std::io`) will ship **concrete** error types that implement `std::core::error::Error` — std does not define a central error enum.
+Future subsystem modules ship **concrete** error types that implement `std::core::error::Error` — std does not define a central error enum.
+
+## Module layout (`std::io`)
+
+| Logical module | File | Status |
+|----------------|------|--------|
+| `std::io` | `src/io/mod.phx` | `write_stdout` (pre-scheduler bridge; see [`io-bridge.md`](../docs/design/features/io-bridge.md)) |
+
+`phoenix_write_stdout` is the only `extern "C"` in std until stable foreign symbol ids ship. Do not add other extern imports to std while using the bridge.
 
 ## Module layout (`std::text`)
 
@@ -117,7 +125,7 @@ Single-file / in-process `compile_source(..., None)` does **not** inject prelude
 - Per-file `#no_prelude`, glob prelude, or entire std surface in prelude
 - Trait supertrait bounds (`Error: Debug + Display`) — deferred
 - Rich formatting (`write!` / `format!` macros, generic `format_display`, `Formatter` builder) — V0 ships `buf_to_string` + `display_buf_*` only
-- No std I/O — requires scheduler (post Language v0)
+- Full schedulable std I/O (files, networking) — requires scheduler; pre-scheduler `write_stdout` only ([`io-bridge.md`](../docs/design/features/io-bridge.md))
 
 ## Test fixtures vs real std
 

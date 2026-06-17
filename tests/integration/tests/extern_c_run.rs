@@ -7,7 +7,8 @@ use phx_test::{
     ExpectedLocal, assert_main_locals, fixture_fs_lock, load_built_binary, require_cli_project,
 };
 use phx_vm::{
-    ForeignStubFn, Machine, Value, VmErrorKind, clear_foreign_stubs, register_foreign_stub,
+    ForeignStubFn, Machine, Value, VmErrorKind, clear_foreign_stubs,
+    register_builtin_foreign_stubs, register_foreign_stub,
 };
 
 fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmErrorKind> {
@@ -29,6 +30,7 @@ fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmE
 fn extern_c_fixture_runs_with_registered_stub() {
     let _lock = fixture_fs_lock();
     clear_foreign_stubs();
+    register_builtin_foreign_stubs();
     let root = require_cli_project("extern_c");
     let _stub_id: u32 = register_foreign_stub("c_add", c_add_stub as ForeignStubFn);
     let config = ProjectConfig::load(&root).expect("load extern_c");
