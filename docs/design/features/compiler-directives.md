@@ -142,9 +142,19 @@ Cross-crate deprecation via `.pxi` export metadata is deferred.
 
 ### `#[allow(name)]`
 
-Suppresses listed warning kinds in the attributed item's body (and nested blocks). v1 recognized names: `deprecated`, `must_use`. Unknown `allow` names are compile errors.
+Suppresses listed warning kinds in the attributed item's body (and nested blocks). v1 recognized names: `deprecated`, `must_use`. Unknown `allow` names are compile errors. `#[allow(...)]` is evaluated before CLI/project deny policy — a suppressed warning is not denied.
 
-`#[deny(...)]` / `#[forbid(...)]` (warnings-as-errors) are deferred.
+### Lint deny policy (CLI / `phoenix.toml`)
+
+Warnings do not fail compiles by default. To treat lints as errors:
+
+- `phx check --deny` — deny all lint warnings
+- `phx check --deny=deprecated,must_use` — deny selected kinds
+- `phoenix.toml` `[lint] deny = true` or `deny = ["deprecated"]` — project default (`phx build`, project `phx check` / `phx run --build`)
+
+CLI `--deny` overrides `phoenix.toml`. Std `Result` / `Option` discard remains a type error (E2041/E2042), not a lint.
+
+`#[deny(...)]` / `#[forbid(...)]` item attributes remain deferred.
 
 ### `#[must_use]`
 
@@ -155,11 +165,11 @@ Warns when a function's non-unit return value or a constructed `#[must_use]` typ
 | Attribute | Status |
 |---|---|
 | `#[stable(...)]` / `#[since(...)]` | API versioning metadata — docs/manifest only; no stability gates in v1 |
-| `#[deny(...)]` / `#[forbid(...)]` | Warnings-as-errors policy |
+| `#[deny(...)]` / `#[forbid(...)]` | Item-level warnings-as-errors policy (use CLI/`phoenix.toml` today) |
 | Field-level `#[...]` | Not in v1 |
 | PXI export of attribute metadata | Cross-crate linting deferred |
 
-Warnings do not fail `phx check`, `phx compile`, `phx run`, or `phx build` in v1; they are printed and compilation continues. Lint warnings are emitted whenever the command type-checks source; incremental project builds and `phx run --no-build` may skip lints when artifacts are fresh.
+Warnings do not fail `phx check`, `phx compile`, `phx run`, or `phx build` in v1 unless `--deny` or `phoenix.toml` `[lint] deny` is set; otherwise they are printed and compilation continues. Lint warnings are emitted whenever the command type-checks source; incremental project builds and `phx run --no-build` may skip lints when artifacts are fresh.
 
 ---
 

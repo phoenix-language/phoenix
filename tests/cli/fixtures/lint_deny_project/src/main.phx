@@ -1,0 +1,12 @@
+#[deprecated(note = "use new_fn instead")]
+old_fn :: () => s32 {
+  0
+};
+
+new_fn :: () => s32 {
+  0
+};
+
+main :: () => {
+  const _ = old_fn();
+};

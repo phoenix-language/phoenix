@@ -3,6 +3,8 @@
 use std::env;
 use std::path::PathBuf;
 
+use phx_diagnostics::LintDenyConfig;
+
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
 
@@ -84,6 +86,8 @@ pub struct FileCommandArgs {
     pub package_name: Option<String>,
     /// Emit `.pxi` interfaces and manifest only (project check mode).
     pub emit_interface_only: bool,
+    /// When set, overrides project `[lint] deny` for this command.
+    pub lint_deny: Option<LintDenyConfig>,
 }
 
 /// `phx build` arguments.
@@ -97,6 +101,8 @@ pub struct ProjectCommandArgs {
     pub force_build: bool,
     /// Emit `.pxi` interfaces and manifest only.
     pub emit_interface_only: bool,
+    /// When set, overrides project `[lint] deny` for this command.
+    pub lint_deny: Option<LintDenyConfig>,
 }
 
 /// `phx compile` arguments.
@@ -279,6 +285,12 @@ fn parse_file_flags(
                 args.deps.push((name, path));
             }
             "--emit-interface-only" => args.emit_interface_only = true,
+            "--deny" => {
+                args.lint_deny = Some(parse_deny_flag(None)?);
+            }
+            s if let Some(rest) = s.strip_prefix("--deny=") => {
+                args.lint_deny = Some(parse_deny_flag(Some(rest))?);
+            }
             "-o" if allow_output => {
                 let path = iter
                     .next()
@@ -309,6 +321,12 @@ fn parse_project_flags(
             }
             "--build" => args.force_build = true,
             "--emit-interface-only" => args.emit_interface_only = true,
+            "--deny" => {
+                args.lint_deny = Some(parse_deny_flag(None)?);
+            }
+            s if let Some(rest) = s.strip_prefix("--deny=") => {
+                args.lint_deny = Some(parse_deny_flag(Some(rest))?);
+            }
             s if s.starts_with("--") => {
                 return Err(ParseError::new(format!("unexpected argument '{s}'")));
             }
@@ -360,6 +378,12 @@ fn parse_run_flags(iter: &mut impl Iterator<Item = String>) -> Result<RunCommand
             s if let Some(value) = s.strip_prefix("--heap-cap=") => {
                 args.heap_cap = Some(parse_heap_cap_arg(value)?);
             }
+            "--deny" => {
+                args.file_args.lint_deny = Some(parse_deny_flag(None)?);
+            }
+            s if let Some(rest) = s.strip_prefix("--deny=") => {
+                args.file_args.lint_deny = Some(parse_deny_flag(Some(rest))?);
+            }
             "--emit-interface-only" => {
                 return Err(ParseError::new(
                     "`phx run` does not support --emit-interface-only (no runnable artifact)",
@@ -391,6 +415,22 @@ fn parse_dep_spec(spec: &str) -> Result<(String, PathBuf), ParseError> {
 
 fn parse_heap_cap_arg(value: &str) -> Result<usize, ParseError> {
     phx_compiler::parse_byte_size(value).map_err(|e| ParseError::new(format!("--heap-cap: {e}")))
+}
+
+fn parse_deny_flag(value: Option<&str>) -> Result<LintDenyConfig, ParseError> {
+    LintDenyConfig::parse_cli(value).map_err(ParseError::new)
+}
+
+/// Merges CLI `--deny` with project `[lint] deny` (CLI wins when set).
+#[must_use]
+pub fn effective_lint_deny(
+    cli: Option<&LintDenyConfig>,
+    project: &LintDenyConfig,
+) -> LintDenyConfig {
+    match cli {
+        Some(cfg) => cfg.clone(),
+        None => project.clone(),
+    }
 }
 
 /// Parses process arguments (skips the program name).

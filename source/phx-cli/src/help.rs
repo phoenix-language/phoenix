@@ -41,7 +41,8 @@ pub fn print_command_help(sub: SubcommandName) {
                --module-src <dir>         Module root for #import resolution\n\
                --package-name <name>      Package name override (default: parent directory name)\n\
                --dep name=path            Path dependency for cross-package imports (repeatable)\n\
-               --emit-interface-only      Write build/pxi and manifest only (project mode)"
+               --emit-interface-only      Write build/pxi and manifest only (project mode)\n\
+               --deny[=deprecated,...]    Fail on lint warnings (overrides phoenix.toml [lint] deny)"
         ),
         SubcommandName::Build => eprintln!(
             "phx build — build a phoenix.toml project\n\
@@ -52,7 +53,8 @@ pub fn print_command_help(sub: SubcommandName) {
              options:\n\
                --project-root <dir>       Project root containing phoenix.toml\n\
                --build                    Force a full rebuild\n\
-               --emit-interface-only      Write build/pxi and manifest only; skip link"
+               --emit-interface-only      Write build/pxi and manifest only; skip link\n\
+               --deny[=deprecated,...]    Fail on lint warnings (overrides phoenix.toml [lint] deny)"
         ),
         SubcommandName::Compile => eprintln!(
             "phx compile — compile a file to PHX0 bytecode\n\
@@ -64,7 +66,8 @@ pub fn print_command_help(sub: SubcommandName) {
                -o <path>             Output .phx0 path (required)\n\
                --module-src <dir>    Module root for #import resolution\n\
                --package-name <name> Package name override\n\
-               --dep name=path       Path dependency (repeatable)"
+               --dep name=path       Path dependency (repeatable)\n\
+               --deny[=deprecated,...] Fail on lint warnings"
         ),
         SubcommandName::Run => eprintln!(
             "phx run — compile and execute on the VM\n\
@@ -81,6 +84,7 @@ pub fn print_command_help(sub: SubcommandName) {
                --build               Force rebuild (project mode)\n\
                --no-build            Skip build and load existing artifact (project mode)\n\
                --heap-cap <size>     VM heap byte cap (e.g. 64mb, 1gb); overrides phoenix.toml\n\
+               --deny[=deprecated,...] Fail on lint warnings (overrides phoenix.toml [lint] deny)\n\
                --dump-main           Print `main` local slots to stderr after run (MVP debug channel)\n\
              \n\
              In a project directory, `phx run` without a file runs the project entry.\n\

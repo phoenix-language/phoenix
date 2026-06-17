@@ -8,11 +8,13 @@ pub fn lookup(code: &str) -> Option<&'static str> {
     explain_code(code)
 }
 
-/// Normalizes user input (`e2001`, `E2001`) to canonical `E####` form when valid.
+/// Normalizes user input (`e2001`, `E2001`, `w3001`) to canonical `E####` / `W####` form when valid.
 #[must_use]
 pub fn normalize_code(input: &str) -> Option<String> {
     let upper = input.to_ascii_uppercase();
-    if upper.len() == 5 && upper.starts_with('E') && upper[1..].chars().all(|c| c.is_ascii_digit())
+    if upper.len() == 5
+        && matches!(upper.as_bytes()[0], b'E' | b'W')
+        && upper[1..].chars().all(|c| c.is_ascii_digit())
     {
         return Some(upper);
     }

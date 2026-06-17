@@ -174,13 +174,26 @@ just phx run path/to/main.phx --dump-main
 
 | Command | Purpose |
 |---------|---------|
-| `phx check <file>` | Type-check; emits lint warnings |
+| `phx check <file>` | Type-check; emits lint warnings (use `--deny` to fail on warnings) |
 | `phx compile <file> -o out.phx0` | Compile to bytecode; emits lint warnings |
 | `phx build` | Build a `phoenix.toml` project; emits lint warnings when type-check runs |
 | `phx run` | Compile and execute on the VM; emits lint warnings when type-check runs |
 | `phx explain E####` | Short explanation for a diagnostic code |
 
+`phx check`, `phx compile`, `phx build`, and `phx run --build` accept `--deny` (all warnings) or `--deny=deprecated,must_use` to fail when matching lints fire. Project `phoenix.toml` may set `[lint] deny = ["deprecated"]` or `deny = true`; CLI flags override the project file.
+
 Integration tests live in `tests/integration/tests/cli_e2e.rs` and `diagnostics.rs` (not shell scripts).
+
+### IR validation (debug)
+
+Between lowering and codegen, the compiler runs [`validate_ir`](../../source/phx-compiler/src/ir/validate.rs) when:
+
+- the build uses **debug assertions** (default `cargo build` / `just build`), or
+- the environment variable `PHX_VALIDATE_IR=1` is set (works in `--release` builds too).
+
+This catches CFG and stack-discipline bugs before bytecode verification. Release builds skip it unless `PHX_VALIDATE_IR=1`.
+
+### Lint warnings and `--deny`
 
 ## Test fixtures
 

@@ -109,7 +109,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Structural recursion in `InferenceCtx::unify` (bind `T` inside `Named`/tuple/ref args) | PHX-028 | Required for ergonomic std generics |
 | Single source of method resolution: typeck records callee `DefId` + mono args; lowering consumes it | PHX-038 | Delete `resolve_method_callee_for_ty` duplication |
 | Align `#derive` with docs (`Debug` documented or removed); track generic derive as a feature | PHX-029 | Doc/code sync; generic derive needed before std types can derive |
-| `[INFRA]` Update stale design docs: V0-063 trait defaults and V0-064 Result match are implemented | PHX-032 | Docs are the source of truth — keep them true |
+| `[INFRA]` Update stale design docs: V0-063 trait defaults and V0-064 Result match are implemented | PHX-032 | **Done** — completion roadmap + integration gates synced |
 | `[FEATURE]` Mono guardrail: recursion-depth limit with diagnostic for pathological generic nesting | — | **Shipped:** max depth 64, `E2046` at instantiation + mono pass |
 | `[INFRA]` CI exercise: monomorphization of `Option<T>`/`Result<T,E>`/`DynamicArray<T>` through trait calls | PHX-061 | — |
 
@@ -150,7 +150,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 |---|---|---|
 | `?`-with-`From` lowering: replace `debug_assert` + silent return with `LowerError` | PHX-042 | Release-mode safety for the desugar |
 | `[FEATURE]` Must-use enforcement for `Result`/`Option`: type-aware discard error | PHX-029-adjacent, requires PHX-028's typed-lint plumbing | Pass `TypedProgram` into lint (PHX-029); per `error-handling.md` |
-| Lint parity across compiling CLI commands | PHX-059 | **Done:** `check`, `compile`, `run`, and `build` emit lint warnings when type-check runs; incremental cache / `--no-build` may skip lints. `--deny`/lint-config deferred post-beta |
+| Lint parity across compiling CLI commands | PHX-059 | **Done:** `check`, `compile`, `run`, and `build` emit lint warnings when type-check runs; `--deny` / `phoenix.toml [lint] deny` fail on warnings; incremental cache / `--no-build` may skip lints |
 | `[INFRA]` Golden diagnostics for `?` mismatch, missing `From` impl, discarded `Result` | PHX-061 | — |
 
 ---
@@ -174,7 +174,7 @@ Milestone 8's exit criterion is the beta gate; Milestones 0–7 are sequenced so
 | Test-suite hygiene: stale keyword test, missing `mod`/`reexport`/`extern` parser tests, `extern` `pub`, golden-set expansion, dev-dep cycle decision | PHX-010, PHX-011, PHX-061, PHX-062 | PHX-061 golden set expanded (12 fixtures); PHX-062 fixture gates + cycle break done |
 | `verify` validates the in-memory module directly (no re-encode); fallible `Instruction::encode` | PHX-050 | done |
 | `load_project_binary` optional verify-on-load | PHX-055-adjacent | Defense in depth; documented decision |
-| Doc-truth pass: `ownership.md` (loop/partial-move rules from M0/M1), `wide-integers.md`/`type-system.md` (shift/NaN from M2), `vm-linear.md` (POP/`Trap` contract), V0 checklists | PHX-032 | Docs match code everywhere |
+| Doc-truth pass: `ownership.md` (loop/partial-move rules from M0/M1), `wide-integers.md`/`type-system.md` (shift/NaN from M2), `vm-linear.md` (POP/`Trap` contract), V0 checklists | PHX-032 | **Done** — docs match code |
 
 ---
 

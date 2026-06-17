@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use phx_diagnostics::LintDenyConfig;
+
 use crate::byte_size;
 
 /// Package kind from `[project] type`.
@@ -50,6 +52,8 @@ pub struct ProjectConfig {
     pub prelude: bool,
     /// `[vm] heap_cap` — VM linear heap byte cap for `phx run` (unset → 64 MiB default at run).
     pub vm_heap_cap_bytes: Option<usize>,
+    /// `[lint] deny` — lint warnings that fail `phx check` / `phx build` (CLI `--deny` overrides).
+    pub lint_deny: LintDenyConfig,
 }
 
 impl ProjectConfig {
@@ -229,6 +233,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
     let mut bundle_std = true;
     let mut prelude = true;
     let mut vm_heap_cap_bytes: Option<usize> = None;
+    let mut lint_deny = LintDenyConfig::warn_only();
 
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -269,6 +274,13 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
             "build" if key == "dir" => build_dir = PathBuf::from(value),
             "vm" if key == "heap_cap" => {
                 vm_heap_cap_bytes = Some(parse_heap_cap_value(value)?);
+            }
+            "lint" if key == "deny" => {
+                lint_deny = LintDenyConfig::parse_project(value).map_err(|message| {
+                    ProjectError::Invalid {
+                        message: format!("invalid lint.deny: {message}"),
+                    }
+                })?;
             }
             "dependencies" => {
                 if key == "path" {
@@ -319,6 +331,7 @@ fn parse_toml(text: &str, root: &Path) -> Result<ProjectConfig, ProjectError> {
         bundle_std,
         prelude,
         vm_heap_cap_bytes,
+        lint_deny,
     })
 }
 
@@ -549,6 +562,31 @@ heap_cap = "64mb"
         std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
         let cfg = ProjectConfig::load(&dir).unwrap();
         assert_eq!(cfg.vm_heap_cap_bytes, Some(64 * 1024 * 1024));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_lint_deny_list() {
+        let dir = temp_project("lint_deny");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("phoenix.toml"),
+            r#"
+[project]
+name = "demo"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[lint]
+deny = ["deprecated"]
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
+        let cfg = ProjectConfig::load(&dir).unwrap();
+        assert!(cfg.lint_deny.denies(phx_diagnostics::LintKind::Deprecated));
+        assert!(!cfg.lint_deny.denies(phx_diagnostics::LintKind::MustUse));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

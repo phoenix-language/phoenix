@@ -434,7 +434,10 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E4001" | "E4002" => {
             Some("The compiler hit an internal lowering invariant (please report).")
         }
-        "W3001" | "W3002" => Some("A lint warning (does not fail the build in v1)."),
+        "W3001" => Some("A `#[deprecated]` item was used; prefer the suggested replacement."),
+        "W3002" => Some(
+            "A `#[must_use]` return value was discarded without using it (std `Result`/`Option` use E2041/E2042).",
+        ),
         _ => None,
     }
 }

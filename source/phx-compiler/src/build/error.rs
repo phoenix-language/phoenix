@@ -20,7 +20,7 @@ pub enum BuildError {
     TypeCheck(TypeCheckBag),
     /// IR lowering failure.
     Lower(LowerBag),
-    /// IR validation failure (debug builds).
+    /// IR validation failure (debug builds or `PHX_VALIDATE_IR=1`).
     IrValidate(IrBag),
     /// `.pxi` failure.
     Pxi(PxiError),

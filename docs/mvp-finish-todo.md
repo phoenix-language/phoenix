@@ -121,7 +121,7 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
 
 - [ ] **Stable FFI symbol identity (Phase B)** — Replace registration-order foreign stubs. **Ref:** `ffi.md`, ROADMAP Deferred. **Owner:** VM + linker. **Gate:** Post-beta.
 
-- [ ] `**--deny` / lint configuration** — Fail compiles on warnings; deferred post-beta per ROADMAP M7 Decision #10. **Owner:** CLI. **Gate:** Post-beta.
+- [x] **`--deny` / lint configuration** — Fail compiles on warnings via CLI `--deny` and `phoenix.toml` `[lint] deny`. **Owner:** CLI. **Gate:** Post-beta.
 
 ---
 

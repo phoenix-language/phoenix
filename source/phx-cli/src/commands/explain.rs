@@ -13,7 +13,7 @@ pub fn run_explain(code: String, color: ColorChoice) -> CliExit {
 
     let Some(normalized) = normalize_code(&code) else {
         reporter.usage_error(&format!(
-            "invalid diagnostic code '{code}' (expected E####)"
+            "invalid diagnostic code '{code}' (expected E#### or W####)"
         ));
         return CliExit::Usage;
     };

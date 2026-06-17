@@ -37,6 +37,40 @@ fn check_deprecated_warn_emits_warning() {
 }
 
 #[test]
+fn check_deprecated_deny_fails() {
+    e2e(|cli| {
+        cli.run(&[
+            "check",
+            "--deny",
+            &path_to_arg(&cli_fixture("attr_deprecated_warn.phx")),
+        ])
+        .assert_failure()
+        .assert_contains(DEPRECATED_LINT_NEEDLE)
+        .assert_contains("denied");
+    });
+}
+
+#[test]
+fn check_deprecated_allow_passes_with_deny() {
+    e2e(|cli| {
+        cli.run(&[
+            "check",
+            "--deny",
+            &path_to_arg(&cli_fixture("attr_deprecated_allow.phx")),
+        ])
+        .assert_success();
+    });
+}
+
+#[test]
+fn check_project_lint_deny_from_phoenix_toml() {
+    e2e(|cli| {
+        cli.check_fails(&cli_project("lint_deny_project").join("src/main.phx"))
+            .assert_contains("denied");
+    });
+}
+
+#[test]
 fn compile_deprecated_warn_emits_warning() {
     e2e(|cli| {
         let path = cli_fixture("attr_deprecated_warn.phx");
@@ -743,6 +777,33 @@ fn explain_invalid_code() {
         cli.run(&["explain", "not-a-code"])
             .assert_failure()
             .assert_contains("invalid diagnostic code");
+    });
+}
+
+#[test]
+fn explain_e2033_copyable_drop_conflict() {
+    e2e(|cli| {
+        cli.run(&["explain", "E2033"])
+            .assert_success()
+            .assert_contains("Drop");
+    });
+}
+
+#[test]
+fn explain_e3002_unexpected_eof() {
+    e2e(|cli| {
+        cli.run(&["explain", "E3002"])
+            .assert_success()
+            .assert_contains("parser");
+    });
+}
+
+#[test]
+fn explain_w3001_deprecated() {
+    e2e(|cli| {
+        cli.run(&["explain", "W3001"])
+            .assert_success()
+            .assert_contains("deprecated");
     });
 }
 

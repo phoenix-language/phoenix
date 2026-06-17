@@ -88,6 +88,11 @@ impl<'a> Reporter<'a> {
         eprint_line(&self.style.plain_error(message));
     }
 
+    /// Reports a compile failure message without a full diagnostic bag.
+    pub fn compile_message(&self, message: &str) {
+        eprint_line(&self.style.plain_error(message));
+    }
+
     /// Reports a success status (build output path, etc.).
     pub fn success(&self, message: &str) {
         eprint_line(&self.style.success(message));

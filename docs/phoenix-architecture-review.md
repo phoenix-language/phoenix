@@ -438,11 +438,13 @@ The largest crate, and structurally sound: `compile.rs` orchestrates parse → `
 **Location:** `docs/design/language-v0-completion-roadmap.md` vs `typeck/trait_defaults.rs`, commit `ff51726`
 **Reviewer:** Pragmatic Critic
 
-**Status:** - [ ] Complete
+**Status:** - [x] Complete
 
 **Issue:** Design docs are stale against the code — the completion roadmap lists trait default bodies (V0-063) and multi-payload `Result` match (V0-064) as open partials, but both are implemented and tested.
 **Detail:** Per project rules the docs are the source of truth; when they trail the implementation, agents will re-implement or mis-scope work.
 **Recommendation:** Documentation pass updating V0-063/V0-064 status and the trait-defaults note in `traits.md`.
+
+**Resolution:** PHX-032 doc-truth pass synced [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md) (V0-062 acceptance boxes, `examples/errors` integration gate) with shipped fixtures and `mvp-finish-todo.md`.
 
 ### Backend (ir / lower / codegen / pxi / modules / build / link)
 

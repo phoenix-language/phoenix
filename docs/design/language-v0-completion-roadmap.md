@@ -78,7 +78,7 @@ When **all Phase 7 items** pass acceptance and `just pre-commit` is green:
 | Std traits can provide default method bodies; empty impls inherit behavior     | V0-063      | **Done** |
 | `match` on `Result<T, E>` is as reliable as `Option` match and `?` lowering    | V0-064      | **Done** |
 | `std_platform_smoke` exercises all three pillars together                      | V0-067      | **Done** |
-| `examples/errors` builds and runs via `just test-lang`                         | Integration | Open — see [mvp-finish-todo.md](../mvp-finish-todo.md) |
+| `examples/errors` builds and runs via `just test-lang`                         | Integration | **Done** |
 | Design docs updated where MVP slice / default-body wording was stale           | Docs        | **Done** (PHX-032) |
 
 
@@ -157,10 +157,10 @@ flowchart TD
 
 **Acceptance criteria:**
 
-- [ ] Program allocates a byte buffer via `alloc_bytes`, forms a `[u8]` slice over it, writes and reads via slice indexing — runs on VM without verifier failure.
-- [ ] Existing `slice_from_array.phx` fixture unchanged (stack/arena slices still work).
-- [ ] Negative fixture: invalid length or out-of-bounds slice access fails at compile time or runtime with a clean diagnostic (per design).
-- [ ] `just pre-commit` green.
+- [x] Program allocates a byte buffer via `alloc_bytes`, forms a `[u8]` slice over it, writes and reads via slice indexing — runs on VM without verifier failure (`tests/cli/fixtures/heap_slice/`, `heap_slice_store`).
+- [x] Existing `slice_from_array.phx` fixture unchanged (stack/arena slices still work).
+- [x] Negative fixture: invalid length or out-of-bounds slice access fails at compile time or runtime with a clean diagnostic (`heap_slice_oob`, `heap_slice_unsafe`).
+- [x] `just pre-commit` green.
 
 **Refs:** [type-system.md](features/type-system.md), [vm-linear.md](features/vm-linear.md), [ownership.md](features/ownership.md), V0-030
 
@@ -273,7 +273,7 @@ Status: **Done** (implemented)
   - `match` on `Result<T, E>` with user-defined error type
   - Trait with default body consumed via empty impl
   - Heap-allocated buffer viewed as `[u8]` slice (inside `unsafe` until owning types ship)
-- [ ] `examples/errors` builds and runs via `just test-lang`.
+- [x] `examples/errors` builds and runs via `just test-lang`.
 - [x] [mvp-implementation-checklist.md](../mvp-implementation-checklist.md) audit rows for heap slices, trait defaults, and Result match updated to **pass**.
 
 **Refs:** [language-v0.md](language-v0.md) V0-052

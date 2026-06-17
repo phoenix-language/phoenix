@@ -400,22 +400,15 @@ fn format_ir_bag(
     join_diagnostics(style, &parts)
 }
 
-#[cfg(any(debug_assertions, test))]
 pub(crate) fn debug_validate_ir(
     ir: &crate::ir::IrModule,
     typed: &crate::typeck::TypedProgram,
     context: DiagnosticContext,
 ) -> Result<(), CompileError> {
+    if !crate::ir::validation_enabled() {
+        return Ok(());
+    }
     crate::ir::validate_ir(ir, typed).map_err(|bag| CompileError::IrValidate { bag, context })
-}
-
-#[cfg(not(any(debug_assertions, test)))]
-fn debug_validate_ir(
-    _ir: &crate::ir::IrModule,
-    _typed: &crate::typeck::TypedProgram,
-    _context: DiagnosticContext,
-) -> Result<(), CompileError> {
-    Ok(())
 }
 
 fn resolve_error_source<'a>(

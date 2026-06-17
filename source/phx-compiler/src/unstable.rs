@@ -7,9 +7,8 @@
 pub use crate::codegen::{build_type_table, codegen, codegen_module};
 pub use crate::ir::{
     IrBasicBlock, IrBinOp, IrFunction, IrFunctionId, IrInst, IrModule, LocalSlot, SpannedInst,
+    validate_function, validate_ir, validation_enabled,
 };
-#[cfg(any(debug_assertions, test))]
-pub use crate::ir::{validate_function, validate_ir};
 pub use crate::lower::lower;
 pub use crate::resolver::{
     ClosureInfo, ClosureUpvar, Def, DefId, DefKind, ResolutionKey, ResolvedProgram, SourceModule,

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use phx_bytecode::{BytecodeModule, ENTRY_NONE};
 
-use crate::compile::{CompileError, DiagnosticContext, lint_checked};
+use crate::compile::{CompileError, DiagnosticContext, debug_validate_ir, lint_checked};
 use crate::link::link_modules;
 use crate::lower::lower;
 use crate::modules::{
@@ -195,8 +195,7 @@ fn build_package(
     }
 
     let full_ir = lower(&typed).map_err(BuildError::Lower)?;
-    #[cfg(any(debug_assertions, test))]
-    crate::ir::validate_ir(&full_ir, &typed).map_err(BuildError::IrValidate)?;
+    debug_validate_ir(&full_ir, &typed, lint_context.clone()).map_err(BuildError::from)?;
     let load_ctx = ProgramLoadContext::from_config(config);
     let global_fn = build_global_fn_map(config, &layout, &load_ctx, &loaded, &typed, &full_ir)?;
     let ctx = ArtifactEmitCtx {

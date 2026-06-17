@@ -5,7 +5,9 @@ use std::fs;
 use phx_bytecode::verify;
 use phx_compiler::{check_standalone_unit_with_context, compile_compilation_unit};
 
-use crate::args::CompileCommandArgs;
+use phx_diagnostics::LintDenyConfig;
+
+use crate::args::{CompileCommandArgs, effective_lint_deny};
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
 use crate::lints::lint_typed_or_exit;
@@ -70,9 +72,17 @@ pub fn run_compile(args: CompileCommandArgs, color: ColorChoice, verbose: bool) 
             return CliExit::Compile;
         }
     };
-    if let Err(exit) =
-        lint_typed_or_exit(&unit.typed, &style, &reporter, Some(&source), Some(&file))
-    {
+    if let Err(exit) = lint_typed_or_exit(
+        &unit.typed,
+        &effective_lint_deny(
+            args.file_args.lint_deny.as_ref(),
+            &LintDenyConfig::warn_only(),
+        ),
+        &style,
+        &reporter,
+        Some(&source),
+        Some(&file),
+    ) {
         return exit;
     }
     let module = match compile_compilation_unit(&unit) {

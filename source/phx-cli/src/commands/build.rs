@@ -4,10 +4,10 @@ use std::path::Path;
 
 use phx_compiler::{BuildOptions, build_project};
 
-use crate::args::ProjectCommandArgs;
+use crate::args::{ProjectCommandArgs, effective_lint_deny};
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
-use crate::lints::emit_lint_warnings;
+use crate::lints::{apply_lint_deny_policy, emit_lint_warnings};
 use crate::report::Reporter;
 use crate::workflow::resolve_build_project;
 
@@ -26,6 +26,7 @@ pub fn run_build(args: ProjectCommandArgs, color: ColorChoice, verbose: bool) ->
     };
 
     reporter.verbose(verbose, "building project...");
+    let deny = effective_lint_deny(args.lint_deny.as_ref(), &config.lint_deny);
     let options = BuildOptions {
         force: args.force_build,
         emit_interface_only: args.emit_interface_only,
@@ -34,6 +35,9 @@ pub fn run_build(args: ProjectCommandArgs, color: ColorChoice, verbose: bool) ->
         Ok(result) => {
             if let Some(ctx) = &result.lint_context {
                 emit_lint_warnings(&result.lints, ctx, &style);
+                if let Err(exit) = apply_lint_deny_policy(&result.lints, &deny, &reporter) {
+                    return exit;
+                }
             }
             if args.emit_interface_only {
                 reporter.success(&format!(

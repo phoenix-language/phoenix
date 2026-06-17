@@ -9,9 +9,21 @@ use crate::typeck::TypedProgram;
 /// Placeholder base for loop exit targets before [`crate::lower::LowerCtx::patch_loop_exit_targets`].
 const LOOP_EXIT_TARGET_BASE: u32 = 0xF000_0000;
 
+/// Returns whether IR validation should run before codegen.
+///
+/// Enabled in debug/test builds, or when `PHX_VALIDATE_IR=1` is set (including release builds).
+#[must_use]
+pub fn validation_enabled() -> bool {
+    cfg!(any(debug_assertions, test))
+        || std::env::var("PHX_VALIDATE_IR")
+            .ok()
+            .is_some_and(|v| v == "1")
+}
+
 /// Validates every function in `ir`.
 ///
 /// Runs structural CFG checks and stack-depth simulation at merge blocks.
+/// Call sites gate invocation with [`validation_enabled`].
 ///
 /// # Errors
 ///
@@ -253,6 +265,11 @@ mod tests {
             Err(IrError::UnpatchedLoopExit { .. }) => {}
             other => panic!("expected UnpatchedLoopExit, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn validation_enabled_true_in_debug_builds() {
+        assert!(validation_enabled());
     }
 
     #[test]

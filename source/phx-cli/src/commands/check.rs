@@ -10,7 +10,9 @@ use phx_compiler::{
 };
 use phx_diagnostics::DiagnosticBag;
 
-use crate::args::FileCommandArgs;
+use phx_diagnostics::LintDenyConfig;
+
+use crate::args::{FileCommandArgs, effective_lint_deny};
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
 use crate::lints::lint_typed_or_exit;
@@ -110,14 +112,14 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
     };
 
     if file_args.emit_interface_only {
-        let CompileMode::Project { config } = mode else {
+        let CompileMode::Project { ref config } = mode else {
             reporter.usage_error(
                 "`--emit-interface-only` requires a phoenix.toml project (file under module_src)",
             );
             return CliExit::Usage;
         };
-        let ctx = ProgramLoadContext::from_config(&config);
-        let layout = BuildLayout::new(&config);
+        let ctx = ProgramLoadContext::from_config(config);
+        let layout = BuildLayout::new(config);
         let mut reload_bag = DiagnosticBag::new();
         let Some(loaded) = load_program_with_context(&file, &ctx, Some(&layout), &mut reload_bag)
         else {
@@ -133,7 +135,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
             force: false,
             emit_interface_only: true,
         };
-        match emit_interfaces_from_compiled(&config, &loaded, &typed, options, None) {
+        match emit_interfaces_from_compiled(config, &loaded, &typed, options, None) {
             Ok(result) => {
                 reporter.success(&format!(
                     "wrote interfaces to {}",
@@ -147,12 +149,30 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
         }
     }
 
-    if let Err(exit) = lint_typed_or_exit(&typed, &style, &reporter, Some(&source), Some(&file)) {
+    if let Err(exit) = lint_typed_or_exit(
+        &typed,
+        &lint_deny_for_mode(&mode, &file_args),
+        &style,
+        &reporter,
+        Some(&source),
+        Some(&file),
+    ) {
         return exit;
     }
 
     reporter.check_finished(module_count, started.elapsed());
     CliExit::Ok
+}
+
+fn lint_deny_for_mode(mode: &CompileMode, file_args: &FileCommandArgs) -> LintDenyConfig {
+    match mode {
+        CompileMode::Project { config } => {
+            effective_lint_deny(file_args.lint_deny.as_ref(), &config.lint_deny)
+        }
+        CompileMode::Standalone { .. } => {
+            effective_lint_deny(file_args.lint_deny.as_ref(), &LintDenyConfig::warn_only())
+        }
+    }
 }
 
 fn report_loaded_modules(reporter: &Reporter<'_>, modules: &[phx_compiler::LoadedModule]) {

@@ -1,6 +1,7 @@
 //! Project vs standalone workflow resolution.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use phx_compiler::{
     ProjectConfig, ProjectError, StandaloneOptions, discover_project, resolve_project,
@@ -14,7 +15,7 @@ pub enum CompileMode {
     /// Full project workflow (`phoenix.toml` discovered).
     Project {
         /// Loaded project configuration.
-        config: ProjectConfig,
+        config: Arc<ProjectConfig>,
     },
     /// Single entry file without a project manifest.
     Standalone {
@@ -53,7 +54,9 @@ pub fn resolve_check_mode(
 ) -> Result<CompileMode, WorkflowError> {
     if let Ok(config) = try_discover_project(file, project_root) {
         validate_file_in_project(file, &config)?;
-        return Ok(CompileMode::Project { config });
+        return Ok(CompileMode::Project {
+            config: Arc::new(config),
+        });
     }
     let options = standalone_options(file, file_args)?;
     Ok(CompileMode::Standalone { options })
@@ -83,7 +86,9 @@ pub fn resolve_run_mode(
                 )));
             }
         }
-        return Ok(CompileMode::Project { config });
+        return Ok(CompileMode::Project {
+            config: Arc::new(config),
+        });
     }
     let entry = file.ok_or_else(|| {
         WorkflowError::Message(

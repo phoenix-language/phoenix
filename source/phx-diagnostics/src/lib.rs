@@ -31,6 +31,9 @@ mod span;
 mod symbol_names;
 mod type_error;
 mod type_error_registry;
+
+#[cfg(test)]
+mod explain_coverage;
 mod type_notes;
 
 pub use code::DiagnosticCode;
@@ -44,7 +47,9 @@ pub use format::{
 };
 pub use ir_error::{IrBag, IrError, IrResult};
 pub use lex_error::LexError;
-pub use lint::{Lint, LintBag, LintKind, LocatedLint};
+pub use lint::{
+    Lint, LintBag, LintDenyConfig, LintKind, LocatedLint, count_denied_lints, parse_lint_name,
+};
 pub use located::LocatedError;
 pub use lower_error::{LowerBag, LowerError, LowerResult};
 pub use parse_error::{ExpectedToken, ParseBag, ParseError, ParseResult};

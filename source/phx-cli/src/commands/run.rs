@@ -15,10 +15,12 @@ use phx_vm::{
     run_with_heap_cap,
 };
 
-use crate::args::RunCommandArgs;
+use phx_diagnostics::LintDenyConfig;
+
+use crate::args::{RunCommandArgs, effective_lint_deny};
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
-use crate::lints::{emit_lint_warnings, lint_typed_or_exit};
+use crate::lints::{apply_lint_deny_policy, emit_lint_warnings, lint_typed_or_exit};
 use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_run_mode};
 
@@ -45,25 +47,36 @@ pub fn run_run(
     };
 
     match mode {
-        CompileMode::Project { config } => run_project(
-            &reporter,
-            &style,
-            &config,
-            args.file_args.file.as_deref(),
-            args.force_build,
-            args.skip_build,
-            verbose,
-            dump_main,
-            resolve_heap_cap(args.heap_cap, Some(&config)),
-        ),
-        CompileMode::Standalone { options } => run_standalone(
-            &reporter,
-            &style,
-            &options,
-            verbose,
-            dump_main,
-            resolve_heap_cap(args.heap_cap, None),
-        ),
+        CompileMode::Project { config } => {
+            let deny = effective_lint_deny(args.file_args.lint_deny.as_ref(), &config.lint_deny);
+            run_project(
+                &reporter,
+                &style,
+                &config,
+                args.file_args.file.as_deref(),
+                args.force_build,
+                args.skip_build,
+                verbose,
+                dump_main,
+                resolve_heap_cap(args.heap_cap, Some(&config)),
+                deny,
+            )
+        }
+        CompileMode::Standalone { options } => {
+            let deny = effective_lint_deny(
+                args.file_args.lint_deny.as_ref(),
+                &LintDenyConfig::warn_only(),
+            );
+            run_standalone(
+                &reporter,
+                &style,
+                &options,
+                verbose,
+                dump_main,
+                resolve_heap_cap(args.heap_cap, None),
+                deny,
+            )
+        }
     }
 }
 
@@ -90,6 +103,7 @@ fn run_project(
     verbose: bool,
     dump_main: bool,
     heap_cap: usize,
+    deny: LintDenyConfig,
 ) -> CliExit {
     if !skip_build {
         reporter.verbose(verbose, "building project...");
@@ -101,6 +115,9 @@ fn run_project(
             Ok(result) => {
                 if let Some(ctx) = &result.lint_context {
                     emit_lint_warnings(&result.lints, ctx, style);
+                    if let Err(exit) = apply_lint_deny_policy(&result.lints, &deny, reporter) {
+                        return exit;
+                    }
                 }
             }
             Err(e) => {
@@ -127,6 +144,7 @@ fn run_standalone(
     verbose: bool,
     dump_main: bool,
     heap_cap: usize,
+    deny: LintDenyConfig,
 ) -> CliExit {
     let source = match fs::read_to_string(&options.entry) {
         Ok(s) => s,
@@ -155,6 +173,7 @@ fn run_standalone(
     };
     if let Err(exit) = lint_typed_or_exit(
         &unit.typed,
+        &deny,
         style,
         reporter,
         Some(&source),

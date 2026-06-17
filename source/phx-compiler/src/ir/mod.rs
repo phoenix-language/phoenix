@@ -20,7 +20,8 @@
 //! each branch must leave the same stack depth (typically one unified result value; `match`
 //! stores the scrutinee in a temp local first). Short-circuit `&&` / `||` use dedicated CFG
 //! (`lower_short_circuit_bool` in `lower/expr.rs`). [`validate_ir`](validate::validate_ir)
-//! (debug builds and tests) simulates stack depth and rejects join mismatches before codegen;
+//! runs when [`validation_enabled`](validate::validation_enabled) is true (debug/test builds,
+//! or `PHX_VALIDATE_IR=1`); it simulates stack depth and rejects join mismatches before codegen;
 //! [`phx_bytecode::verify`](../../../phx-bytecode/src/verify.rs) enforces stack effects on emitted
 //! bytecode.
 //!
@@ -48,8 +49,7 @@ pub use const_lit::IrConst;
 pub use func::IrFunction;
 pub use inst::{IrBinOp, IrFunctionId, IrInst, LocalSlot};
 pub use spanned::SpannedInst;
-#[cfg(any(debug_assertions, test))]
-pub use validate::{validate_function, validate_ir};
+pub use validate::{validate_function, validate_ir, validation_enabled};
 
 use crate::resolver::DefId;
 
