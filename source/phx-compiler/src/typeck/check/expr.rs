@@ -2480,6 +2480,7 @@ impl TypeChecker<'_> {
 
     pub(in crate::typeck::check) fn check_index(&mut self, base: TypeId, span: Span) -> TypeId {
         match self.types.get(base) {
+            Ty::Ref { inner, .. } => self.check_index(*inner, span),
             Ty::Array { elem, .. } | Ty::Slice(elem) => *elem,
             Ty::Tuple(elems) if !elems.is_empty() => elems[0],
             _ => {

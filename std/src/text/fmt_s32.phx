@@ -1,0 +1,19 @@
+// std::text::fmt_s32 — copy zero-terminated `[u8; 32]` display buffers into owned `String`.
+// V0 convention: `Display::fmt` / `display_buf_*` write ASCII/UTF-8 then `0u8`; readers stop at the first zero.
+
+#import std::text::string::String;
+
+pub buf_to_string :: (bytes: [u8; 32]) => String {
+    var out: String = String::empty();
+    var i: u32 = 0u;
+    while i < 32u {
+        const b: u8 = bytes[i];
+        if b == (0u as u8) {
+            i = 32u;
+        } else {
+            out.push(b);
+            i = i + 1u;
+        };
+    };
+    out
+};

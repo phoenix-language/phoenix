@@ -4,6 +4,7 @@
 #import std::core::clone::Clone;
 #import std::core::cmp::PartialEq;
 #import std::core::drop::Drop;
+#import std::core::fmt::{Display, empty_display_buf};
 #import std::core::memory::allocator::{Allocator, Global, Layout};
 #import std::core::slice::slice_from_raw_parts;
 
@@ -37,6 +38,17 @@ String :: impl {
             i = i + 1u;
         };
         out;
+    };
+
+    push_str :: (self: &mut Self, s: str) => () {
+        #import std::core::slice::len;
+        const sl: [u8] = s as [u8];
+        const n: u32 = len(sl);
+        var i: u32 = 0u;
+        while i < n {
+            self.push(sl[i]);
+            i = i + 1u;
+        };
     };
 
     len :: (self: &Self) => u32 {
@@ -129,5 +141,24 @@ String :: impl :: Drop {
                 mut_alloc.dealloc(self.ptr, layout);
             };
         };
+    };
+};
+
+String :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        var out: [u8; 32] = empty_display_buf();
+        var copy_len: u32 = self.len();
+        if copy_len > 31u {
+            copy_len = 31u;
+        };
+        var j: u32 = 0u;
+        while j < copy_len {
+            out[j] = self.get(j);
+            j = j + 1u;
+        };
+        if copy_len < 32u {
+            out[copy_len] = (0u as u8);
+        };
+        out
     };
 };

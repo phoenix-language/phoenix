@@ -89,7 +89,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 - [x] **Owned `String` over `DynamicArray<u8>`** — Std v0 module per completion roadmap order #4; no primitive owned string in core. **Ref:** `type-system.md`, `mvp.md`. **Owner:** std. **Gate:** Std v0.
 
-- [ ] `**text::fmt` minimal formatting** — Depends on `String` + `Display`; post-collections. **Owner:** std. **Gate:** Std v0.
+- [x] **`text::fmt` minimal formatting** — Depends on `String` + `Display`; post-collections. **Owner:** std. **Gate:** Std v0.
 
 ### VM / runtime hardening for std workloads
 

@@ -349,7 +349,7 @@ Core text in Language v0 is a **compiler-known** UTF-8 view — `Ty::Str` in the
 | Layer | What belongs there |
 |---|---|
 | **Language** | `str` type, `"…"` literals, Tier A casts (`str as [u8]`, `[u8; N] as str` when UTF-8 is provable at compile time); **Copyable** fat-pointer semantics |
-| **Std** | Owned growable text (`std::text::string::String` over `DynamicArray<u8>` field layout, explicit `from_str`), formatting — `text::fmt` post–String |
+| **Std** | Owned growable text (`std::text::string::String`), formatting (`std::text::fmt_s32`: `buf_to_string`); V0 `Display::fmt` returns zero-terminated `[u8; 32]` (payload + `0u8`, rest zero) — `String :: impl :: Display`; s32/bool via `display_buf_s32` / `display_buf_bool` in `std::core::fmt` until primitive `:: impl` is supported |
 | **Compiler (v0)** | `Ty::Str` special-case; lowers via `MakeStr` + constant-pool rodata; heap-backed views via V0-062 slices |
 
 **Representation (normative through Language v0):**

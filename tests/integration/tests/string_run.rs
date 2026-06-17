@@ -34,3 +34,23 @@ fn string_partialeq_fixture_runs() {
 
     run(verified).expect("run string_partialeq");
 }
+
+#[test]
+fn string_fmt_fixture_runs() {
+    let _lock = fixture_fs_lock();
+    require_cli_project("string_fmt");
+    let built = force_build_project("string_fmt");
+    let verified = phx_bytecode::verify(&built.module).expect("verify string_fmt");
+
+    run(verified).expect("run string_fmt");
+}
+
+#[test]
+fn string_fmt_bool_fixture_runs() {
+    let _lock = fixture_fs_lock();
+    require_cli_project("string_fmt_bool");
+    let built = force_build_project("string_fmt_bool");
+    let verified = phx_bytecode::verify(&built.module).expect("verify string_fmt_bool");
+
+    run(verified).expect("run string_fmt_bool");
+}

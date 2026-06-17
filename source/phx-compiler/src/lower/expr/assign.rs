@@ -31,9 +31,10 @@ fn type_id_for_index_base(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<TypeId>
     }
 }
 
-fn slice_element_ty(ctx: &LowerCtx<'_>, slice_ty: TypeId) -> Option<TypeId> {
-    match ctx.typed.types.get(slice_ty) {
-        Ty::Slice(elem) => Some(*elem),
+fn indexable_element_ty(ctx: &LowerCtx<'_>, base_ty: TypeId) -> Option<TypeId> {
+    match ctx.typed.types.get(base_ty) {
+        Ty::Ref { inner, .. } => indexable_element_ty(ctx, *inner),
+        Ty::Slice(elem) | Ty::Array { elem, .. } => Some(*elem),
         _ => None,
     }
 }
@@ -45,7 +46,7 @@ fn prim_kind_for_index_store(
 ) -> Option<PrimitiveKind> {
     primitive_kind_for_type(&ctx.typed.types, value_ty).or_else(|| {
         slice_ty_for_index_assign_target(ctx, target)
-            .and_then(|slice_ty| slice_element_ty(ctx, slice_ty))
+            .and_then(|base_ty| indexable_element_ty(ctx, base_ty))
             .and_then(|elem| primitive_kind_for_type(&ctx.typed.types, elem))
     })
 }
@@ -76,7 +77,7 @@ pub(crate) fn lower_assign_expr(
 ) {
     lower_assign_target(ctx, &target.inner);
     let value_ty = if let Some(elem_ty) = slice_ty_for_index_assign_target(ctx, &target.inner)
-        .and_then(|slice_ty| slice_element_ty(ctx, slice_ty))
+        .and_then(|base_ty| indexable_element_ty(ctx, base_ty))
     {
         lower_expr_with_type(ctx, value, elem_ty);
         elem_ty

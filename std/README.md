@@ -80,13 +80,21 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::copyable` | `src/core/copyable.phx` | `pub Copyable :: trait` (empty marker) |
 | `std::core::clone` | `src/core/clone.phx` | `pub Clone :: trait` |
 | `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
-| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait` (fixed `[u8; 32]` buffer) |
+| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait`; `display_buf_s32` / `display_buf_bool` helpers (zero-terminated `[u8; 32]`) |
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::core::iter` | `src/core/iter.phx` | `pub Iterator`, `IntoIter`, `Range`, `RangeIter` (V0-055) |
 
 Future subsystem modules (e.g. `std::io`) will ship **concrete** error types that implement `std::core::error::Error` — std does not define a central error enum.
 
-Future top-level siblings (post-core): `std::collections::*` (including **`DynamicArray<T>`**), `std::text::*`.
+## Module layout (`std::text`)
+
+| Logical module | File | Status |
+|----------------|------|--------|
+| `std::text` | `src/text/mod.phx` | `pub mod string`, `fmt_s32` |
+| `std::text::string` | `src/text/string.phx` | `pub String` (growable UTF-8; `Clone`, `PartialEq`, `Display`) |
+| `std::text::fmt_s32` | `src/text/fmt_s32.phx` | `buf_to_string` (zero-terminated `[u8; 32]` → `String`) |
+
+Future top-level siblings (post-core): `std::collections::*` (including **`DynamicArray<T>`**).
 
 ## Prelude (V0-044)
 
@@ -108,7 +116,7 @@ Single-file / in-process `compile_source(..., None)` does **not** inject prelude
 
 - Per-file `#no_prelude`, glob prelude, or entire std surface in prelude
 - Trait supertrait bounds (`Error: Debug + Display`) — deferred
-- Rich formatting (`Debug` / `Display` trait defs only; error-type trait impls deferred until `[u8; N]` return lowering is stable)
+- Rich formatting (`write!` / `format!` macros, generic `format_display`, `Formatter` builder) — V0 ships `buf_to_string` + `display_buf_*` only
 - No std I/O — requires scheduler (post Language v0)
 
 ## Test fixtures vs real std

@@ -1,3 +1,5 @@
+// std::core::fmt — Debug/Display traits and primitive formatting helpers.
+
 #[lang_item(name = "Debug", kind = "trait")]
 pub Debug :: trait {
     fmt :: (self: &Self) => [u8; 32];
@@ -5,4 +7,79 @@ pub Debug :: trait {
 
 pub Display :: trait {
     fmt :: (self: &Self) => [u8; 32];
+};
+
+pub empty_display_buf :: () => [u8; 32] {
+    [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8]
+};
+
+copy_ascii_into :: (out: [u8; 32], text: str) => [u8; 32] {
+    var buf: [u8; 32] = out;
+    const sl: [u8] = text as [u8];
+    #import std::core::slice::len;
+    const n: u32 = len(sl);
+    var i: u32 = 0u;
+    var copy_len: u32 = n;
+    if copy_len > 31u {
+        copy_len = 31u;
+    };
+    while i < copy_len {
+        buf[i] = sl[i];
+        i = i + 1u;
+    };
+    if copy_len < 32u {
+        buf[copy_len] = (0u as u8);
+    };
+    buf
+};
+
+pub display_buf_s32 :: (value: s32) => [u8; 32] {
+    if value == 0 {
+        var zero: [u8; 32] = empty_display_buf();
+        zero[0] = (48u as u8);
+        zero[1] = (0u as u8);
+        zero
+    } else if value == -2147483648 {
+        copy_ascii_into(empty_display_buf(), "-2147483648")
+    } else {
+        var out: [u8; 32] = empty_display_buf();
+        var negative: bool = false;
+        var n: u32 = 0u;
+        if value < 0 {
+            negative = true;
+            n = ((0 - value) as u32);
+        } else {
+            n = (value as u32);
+        };
+        var digits: [u8; 11] = [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8];
+        var dcount: u32 = 0u;
+        while n > 0u {
+            const rem: u32 = n % 10u;
+            digits[dcount] = ((48u + rem) as u8);
+            dcount = dcount + 1u;
+            n = n / 10u;
+        };
+        var pos: u32 = 0u;
+        if negative {
+            out[0] = (45u as u8);
+            pos = 1u;
+        };
+        var j: u32 = 0u;
+        while j < dcount {
+            const src: u32 = (dcount - 1u - j);
+            out[pos] = digits[src];
+            pos = pos + 1u;
+            j = j + 1u;
+        };
+        out[pos] = (0u as u8);
+        out
+    };
+};
+
+pub display_buf_bool :: (value: bool) => [u8; 32] {
+    if value {
+        copy_ascii_into(empty_display_buf(), "true")
+    } else {
+        copy_ascii_into(empty_display_buf(), "false")
+    };
 };

@@ -1,0 +1,10 @@
+[project]
+name = "string_fmt_bool"
+version = "0.1.0"
+description = "Std text::fmt bool display smoke test"
+type = "bin"
+module_src = "src"
+prelude = false
+
+[build]
+dir = "build"
