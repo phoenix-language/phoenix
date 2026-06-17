@@ -6,6 +6,8 @@ Status: Research (informing post-MVP runtime design)
 
 This document is research, not a design lock. Phoenix's current direction lives in [concurrency.md](../features/concurrency.md), [runtime-transparency.md](../features/runtime-transparency.md), and [messages.md](../features/messages.md). Use this file to stress-test those decisions and surface alternatives.
 
+**Implementation options (Tokio vs std vs custom scheduler):** [vm-concurrency-runtime-options.md](vm-concurrency-runtime-options.md)
+
 ---
 
 ## Table of contents

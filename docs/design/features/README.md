@@ -17,5 +17,6 @@ Deep dives for language features that go beyond surface syntax. Start with [gram
 | [compiler-directives.md](compiler-directives.md) | `#` compile-time vs `@` runtime directives |
 | [concurrency.md](concurrency.md) | Scheduler, schedulable I/O, explicit actors |
 | [../research/concurrency-models-research.md](../research/concurrency-models-research.md) | Cross-language concurrency research (informing post-MVP design) |
+| [../research/vm-concurrency-runtime-options.md](../research/vm-concurrency-runtime-options.md) | VM scheduler options: Tokio vs std vs custom M:N (Runtime v1) |
 | [vm-linear.md](vm-linear.md) | MVP bytecode format and VM contract |
 | [wide-integers.md](wide-integers.md) | Why 256/512-bit types are deferred |

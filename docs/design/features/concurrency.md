@@ -193,3 +193,5 @@ These are not required for schedulable I/O or ordinary function calls.
 | Directive split | [compiler-directives.md](compiler-directives.md) |
 | Runtime vs language primitives | [type-system.md](type-system.md) |
 | MVP scope (no std I/O) | [../mvp.md](../mvp.md) |
+| VM scheduler implementation options | [../research/vm-concurrency-runtime-options.md](../research/vm-concurrency-runtime-options.md) |
+| Cross-language concurrency research | [../research/concurrency-models-research.md](../research/concurrency-models-research.md) |
