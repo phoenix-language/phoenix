@@ -1,8 +1,7 @@
 ---
 description: Phoenix language semantics, MVP scope, and design doc authority
-alwaysApply: true
+alwaysApply: false
 ---
-
 # Phoenix language design
 
 You are implementing **Phoenix**, a systems language with a static frontend and a bytecode VM. Language behavior comes from `docs/design/` — **never invent semantics** in code or conversation. If behavior is ambiguous, update the design doc first; prefer narrowing MVP over shipping undocumented semantics.

@@ -1,8 +1,7 @@
 ---
 description: Workspace crate map, where code lives, commands, and completion gates
-alwaysApply: true
+alwaysApply: false
 ---
-
 # Project layout and workflow
 
 Cargo workspace; crates live under `source/`. One pipeline stage per crate — never reach across stages (no typeck logic in codegen, no lexing in the parser, etc.).

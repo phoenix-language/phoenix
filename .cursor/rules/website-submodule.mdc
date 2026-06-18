@@ -1,8 +1,7 @@
 ---
 description: Git submodule workflow for website/ — separate repo, two-step commits, clone init
-alwaysApply: true
+alwaysApply: false
 ---
-
 # Website submodule (`website/`)
 
 The marketing site at `website/` is a **git submodule** pointing at https://github.com/phoenix-language/website. It has its own Git history, PRs, issues, and deployment — not part of the compiler workspace crates.
