@@ -1,9 +1,0 @@
-[project]
-name = "trait_into_from_default"
-version = "0.1.0"
-description = "V0-063 Into default body delegates to From"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

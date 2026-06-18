@@ -1,6 +1,0 @@
-main :: () => {
-    var cell: u8 = 77 as u8;
-    const addr: &u8 = &cell;
-    const v: u8 = *addr;
-    const _ = v;
-};

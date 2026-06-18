@@ -1,6 +1,0 @@
-error[E2041]: discarded `Result` value must be handled
-  --> tests/cli/fixtures/lint_std_result_discard/src/main.phx:8:5
-  |
-8 |     fail();
-  |     ^^^^^^
-   = help: handle the value with `match`, `if const` / `if var`, or `?` inside a compatible return type

@@ -1,4 +1,5 @@
 //! Golden diagnostic output comparison.
+#![allow(clippy::print_stderr)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,11 @@ pub fn normalize_diagnostics(output: &str) -> String {
                 let root_str = root.display().to_string();
                 line = line.replace(&root_str, "");
             }
+            for marker in ["tests/cli/fixtures/", "tests/integration/diagnostics/"] {
+                if let Some(idx) = line.find(marker) {
+                    line = line[idx..].to_string();
+                }
+            }
             line.replace('\\', "/")
         })
         .collect::<Vec<_>>()
@@ -47,6 +53,16 @@ fn normalize_diagnostic_path(file: &str, repo: &Path, cwd: &Path) -> String {
             .replace('\\', "/");
     }
     file.replace('\\', "/")
+}
+
+/// Compare formatted output against an embedded expected string.
+pub fn assert_golden_expected(name: &str, formatted: &str, expected: &str) {
+    let actual = normalize_diagnostics(formatted);
+    let expected_norm = normalize_diagnostics(expected);
+    if std::env::var("UPDATE_GOLDEN").ok().as_deref() == Some("1") {
+        eprintln!("=== UPDATE_GOLDEN: {name} ===\n{actual}");
+    }
+    assert_eq!(actual, expected_norm, "golden mismatch for {name}");
 }
 
 /// Compare formatted output against a golden file in `golden_dir`.

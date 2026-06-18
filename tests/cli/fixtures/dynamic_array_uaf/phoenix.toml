@@ -1,9 +1,0 @@
-[project]
-name = "dynamic_array_uaf"
-version = "0.1.0"
-description = "DynamicArray use-after-free via saved slice after drop"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

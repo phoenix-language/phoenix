@@ -1,6 +1,0 @@
-id :: <t> (x: t) => t { x };
-
-main :: () => {
-  const n: s32 = id(42);
-  const _ = n;
-};

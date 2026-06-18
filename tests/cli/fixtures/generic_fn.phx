@@ -1,8 +1,0 @@
-id :: <t> (x: t) => t {
-    x
-};
-
-main :: () => {
-    const n: s32 = id :: <s32> (42);
-    const _ = n;
-};

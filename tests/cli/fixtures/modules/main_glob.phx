@@ -1,5 +1,0 @@
-#import util::math::{*};
-
-mod util;
-
-main :: () => { const _ = add(1, mul(2, 3)); };

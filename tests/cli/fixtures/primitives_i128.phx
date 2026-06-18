@@ -1,5 +1,0 @@
-main :: () => {
-    const big: s128 = 1000 as s128;
-    const small: s8 = big as s8;
-    const _ = small;
-};

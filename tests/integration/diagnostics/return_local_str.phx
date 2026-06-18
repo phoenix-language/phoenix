@@ -1,8 +1,0 @@
-bad :: () => str {
-    var arr: [u8; 3] = b"ABC";
-    return arr as str;
-};
-
-main :: () => {
-    const _ = bad();
-};

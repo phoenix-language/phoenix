@@ -1,9 +1,0 @@
-main :: () => {
-    const a: f32 = 1.5f32;
-    const b: f64 = 2.25f64;
-    const af: f64 = a as f64;
-    const c: f64 = af + b;
-    const wide: s64 = 100 as s64;
-    const narrow: u8 = 42 as u8;
-    const _ = c + (wide as f64) + (narrow as f64);
-};

@@ -1,5 +1,0 @@
-// Resolve failure: no `main` entry point.
-
-add :: (a: s32, b: s32) => s32 {
-    a + b
-};

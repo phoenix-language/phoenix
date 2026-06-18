@@ -3,9 +3,18 @@
 
 mod support;
 
-use phx_compiler::{CompileError, compile_source_with_module_root};
+use phx_compiler::{CompileError, compile_source_with_module_root, unstable::CompilationUnit};
 use phx_diagnostics::ResolveError;
-use support::{cli_fixtures_dir, compile_ok, expect_resolve_err};
+use support::{
+    compile_ok, expect_resolve_err, module_entry_source, modules_fixture_root_and_entry,
+};
+
+fn compile_named_module_tree(tree_name: &str) -> CompilationUnit {
+    let (root, entry) = modules_fixture_root_and_entry(tree_name);
+    let (_, source) = module_entry_source(tree_name);
+    compile_source_with_module_root(source, &entry, &root)
+        .unwrap_or_else(|e| panic!("expected ok compiling {tree_name}: {e}"))
+}
 
 fn resolve_err(source: &str) -> phx_diagnostics::DiagnosticBag {
     expect_resolve_err(source)
@@ -79,10 +88,9 @@ fn duplicate_definition_has_span() {
 
 #[test]
 fn phase2_continues_after_phase1_error_in_other_module() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("main_bad_import.phx");
-    let source = std::fs::read_to_string(&entry).expect("read main_bad_import.phx");
-    let err = match compile_source_with_module_root(&source, &entry, &root) {
+    let (root, entry) = modules_fixture_root_and_entry("main_bad_import");
+    let (_, source) = module_entry_source("main_bad_import");
+    let err = match compile_source_with_module_root(source, &entry, &root) {
         Err(CompileError::Resolve { bag, .. }) => bag,
         Err(other) => panic!("expected resolve error, got {other}"),
         Ok(_) => panic!("expected resolve failure from bad_dup"),
@@ -101,10 +109,9 @@ fn phase2_continues_after_phase1_error_in_other_module() {
 
 #[test]
 fn cyclic_import_reports_cycle() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("cycle_a.phx");
-    let source = std::fs::read_to_string(&entry).expect("read cycle_a.phx");
-    let err = match compile_source_with_module_root(&source, &entry, &root) {
+    let (root, entry) = modules_fixture_root_and_entry("cycle_a");
+    let (_, source) = module_entry_source("cycle_a");
+    let err = match compile_source_with_module_root(source, &entry, &root) {
         Err(CompileError::Resolve { bag, .. }) => bag,
         Err(other) => panic!("expected resolve error, got {other}"),
         Ok(_) => panic!("expected cyclic import failure"),
@@ -127,46 +134,29 @@ fn cyclic_import_reports_cycle() {
 
 #[test]
 fn compile_with_module_root_imports_compile_ok() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("main.phx");
-    let source = std::fs::read_to_string(&entry).expect("read main.phx");
-    compile_source_with_module_root(&source, &entry, &root)
-        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+    compile_named_module_tree("main");
 }
 
 #[test]
 fn compile_with_module_root_list_import_compile_ok() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("main_list.phx");
-    let source = std::fs::read_to_string(&entry).expect("read main_list.phx");
-    compile_source_with_module_root(&source, &entry, &root)
-        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+    compile_named_module_tree("main_list");
 }
 
 #[test]
 fn compile_with_module_root_glob_import_compile_ok() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("main_glob.phx");
-    let source = std::fs::read_to_string(&entry).expect("read main_glob.phx");
-    compile_source_with_module_root(&source, &entry, &root)
-        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+    compile_named_module_tree("main_glob");
 }
 
 #[test]
 fn compile_with_module_root_block_import_compile_ok() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("block_import_main.phx");
-    let source = std::fs::read_to_string(&entry).expect("read block_import_main.phx");
-    compile_source_with_module_root(&source, &entry, &root)
-        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+    compile_named_module_tree("block_import_main");
 }
 
 #[test]
 fn duplicate_import_in_list_rejected() {
-    let root = cli_fixtures_dir().join("modules");
-    let entry = root.join("import_dup.phx");
-    let source = std::fs::read_to_string(&entry).expect("read import_dup.phx");
-    let err = match compile_source_with_module_root(&source, &entry, &root) {
+    let (root, entry) = modules_fixture_root_and_entry("import_dup");
+    let (_, source) = module_entry_source("import_dup");
+    let err = match compile_source_with_module_root(source, &entry, &root) {
         Err(CompileError::Resolve { bag, .. }) => bag,
         Err(other) => panic!("expected resolve error, got {other}"),
         Ok(_) => panic!("expected duplicate import failure"),

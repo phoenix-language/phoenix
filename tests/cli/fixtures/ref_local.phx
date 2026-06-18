@@ -1,6 +1,0 @@
-main :: () => {
-    var x: s32 = 10;
-    const p: &s32 = &x;
-    const v: s32 = *p;
-    const _ = v;
-};

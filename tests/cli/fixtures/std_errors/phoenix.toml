@@ -1,9 +1,0 @@
-[project]
-name = "std_errors"
-version = "0.1.0"
-description = "V0-060 layered std error types with ? and From conversion"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

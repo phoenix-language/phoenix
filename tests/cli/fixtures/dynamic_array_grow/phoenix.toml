@@ -1,9 +1,0 @@
-[project]
-name = "dynamic_array_grow"
-version = "0.1.0"
-description = "DynamicArray push past initial cap forces grow"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

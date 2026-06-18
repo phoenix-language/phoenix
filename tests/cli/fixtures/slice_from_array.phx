@@ -1,6 +1,0 @@
-main :: () => {
-    const arr: [u8; 4] = b"WXYZ";
-    const sl: [u8] = arr as [u8];
-    const v: u8 = sl[2];
-    const _ = v;
-};

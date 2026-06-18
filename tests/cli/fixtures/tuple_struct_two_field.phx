@@ -1,7 +1,0 @@
-Point :: struct(s32, s32);
-
-main :: () => {
-    const p: Point = Point(1, 2);
-    const x: s32 = p.0;
-    const _ = x;
-};

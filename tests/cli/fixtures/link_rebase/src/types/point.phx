@@ -1,8 +1,0 @@
-pub Point :: struct {
-    x: s32,
-    y: s32,
-};
-
-pub get_x :: (p: Point) => s32 {
-    p.x
-};

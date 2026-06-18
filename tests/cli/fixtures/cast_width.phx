@@ -1,6 +1,0 @@
-main :: () => {
-    const wide: s64 = 100 as s64;
-    const narrow: u8 = 42 as u8;
-    const bump: s64 = narrow as s64;
-    const _ = wide + bump;
-};

@@ -1,8 +1,0 @@
-[project]
-name = "lint_deny_project"
-type = "bin"
-module_src = "src"
-bundle_std = false
-
-[lint]
-deny = ["deprecated"]

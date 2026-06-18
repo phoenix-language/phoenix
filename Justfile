@@ -28,7 +28,7 @@ test-integration:
     cargo test -p phx-integration-tests
 
 test-lang:
-    cargo test -p phx-integration-tests --test cli_e2e --test run_smoke --test diagnostics -- --test-threads=1
+    cargo test -p phx-integration-tests --test cli_e2e --test run_smoke --test diagnostics
 
 test-cli: test-lang
 
@@ -39,7 +39,7 @@ dep-check:
     bash tests/ci/check-zero-spans.sh
 
 pre-commit:
-    just fmt lint doc-check dep-check test test-lang
+    just fmt lint doc-check dep-check test
 
 doc-check:
     cargo doc --workspace --no-deps

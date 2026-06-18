@@ -1,9 +1,0 @@
-[project]
-name = "unique_ptr_smoke"
-version = "0.1.0"
-description = "V0 UniquePtr smoke — allocate, deref, scope-exit Drop"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

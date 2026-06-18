@@ -1,21 +1,19 @@
-//! In-process smoke tests: compile → verify → run on positive CLI fixtures.
+//! In-process smoke tests: compile → verify → run on embedded programs.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use phx_test::{SMOKE_FIXTURES, cli_modules_dir, compile_fixture_module, run_fixture_smoke};
+use phx_test::{SMOKE_PROGRAMS, compile_module_tree, modules_main_tree, run_smoke_program};
 use phx_vm::run;
 
 #[test]
 fn positive_fixtures_run_without_panic() {
-    for name in SMOKE_FIXTURES {
-        run_fixture_smoke(name);
+    for program in SMOKE_PROGRAMS {
+        run_smoke_program(program);
     }
 }
 
 #[test]
 fn modules_main_runs_without_panic() {
-    let root = cli_modules_dir();
-    let module = compile_fixture_module("main.phx", &root);
+    let module = compile_module_tree(modules_main_tree());
     let verified = phx_bytecode::verify(&module).expect("verify");
-
     run(verified).expect("run modules/main.phx");
 }

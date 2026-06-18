@@ -32,6 +32,7 @@ version = "0.1.0"
 dependencies = [
  "phx-bytecode",
  "phx-diagnostics",
+ "phx-programs",
  "phx-syntax",
 ]
 
@@ -51,6 +52,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "phx-programs"
+version = "0.1.0"
+
+[[package]]
 name = "phx-syntax"
 version = "0.1.0"
 dependencies = [
@@ -64,6 +69,7 @@ dependencies = [
  "phx-bytecode",
  "phx-compiler",
  "phx-diagnostics",
+ "phx-programs",
  "phx-syntax",
  "phx-vm",
 ]

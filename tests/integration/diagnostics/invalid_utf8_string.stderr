@@ -1,5 +1,0 @@
-error[E1007]: lex error: invalid UTF-8 in string literal at bytes 30..36
-  --> tests/integration/diagnostics/invalid_utf8_string.phx:2:15
-  |
-2 |     const _ = "/xFF";
-  |               ^^^^^^

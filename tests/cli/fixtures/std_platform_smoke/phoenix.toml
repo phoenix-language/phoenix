@@ -1,9 +1,0 @@
-[project]
-name = "std_platform_smoke"
-version = "0.1.0"
-description = "V0-067 Phase 7 capstone — Result match, trait defaults, heap slices"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

@@ -1,9 +1,0 @@
-[project]
-name = "heap_dealloc"
-version = "0.1.0"
-description = "V0-065 heap dealloc intrinsic smoke test"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

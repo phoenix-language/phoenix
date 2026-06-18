@@ -1,6 +1,0 @@
-error[E2014]: invalid cast from `[U8; 1]` to `str`
-  --> tests/cli/fixtures/invalid_utf8_byte_as_str.phx:3:15
-  |
-3 |     const _ = b"/xFF" as str;
-  |               ^^^^^^^^^^^^^^
-   = help: explicit casts between `[U8; 1]` and `str` are not allowed in MVP; use a supported cast target (numeric primitives, array→slice, str→[u8])

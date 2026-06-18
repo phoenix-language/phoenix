@@ -1,9 +1,0 @@
-[project]
-name = "dynamic_array_nested_drop"
-version = "0.1.0"
-description = "DynamicArray element-wise Drop on scope exit"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

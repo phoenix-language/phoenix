@@ -1,9 +1,0 @@
-[project]
-name = "dynamic_array_pop"
-version = "0.1.0"
-description = "DynamicArray pop move-out semantics"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

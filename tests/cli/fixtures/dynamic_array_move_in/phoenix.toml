@@ -1,9 +1,0 @@
-[project]
-name = "dynamic_array_move_in"
-version = "0.1.0"
-description = "DynamicArray push moves value; use-after-move is compile error"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

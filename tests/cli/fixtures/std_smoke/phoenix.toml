@@ -1,9 +1,0 @@
-[project]
-name = "std_smoke"
-version = "0.1.0"
-description = "Smoke test consumer for bundled std package"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

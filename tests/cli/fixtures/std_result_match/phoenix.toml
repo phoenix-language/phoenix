@@ -1,9 +1,0 @@
-[project]
-name = "std_result_match"
-version = "0.1.0"
-description = "V0-064 match on Result with struct payloads (no ? in main)"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

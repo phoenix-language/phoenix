@@ -1,9 +1,0 @@
-[project]
-name = "hello_print"
-version = "0.1.0"
-description = "Hello world via std::io::write_stdout"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

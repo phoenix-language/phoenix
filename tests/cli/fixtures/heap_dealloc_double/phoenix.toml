@@ -1,9 +1,0 @@
-[project]
-name = "heap_dealloc_double"
-version = "0.1.0"
-description = "V0-065 double-free runtime error"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

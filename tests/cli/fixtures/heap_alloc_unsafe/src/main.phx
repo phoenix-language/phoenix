@@ -1,5 +1,0 @@
-#import std::core::alloc::alloc_bytes;
-
-main :: () => {
-    alloc_bytes(4u);
-};

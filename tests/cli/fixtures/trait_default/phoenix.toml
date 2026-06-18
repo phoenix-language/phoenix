@@ -1,9 +1,0 @@
-[project]
-name = "trait_default"
-version = "0.1.0"
-description = "V0-063 trait default body inherited via empty impl"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

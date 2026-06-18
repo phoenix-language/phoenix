@@ -1,5 +1,0 @@
-error[E1007]: unsupported syntax: `#derive(...)`; use `#[derive(...)]` on the item instead
-  --> tests/integration/diagnostics/hash_derive_invalid.phx:5:1
-  |
-5 | #derive(PartialEq)
-  | ^^^^^^^

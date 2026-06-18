@@ -1,7 +1,0 @@
-main :: () => {
-    const x: s32 = match 0 {
-        _ => 1;
-        2 => 2;
-    };
-    const _ = x;
-};

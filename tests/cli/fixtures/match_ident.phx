@@ -1,5 +1,0 @@
-main :: () => {
-    var n: s32 = 1;
-    const x: s32 = match n { 0 => 10; _ => 20; };
-    const _ = x;
-};

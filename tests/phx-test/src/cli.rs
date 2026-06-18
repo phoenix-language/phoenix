@@ -6,13 +6,18 @@ use std::sync::{Once, OnceLock};
 
 use crate::fixtures::{
     assert_fixture_exists, cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project,
-    examples_dir, examples_project, repo_root,
+    examples_dir, examples_project, materialize_project, repo_root,
 };
 use crate::incremental::fixture_fs_lock;
 
+use phx_programs::NEGATIVE_CASES;
+
 static BUILD_ONCE: Once = Once::new();
 
-/// Positive single-file fixtures exercised by `phx run` smoke tests.
+/// Positive smoke programs (embedded).
+pub use phx_programs::SMOKE_PROGRAMS;
+
+/// Legacy smoke fixture file names for tests that still iterate by name.
 pub const SMOKE_FIXTURES: &[&str] = &[
     "sample.phx",
     "control_flow.phx",
@@ -71,6 +76,11 @@ pub const SMOKE_FIXTURES: &[&str] = &[
     "millimeters.phx",
     "tuple_struct_two_field.phx",
 ];
+
+/// Negative check cases as `(fixture name, stderr substring)` for legacy CLI tests.
+pub fn neg_check_fixtures() -> impl Iterator<Item = (&'static str, &'static str)> {
+    NEGATIVE_CASES.iter().map(|c| (c.name, c.needle))
+}
 
 /// Negative check fixtures: `(fixture name, stderr substring)`.
 pub const NEG_CHECK_FIXTURES: &[(&str, &str)] = &[
@@ -430,7 +440,8 @@ pub fn rm_project_build(name: &str) {
 
 /// Remove a project's `build/` directory without acquiring the fixture lock.
 pub fn rm_project_build_unlocked(name: &str) {
-    let build = cli_project(name).join("build");
+    let (_ws, root) = materialize_project(name);
+    let build = root.join("build");
     let _ = std::fs::remove_dir_all(build);
 }
 

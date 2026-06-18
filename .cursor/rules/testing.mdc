@@ -1,5 +1,5 @@
 ---
-description: Testing conventions — unit, integration, diagnostics fixtures
+description: Testing conventions — unit, integration, embedded programs
 globs: "**/*.rs,tests/**"
 alwaysApply: false
 ---
@@ -13,9 +13,15 @@ Every compiler pass and VM feature change ships with tests. Arrange–Act–Asse
 | Kind | Location |
 |---|---|
 | Unit tests | `#[cfg(test)]` module next to the code under test |
-| End-to-end programs | `tests/integration/tests/*.rs` driving full compile/run of Phoenix sources |
-| Diagnostics fixtures | `tests/integration/diagnostics/` — `name.phx` with a `name.stderr` sidecar holding the expected rendered diagnostic |
-| CLI fixtures | `tests/cli/fixtures/` |
+| Embedded Phoenix sources | `tests/phx-programs/` — `const` program definitions (smoke, negative, modules, projects, diagnostics) |
+| Integration helpers | `tests/phx-test/` — materialize embedded programs to temp dirs, compile/run pipelines, CLI subprocess helpers |
+| End-to-end programs | `tests/integration/tests/*.rs` driving full compile/run of embedded programs |
+| Examples (demos, not CI fixtures) | `examples/` |
+
+## Materialization
+
+- **Single-file** and **module trees**: per-test `TempWorkspace` under the system temp dir (logical paths under `tests/cli/fixtures/...`).
+- **Projects** (including path deps): shared process sandbox in `phx-test::sandbox` so sibling deps like `../math_lib` resolve.
 
 ## What to cover, per stage
 
@@ -27,4 +33,10 @@ Every compiler pass and VM feature change ships with tests. Arrange–Act–Asse
 
 Test error paths and edge cases, not just happy paths. When a bug is fixed, add the regression test in the same commit.
 
-Run `just test` for the workspace, `just test-lang` for the CLI/E2E suite (it runs single-threaded by design — keep it that way). New diagnostics need a `.stderr` fixture so rendering changes are caught.
+Run `just test` for the full workspace. `just test-lang` runs the integration subset when you want a faster language-only pass (parallel by default).
+
+Diagnostic goldens live in `phx-programs` as embedded `expected` strings; regenerate with:
+
+```bash
+UPDATE_GOLDEN=1 cargo test -p phx-integration-tests --test diagnostics
+```

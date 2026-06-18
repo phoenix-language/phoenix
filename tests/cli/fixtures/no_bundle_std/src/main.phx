@@ -1,4 +1,0 @@
-main :: () => {
-    const x: Option<s32> = None;
-    const _ = x;
-};

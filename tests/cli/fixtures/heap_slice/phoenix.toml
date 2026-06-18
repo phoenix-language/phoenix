@@ -1,9 +1,0 @@
-[project]
-name = "heap_slice"
-version = "0.1.0"
-description = "V0-062 heap slice intrinsic smoke test"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

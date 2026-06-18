@@ -1,7 +1,0 @@
-main :: () => {
-    const a: u8 = 255 as u8;
-    const b: s16 = -1 as s16;
-    const c: u32 = 1u;
-    const d: s64 = (a as s64) + (b as s64) + (c as s64);
-    const _ = d;
-};

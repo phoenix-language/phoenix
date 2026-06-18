@@ -1,8 +1,0 @@
-Box :: <t> struct {
-    v: t,
-};
-
-main :: () => {
-    const b = Box::<s32> { v: 7 };
-    const _ = b.v;
-};

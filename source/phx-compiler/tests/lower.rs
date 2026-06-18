@@ -1,6 +1,8 @@
 //! Lowering integration tests.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use std::path::Path;
 
 use phx_compiler::{
@@ -10,7 +12,7 @@ use phx_compiler::{
 
 #[test]
 fn lower_sample_produces_ir() {
-    let source = include_str!("../../../tests/cli/fixtures/sample.phx");
+    let source = support::single_source("sample.phx");
     let unit = compile_source(source, Some(Path::new("sample.phx")))
         .unwrap_or_else(|e| panic!("compile sample.phx: {e}"));
     assert!(!unit.typed.functions.is_empty());
@@ -68,7 +70,7 @@ fn lower_sample_produces_ir() {
 
 #[test]
 fn lower_sample_ir_instructions_have_source_spans() {
-    let source = include_str!("../../../tests/cli/fixtures/sample.phx");
+    let source = support::single_source("sample.phx");
     let unit = compile_source(source, Some(Path::new("sample.phx")))
         .unwrap_or_else(|e| panic!("compile sample.phx: {e}"));
     let ir = lower(&unit.typed).expect("lower");
@@ -88,7 +90,7 @@ fn lower_sample_ir_instructions_have_source_spans() {
 
 #[test]
 fn lower_control_flow_emits_loops() {
-    let source = include_str!("../../../tests/cli/fixtures/control_flow.phx");
+    let source = support::single_source("control_flow.phx");
     let unit = compile_source(source, Some(Path::new("control_flow.phx")))
         .unwrap_or_else(|e| panic!("compile control_flow.phx: {e}"));
     let ir = lower(&unit.typed).expect("lower");
@@ -205,12 +207,9 @@ fn const_fold_byte_array_as_str_emits_make_str_not_make_array() {
 
 #[test]
 fn lower_generic_fn_emits_call() {
-    let source = include_str!("../../../tests/cli/fixtures/generic_fn.phx");
-    let path = Path::new("generic_fn.phx");
-    let unit = phx_compiler::check_file(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/generic_fn.phx"),
-    )
-    .unwrap_or_else(|e| panic!("check_file generic_fn.phx: {e}"));
+    let path = support::single_file_path("generic_fn.phx");
+    let unit = phx_compiler::check_file(&path)
+        .unwrap_or_else(|e| panic!("check_file generic_fn.phx: {e}"));
     let ir = lower(&unit.typed).expect("lower");
     assert!(
         ir.functions
@@ -220,13 +219,11 @@ fn lower_generic_fn_emits_call() {
             .any(|s| matches!(&s.inst, IrInst::Call { .. })),
         "expected Call in main"
     );
-    let _ = source;
-    let _ = path;
 }
 
 #[test]
 fn lower_generic_struct_emits_make_struct() {
-    let source = include_str!("../../../tests/cli/fixtures/generic_struct.phx");
+    let source = support::single_source("generic_struct.phx");
     let unit = compile_source(source, Some(Path::new("generic_struct.phx")))
         .unwrap_or_else(|e| panic!("compile generic_struct.phx: {e}"));
     let ir = lower(&unit.typed).expect("lower");
@@ -375,8 +372,7 @@ main :: () => { { const w = Wrapper {}; } };
 
 #[test]
 fn lower_for_in_emits_iterator_protocol() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/std_iter/src/main.phx");
+    let path = support::embedded_project_main("std_iter");
     let unit =
         phx_compiler::check_file(&path).unwrap_or_else(|e| panic!("check_file std_iter: {e}"));
     let ir = lower(&unit.typed).expect("lower");

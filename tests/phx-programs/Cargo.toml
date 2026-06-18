@@ -1,0 +1,10 @@
+[package]
+name = "phx-programs"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+description = "Embedded Phoenix test programs for integration and compiler tests"
+
+[lints]
+workspace = true

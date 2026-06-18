@@ -108,8 +108,7 @@ mod tests {
 
     #[test]
     fn std_smoke_fixture_bundles_std() {
-        let root =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/std_smoke");
+        let root = crate::embed::project_root_path("std_smoke");
         if !root.join("phoenix.toml").is_file() {
             return;
         }

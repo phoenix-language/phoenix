@@ -9,7 +9,7 @@ buf_to_string :: (bytes: [u8; 32]) => String {
 };
 
 pub to_string :: <t: Display> (value: t) => String {
-    value.display()
+    buf_to_string(value.fmt())
 };
 
 pub print :: <t: Display> (value: t) => () {

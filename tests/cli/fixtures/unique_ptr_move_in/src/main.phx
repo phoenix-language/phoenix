@@ -1,9 +1,0 @@
-#import std::core::memory::allocator::{Layout, Global};
-#import std::core::memory::unique_ptr::UniquePtr;
-
-main :: () => {
-    const layout: Layout = Layout { size: 4u, align: 1u };
-    var a: UniquePtr<s32> = UniquePtr :: <s32>::new(42, layout, Global {});
-    var b: UniquePtr<s32> = a;
-    const _ = a.get();
-};

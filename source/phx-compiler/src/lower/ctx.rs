@@ -453,7 +453,6 @@ mod tests {
     use crate::compile_source;
     use phx_diagnostics::LowerError;
     use phx_syntax::Span;
-    use std::path::Path;
 
     const TEST_SITE: Span = Span::new(0, 1);
 
@@ -545,8 +544,7 @@ mod tests {
 
     #[test]
     fn lower_generic_impl_method_balances_expr_cursor() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/cli/fixtures/generic_impl_method.phx");
+        let path = crate::embed::single_file_path("generic_impl_method.phx");
         let unit = crate::check_file(&path).expect("check");
         let ir = crate::lower::lower(&unit.typed).expect("lower");
         assert!(
@@ -665,48 +663,42 @@ main :: () => {
 
     #[test]
     fn generic_infer_lowers_without_cursor_drift() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/cli/fixtures/generic_infer.phx");
+        let path = crate::embed::single_file_path("generic_infer.phx");
         let unit = crate::check_file(&path).expect("check");
         crate::lower::lower(&unit.typed).expect("lower generic_infer");
     }
 
     #[test]
     fn ref_local_lowers_without_cursor_drift() {
-        let path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/ref_local.phx");
+        let path = crate::embed::single_file_path("ref_local.phx");
         let unit = crate::check_file(&path).expect("check");
         crate::lower::lower(&unit.typed).expect("lower ref_local");
     }
 
     #[test]
     fn dynamic_array_grow_lowers_without_cursor_drift() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/cli/fixtures/dynamic_array_grow/src/main.phx");
+        let path = crate::embed::project_main_path("dynamic_array_grow");
         let unit = crate::check_file(&path).expect("check");
         crate::lower::lower(&unit.typed).expect("lower dynamic_array_grow");
     }
 
     #[test]
     fn dynamic_array_index_oob_lowers_without_cursor_drift() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/cli/fixtures/dynamic_array_index_oob/src/main.phx");
+        let path = crate::embed::project_main_path("dynamic_array_index_oob");
         let unit = crate::check_file(&path).expect("check");
         crate::lower::lower(&unit.typed).expect("lower dynamic_array_index_oob");
     }
 
     #[test]
     fn std_traits_lowers_without_cursor_drift() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/cli/fixtures/std_traits/src/main.phx");
+        let path = crate::embed::project_main_path("std_traits");
         let unit = crate::check_file(&path).expect("check");
         crate::lower::lower(&unit.typed).expect("lower std_traits");
     }
 
     #[test]
     fn missing_method_call_site_fails_lower() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/cli/fixtures/generic_impl_method.phx");
+        let path = crate::embed::single_file_path("generic_impl_method.phx");
         let mut unit = crate::check_file(&path).expect("check");
         unit.typed.method_call_sites.clear();
         let bag = crate::lower::lower(&unit.typed);

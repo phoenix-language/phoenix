@@ -1,4 +1,0 @@
-main :: () => {
-    const u8_shift: u8 = (1u as u8) << (9 as u8);
-    const u32_shift: u32 = (1u as u32) << (32 as u32);
-};

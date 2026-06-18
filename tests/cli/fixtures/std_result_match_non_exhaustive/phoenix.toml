@@ -1,9 +1,0 @@
-[project]
-name = "std_result_match_non_exhaustive"
-version = "0.1.0"
-description = "V0-064 negative: non-exhaustive Result match"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

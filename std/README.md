@@ -60,7 +60,7 @@ Consumer builds place std artifacts under `build/deps/std/`.
 #import std::core::iter::{Iterator, IntoIter, Range, RangeIter};
 ```
 
-With **`prelude = true`** (default when std is bundled), the items above except `Error` are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). The `Error` trait is **not** in the prelude — import explicitly (see [`std_errors/`](../tests/cli/fixtures/std_errors/)).
+With **`prelude = true`** (default when std is bundled), the items above except `Error` are in scope without explicit `#import`. See [Prelude](#prelude-v0-044). The `Error` trait is **not** in the prelude — import explicitly (see the `std_errors` embedded test project in `phx-programs`).
 
 Generic enum constructors need explicit type arguments today, e.g. `Some :: <s32> (n)`.
 

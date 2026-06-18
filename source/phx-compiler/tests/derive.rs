@@ -2,6 +2,8 @@
 
 #![allow(clippy::expect_used)]
 
+mod support;
+
 use phx_compiler::{
     expand_derives,
     unstable::{resolve, type_check},
@@ -187,13 +189,10 @@ fn expand_std_dynamic_array_partialeq_has_eq_method() {
 
 #[test]
 fn derive_generic_struct_imported_trait_typechecks() {
-    use std::path::PathBuf;
-
     use phx_compiler::compile_source_with_module_root;
 
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/modules");
-    let entry = root.join("derive_import_main.phx");
-    let source = std::fs::read_to_string(&entry).expect("read main");
-    compile_source_with_module_root(&source, &entry, &root)
+    let (root, entry) = support::modules_fixture_root_and_entry("derive_import_main");
+    let (_, source) = support::module_entry_source("derive_import_main");
+    compile_source_with_module_root(source, &entry, &root)
         .unwrap_or_else(|e| panic!("expected ok: {e}"));
 }

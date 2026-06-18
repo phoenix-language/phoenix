@@ -1,5 +1,0 @@
-#import std::io::write_stdout;
-
-main :: () => {
-    write_stdout("hello\n");
-};

@@ -1,9 +1,0 @@
-[project]
-name = "unique_ptr_move"
-version = "0.1.0"
-description = "UniquePtr move — only destination Drop runs at scope exit"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

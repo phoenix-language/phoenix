@@ -150,7 +150,7 @@ fn question_mark_invalid_operand_without_result_context() {
 
 #[test]
 fn discarded_std_result_is_type_error() {
-    let path = support::cli_fixtures_dir().join("lint_std_result_discard/src/main.phx");
+    let path = support::project_main_path("lint_std_result_discard");
     let err = phx_compiler::check_file(&path).expect_err("expected type-check failure");
     let bag = match err {
         CompileError::TypeCheck { bag, .. } => bag,
@@ -425,9 +425,7 @@ fn s32_as_f32_cast_compile_ok() {
 
 #[test]
 fn string_literal_and_str_as_u8_slice_compile_ok() {
-    compile_ok(include_str!(
-        "../../../tests/cli/fixtures/string_literal.phx"
-    ));
+    compile_ok(support::single_source("string_literal.phx"));
 }
 
 #[test]
@@ -462,28 +460,22 @@ fn var_byte_array_as_str_rejected() {
 
 #[test]
 fn if_const_enum_non_exhaustive_compile_ok() {
-    compile_ok(include_str!(
-        "../../../tests/cli/fixtures/if_const_enum_non_exhaustive.phx"
-    ));
+    compile_ok(support::single_source("if_const_enum_non_exhaustive.phx"));
 }
 
 #[test]
 fn if_const_enum_single_variant_compile_ok() {
-    compile_ok(include_str!(
-        "../../../tests/cli/fixtures/if_const_enum_single_variant.phx"
-    ));
+    compile_ok(support::single_source("if_const_enum_single_variant.phx"));
 }
 
 #[test]
 fn factorial_recursion_compile_ok() {
-    compile_ok(include_str!("../../../tests/cli/fixtures/factorial.phx"));
+    compile_ok(support::single_source("factorial.phx"));
 }
 
 #[test]
 fn unary_neg_not_and_comparisons_compile_ok() {
-    compile_ok(include_str!(
-        "../../../tests/cli/fixtures/compare_unary.phx"
-    ));
+    compile_ok(support::single_source("compare_unary.phx"));
 }
 
 fn typed(source: &str) -> phx_compiler::unstable::TypedProgram {
@@ -581,9 +573,7 @@ fn assign_moves_non_copyable() {
 
 #[test]
 fn enum_struct_variant_match_compile_ok() {
-    compile_ok(include_str!(
-        "../../../tests/cli/fixtures/enum_match_struct.phx"
-    ));
+    compile_ok(support::single_source("enum_match_struct.phx"));
 }
 
 #[test]
@@ -708,7 +698,7 @@ fn enum_tuple_pattern_on_non_enum_scrutinee() {
 
 #[test]
 fn enum_match_user_enum_compile_ok() {
-    compile_ok(include_str!("../../../tests/cli/fixtures/enum_match.phx"));
+    compile_ok(support::single_source("enum_match.phx"));
 }
 
 #[test]

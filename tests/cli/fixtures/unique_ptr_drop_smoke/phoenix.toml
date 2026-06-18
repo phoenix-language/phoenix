@@ -1,9 +1,0 @@
-[project]
-name = "unique_ptr_drop_smoke"
-version = "0.1.0"
-description = "V0 UniquePtr Drop — scope exit deallocates via Allocator"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

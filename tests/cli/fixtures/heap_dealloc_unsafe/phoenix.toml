@@ -1,9 +1,0 @@
-[project]
-name = "heap_dealloc_unsafe"
-version = "0.1.0"
-description = "V0-065 dealloc_bytes requires unsafe"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

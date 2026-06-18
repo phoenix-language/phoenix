@@ -1,9 +1,0 @@
-[project]
-name = "unique_ptr_uaf"
-version = "0.1.0"
-description = "UniquePtr use-after-free via saved pointer after drop"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

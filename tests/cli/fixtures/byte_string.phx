@@ -1,5 +1,0 @@
-main :: () => {
-    const s: [u8; 3] = b"ABC";
-    const v: u8 = s[1];
-    const _ = v;
-};

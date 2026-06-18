@@ -1,6 +1,8 @@
 //! Codegen integration tests.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use std::path::Path;
 
 use phx_bytecode::verify;
@@ -21,8 +23,7 @@ fn codegen_generic_fn_inline_verifies() {
 
 #[test]
 fn codegen_generic_fn_verifies() {
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/generic_fn.phx");
+    let path = support::single_file_path("generic_fn.phx");
     let unit = phx_compiler::check_file(&path).expect("check_file");
     let ir = lower(&unit.typed).expect("lower");
     let module = codegen(&ir, &unit.typed).expect("codegen");
@@ -31,8 +32,7 @@ fn codegen_generic_fn_verifies() {
 
 #[test]
 fn codegen_deep_logical_chain_verifies() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/deep_logical_chain.phx");
+    let path = support::single_file_path("deep_logical_chain.phx");
     let unit = phx_compiler::check_file(&path).expect("check_file");
     let ir = lower(&unit.typed).expect("lower");
     let module = codegen(&ir, &unit.typed).expect("codegen");
@@ -54,7 +54,7 @@ fn codegen_dual_generic_fn_instantiation_verifies() {
 
 #[test]
 fn codegen_sample_round_trip_and_verify() {
-    let source = include_str!("../../../tests/cli/fixtures/sample.phx");
+    let source = support::single_source("sample.phx");
     let unit = compile_source(source, Some(Path::new("sample.phx")))
         .unwrap_or_else(|e| panic!("compile: {e}"));
     let ir = lower(&unit.typed).expect("lower");
@@ -92,7 +92,7 @@ fn codegen_sample_round_trip_and_verify() {
 
 #[test]
 fn codegen_constants_include_sample_literals() {
-    let source = include_str!("../../../tests/cli/fixtures/sample.phx");
+    let source = support::single_source("sample.phx");
     let unit = compile_source(source, None).unwrap();
     let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
 
@@ -178,7 +178,7 @@ fn lower_match_emits_eq_and_jump_if() {
 
 #[test]
 fn codegen_enum_match_verifies() {
-    let source = include_str!("../../../tests/cli/fixtures/enum_match.phx");
+    let source = support::single_source("enum_match.phx");
     let unit = compile_source(source, None).unwrap();
     let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("enum_match bytecode should verify");
@@ -186,7 +186,7 @@ fn codegen_enum_match_verifies() {
 
 #[test]
 fn codegen_enum_struct_match_emits_tag_and_get_field() {
-    let source = include_str!("../../../tests/cli/fixtures/enum_match_struct.phx");
+    let source = support::single_source("enum_match_struct.phx");
     let unit = compile_source(source, None).unwrap();
     let ir = lower(&unit.typed).expect("lower");
     let insts: Vec<_> = ir
@@ -213,7 +213,7 @@ fn codegen_enum_struct_match_emits_tag_and_get_field() {
 
 #[test]
 fn codegen_struct_point_emits_make_struct() {
-    let source = include_str!("../../../tests/cli/fixtures/struct_point.phx");
+    let source = support::single_source("struct_point.phx");
     let unit = compile_source(source, None).unwrap();
     let ir = lower(&unit.typed).expect("lower");
     let has_make = ir
@@ -236,7 +236,7 @@ fn codegen_struct_point_emits_make_struct() {
 
 #[test]
 fn deep_logical_chain_verifies_and_runs() {
-    let source = include_str!("../../../tests/cli/fixtures/deep_logical_chain.phx");
+    let source = support::single_source("deep_logical_chain.phx");
     let unit = compile_source(source, None).unwrap();
     let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("deep && chain should verify");
@@ -244,7 +244,7 @@ fn deep_logical_chain_verifies_and_runs() {
 
 #[test]
 fn deep_logical_or_chain_verifies() {
-    let source = include_str!("../../../tests/cli/fixtures/deep_logical_or_chain.phx");
+    let source = support::single_source("deep_logical_or_chain.phx");
     let unit = compile_source(source, None).unwrap();
     let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
     verify(&module).expect("deep || chain should verify");
@@ -392,8 +392,7 @@ fn codegen_while_loop_stack_analysis_completes() {
 
 #[test]
 fn codegen_generic_impl_method_calls_specialized_get_not_main() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cli/fixtures/generic_impl_method.phx");
+    let path = support::single_file_path("generic_impl_method.phx");
     let unit = phx_compiler::check_file(&path).expect("check_file");
     let ir = lower(&unit.typed).expect("lower");
     assert!(

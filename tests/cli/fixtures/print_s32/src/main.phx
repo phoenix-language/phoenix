@@ -1,5 +1,0 @@
-#import std::text::fmt::print;
-
-main :: () => {
-    print(42);
-};

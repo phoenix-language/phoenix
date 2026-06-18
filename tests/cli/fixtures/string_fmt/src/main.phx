@@ -1,8 +1,0 @@
-#import std::text::fmt::to_string;
-
-main :: () => {
-    const n: s32 = 42;
-    const text = to_string(n);
-    const check_len = text.len();
-    const _ = check_len;
-};

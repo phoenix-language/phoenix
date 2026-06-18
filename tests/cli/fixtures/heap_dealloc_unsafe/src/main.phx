@@ -1,6 +1,0 @@
-#import std::core::alloc::{alloc_bytes, dealloc_bytes};
-
-main :: () => {
-    const buf: *mut u8 = alloc_bytes(4u);
-    dealloc_bytes(buf, 4u);
-};

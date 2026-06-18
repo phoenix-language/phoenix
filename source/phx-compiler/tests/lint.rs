@@ -5,7 +5,7 @@ mod support;
 
 use phx_compiler::{CompileError, check_file, compile_source, lint_checked};
 use phx_diagnostics::{LintKind, TypeCheckError};
-use support::cli_fixtures_dir;
+use support::project_main_path;
 
 fn lint_source(source: &str) -> phx_diagnostics::LintBag {
     let unit = compile_source(source, None).expect("compile");
@@ -37,7 +37,7 @@ fn user_enum_discard_no_std_must_use() {
 
 #[test]
 fn std_result_discard_is_not_lint() {
-    let path = cli_fixtures_dir().join("lint_std_result_discard/src/main.phx");
+    let path = project_main_path("lint_std_result_discard");
     let err = check_file(&path).expect_err("expected type-check failure");
     let bag = match err {
         CompileError::TypeCheck { bag, .. } => bag,

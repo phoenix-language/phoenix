@@ -1,8 +1,0 @@
-#import std::core::fmt_display::Display;
-
-main :: () => {
-    const n: s32 = 42;
-    const text = n.display();
-    const check_len = text.len();
-    const _ = check_len;
-};

@@ -1,9 +1,0 @@
-[project]
-name = "dynamic_array_double_free"
-version = "0.1.0"
-description = "DynamicArray manual dealloc then scope Drop double-free"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

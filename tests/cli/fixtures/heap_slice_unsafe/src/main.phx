@@ -1,7 +1,0 @@
-#import std::core::slice::slice_from_raw_parts;
-
-main :: () => {
-    const buf: *mut u8 = 0 as *mut u8;
-    const sl: [u8] = slice_from_raw_parts(buf, 4u);
-    const _ = sl;
-};

@@ -2,8 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use phx_test::{
-    ExpectedLocal, assert_main_locals, cli_modules_dir, compile_fixture, compile_fixture_module,
-    force_build_project,
+    ExpectedLocal, assert_main_locals, compile_fixture, compile_module_tree, force_build_project,
 };
 
 #[test]
@@ -89,7 +88,7 @@ fn slice_from_array_index_byte() {
 
 #[test]
 fn modules_import_adds_imported_values() {
-    let module = compile_fixture_module("main.phx", &cli_modules_dir());
+    let module = compile_module_tree(phx_test::modules_main_tree());
     assert_main_locals(&module, &[(0, ExpectedLocal::S32(3))]);
 }
 

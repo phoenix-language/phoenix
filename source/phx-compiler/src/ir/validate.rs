@@ -168,7 +168,13 @@ mod tests {
     }
 
     fn stub_typed() -> TypedProgram {
-        let source = include_str!("../../../../tests/cli/fixtures/sample.phx");
+        let source = r"main :: () => {
+    const a: s32 = 5;
+    const b: s32 = 7;
+    const sum: s32 = a + b;
+    const ok: bool = sum == 12;
+};
+";
         crate::compile_source(source, Some(std::path::Path::new("sample.phx")))
             .expect("compile sample fixture")
             .typed

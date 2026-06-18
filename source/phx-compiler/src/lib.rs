@@ -25,6 +25,8 @@ mod cfg;
 mod codegen;
 mod compile;
 mod derive;
+#[cfg(test)]
+mod embed;
 pub mod facade;
 mod ir;
 mod lang_items;

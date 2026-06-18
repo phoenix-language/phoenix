@@ -1,9 +1,0 @@
-[project]
-name = "heap_slice_oob"
-version = "0.1.0"
-description = "V0-062 heap slice out-of-bounds index"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

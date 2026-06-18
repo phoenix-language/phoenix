@@ -307,7 +307,12 @@ mod tests {
 }"#,
         )
         .expect("parse new pxi");
-        verify_pxi_exports(&old, Path::new("/nonexistent/build"), "std::core::copyable", &new_pxi)
-            .expect("missing old .pxi should not block regeneration");
+        verify_pxi_exports(
+            &old,
+            Path::new("/nonexistent/build"),
+            "std::core::copyable",
+            &new_pxi,
+        )
+        .expect("missing old .pxi should not block regeneration");
     }
 }

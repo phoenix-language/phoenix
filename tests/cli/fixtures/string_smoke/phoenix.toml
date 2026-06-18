@@ -1,9 +1,0 @@
-[project]
-name = "string_smoke"
-version = "0.1.0"
-description = "Std String from_str/push/len smoke test"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

@@ -1,9 +1,0 @@
-[project]
-name = "string_clone"
-version = "0.1.0"
-description = "Std String Clone smoke test"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"

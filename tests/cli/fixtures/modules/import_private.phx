@@ -1,5 +1,0 @@
-#import util::secret::secret;
-
-mod util;
-
-main :: () => { secret(); };

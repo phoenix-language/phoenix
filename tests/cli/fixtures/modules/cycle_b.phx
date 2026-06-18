@@ -1,5 +1,0 @@
-#import cycle_a::helper;
-
-mod cycle_a;
-
-pub helper :: () => { };

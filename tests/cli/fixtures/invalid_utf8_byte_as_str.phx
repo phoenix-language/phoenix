@@ -1,4 +1,0 @@
-// Should fail type-check: invalid UTF-8 byte string cannot cast to str.
-main :: () => {
-    const _ = b"\xFF" as str;
-};

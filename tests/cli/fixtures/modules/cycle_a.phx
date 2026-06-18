@@ -1,7 +1,0 @@
-#import cycle_b::helper;
-
-mod cycle_b;
-
-pub helper :: () => { };
-
-main :: () => { helper(); };

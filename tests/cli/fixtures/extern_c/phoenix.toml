@@ -1,9 +1,0 @@
-[project]
-name = "extern_c"
-version = "0.1.0"
-description = "V0-053 extern C FFI smoke (unsafe call)"
-type = "bin"
-module_src = "src"
-
-[build]
-dir = "build"
