@@ -33,7 +33,7 @@ impl TypeChecker<'_> {
         self.resolved
             .defs
             .get(def.index() as usize)
-            .is_some_and(|d| d.kind == DefKind::Fn)
+            .is_some_and(|d| d.kind.is_function_body())
     }
 
     pub(in crate::typeck::check) fn check_extern_call(&mut self, def: DefId, span: Span) {

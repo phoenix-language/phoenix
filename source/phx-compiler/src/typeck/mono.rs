@@ -17,6 +17,8 @@ use super::type_depth::{
 };
 use super::types::TypeId;
 use crate::resolver::{Def, DefId, DefKind, ResolutionKey, ResolvedProgram};
+use crate::typeck::layout::TraitImplementer;
+use crate::typeck::types::Ty;
 use crate::typeck::{MethodCallSiteMeta, TypedProgram};
 
 /// One explicit generic function instantiation from a call site.
@@ -72,6 +74,7 @@ pub(crate) fn monomorphize(
     patch_specialized_drop_fns(typed);
     patch_associated_fn_sites(typed);
     patch_method_call_sites(typed);
+    patch_primitive_trait_method_calls(typed, fn_insts);
     bag
 }
 
@@ -90,10 +93,111 @@ fn patch_method_call_sites(typed: &mut TypedProgram) {
                 MethodCallSiteMeta {
                     template: spec,
                     mono_args: meta.mono_args,
+                    receiver_ty: meta.receiver_ty,
                 },
             );
         }
     }
+}
+
+/// Re-resolves trait method calls on monomorphized primitive receivers (e.g. `value.fmt()` in `to_string<s32>`).
+fn patch_primitive_trait_method_calls(typed: &mut TypedProgram, fn_insts: &[MonoInst]) {
+    let Some(fmt_sym) = typed.layout.trait_methods.keys().find_map(|(_, method)| {
+        typed
+            .resolved
+            .interner
+            .resolves_to(*method, "fmt")
+            .then_some(*method)
+    }) else {
+        return;
+    };
+    let display_trait = typed.lang_items.display_trait;
+    let mono_insts = fn_insts.to_vec();
+    let sites: Vec<_> = typed
+        .method_call_sites
+        .iter()
+        .map(|(site, meta)| (*site, meta.clone()))
+        .collect();
+    for inst in mono_insts {
+        let Some(spec_fn) = specialized_fn_for_inst(typed, inst.base_fn, &inst.args) else {
+            continue;
+        };
+        let Some(fn_layout) = typed.functions.iter().find(|f| f.def == spec_fn) else {
+            continue;
+        };
+        let expr_start = fn_layout.expr_start;
+        let expr_end = fn_layout.expr_end;
+        let Some(param_defs) = generic_param_defs_for_fn_base(&typed.resolved, inst.base_fn) else {
+            continue;
+        };
+        if param_defs.len() != inst.args.len() {
+            continue;
+        }
+        let mut subst = Substitution::new();
+        for (param, arg) in param_defs.iter().zip(&inst.args) {
+            subst.insert(*param, *arg);
+        }
+        for (site, meta) in &sites {
+            if site.index() < expr_start || site.index() >= expr_end {
+                continue;
+            }
+            let receiver =
+                Substitution::apply(&mut typed.types, meta.receiver_ty, &subst, &typed.resolved);
+            let Ty::Primitive(kw) = typed.types.get(receiver).clone() else {
+                continue;
+            };
+            if let Some(fn_def) =
+                trait_method_for_primitive(&typed.layout, kw, fmt_sym, display_trait)
+            {
+                typed.method_call_sites.insert(
+                    *site,
+                    MethodCallSiteMeta {
+                        template: fn_def,
+                        mono_args: meta.mono_args.clone(),
+                        receiver_ty: receiver,
+                    },
+                );
+            }
+        }
+    }
+}
+
+fn trait_def_for_method_fn(
+    layout: &super::layout::ProgramLayout,
+    fn_def: DefId,
+    method: phx_syntax::Symbol,
+) -> Option<DefId> {
+    layout
+        .trait_methods
+        .iter()
+        .find_map(|((key, m), f)| (*f == fn_def && *m == method).then_some(key.trait_def))
+}
+
+fn trait_method_for_primitive(
+    layout: &super::layout::ProgramLayout,
+    kw: phx_syntax::token::Keyword,
+    method: phx_syntax::Symbol,
+    preferred_trait: Option<DefId>,
+) -> Option<DefId> {
+    let implementer = TraitImplementer::Primitive(kw);
+    let mut exact: Vec<DefId> = layout
+        .trait_methods
+        .iter()
+        .filter(|((key, m), _)| {
+            key.implementer == implementer && key.implementer_args.is_empty() && *m == method
+        })
+        .map(|(_, f)| *f)
+        .collect();
+    exact.sort_by_key(|d| d.index());
+    exact.dedup();
+    if exact.len() > 1
+        && let Some(trait_def) = preferred_trait
+    {
+        exact.retain(|fn_def| {
+            trait_def_for_method_fn(layout, *fn_def, method).is_some_and(|t| t == trait_def)
+        });
+    }
+    exact.first().copied()
 }
 
 fn patch_associated_fn_sites(typed: &mut TypedProgram) {
@@ -594,18 +698,22 @@ fn specialize_enum(
 }
 
 fn find_function(resolved: &ResolvedProgram, def: DefId) -> Option<&Function> {
+    let def_record = resolved.defs.get(def.index() as usize)?;
     for module in &resolved.modules {
+        if module.id != def_record.module {
+            continue;
+        }
         for item in &module.program.items {
             match &item.inner.decl {
                 TopLevelDecl::Function(f)
-                    if fn_def_id(resolved, module.id, f.name.symbol) == Some(def) =>
+                    if resolved_fn_def_matches(resolved, def_record, f, def) =>
                 {
                     return Some(f);
                 }
                 TopLevelDecl::Impl { members, .. } => {
                     for m in members {
                         if let ImplMember::Method(f) = m {
-                            if fn_def_id(resolved, module.id, f.name.symbol) == Some(def) {
+                            if resolved_fn_def_matches(resolved, def_record, f, def) {
                                 return Some(f);
                             }
                         }
@@ -618,13 +726,31 @@ fn find_function(resolved: &ResolvedProgram, def: DefId) -> Option<&Function> {
     None
 }
 
-fn fn_def_id(resolved: &ResolvedProgram, module: u32, name: phx_syntax::Symbol) -> Option<DefId> {
-    resolved
-        .defs
-        .iter()
-        .enumerate()
-        .find(|(_, d)| d.kind == DefKind::Fn && d.name == name && d.module == module)
-        .map(|(i, _)| DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+fn resolved_fn_def_matches(
+    resolved: &ResolvedProgram,
+    def_record: &Def,
+    f: &Function,
+    def: DefId,
+) -> bool {
+    if resolved.defs.get(def.index() as usize) != Some(def_record) {
+        return false;
+    }
+    if !def_record.kind.is_function_body() {
+        return false;
+    }
+    if f.name.symbol != def_record.name {
+        return false;
+    }
+    if let Some(&resolved_def) = resolved.resolutions.get(&ResolutionKey {
+        module: def_record.module,
+        node_id: f.name.id,
+    }) {
+        return resolved_def == def;
+    }
+    if def_record.kind == DefKind::ImplMethod {
+        return def_record.span == f.name.span;
+    }
+    true
 }
 
 pub(crate) fn generic_param_defs_for_fn_base(
@@ -702,7 +828,7 @@ fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<
             {
                 for member in members {
                     if let ImplMember::Method(f) = member {
-                        if fn_def_id(resolved, module.id, f.name.symbol) == Some(base) {
+                        if resolved_fn_def_matches(resolved, base_def, f, base) {
                             return generics.clone();
                         }
                     }
@@ -1027,7 +1153,7 @@ pub(crate) fn is_generic_impl_method_template(typed: &TypedProgram, def_id: DefI
     generic_param_defs_for_type(&typed.resolved, type_def).is_some_and(|params| !params.is_empty())
 }
 
-fn impl_type_def_for_method(typed: &TypedProgram, fn_def: DefId) -> Option<DefId> {
+pub(crate) fn impl_type_def_for_method(typed: &TypedProgram, fn_def: DefId) -> Option<DefId> {
     let base_def = typed.resolved.defs.get(fn_def.index() as usize)?;
     let interner = &typed.resolved.interner;
     for module in &typed.resolved.modules {
@@ -1111,11 +1237,26 @@ fn fn_decl_has_type_params(typed: &TypedProgram, def_id: DefId) -> bool {
 }
 
 fn fn_def_matches(typed: &TypedProgram, f: &Function, def: DefId) -> bool {
-    typed
+    let Some(def_record) = typed.resolved.defs.get(def.index() as usize) else {
+        return false;
+    };
+    if f.name.symbol != def_record.name || !def_record.kind.is_function_body() {
+        return false;
+    }
+    if let Some(&resolved) = typed
         .resolved
-        .defs
-        .get(def.index() as usize)
-        .is_some_and(|d| d.name == f.name.symbol && d.kind == DefKind::Fn)
+        .resolutions
+        .get(&crate::resolver::ResolutionKey {
+            module: def_record.module,
+            node_id: f.name.id,
+        })
+    {
+        return resolved == def;
+    }
+    if def_record.kind == DefKind::ImplMethod {
+        return def_record.span == f.name.span;
+    }
+    true
 }
 
 fn find_fn_by_name(
@@ -1125,7 +1266,7 @@ fn find_fn_by_name(
     name: &str,
 ) -> Option<DefId> {
     resolved.defs.iter().enumerate().find_map(|(i, d)| {
-        if d.kind != DefKind::Fn {
+        if !d.kind.is_function_body() {
             return None;
         }
         let log = module_logical(d.module)?;

@@ -240,6 +240,14 @@ impl Resolver<'_> {
         Some(id)
     }
 
+    /// Allocates an impl-method definition without registering it in module scope.
+    ///
+    /// Multiple impl blocks may define the same method name (e.g. `fmt` on different types);
+    /// each body gets a distinct [`DefKind::ImplMethod`] id keyed by span during typeck.
+    pub(crate) fn define_impl_method(&mut self, name: Symbol, span: Span) -> Option<DefId> {
+        self.alloc_def(DefKind::ImplMethod, name, span, false)
+    }
+
     /// Registers a value name in the current scope (records duplicates in the bag).
     pub(crate) fn define_value(
         &mut self,

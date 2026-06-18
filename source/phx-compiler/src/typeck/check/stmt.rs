@@ -16,7 +16,7 @@ use crate::typeck::bindings::{BindingKind, DropEvent, ForInPlan, FunctionLayoutB
 use crate::typeck::bounds::type_satisfies_trait_inst;
 use crate::typeck::builtins::{implements_drop, resolve_drop_fn};
 use crate::typeck::display::format_type_diagnostic;
-use crate::typeck::layout::TraitInstKey;
+use crate::typeck::layout::{TraitImplementer, TraitInstKey};
 use crate::typeck::lower_ty::push_generics;
 use crate::typeck::ownership::OwnershipTracker;
 use crate::typeck::primitive::primitive_kind_for_type;
@@ -912,7 +912,7 @@ impl TypeChecker<'_> {
             return;
         }
         let into_key = TraitInstKey::new(
-            implementer,
+            TraitImplementer::Type(implementer),
             implementer_args.clone(),
             into_iter_trait,
             vec![],
@@ -1008,7 +1008,12 @@ impl TypeChecker<'_> {
             self.with_loop_body(body, |this| this.check_block(body));
             return;
         }
-        let iter_key = TraitInstKey::new(state_def, state_args.clone(), iterator_trait, vec![]);
+        let iter_key = TraitInstKey::new(
+            TraitImplementer::Type(state_def),
+            state_args.clone(),
+            iterator_trait,
+            vec![],
+        );
         let iter_item_ty = self
             .program_layout
             .trait_assoc_impls

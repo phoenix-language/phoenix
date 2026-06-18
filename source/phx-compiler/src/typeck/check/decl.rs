@@ -18,7 +18,9 @@ use super::TypeChecker;
 use crate::lang_items::build_lang_item_registry;
 use crate::resolver::{DefId, DefKind, ResolutionKey};
 use crate::typeck::bounds::trait_bound_head;
-use crate::typeck::layout::{EnumLayout, StructLayout, VariantKind, VariantLayout, VariantMeta};
+use crate::typeck::layout::{
+    EnumLayout, StructLayout, TraitImplementer, VariantKind, VariantLayout, VariantMeta,
+};
 use crate::typeck::lower_ty::{TypeDefMap, lower_type, push_generics};
 use crate::typeck::subst::Substitution;
 use crate::typeck::trait_defaults;
@@ -273,6 +275,20 @@ impl TypeChecker<'_> {
             .map(|(i, _)| DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
     }
 
+    pub(in crate::typeck::check) fn find_function_def(
+        &self,
+        module: u32,
+        name: Symbol,
+    ) -> Option<DefId> {
+        self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
+            if d.module == module && d.name == name && d.kind.is_function_body() {
+                Some(DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+            } else {
+                None
+            }
+        })
+    }
+
     pub(in crate::typeck::check) fn lookup_resolution(
         &self,
         node_id: phx_syntax::AstNodeId,
@@ -517,24 +533,27 @@ impl TypeChecker<'_> {
                     generics.as_deref(),
                 );
                 let impl_type_defs = self.type_defs.clone();
-                if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
-                    let self_ty = self.impl_self_type_id(type_def, generics.as_deref());
+                if let Some(implementer) = self.trait_implementer_for_type_name(type_name) {
+                    let self_ty =
+                        self.self_ty_for_trait_implementer(implementer, generics.as_deref());
                     let saved_collect_self = self.impl_self_type;
                     self.impl_self_type = Some(self_ty);
                     if let Some(trait_ty) = trait_ {
                         if let Some(inst_key) = self.build_trait_inst_key(
-                            type_def,
+                            implementer,
                             vec![],
                             &trait_ty.inner,
                             &impl_type_defs,
                         ) {
-                            if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
-                                if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
-                                    self.check_copyable_drop_conflict(
-                                        type_def,
-                                        trait_def,
-                                        trait_ty.span,
-                                    );
+                            if let TraitImplementer::Type(type_def) = implementer {
+                                if let Some((trait_symbol, _)) = trait_bound_head(&trait_ty.inner) {
+                                    if let Some(&trait_def) = self.type_defs.get(&trait_symbol) {
+                                        self.check_copyable_drop_conflict(
+                                            type_def,
+                                            trait_def,
+                                            trait_ty.span,
+                                        );
+                                    }
                                 }
                             }
                             self.program_layout.trait_impls.insert(inst_key.clone());
@@ -598,7 +617,7 @@ impl TypeChecker<'_> {
                             ImplMember::AssociatedType { name, ty } => {
                                 if let Some(trait_ty) = trait_ {
                                     if let Some(inst_key) = self.build_trait_inst_key(
-                                        type_def,
+                                        implementer,
                                         vec![],
                                         &trait_ty.inner,
                                         &impl_type_defs,
@@ -613,9 +632,7 @@ impl TypeChecker<'_> {
                             }
                             ImplMember::Method(m) => {
                                 self.collect_fn_sig(m);
-                                if let Some(fn_def) =
-                                    self.find_def(self.current_module, m.name.symbol, DefKind::Fn)
-                                {
+                                if let Some(fn_def) = self.fn_def_for(m) {
                                     if let Some(trait_ty) = trait_.as_ref() {
                                         if let Some((trait_symbol, _)) =
                                             trait_bound_head(&trait_ty.inner)
@@ -634,7 +651,7 @@ impl TypeChecker<'_> {
                                             }
                                         }
                                         if let Some(inst_key) = self.build_trait_inst_key(
-                                            type_def,
+                                            implementer,
                                             vec![],
                                             &trait_ty.inner,
                                             &impl_type_defs,
@@ -643,7 +660,7 @@ impl TypeChecker<'_> {
                                                 .trait_methods
                                                 .insert((inst_key, m.name.symbol), fn_def);
                                         }
-                                    } else {
+                                    } else if let TraitImplementer::Type(type_def) = implementer {
                                         self.program_layout
                                             .inherent_methods
                                             .insert((type_def, m.name.symbol), fn_def);
@@ -735,7 +752,7 @@ impl TypeChecker<'_> {
 
     pub(in crate::typeck::check) fn collect_fn_sig(&mut self, f: &Function) {
         let fn_ty = self.fn_type_for_function(f);
-        if let Some(def) = self.find_def(self.current_module, f.name.symbol, DefKind::Fn) {
+        if let Some(def) = self.fn_def_for(f) {
             self.value_types.insert(def, fn_ty);
             if f.unsafe_ {
                 self.mark_fn_effective_unsafe(def);

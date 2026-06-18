@@ -4,10 +4,17 @@
 
 extern "C" {
     phoenix_write_stdout :: (s: str) => c_ssize;
+    phoenix_write_display_buf :: (buf: [u8; 32]) => c_ssize;
 };
 
 pub write_stdout :: (s: str) => () {
     unsafe {
         const _written: c_ssize = phoenix_write_stdout(s);
+    };
+};
+
+pub write_display_buf :: (buf: [u8; 32]) => () {
+    unsafe {
+        const _written: c_ssize = phoenix_write_display_buf(buf);
     };
 };

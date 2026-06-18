@@ -65,6 +65,8 @@ mod tests {
 pub enum DefKind {
     /// Top-level or nested function.
     Fn,
+    /// Trait or inherent impl method body (`Type :: impl [ :: Trait ] { … }`).
+    ImplMethod,
     /// `extern "C"` foreign function signature.
     ExternFn,
     /// `const` binding.
@@ -112,6 +114,14 @@ pub struct Def {
     pub exported: bool,
     /// Lexical scope depth when this binding was introduced.
     pub scope_depth: u32,
+}
+
+impl DefKind {
+    /// Returns true when this definition owns an executable function body.
+    #[must_use]
+    pub const fn is_function_body(self) -> bool {
+        matches!(self, DefKind::Fn | DefKind::ImplMethod)
+    }
 }
 
 impl Def {

@@ -79,10 +79,17 @@ pub fn build_pxi_for_module(
     // Trait/inherent impl methods are module-private but must appear in `.pxi` so
     // dependents can link associated fns (e.g. user `From::from` impls).
     for (i, def) in defs.iter().enumerate() {
-        if def.module != module_id || def.exported || def.kind != DefKind::Fn {
+        if def.module != module_id || def.exported || !def.kind.is_function_body() {
             continue;
         }
         let def_id = DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX));
+        let name = interner.resolve(def.name).unwrap_or("<?>");
+        if name == "fmt"
+            && crate::typeck::is_builtin_type_impl_method(typed, def_id)
+            && !crate::typeck::is_str_builtin_impl_method(typed, def_id)
+        {
+            continue;
+        }
         push_export(
             &mut pxi_exports,
             &mut emitted,
@@ -166,23 +173,25 @@ fn export_structured_type(
     let layout = &typed.layout;
     let ty_interner = &typed.types;
     match def.kind {
-        DefKind::Fn => typed.functions.iter().find(|f| f.def == def_id).map(|f| {
-            let params: Vec<_> = f
-                .bindings
-                .iter()
-                .filter(|b| b.kind == BindingKind::Param)
-                .map(|p| p.ty)
-                .collect();
-            fn_export_type(
-                ty_interner,
-                interner,
-                defs,
-                layout,
-                logical_module,
-                &params,
-                f.return_type,
-            )
-        }),
+        DefKind::Fn | DefKind::ImplMethod => {
+            typed.functions.iter().find(|f| f.def == def_id).map(|f| {
+                let params: Vec<_> = f
+                    .bindings
+                    .iter()
+                    .filter(|b| b.kind == BindingKind::Param)
+                    .map(|p| p.ty)
+                    .collect();
+                fn_export_type(
+                    ty_interner,
+                    interner,
+                    defs,
+                    layout,
+                    logical_module,
+                    &params,
+                    f.return_type,
+                )
+            })
+        }
         DefKind::Struct => layout.structs.get(&def_id).map(|sl| {
             struct_export_type(
                 ty_interner,
@@ -216,7 +225,7 @@ fn export_signature_fallback(
     names: &Interner,
 ) -> String {
     match def.kind {
-        DefKind::Fn => typed
+        DefKind::Fn | DefKind::ImplMethod => typed
             .functions
             .iter()
             .find(|f| f.def == def_id)

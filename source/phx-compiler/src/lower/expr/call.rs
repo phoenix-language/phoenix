@@ -6,7 +6,7 @@ use phx_syntax::ast::ident::PathSegment;
 
 use crate::ir::{IrBinOp, IrInst};
 use crate::lower::ctx::{LowerCtx, lookup_resolution, prim_kind_byte, slot_for_symbol};
-use crate::resolver::{DefId, DefKind};
+use crate::resolver::DefId;
 use crate::typeck::{
     BindingKind, ExprId, FunctionLayout, LocalSlot, PrimitiveMethodSite, TryFailureMode,
     TrySiteMeta, Ty, TypeId, TypedProgram,
@@ -217,9 +217,14 @@ fn lower_postfix_inner(
     }
 
     let ref_method = single_method_with_ref_receiver(ctx, ops, postfix_expr_id);
-    let mut receiver_ty = if let Some((_, ref_ty)) = ref_method {
-        let _ = ctx.expr_ty();
-        emit_ref_method_receiver(ctx, base);
+    let mut receiver_ty = if let Some((callee, ref_ty)) = ref_method {
+        if let Expr::Ident(_) = &base.inner {
+            let _ = ctx.expr_ty();
+            emit_ref_method_receiver(ctx, base);
+        } else {
+            let value_ty = lower_expr_typed(ctx, base);
+            emit_ref_receiver_from_stack_value(ctx, callee, value_ty);
+        }
         ref_ty
     } else if let Expr::Ident(ident) = &base.inner
         && let Some(binding) = ctx.layout.binding(ident.symbol)
@@ -644,7 +649,7 @@ fn resolve_call_callee(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {
         .resolved
         .defs
         .get(def.index() as usize)
-        .is_some_and(|d| d.kind == DefKind::Fn)
+        .is_some_and(|d| d.kind.is_function_body())
     {
         Some(def)
     } else {

@@ -110,6 +110,35 @@ pub(super) fn lower_expr_inner(
                 }
                 return;
             }
+            if matches!(op, UnaryOp::Deref) {
+                let operand_id = ExprId::from_raw(ctx.next_expr);
+                let operand_ty = ctx
+                    .typed
+                    .expr_types
+                    .get(&operand_id)
+                    .copied()
+                    .unwrap_or(result_ty);
+                if let (Ty::Ref { inner, .. }, Expr::Ident(ident)) =
+                    (ctx.typed.types.get(operand_ty), &operand.inner)
+                {
+                    if let Some(kind) = primitive_kind_for_type(&ctx.typed.types, *inner) {
+                        if let Some(binding) = ctx.layout.binding(ident.symbol) {
+                            let _ = ctx.expr_ty();
+                            ctx.emit_here(IrInst::LoadLocal {
+                                slot: binding.slot,
+                                ty: binding.ty,
+                                prim_kind: prim_kind_byte(ctx.typed, binding.ty),
+                            });
+                            ctx.emit_here(IrInst::PtrLoad {
+                                prim_kind: kind.as_u8(),
+                                signed: primitive_load_signed(kind),
+                                result: *inner,
+                            });
+                            return;
+                        }
+                    }
+                }
+            }
             let operand_id = ExprId::from_raw(ctx.next_expr);
             lower_expr(ctx, operand);
             match op {

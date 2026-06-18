@@ -5,6 +5,7 @@ pub Debug :: trait {
     fmt :: (self: &Self) => [u8; 32];
 };
 
+#[lang_item(name = "Display", kind = "trait")]
 pub Display :: trait {
     fmt :: (self: &Self) => [u8; 32];
 };
@@ -33,7 +34,7 @@ copy_ascii_into :: (out: [u8; 32], text: str) => [u8; 32] {
     buf
 };
 
-pub display_buf_s32 :: (value: s32) => [u8; 32] {
+format_s32 :: (value: s32) => [u8; 32] {
     if value == 0 {
         var zero: [u8; 32] = empty_display_buf();
         zero[0] = (48u as u8);
@@ -76,10 +77,194 @@ pub display_buf_s32 :: (value: s32) => [u8; 32] {
     };
 };
 
-pub display_buf_bool :: (value: bool) => [u8; 32] {
+format_bool :: (value: bool) => [u8; 32] {
     if value {
         copy_ascii_into(empty_display_buf(), "true")
     } else {
         copy_ascii_into(empty_display_buf(), "false")
+    };
+};
+
+format_s8 :: (value: s8) => [u8; 32] {
+    format_s32(value as s32)
+};
+
+format_s16 :: (value: s16) => [u8; 32] {
+    format_s32(value as s32)
+};
+
+format_s64 :: (value: s64) => [u8; 32] {
+    format_s32(value as s32)
+};
+
+format_u32 :: (value: u32) => [u8; 32] {
+    format_s32(value as s32)
+};
+
+format_u8 :: (value: u8) => [u8; 32] {
+    format_u32(value as u32)
+};
+
+format_u16 :: (value: u16) => [u8; 32] {
+    format_u32(value as u32)
+};
+
+format_u64 :: (value: u64) => [u8; 32] {
+    format_u32(value as u32)
+};
+
+format_f32 :: (value: f32) => [u8; 32] {
+    format_s32(value as s32)
+};
+
+format_f64 :: (value: f64) => [u8; 32] {
+    format_s32(value as s32)
+};
+
+format_str :: (value: str) => [u8; 32] {
+    copy_ascii_into(empty_display_buf(), value)
+};
+
+s8 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s8(*self)
+    };
+};
+
+s8 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s8(*self)
+    };
+};
+
+s16 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s16(*self)
+    };
+};
+
+s16 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s16(*self)
+    };
+};
+
+s32 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s32(*self)
+    };
+};
+
+s32 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s32(*self)
+    };
+};
+
+s64 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s64(*self)
+    };
+};
+
+s64 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_s64(*self)
+    };
+};
+
+u8 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u8(*self)
+    };
+};
+
+u8 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u8(*self)
+    };
+};
+
+u16 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u16(*self)
+    };
+};
+
+u16 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u16(*self)
+    };
+};
+
+u32 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u32(*self)
+    };
+};
+
+u32 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u32(*self)
+    };
+};
+
+u64 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u64(*self)
+    };
+};
+
+u64 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_u64(*self)
+    };
+};
+
+f32 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_f32(*self)
+    };
+};
+
+f32 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_f32(*self)
+    };
+};
+
+f64 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_f64(*self)
+    };
+};
+
+f64 :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_f64(*self)
+    };
+};
+
+bool :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_bool(*self)
+    };
+};
+
+bool :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_bool(*self)
+    };
+};
+
+str :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_str(*self)
+    };
+};
+
+str :: impl :: Debug {
+    fmt :: (self: &Self) => [u8; 32] {
+        format_str(*self)
     };
 };

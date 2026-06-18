@@ -33,7 +33,8 @@ mod unify;
 
 pub(crate) use mono::{
     CrossCrateMonoReq, MonoInst, apply_mono_worklist, collect_cross_crate_mono_reqs,
-    is_generic_fn_template, is_generic_impl_method_template,
+    generic_param_defs_for_type, impl_type_def_for_method, is_generic_fn_template,
+    is_generic_impl_method_template,
 };
 
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};
@@ -42,7 +43,10 @@ pub use display::format_type;
 pub use intrinsic_kernel::IntrinsicSite;
 pub use layout::{EnumLayout, ProgramLayout, StructLayout, VariantKind};
 pub use mangle::mangle_export_id;
-pub use primitive::{primitive_kind_for_type, primitive_load_signed, slot_kind_for_binding};
+pub use primitive::{
+    is_builtin_type_impl_method, is_str_builtin_impl_method, primitive_kind_for_type,
+    primitive_load_signed, slot_kind_for_binding,
+};
 pub use std_kernel::{TryFailureMode, TrySiteMeta};
 pub use trait_defaults::lookup_function;
 pub use type_size::type_byte_size;
@@ -128,6 +132,8 @@ pub struct MethodCallSiteMeta {
     pub template: DefId,
     /// Type arguments for monomorphization (impl + method generics), in parameter order.
     pub mono_args: Vec<TypeId>,
+    /// Receiver type at the call site (used to patch primitive trait dispatch after monomorphization).
+    pub receiver_ty: TypeId,
 }
 
 /// Lowering hint for trait method calls on primitive receivers.

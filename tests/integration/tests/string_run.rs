@@ -54,3 +54,13 @@ fn string_fmt_bool_fixture_runs() {
 
     run(verified).expect("run string_fmt_bool");
 }
+
+#[test]
+fn primitive_display_fixture_runs() {
+    let _lock = fixture_fs_lock();
+    require_cli_project("primitive_display");
+    let built = force_build_project("primitive_display");
+    let verified = phx_bytecode::verify(&built.module).expect("verify primitive_display");
+
+    run(verified).expect("run primitive_display");
+}

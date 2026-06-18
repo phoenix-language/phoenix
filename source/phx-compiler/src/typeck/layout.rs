@@ -4,15 +4,27 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use phx_syntax::Symbol;
+use phx_syntax::token::Keyword;
 
 use super::types::TypeId;
 use crate::resolver::DefId;
 
+/// Who implements a trait in [`TraitInstKey`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TraitImplementer {
+    /// User-defined struct, enum, or alias.
+    Type(DefId),
+    /// Numeric or `bool` primitive (`s32 :: impl :: Trait`).
+    Primitive(Keyword),
+    /// Language `str` view (`str :: impl :: Trait`).
+    Str,
+}
+
 /// Identifies a concrete trait implementation: `Target: From<Source>`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TraitInstKey {
-    /// Implementing type definition.
-    pub implementer: DefId,
+    /// Implementing type.
+    pub implementer: TraitImplementer,
     /// Type arguments on the implementer (empty when monomorphic).
     pub implementer_args: Vec<TypeId>,
     /// Trait template definition.
@@ -25,7 +37,7 @@ impl TraitInstKey {
     /// Builds a trait impl lookup key.
     #[must_use]
     pub fn new(
-        implementer: DefId,
+        implementer: TraitImplementer,
         implementer_args: Vec<TypeId>,
         trait_def: DefId,
         trait_args: Vec<TypeId>,
@@ -38,10 +50,32 @@ impl TraitInstKey {
         }
     }
 
-    /// Returns a key with empty implementer and trait argument lists.
+    /// Returns a key for a monomorphic named type impl.
     #[must_use]
-    pub fn simple(implementer: DefId, trait_def: DefId) -> Self {
-        Self::new(implementer, Vec::new(), trait_def, Vec::new())
+    pub fn type_simple(implementer: DefId, trait_def: DefId) -> Self {
+        Self::new(
+            TraitImplementer::Type(implementer),
+            Vec::new(),
+            trait_def,
+            Vec::new(),
+        )
+    }
+
+    /// Returns a key for a primitive type impl (`s32 :: impl :: Trait`).
+    #[must_use]
+    pub fn primitive_simple(kw: Keyword, trait_def: DefId) -> Self {
+        Self::new(
+            TraitImplementer::Primitive(kw),
+            Vec::new(),
+            trait_def,
+            Vec::new(),
+        )
+    }
+
+    /// Returns a key for `str :: impl :: Trait`.
+    #[must_use]
+    pub fn str_simple(trait_def: DefId) -> Self {
+        Self::new(TraitImplementer::Str, Vec::new(), trait_def, Vec::new())
     }
 }
 

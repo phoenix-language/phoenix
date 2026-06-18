@@ -1,6 +1,6 @@
 //! Heap allocation and pointer load/store opcodes.
 
-use phx_bytecode::{Instruction, PTR_AGG_TAG, PrimitiveKind, ScalarValue};
+use phx_bytecode::{Instruction, PTR_AGG_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue};
 
 use crate::VmErrorKind;
 use crate::context::{ExecutionContext, VmRuntime};
@@ -110,6 +110,68 @@ fn local_aggregate_in_ancestor_frames(
     Err(VmErrorKind::InvalidAggregate)
 }
 
+/// Returns `true` when `value` is a tagged local-slot pointer (a borrow cell), not pointee data.
+fn is_local_indirection_scalar(value: Value) -> bool {
+    matches!(
+        value,
+        Value::Scalar(ScalarValue::Ptr(ptr)) if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG
+    )
+}
+
+/// Loads a primitive from `slot`, walking from the current frame outward.
+///
+/// Skips borrow cells that hold `PTR_LOCAL_TAG` pointers so `*param` through a callee
+/// slot does not treat the parameter cell as the pointee.
+fn local_scalar_in_frames(
+    ctx: &ExecutionContext,
+    slot: u32,
+    kind: PrimitiveKind,
+) -> Result<ScalarValue, VmErrorKind> {
+    let idx = usize::try_from(slot).map_err(|_| VmErrorKind::InvalidLocalSlot(slot))?;
+    for fi in (0..ctx.frames.len()).rev() {
+        let Some(frame) = ctx.frames.get(fi) else {
+            continue;
+        };
+        let Some(local) = frame.locals.get(idx) else {
+            continue;
+        };
+        if is_local_indirection_scalar(*local) {
+            continue;
+        }
+        let bytes = crate::frame::local_scalar_bytes(frame, slot, kind)?;
+        if let Some(v) = ScalarValue::from_le_bytes(kind, &bytes) {
+            return Ok(v);
+        }
+    }
+    Err(VmErrorKind::InvalidLocalSlot(slot))
+}
+
+/// Stores primitive bytes into `slot`, walking from the current frame outward.
+fn store_local_scalar_in_frames(
+    ctx: &mut ExecutionContext,
+    slot: u32,
+    kind: PrimitiveKind,
+    bytes: &[u8],
+) -> Result<(), VmErrorKind> {
+    let idx = usize::try_from(slot).map_err(|_| VmErrorKind::InvalidLocalSlot(slot))?;
+    for fi in (0..ctx.frames.len()).rev() {
+        let frame = ctx
+            .frames
+            .get_mut(fi)
+            .ok_or(VmErrorKind::InvalidLocalSlot(slot))?;
+        let Some(local) = frame.locals.get(idx) else {
+            continue;
+        };
+        if is_local_indirection_scalar(*local) {
+            continue;
+        }
+        if local.as_scalar().is_some() {
+            return crate::frame::store_local_scalar_bytes(frame, slot, kind, bytes);
+        }
+    }
+    Err(VmErrorKind::InvalidLocalSlot(slot))
+}
+
 pub(super) fn ptr_load(
     ctx: &ExecutionContext,
     runtime: &VmRuntime,
@@ -118,14 +180,9 @@ pub(super) fn ptr_load(
     signed: u8,
 ) -> Result<ScalarValue, VmErrorKind> {
     let size = kind.byte_size();
-    if ptr & phx_bytecode::PTR_LOCAL_TAG == phx_bytecode::PTR_LOCAL_TAG {
+    if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
         let slot = ScalarValue::local_slot_from_ptr(ptr).ok_or(VmErrorKind::InvalidConstPayload)?;
-        let frame = ctx
-            .frames
-            .last()
-            .ok_or(VmErrorKind::InvalidLocalSlot(slot))?;
-        let bytes = crate::frame::local_scalar_bytes(frame, slot, kind)?;
-        return ScalarValue::from_le_bytes(kind, &bytes).ok_or(VmErrorKind::InvalidConstPayload);
+        return local_scalar_in_frames(ctx, slot, kind);
     }
     if ptr & PTR_AGG_TAG == PTR_AGG_TAG {
         let handle = (ptr & !PTR_AGG_TAG) as u32;
@@ -145,14 +202,10 @@ pub(super) fn ptr_store(
     value: ScalarValue,
 ) -> Result<(), VmErrorKind> {
     let size = kind.byte_size();
-    if ptr & phx_bytecode::PTR_LOCAL_TAG == phx_bytecode::PTR_LOCAL_TAG {
+    if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
         let slot = ScalarValue::local_slot_from_ptr(ptr).ok_or(VmErrorKind::InvalidConstPayload)?;
         let bytes = value.to_le_bytes(kind);
-        let frame = ctx
-            .frames
-            .last_mut()
-            .ok_or(VmErrorKind::InvalidLocalSlot(slot))?;
-        return crate::frame::store_local_scalar_bytes(frame, slot, kind, &bytes);
+        return store_local_scalar_in_frames(ctx, slot, kind, &bytes);
     }
     if ptr & PTR_AGG_TAG == PTR_AGG_TAG {
         let handle = (ptr & !PTR_AGG_TAG) as u32;
@@ -300,4 +353,33 @@ pub(super) fn write_heap_scalar(
     }
     heap[addr..end].copy_from_slice(&bytes[..usize::from(size)]);
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::frame::{Frame, Value};
+
+    #[test]
+    fn ptr_load_local_tag_skips_borrow_cell_and_reads_caller_scalar() {
+        let mut ctx = ExecutionContext::default();
+        ctx.frames.push(Frame {
+            function_id: 0,
+            pc: 0,
+            locals: vec![Value::Scalar(ScalarValue::I32(42))],
+        });
+        ctx.frames.push(Frame {
+            function_id: 1,
+            pc: 0,
+            locals: vec![Value::Scalar(ScalarValue::local_ptr(0))],
+        });
+        let runtime = VmRuntime::default();
+        let ptr = ScalarValue::local_ptr(0);
+        let ScalarValue::Ptr(encoded) = ptr else {
+            panic!("expected ptr");
+        };
+        let loaded = ptr_load(&ctx, &runtime, encoded, PrimitiveKind::S32, 1).expect("load");
+        assert_eq!(loaded, ScalarValue::I32(42));
+    }
 }

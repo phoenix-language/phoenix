@@ -14,8 +14,11 @@ use phx_syntax::{Symbol, impl_receiver_symbol};
 
 use super::TypeChecker;
 use super::decl::generic_bounds_in_decl;
-use super::impls::find_trait_method_def;
-use crate::resolver::{DefId, DefKind};
+use super::impls::{
+    find_trait_method_def, find_trait_method_def_for_builtin, find_trait_method_def_for_str,
+    find_trait_method_def_for_trait,
+};
+use crate::resolver::{DefId, DefKind, ResolutionKey};
 use crate::typeck::MethodCallSiteMeta;
 use crate::typeck::PrimitiveMethodSite;
 use crate::typeck::bindings::BindingKind;
@@ -25,7 +28,7 @@ use crate::typeck::bounds::{
 use crate::typeck::builtins::{float_literal_type, int_literal_type, str_type, u8_type};
 use crate::typeck::infer::InferenceCtx;
 use crate::typeck::intrinsic_kernel::IntrinsicSite;
-use crate::typeck::layout::{TraitInstKey, TypeMonoKey, VariantKind};
+use crate::typeck::layout::{TraitImplementer, TraitInstKey, TypeMonoKey, VariantKind};
 use crate::typeck::lower_ty::TypeDefMap;
 use crate::typeck::mono::{
     MonoInst, TypeMonoInst, TypeMonoKind, generic_param_defs_for_type, generic_params_for_def,
@@ -982,7 +985,9 @@ impl TypeChecker<'_> {
             .filter_map(|((def, _), fn_def)| (*def == type_def).then_some(*fn_def))
             .collect();
         for ((key, _), fn_def) in &self.program_layout.trait_methods {
-            if key.implementer == type_def && key.implementer_args.is_empty() {
+            if key.implementer == TraitImplementer::Type(type_def)
+                && key.implementer_args.is_empty()
+            {
                 fns.push(*fn_def);
             }
         }
@@ -1555,38 +1560,24 @@ impl TypeChecker<'_> {
                 continue;
             };
             let trait_def = self.type_defs.get(&trait_symbol).copied()?;
-            let items = self.find_trait_items(trait_def)?;
-            for item in items {
-                if let TraitItem::Method(sig) = item {
-                    let Some(method_name) = self.resolved.interner.resolve(method) else {
-                        continue;
-                    };
-                    if self
-                        .resolved
-                        .interner
-                        .resolve(sig.name.symbol)
-                        .is_some_and(|name| name == method_name)
-                    {
-                        let trait_module = self.resolved.defs[trait_def.index() as usize].module;
-                        return self.resolved.defs.iter().enumerate().find_map(|(i, d)| {
-                            if d.module != trait_module || d.kind != DefKind::Fn {
-                                return None;
-                            }
-                            if self
-                                .resolved
-                                .interner
-                                .resolve(d.name)
-                                .is_none_or(|n| n != method_name)
-                            {
-                                return None;
-                            }
-                            u32::try_from(i).ok().map(DefId::from_raw)
-                        });
-                    }
-                }
+            if let Some(fn_def) =
+                find_trait_method_def_for_trait(&self.program_layout, trait_def, method)
+            {
+                return Some(fn_def);
             }
         }
         None
+    }
+
+    pub(in crate::typeck::check) fn preferred_trait_for_method(
+        &self,
+        method: Symbol,
+    ) -> Option<DefId> {
+        if self.resolved.interner.resolves_to(method, "fmt") {
+            self.lang_items.display_trait
+        } else {
+            None
+        }
     }
 
     pub(in crate::typeck::check) fn find_trait_items(
@@ -1633,9 +1624,41 @@ impl TypeChecker<'_> {
         None
     }
 
+    pub(in crate::typeck::check) fn trait_implementer_for_type_name(
+        &self,
+        type_name: &TypeName,
+    ) -> Option<TraitImplementer> {
+        if crate::typeck::primitive::is_str_impl_type_symbol(
+            &self.resolved.interner,
+            type_name.symbol,
+        ) {
+            return Some(TraitImplementer::Str);
+        }
+        if let Some(type_def) = self.type_defs.get(&type_name.symbol).copied() {
+            return Some(TraitImplementer::Type(type_def));
+        }
+        crate::typeck::primitive::keyword_for_impl_type_symbol(
+            &self.resolved.interner,
+            type_name.symbol,
+        )
+        .map(TraitImplementer::Primitive)
+    }
+
+    pub(in crate::typeck::check) fn self_ty_for_trait_implementer(
+        &mut self,
+        implementer: TraitImplementer,
+        impl_generics: Option<&[phx_syntax::ast::types::GenericParam]>,
+    ) -> TypeId {
+        match implementer {
+            TraitImplementer::Type(type_def) => self.impl_self_type_id(type_def, impl_generics),
+            TraitImplementer::Primitive(kw) => self.types.intern(&Ty::Primitive(kw)),
+            TraitImplementer::Str => str_type(&mut self.types),
+        }
+    }
+
     pub(in crate::typeck::check) fn build_trait_inst_key(
         &mut self,
-        type_def: DefId,
+        implementer: TraitImplementer,
         implementer_args: Vec<TypeId>,
         trait_ty: &Type,
         td: &TypeDefMap,
@@ -1653,7 +1676,7 @@ impl TypeChecker<'_> {
             })
             .unwrap_or_default();
         Some(TraitInstKey::new(
-            type_def,
+            implementer,
             implementer_args,
             trait_def,
             trait_args,
@@ -1892,23 +1915,74 @@ impl TypeChecker<'_> {
         params.to_vec()
     }
 
+    pub(in crate::typeck::check) fn method_first_param_is_ref(&self, fn_def: DefId) -> bool {
+        let Some(&fn_ty) = self.value_types.get(&fn_def) else {
+            return false;
+        };
+        let Ty::Fn { params, .. } = self.types.get(fn_ty) else {
+            return false;
+        };
+        params
+            .first()
+            .is_some_and(|p| matches!(self.types.get(*p), Ty::Ref { .. }))
+    }
+
+    pub(in crate::typeck::check) fn plan_ref_receiver_temp_if_needed(
+        &mut self,
+        receiver_expr: Option<&ExprNode>,
+        receiver: TypeId,
+        fn_def: DefId,
+        span: Span,
+    ) {
+        let Some(expr) = receiver_expr else {
+            return;
+        };
+        if !self.method_first_param_is_ref(fn_def) {
+            return;
+        }
+        if matches!(expr.inner, Expr::Ident(_)) {
+            return;
+        }
+        let store_ty = match self.types.get(receiver) {
+            Ty::Ref { inner, .. } => *inner,
+            _ => receiver,
+        };
+        if let Some(layout) = &mut self.layout {
+            let _ = layout.alloc_match_scrutinee_temp(store_ty, span);
+        }
+    }
+
     pub(in crate::typeck::check) fn find_function_decl(&self, def: DefId) -> Option<&Function> {
         if let Some(f) = self.inherited_trait_methods.get(&def) {
             return Some(f);
         }
+        let def_record = self.resolved.defs.get(def.index() as usize)?;
         for module in &self.resolved.modules {
+            if module.id != def_record.module {
+                continue;
+            }
             for item in &module.program.items {
                 match &item.inner.decl {
-                    TopLevelDecl::Function(f)
-                        if self.find_def(module.id, f.name.symbol, DefKind::Fn) == Some(def) =>
-                    {
-                        return Some(f);
+                    TopLevelDecl::Function(f) => {
+                        let matches = if def_record.kind == DefKind::Fn {
+                            self.find_def(module.id, f.name.symbol, DefKind::Fn) == Some(def)
+                        } else {
+                            self.function_node_matches_def(def, def_record, f.name.id)
+                        };
+                        if matches {
+                            return Some(f);
+                        }
                     }
                     TopLevelDecl::Impl { members, .. } => {
                         for m in members {
                             if let ImplMember::Method(f) = m {
-                                if self.find_def(module.id, f.name.symbol, DefKind::Fn) == Some(def)
-                                {
+                                let matches = if def_record.kind == DefKind::ImplMethod {
+                                    self.function_node_matches_def(def, def_record, f.name.id)
+                                } else {
+                                    self.find_def(module.id, f.name.symbol, DefKind::Fn)
+                                        == Some(def)
+                                };
+                                if matches {
                                     return Some(f);
                                 }
                             }
@@ -1919,6 +1993,24 @@ impl TypeChecker<'_> {
             }
         }
         None
+    }
+
+    pub(in crate::typeck::check) fn function_node_matches_def(
+        &self,
+        def: DefId,
+        def_record: &crate::resolver::Def,
+        node_id: phx_syntax::AstNodeId,
+    ) -> bool {
+        if !def_record.kind.is_function_body() {
+            return false;
+        }
+        self.resolved
+            .resolutions
+            .get(&ResolutionKey {
+                module: def_record.module,
+                node_id,
+            })
+            .is_some_and(|&resolved| resolved == def)
     }
 
     pub(in crate::typeck::check) fn context_generic_args_for_enum(
@@ -2520,7 +2612,43 @@ impl TypeChecker<'_> {
         site_id: ExprId,
     ) -> TypeId {
         if let Ty::Primitive(kw) = self.types.get(receiver).clone() {
+            if let Some(fn_def) = find_trait_method_def_for_builtin(
+                &self.program_layout,
+                kw,
+                name.symbol,
+                self.preferred_trait_for_method(name.symbol),
+            ) {
+                return self.check_trait_method_call_on_builtin(
+                    receiver_expr,
+                    receiver,
+                    fn_def,
+                    name,
+                    generics,
+                    args,
+                    span,
+                    site_id,
+                );
+            }
             return self.check_primitive_method_call(kw, receiver, name, args, span, site_id);
+        }
+        if self.types.get(receiver) == &Ty::Str {
+            if let Some(fn_def) = find_trait_method_def_for_str(
+                &self.program_layout,
+                name.symbol,
+                self.preferred_trait_for_method(name.symbol),
+            ) {
+                return self.check_trait_method_call_on_builtin(
+                    receiver_expr,
+                    receiver,
+                    fn_def,
+                    name,
+                    generics,
+                    args,
+                    span,
+                    site_id,
+                );
+            }
+            return self.emit_unresolved_method(receiver, name, span);
         }
         let Some((type_def, implementer_args)) = self.named_type_under_receiver(receiver) else {
             return self.emit_unresolved_method(receiver, name, span);
@@ -2648,9 +2776,11 @@ impl TypeChecker<'_> {
                 MethodCallSiteMeta {
                     template: fn_def,
                     mono_args,
+                    receiver_ty: receiver,
                 },
             );
             let out = Substitution::apply(&mut self.types, ret, &subst, self.resolved);
+            self.plan_ref_receiver_temp_if_needed(receiver_expr, receiver, fn_def, span);
             if let Some(expr) = receiver_expr {
                 self.mark_method_receiver_moved(expr, receiver, fn_def);
             }
@@ -2681,6 +2811,7 @@ impl TypeChecker<'_> {
                 self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
             }
         }
+        self.plan_ref_receiver_temp_if_needed(receiver_expr, receiver, fn_def, span);
         if let Some(expr) = receiver_expr {
             self.mark_method_receiver_moved(expr, receiver, fn_def);
         }
@@ -2689,6 +2820,7 @@ impl TypeChecker<'_> {
             MethodCallSiteMeta {
                 template: fn_def,
                 mono_args: Vec::new(),
+                receiver_ty: receiver,
             },
         );
         ret
@@ -2782,7 +2914,9 @@ impl TypeChecker<'_> {
             .program_layout
             .trait_methods
             .iter()
-            .filter(|((key, method), _)| key.implementer == type_def && *method == name.symbol)
+            .filter(|((key, method), _)| {
+                key.implementer == TraitImplementer::Type(type_def) && *method == name.symbol
+            })
             .map(|(_, fn_def)| *fn_def)
             .collect();
         trait_matches.sort_by_key(|d| d.index());

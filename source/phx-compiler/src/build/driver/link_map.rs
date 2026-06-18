@@ -105,8 +105,6 @@ pub(super) fn build_global_fn_map(
     typed: &crate::typeck::TypedProgram,
     ir: &crate::ir::IrModule,
 ) -> Result<HashMap<DefId, u32>, BuildError> {
-    use crate::resolver::DefKind;
-
     let workspace = &config.name;
     let interner = &typed.resolved.interner;
 
@@ -155,7 +153,7 @@ pub(super) fn build_global_fn_map(
 
     if !config.dependencies.is_empty() {
         for (i, def) in typed.resolved.defs.iter().enumerate() {
-            if def.kind != DefKind::Fn {
+            if !def.kind.is_function_body() {
                 continue;
             }
             let def_id = DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX));

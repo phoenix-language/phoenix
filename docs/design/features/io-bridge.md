@@ -11,7 +11,7 @@ Phoenix defers **safe** std I/O until the M:N scheduler and schedulable-I/O runt
 | In scope | Out of scope |
 |---|---|
 | VM-hosted foreign stub `phoenix_write_stdout(s: str) => c_ssize` | libc `dlopen` / raw `write(2)` from Phoenix |
-| `std::io::write_stdout(s: str)` wrapper (hides `unsafe` for demos) | `String` printing, format macros, `println!` |
+| `std::io::write_stdout(s: str)` wrapper (hides `unsafe` for demos) | `String` printing via `to_string` + `write_stdout` (use `print` / `write_display_buf` instead) |
 | `phx run` auto-registers the stub | Scheduler, `AWAIT_IO`, typed schedulable I/O |
 | Const-pool `str` literals (rodata) | Heap-backed `str` views, networking, files |
 
@@ -43,8 +43,9 @@ main → std::io::write_stdout → unsafe phoenix_write_stdout → VM stub → h
 |---|---|
 | Symbol | `phoenix_write_stdout` |
 | Phoenix signature | `(s: str) => c_ssize` |
+| Second symbol | `phoenix_write_display_buf(buf: [u8; 32]) => c_ssize` — writes a zero-terminated display buffer (used by `std::text::fmt::print`) |
 | Registration | `register_builtin_foreign_stubs()` in `phx-vm`; `phx run` calls it before execution |
-| **Id alignment** | Codegen assigns foreign ids by `ExternFn` declaration order in the linked program. The stub **must be the only `extern "C"` symbol** in programs using the bridge until linker-stable foreign ids ship (Phase B / PHX-070). |
+| **Id alignment** | Codegen assigns foreign ids by `ExternFn` declaration order in the linked program. Bridge programs may declare **at most** `phoenix_write_stdout` and `phoenix_write_display_buf` until linker-stable foreign ids ship (Phase B / PHX-070). |
 | v0 payload | Const-pool-backed `str` literals only; other `str` provenance returns a VM aggregate error |
 
 ---

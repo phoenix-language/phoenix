@@ -80,7 +80,7 @@ See [`tests/cli/fixtures/std_smoke/`](../tests/cli/fixtures/std_smoke/) for a bu
 | `std::core::copyable` | `src/core/copyable.phx` | `pub Copyable :: trait` (empty marker) |
 | `std::core::clone` | `src/core/clone.phx` | `pub Clone :: trait` |
 | `std::core::cmp` | `src/core/cmp.phx` | `pub PartialEq`, `pub Eq :: trait` |
-| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait`; `display_buf_s32` / `display_buf_bool` helpers (zero-terminated `[u8; 32]`) |
+| `std::core::fmt` | `src/core/fmt.phx` | `pub Debug`, `pub Display :: trait`; private `format_*` helpers; primitive `:: impl` blocks |
 | `std::core::convert` | `src/core/convert.phx` | `pub From`, `Into`, `TryFrom`, `TryInto` |
 | `std::core::iter` | `src/core/iter.phx` | `pub Iterator`, `IntoIter`, `Range`, `RangeIter` (V0-055) |
 
@@ -90,17 +90,17 @@ Future subsystem modules ship **concrete** error types that implement `std::core
 
 | Logical module | File | Status |
 |----------------|------|--------|
-| `std::io` | `src/io/mod.phx` | `write_stdout` (pre-scheduler bridge; see [`io-bridge.md`](../docs/design/features/io-bridge.md)) |
+| `std::io` | `src/io/mod.phx` | `write_stdout`, `write_display_buf` (pre-scheduler bridge; see [`io-bridge.md`](../docs/design/features/io-bridge.md)) |
 
-`phoenix_write_stdout` is the only `extern "C"` in std until stable foreign symbol ids ship. Do not add other extern imports to std while using the bridge.
+Bridge programs may declare `phoenix_write_stdout` and `phoenix_write_display_buf` only until stable foreign symbol ids ship.
 
 ## Module layout (`std::text`)
 
 | Logical module | File | Status |
 |----------------|------|--------|
-| `std::text` | `src/text/mod.phx` | `pub mod string`, `fmt_s32` |
+| `std::text` | `src/text/mod.phx` | `pub mod string`, `pub mod fmt` |
 | `std::text::string` | `src/text/string.phx` | `pub String` (growable UTF-8; `Clone`, `PartialEq`, `Display`) |
-| `std::text::fmt_s32` | `src/text/fmt_s32.phx` | `buf_to_string` (zero-terminated `[u8; 32]` → `String`) |
+| `std::text::fmt` | `src/text/fmt.phx` | `to_string<T: Display>`, `print<T: Display>` (zero-terminated `[u8; 32]` via `Display::fmt`) |
 
 Future top-level siblings (post-core): `std::collections::*` (including **`DynamicArray<T>`**).
 
@@ -109,7 +109,7 @@ Future top-level siblings (post-core): `std::collections::*` (including **`Dynam
 When `bundle_std = true` (default), projects also get **`prelude = true`** by default. The compiler injects bindings from `std::core::*` into workspace modules (not into std internals; see `source/phx-compiler/src/modules/prelude.rs`):
 
 - `Option`, `Some`, `None`, `Result`, `Ok`, `Err`
-- `Copyable`, `Clone`, `PartialEq`, `Eq`, `Debug`
+- `Copyable`, `Clone`, `PartialEq`, `Eq`, `Debug`, `Display`
 
 Opt out per project:
 

@@ -9,7 +9,7 @@ use phx_syntax::ast::Type;
 use phx_syntax::ast::types::GenericParam;
 
 use super::builtins::is_copyable;
-use super::layout::{ProgramLayout, TraitInstKey};
+use super::layout::{ProgramLayout, TraitImplementer, TraitInstKey};
 use super::lower_ty::{build_type_def_map, lower_type};
 use super::subst::Substitution;
 use super::types::{Ty, TypeId, TypeInterner};
@@ -243,7 +243,12 @@ pub fn type_satisfies_trait_inst(
     }
     match types.get(concrete) {
         Ty::Primitive(kw) => {
-            trait_args.is_empty() && std_traits.primitive_satisfies(*kw, trait_def)
+            trait_args.is_empty()
+                && (std_traits.primitive_satisfies(*kw, trait_def)
+                    || layout_has_builtin_trait_impl(layout, *kw, trait_def, trait_args))
+        }
+        Ty::Str => {
+            trait_args.is_empty() && layout_has_str_trait_impl(layout, trait_def, trait_args)
         }
         Ty::Unit => {
             trait_args.is_empty()
@@ -280,7 +285,7 @@ fn layout_has_trait_impl(
     trait_args: &[TypeId],
 ) -> bool {
     let key = TraitInstKey::new(
-        implementer,
+        TraitImplementer::Type(implementer),
         implementer_args.to_vec(),
         trait_def,
         trait_args.to_vec(),
@@ -289,11 +294,50 @@ fn layout_has_trait_impl(
         return true;
     }
     layout.trait_methods.keys().any(|(inst, _)| {
-        inst.implementer == implementer
+        inst.implementer == TraitImplementer::Type(implementer)
             && inst.implementer_args == implementer_args
             && inst.trait_def == trait_def
             && inst.trait_args == trait_args
     })
+}
+
+fn layout_has_builtin_trait_impl(
+    layout: &ProgramLayout,
+    kw: phx_syntax::token::Keyword,
+    trait_def: DefId,
+    trait_args: &[TypeId],
+) -> bool {
+    let key = TraitInstKey::new(
+        TraitImplementer::Primitive(kw),
+        Vec::new(),
+        trait_def,
+        trait_args.to_vec(),
+    );
+    layout.trait_impls.contains(&key)
+        || layout.trait_methods.keys().any(|(inst, _)| {
+            inst.implementer == TraitImplementer::Primitive(kw)
+                && inst.trait_def == trait_def
+                && inst.trait_args == trait_args
+        })
+}
+
+fn layout_has_str_trait_impl(
+    layout: &ProgramLayout,
+    trait_def: DefId,
+    trait_args: &[TypeId],
+) -> bool {
+    let key = TraitInstKey::new(
+        TraitImplementer::Str,
+        Vec::new(),
+        trait_def,
+        trait_args.to_vec(),
+    );
+    layout.trait_impls.contains(&key)
+        || layout.trait_methods.keys().any(|(inst, _)| {
+            inst.implementer == TraitImplementer::Str
+                && inst.trait_def == trait_def
+                && inst.trait_args == trait_args
+        })
 }
 
 /// Resolves `From::from` for `E_out: From<E_in>` when the trait impl exists.
@@ -325,7 +369,12 @@ pub fn resolve_from_fn_for_error(
     ) {
         return None;
     }
-    let key = TraitInstKey::new(implementer, implementer_args, from_trait_def, vec![err_in]);
+    let key = TraitInstKey::new(
+        TraitImplementer::Type(implementer),
+        implementer_args.clone(),
+        from_trait_def,
+        vec![err_in],
+    );
     layout
         .trait_methods
         .iter()

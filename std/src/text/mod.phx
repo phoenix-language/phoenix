@@ -1,4 +1,4 @@
 // std::text — owned UTF-8 containers.
 
-pub mod fmt_s32;
+pub mod fmt;
 pub mod string;

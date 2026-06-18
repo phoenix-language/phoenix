@@ -80,6 +80,11 @@ const PRELUDE_ITEMS: &[PreludeItem] = &[
         name: "Debug",
         is_type: true,
     },
+    PreludeItem {
+        module: "std::core::fmt",
+        name: "Display",
+        is_type: true,
+    },
 ];
 
 /// Context for resolving prelude exports from a loaded program.

@@ -1,0 +1,28 @@
+// std::text::fmt — trait-based formatting into owned `String` and stdout.
+
+#import std::core::fmt::Display;
+#import std::io::write_display_buf;
+#import std::text::string::String;
+
+buf_to_string :: (bytes: [u8; 32]) => String {
+    var out: String = String::empty();
+    var i: u32 = 0u;
+    while i < 32u {
+        const b: u8 = bytes[i];
+        if b == (0u as u8) {
+            i = 32u;
+        } else {
+            out.push(b);
+            i = i + 1u;
+        };
+    };
+    out
+};
+
+pub to_string :: <t: Display> (value: t) => String {
+    buf_to_string(value.fmt())
+};
+
+pub print :: <t: Display> (value: t) => () {
+    write_display_buf(value.fmt())
+};

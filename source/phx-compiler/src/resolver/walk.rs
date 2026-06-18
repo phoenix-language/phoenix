@@ -150,7 +150,7 @@ impl Resolver<'_> {
                 for member in members {
                     if let ImplMember::Method(f) = member {
                         let mspan = name_span_ident(&f.name);
-                        let Some(id) = self.define_value(f.name.symbol, mspan, DefKind::Fn) else {
+                        let Some(id) = self.define_impl_method(f.name.symbol, mspan) else {
                             return;
                         };
                         let attrs = crate::attrs::item_attrs_for_function(&self.source.interner, f);
@@ -268,6 +268,7 @@ impl Resolver<'_> {
                 | DefKind::Param
                 | DefKind::Local
                 | DefKind::Impl
+                | DefKind::ImplMethod
                 | DefKind::Closure
                 | DefKind::TraitAssocType => {}
             }
@@ -494,6 +495,11 @@ impl Resolver<'_> {
     }
 
     fn resolve_function(&mut self, f: &Function, in_impl: bool) {
+        if in_impl {
+            if let Some(id) = self.find_impl_method_def(f) {
+                self.record_resolution(f.name.id, Some(id));
+            }
+        }
         self.scopes.push();
         self.resolve_generics(&f.generics);
         let has_receiver = f.params.iter().any(|p| matches!(p, Param::Receiver { .. }));
@@ -506,6 +512,21 @@ impl Resolver<'_> {
         }
         self.resolve_block_node(&f.body);
         self.scopes.pop();
+    }
+
+    fn find_impl_method_def(&self, f: &Function) -> Option<super::DefId> {
+        let span = name_span_ident(&f.name);
+        self.defs.iter().enumerate().find_map(|(i, d)| {
+            if d.module == self.current_module
+                && d.kind == super::DefKind::ImplMethod
+                && d.name == f.name.symbol
+                && d.span == span
+            {
+                Some(super::DefId::from_raw(u32::try_from(i).unwrap_or(u32::MAX)))
+            } else {
+                None
+            }
+        })
     }
 
     fn resolve_function_sig(&mut self, sig: &FunctionSig) {

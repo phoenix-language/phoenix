@@ -11,7 +11,7 @@ use phx_syntax::ast::lit::Literal;
 use super::StructFields;
 use super::TypeChecker;
 use crate::lang_items::LangItemRegistry;
-use crate::resolver::{DefId, DefKind, ResolvedProgram};
+use crate::resolver::{DefId, ResolvedProgram};
 use crate::typeck::IndirectCallMeta;
 use crate::typeck::MethodCallSiteMeta;
 use crate::typeck::PrimitiveMethodSite;
@@ -231,7 +231,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub(in crate::typeck::check) fn fn_def_for(&self, f: &Function) -> Option<DefId> {
-        self.find_def(self.current_module, f.name.symbol, DefKind::Fn)
+        self.lookup_resolution(f.name.id)
+            .or_else(|| self.find_function_def(self.current_module, f.name.symbol))
     }
 
     pub(in crate::typeck::check) fn alias_env(&self) -> AliasEnv<'_> {

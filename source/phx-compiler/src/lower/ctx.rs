@@ -680,6 +680,14 @@ main :: () => {
     }
 
     #[test]
+    fn dynamic_array_grow_lowers_without_cursor_drift() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/cli/fixtures/dynamic_array_grow/src/main.phx");
+        let unit = crate::check_file(&path).expect("check");
+        crate::lower::lower(&unit.typed).expect("lower dynamic_array_grow");
+    }
+
+    #[test]
     fn std_traits_lowers_without_cursor_drift() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/cli/fixtures/std_traits/src/main.phx");

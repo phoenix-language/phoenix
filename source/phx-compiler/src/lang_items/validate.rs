@@ -20,6 +20,7 @@ pub fn is_known_lang_item(kind: LangItemKind, name: &str) -> bool {
                 | "PartialEq"
                 | "Eq"
                 | "Debug"
+                | "Display"
                 | "Iterator"
                 | "IntoIter"
                 | "From"

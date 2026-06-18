@@ -90,6 +90,8 @@ pub struct LangItemRegistry {
     pub eq_trait: Option<DefId>,
     /// `Debug` trait.
     pub debug_trait: Option<DefId>,
+    /// `Display` trait.
+    pub display_trait: Option<DefId>,
     /// `Iterator` trait.
     pub iterator_trait: Option<DefId>,
     /// `IntoIter` trait.
@@ -233,6 +235,7 @@ impl LangItemRegistry {
             "PartialEq" => self.partial_eq_trait,
             "Eq" => self.eq_trait,
             "Debug" => self.debug_trait,
+            "Display" => self.display_trait,
             "Iterator" => self.iterator_trait,
             "IntoIter" => self.into_iter_trait,
             "From" => self.from_trait,
@@ -299,6 +302,9 @@ impl LangItemRegistry {
         if self.debug_trait == Some(trait_def) {
             return is_debug_primitive(kw);
         }
+        if self.display_trait == Some(trait_def) {
+            return is_display_primitive(kw);
+        }
         false
     }
 
@@ -329,6 +335,7 @@ impl LangItemRegistry {
             (LangItemKind::Trait, "PartialEq") => self.partial_eq_trait = Some(def_id),
             (LangItemKind::Trait, "Eq") => self.eq_trait = Some(def_id),
             (LangItemKind::Trait, "Debug") => self.debug_trait = Some(def_id),
+            (LangItemKind::Trait, "Display") => self.display_trait = Some(def_id),
             (LangItemKind::Trait, "Iterator") => self.iterator_trait = Some(def_id),
             (LangItemKind::Trait, "IntoIter") => self.into_iter_trait = Some(def_id),
             (LangItemKind::Trait, "From") => self.from_trait = Some(def_id),
@@ -392,5 +399,9 @@ fn is_eq_primitive(kw: Keyword) -> bool {
 }
 
 fn is_debug_primitive(kw: Keyword) -> bool {
+    is_copyable_primitive(kw)
+}
+
+fn is_display_primitive(kw: Keyword) -> bool {
     is_copyable_primitive(kw)
 }

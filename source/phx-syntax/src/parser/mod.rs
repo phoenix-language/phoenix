@@ -418,7 +418,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Parses a `PascalCase` type name (or keyword `Self`).
+    /// Parses a `PascalCase` type name (or keyword `Self`, or primitive type keywords in impl blocks).
     pub(crate) fn parse_type_name(&mut self) -> Result<crate::ast::TypeName, ParseError> {
         match self.peek_kind() {
             TokenKind::TypeIdent(name) => {
@@ -431,6 +431,12 @@ impl<'src> Parser<'src> {
                 let span = self.current_span();
                 self.bump();
                 self.intern_type_name("Self", span)
+            }
+            TokenKind::Keyword(kw) if is_primitive_type_keyword(*kw) => {
+                let span = self.current_span();
+                let name = primitive_type_keyword_name(*kw);
+                self.bump();
+                self.intern_type_name(name, span)
             }
             _ => Err(self.error_unexpected(ExpectedToken::TypeIdent)),
         }
@@ -540,6 +546,42 @@ impl<'src> Parser<'src> {
 #[must_use]
 pub fn parse(source: &str) -> ParseResult<SourceFile> {
     parse_with_interner(source, &mut Interner::new())
+}
+
+fn is_primitive_type_keyword(kw: Keyword) -> bool {
+    matches!(
+        kw,
+        Keyword::Bool
+            | Keyword::S8
+            | Keyword::S16
+            | Keyword::S32
+            | Keyword::S64
+            | Keyword::U8
+            | Keyword::U16
+            | Keyword::U32
+            | Keyword::U64
+            | Keyword::F32
+            | Keyword::F64
+            | Keyword::Str
+    )
+}
+
+fn primitive_type_keyword_name(kw: Keyword) -> &'static str {
+    match kw {
+        Keyword::Bool => "bool",
+        Keyword::S8 => "s8",
+        Keyword::S16 => "s16",
+        Keyword::S32 => "s32",
+        Keyword::S64 => "s64",
+        Keyword::U8 => "u8",
+        Keyword::U16 => "u16",
+        Keyword::U32 => "u32",
+        Keyword::U64 => "u64",
+        Keyword::F32 => "f32",
+        Keyword::F64 => "f64",
+        Keyword::Str => "str",
+        _ => "",
+    }
 }
 
 /// Parses `source` using `interner` for all identifiers (shared across a crate).

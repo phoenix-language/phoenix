@@ -2,7 +2,7 @@
 
 use phx_syntax::token::Keyword;
 
-use super::layout::{ProgramLayout, TraitInstKey};
+use super::layout::{ProgramLayout, TraitImplementer, TraitInstKey};
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
@@ -124,7 +124,7 @@ fn struct_is_copyable(
     if let Some(copyable_trait) = std_traits.copyable_trait {
         if layout
             .trait_impls
-            .contains(&TraitInstKey::simple(struct_def, copyable_trait))
+            .contains(&TraitInstKey::type_simple(struct_def, copyable_trait))
         {
             return true;
         }
@@ -164,7 +164,7 @@ fn enum_is_copyable(
     if let Some(copyable_trait) = std_traits.copyable_trait {
         if layout
             .trait_impls
-            .contains(&TraitInstKey::simple(enum_def, copyable_trait))
+            .contains(&TraitInstKey::type_simple(enum_def, copyable_trait))
         {
             return true;
         }
@@ -219,7 +219,7 @@ pub fn resolve_drop_fn(
         .trait_methods
         .iter()
         .filter(|((key, _), _)| {
-            key.implementer == type_def
+            key.implementer == TraitImplementer::Type(type_def)
                 && key.trait_def == drop_trait
                 && implementer_args_match(&key.implementer_args, type_args)
         })
@@ -332,7 +332,7 @@ fn layout_has_trait_impl(
     trait_args: &[TypeId],
 ) -> bool {
     let key = TraitInstKey::new(
-        implementer,
+        TraitImplementer::Type(implementer),
         implementer_args.to_vec(),
         trait_def,
         trait_args.to_vec(),
@@ -341,7 +341,7 @@ fn layout_has_trait_impl(
         return true;
     }
     layout.trait_methods.keys().any(|(inst, _)| {
-        inst.implementer == implementer
+        inst.implementer == TraitImplementer::Type(implementer)
             && inst.implementer_args == implementer_args
             && inst.trait_def == trait_def
             && inst.trait_args == trait_args

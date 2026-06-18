@@ -166,6 +166,9 @@ impl Parser<'_> {
                 Ok(TopLevelDecl::Function(func))
             }
             TokenKind::TypeIdent(_) => self.parse_named_decl(),
+            TokenKind::Keyword(kw) if super::is_primitive_type_keyword(*kw) => {
+                self.parse_named_decl()
+            }
             TokenKind::Keyword(Keyword::Const) => {
                 self.bump();
                 let name = self.parse_ident()?;

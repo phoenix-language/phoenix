@@ -4,9 +4,11 @@ use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
 use crate::resolver::DefId;
+use crate::resolver::DefKind;
 use crate::typeck::{
-    BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template,
-    is_generic_impl_method_template, lookup_function,
+    BindingKind, FunctionLayout, TypedProgram, generic_param_defs_for_type,
+    impl_type_def_for_method, is_generic_fn_template, is_generic_impl_method_template,
+    lookup_function,
 };
 use phx_diagnostics::{LowerBag, LowerError};
 
@@ -23,6 +25,24 @@ pub fn lower_functions(
     let mut functions = Vec::new();
     for layout in &typed.functions {
         if is_generic_template(typed, layout.def) {
+            continue;
+        }
+        if layout.expr_start >= layout.expr_end
+            && typed.specialized_from.contains_key(&layout.def)
+        {
+            continue;
+        }
+        if layout.expr_start >= layout.expr_end
+            && typed
+                .resolved
+                .defs
+                .get(layout.def.index() as usize)
+                .is_some_and(|d| d.kind == DefKind::ImplMethod)
+            && impl_type_def_for_method(typed, layout.def).is_some_and(|type_def| {
+                generic_param_defs_for_type(&typed.resolved, type_def)
+                    .is_some_and(|params| !params.is_empty())
+            })
+        {
             continue;
         }
         if typed.lang_items.is_intrinsic_fn(layout.def) {

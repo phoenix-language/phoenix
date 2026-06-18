@@ -1,0 +1,10 @@
+[project]
+name = "primitive_display"
+version = "0.1.0"
+description = "Primitive s32 :: impl :: Display smoke test"
+type = "bin"
+module_src = "src"
+prelude = false
+
+[build]
+dir = "build"

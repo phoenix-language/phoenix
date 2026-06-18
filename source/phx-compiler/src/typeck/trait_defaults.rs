@@ -88,7 +88,13 @@ fn find_function_in_ast(typed: &TypedProgram, def: DefId) -> Option<&Function> {
 }
 
 fn def_matches(def_record: &Def, f: &Function) -> bool {
-    def_record.name == f.name.symbol && def_record.kind == DefKind::Fn
+    if f.name.symbol != def_record.name || !def_record.kind.is_function_body() {
+        return false;
+    }
+    if def_record.kind == DefKind::ImplMethod {
+        return def_record.span == f.name.span;
+    }
+    true
 }
 
 /// Inputs for synthesizing inherited trait default methods on an impl block.
@@ -150,4 +156,44 @@ pub fn synthesize_inherited_methods(
         registered.push((sig.name.symbol, def));
     }
     Ok(registered)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lookup_function;
+    use crate::compile_source;
+
+    #[test]
+    fn lookup_primitive_impl_method_in_ast() {
+        let source = r"
+Display :: trait {
+    fmt :: (self: &Self) => [u8; 32];
+};
+
+s32 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        var out: [u8; 32] = [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8];
+        out[0] = (48u as u8);
+        out
+    };
+};
+
+main :: () => {
+    const _buf: [u8; 32] = 42.fmt();
+};
+";
+        let unit = compile_source(source, None).unwrap_or_else(|e| {
+            panic!("compile_source: {e}");
+        });
+        assert_eq!(unit.typed.functions.len(), 2);
+        for layout in &unit.typed.functions {
+            let rec = &unit.typed.resolved.defs[layout.def.index() as usize];
+            assert!(
+                lookup_function(&unit.typed, layout.def).is_some(),
+                "missing AST for def {} kind {:?}",
+                layout.def.index(),
+                rec.kind
+            );
+        }
+    }
 }

@@ -156,7 +156,7 @@ pub(super) fn lower_ident(ctx: &mut LowerCtx<'_>, ident: Ident, ty: TypeId) {
             .resolved
             .defs
             .get(def.index() as usize)
-            .is_some_and(|d| d.kind == DefKind::Fn);
+            .is_some_and(|d| d.kind.is_function_body());
         if foreign || phoenix_fn {
             ctx.emit_here(IrInst::MakeFnPtr {
                 callee: def,

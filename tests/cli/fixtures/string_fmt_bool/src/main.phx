@@ -1,13 +1,8 @@
-#import std::text::fmt_s32::buf_to_string;
+#import std::text::fmt::to_string;
 
 main :: () => {
-    var buf: [u8; 32] = [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8];
-    buf[0] = (116u as u8);
-    buf[1] = (114u as u8);
-    buf[2] = (117u as u8);
-    buf[3] = (101u as u8);
-    buf[4] = (0u as u8);
-    const b = buf_to_string(buf);
-    const check_len = b.len();
+    const b: bool = true;
+    const text = to_string(b);
+    const check_len = text.len();
     const _ = check_len;
 };
