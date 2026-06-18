@@ -3,11 +3,10 @@
 #![allow(clippy::expect_used)]
 
 use phx_compiler::{BuildOptions, build_project};
-use phx_test::{discover_cli_project, fixture_fs_lock, require_cli_project};
+use phx_test::{discover_cli_project, require_cli_project};
 
 #[test]
 fn std_prelude_off_fails_without_import() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_prelude_off");
     let config = discover_cli_project(&root);
     let err = build_project(&config, None, BuildOptions::force(true))

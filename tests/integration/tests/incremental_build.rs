@@ -1,7 +1,7 @@
 //! Incremental rebuild: stale modules recompile; unchanged modules reuse `.phx0`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use phx_compiler::{BuildOptions, build_project};
+use phx_compiler::BuildOptions;
 use phx_test::{FixturePatch, build_cli_project, cli_project, discover_cli_project, file_digest};
 
 #[test]
@@ -27,7 +27,7 @@ fn touch_dependency_rebuilds_importers() {
     let _patch =
         FixturePatch::replace(&math_src, |original| original.replace("a + b", "a + b + 1"));
 
-    build_project(&config, None, BuildOptions::default()).expect("incremental build");
+    build_cli_project(&config, BuildOptions::default());
     let math_hash_after = file_digest(&math_phx0);
     let math_mtime_after = std::fs::metadata(&math_phx0)
         .expect("math phx0")
@@ -48,7 +48,7 @@ fn touch_dependency_rebuilds_importers() {
         "main should relink when dependency pxi hash changes"
     );
 
-    build_project(&config, None, BuildOptions::default()).expect("noop incremental");
+    build_cli_project(&config, BuildOptions::default());
     assert_eq!(
         file_digest(&math_phx0),
         math_hash_after,

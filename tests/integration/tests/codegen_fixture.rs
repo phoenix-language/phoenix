@@ -5,12 +5,11 @@
 use phx_bytecode::Opcode;
 use phx_bytecode::{ScalarValue, verify};
 use phx_compiler::unstable::{IrInst, codegen, lower};
-use phx_test::{cli_project_main, fixture_fs_lock};
+use phx_test::cli_project_main;
 use phx_vm::{Value, run_captured};
 
 #[test]
 fn codegen_heap_slice_emits_make_slice_from_ptr_opcode() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("heap_slice");
     let unit = phx_compiler::check_file(&path).expect("check heap_slice");
     let ir = lower(&unit.typed).expect("lower heap_slice");
@@ -34,7 +33,6 @@ fn codegen_heap_slice_emits_make_slice_from_ptr_opcode() {
 
 #[test]
 fn codegen_heap_slice_store_emits_index_store_opcode() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("heap_slice_store");
     let unit = phx_compiler::check_file(&path).expect("check heap_slice_store");
     let ir = lower(&unit.typed).expect("lower heap_slice_store");
@@ -58,7 +56,6 @@ fn codegen_heap_slice_store_emits_index_store_opcode() {
 
 #[test]
 fn codegen_heap_slice_nested_index_emits_index_store_opcode() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("heap_slice_nested_index");
     let unit = phx_compiler::check_file(&path).expect("check heap_slice_nested_index");
     let ir = lower(&unit.typed).expect("lower heap_slice_nested_index");
@@ -72,7 +69,6 @@ fn codegen_heap_slice_nested_index_emits_index_store_opcode() {
 
 #[test]
 fn codegen_heap_slice_store_run_captured_roundtrip() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("heap_slice_store");
     let unit = phx_compiler::check_file(&path).expect("check heap_slice_store");
     let ir = lower(&unit.typed).expect("lower");
@@ -91,7 +87,6 @@ fn codegen_heap_slice_store_run_captured_roundtrip() {
 
 #[test]
 fn codegen_dynamic_array_grow_s32_index_store_operands() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("dynamic_array_grow");
     let unit = phx_compiler::check_file(&path).expect("check dynamic_array_grow");
     let ir = lower(&unit.typed).expect("lower dynamic_array_grow");
@@ -111,7 +106,6 @@ fn codegen_dynamic_array_grow_s32_index_store_operands() {
 
 #[test]
 fn codegen_heap_dealloc_emits_free_opcode() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("heap_dealloc");
     let unit = phx_compiler::check_file(&path).expect("check heap_dealloc");
     let ir = lower(&unit.typed).expect("lower heap_dealloc");
@@ -133,7 +127,6 @@ fn codegen_heap_dealloc_emits_free_opcode() {
 
 #[test]
 fn codegen_heap_alloc_emits_alloc_opcode() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("heap_alloc");
     let unit = phx_compiler::check_file(&path).expect("check heap_alloc");
     let ir = lower(&unit.typed).expect("lower heap_alloc");

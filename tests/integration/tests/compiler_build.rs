@@ -4,34 +4,29 @@
 
 use phx_compiler::unstable::TryFailureMode;
 use phx_compiler::{
-    BuildLayout, BuildOptions, ProjectConfig, build_project, load_program_with_context,
-    resolve_loaded_program,
+    BuildLayout, BuildOptions, ProjectConfig, load_program_with_context, resolve_loaded_program,
     unstable::{IrInst, lower, type_check},
 };
 use phx_diagnostics::DiagnosticBag;
-use phx_test::{fixture_fs_lock, require_cli_project, require_std_project};
+use phx_test::{
+    build_cli_project, build_std_project, force_build_project, require_cli_project,
+    require_std_project,
+};
 
 // from build_dynamic_array_smoke.rs
 #[test]
 fn dynamic_array_smoke_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("dynamic_array_smoke");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build dynamic_array_smoke");
+    force_build_project("dynamic_array_smoke");
 }
 
 // from build_std_convert.rs
 #[test]
 fn bundled_std_convert_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("std_convert");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_convert");
+    force_build_project("std_convert");
 }
 
 #[test]
 fn std_convert_typechecks() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_convert");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -51,7 +46,6 @@ fn std_convert_typechecks() {
 // from build_std_error.rs
 #[test]
 fn std_lang_items_registered_in_std_lib() {
-    let _lock = fixture_fs_lock();
     let root = require_std_project();
     let config = ProjectConfig::load(&root).expect("load std");
     let entry = config.default_entry_file();
@@ -68,24 +62,16 @@ fn std_lang_items_registered_in_std_lib() {
 
 #[test]
 fn std_lib_builds_with_core_error_trait() {
-    let _lock = fixture_fs_lock();
-    let root = require_std_project();
-    let config = ProjectConfig::load(&root).expect("load std");
-    build_project(&config, None, BuildOptions::force(true))
-        .expect("build std with core::error trait");
+    build_std_project(BuildOptions::force(true));
 }
 
 #[test]
 fn bundled_std_errors_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("std_errors");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_errors");
+    force_build_project("std_errors");
 }
 
 #[test]
 fn std_errors_records_try_site() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_errors");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -108,16 +94,12 @@ fn std_errors_records_try_site() {
 // from build_std_ffi.rs
 #[test]
 fn std_lib_builds_with_ffi_module() {
-    let _lock = fixture_fs_lock();
-    let root = require_std_project();
-    let config = ProjectConfig::load(&root).expect("load std");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std with ffi");
+    build_std_project(BuildOptions::force(true));
 }
 
 // from build_std_prelude.rs
 #[test]
 fn bundled_std_prelude_builds() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_prelude");
     let config = ProjectConfig::load(&root).expect("load");
     let layout = BuildLayout::new(&config);
@@ -135,30 +117,23 @@ fn bundled_std_prelude_builds() {
             .interner
             .resolves_to(typed.resolved.defs[entry.index() as usize].name, "main")
     );
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_prelude");
+    build_cli_project(&config, BuildOptions::force(true));
 }
 
 // from build_std_smoke.rs
 #[test]
 fn bundled_std_smoke_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("std_smoke");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_smoke");
+    force_build_project("std_smoke");
 }
 
 // from build_std_traits.rs
 #[test]
 fn bundled_std_traits_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("std_traits");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_traits");
+    force_build_project("std_traits");
 }
 
 #[test]
 fn std_traits_records_primitive_method_sites() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_traits");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -182,15 +157,11 @@ fn std_traits_records_primitive_method_sites() {
 // from build_std_try.rs
 #[test]
 fn bundled_std_try_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("std_try");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_try");
+    force_build_project("std_try");
 }
 
 #[test]
 fn std_try_lowers_match_tag_for_question_mark() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_try");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -218,7 +189,6 @@ fn std_try_lowers_match_tag_for_question_mark() {
 
 #[test]
 fn std_try_read_config_ir_has_try_unwrap_sequence() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_try");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -265,7 +235,6 @@ fn std_try_read_config_ir_has_try_unwrap_sequence() {
 
 #[test]
 fn std_try_bytecode_type_id_resolved_after_mono() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_try");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -294,15 +263,11 @@ fn std_try_bytecode_type_id_resolved_after_mono() {
 // from build_std_try_from.rs
 #[test]
 fn bundled_std_try_from_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("std_try_from");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_try_from");
+    force_build_project("std_try_from");
 }
 
 #[test]
 fn std_try_from_records_convert_err_try_site() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_try_from");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -324,7 +289,6 @@ fn std_try_from_records_convert_err_try_site() {
 
 #[test]
 fn std_try_from_read_config_lowers_from_on_err_path() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("std_try_from");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -365,8 +329,5 @@ fn std_try_from_read_config_lowers_from_on_err_path() {
 // from build_unique_ptr_smoke.rs
 #[test]
 fn unique_ptr_smoke_builds() {
-    let _lock = fixture_fs_lock();
-    let root = require_cli_project("unique_ptr_smoke");
-    let config = ProjectConfig::load(&root).expect("load");
-    build_project(&config, None, BuildOptions::force(true)).expect("build unique_ptr_smoke");
+    force_build_project("unique_ptr_smoke");
 }

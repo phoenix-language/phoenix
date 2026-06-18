@@ -3,12 +3,11 @@
 
 use phx_bytecode::verify;
 use phx_compiler::BuildOptions;
-use phx_test::{build_cli_project, cli_project, discover_cli_project, fixture_fs_lock};
+use phx_test::{build_cli_project, cli_project, discover_cli_project};
 use phx_vm::run;
 
 #[test]
 fn link_rebase_cross_module_struct_field_and_enum_match() {
-    let _lock = fixture_fs_lock();
     let root = cli_project("link_rebase");
     let config = discover_cli_project(&root);
     build_cli_project(&config, BuildOptions::force(true));

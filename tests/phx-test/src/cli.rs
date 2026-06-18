@@ -8,7 +8,7 @@ use crate::fixtures::{
     assert_fixture_exists, cli_fixture, cli_fixtures_dir, cli_modules_dir, cli_project,
     examples_dir, examples_project, materialize_project, repo_root,
 };
-use crate::incremental::fixture_fs_lock;
+use crate::sandbox_lock::{project_fs_lock, with_project_fs_lock};
 
 use phx_programs::NEGATIVE_CASES;
 
@@ -293,38 +293,42 @@ impl PhxCli {
 
     /// Fresh `check --emit-interface-only` smoke for a project entry file.
     pub fn check_interface_only_project_smoke(&self, name: &str) {
-        rm_project_build_unlocked(name);
-        let project = cli_project(name);
-        let entry = project.join("src/main.phx");
-        self.check_interface_ok(&entry);
-        assert!(project.join("build/manifest.json").is_file());
-        if name == "project" {
-            assert!(!project_bin_path().is_file());
-        }
+        with_project_fs_lock(name, || {
+            let project = cli_project(name);
+            rm_project_build_dir(&project);
+            let entry = project.join("src/main.phx");
+            self.check_interface_ok(&entry);
+            assert!(project.join("build/manifest.json").is_file());
+            if name == "project" {
+                assert!(!project_bin_path().is_file());
+            }
+        });
     }
 
     /// Fresh interface-only project build; asserts manifest/pxi exist and no linked binary.
     pub fn build_interface_only_project_smoke(&self, name: &str) {
-        let project = cli_project(name);
-        rm_project_build_unlocked(name);
-        self.build_interface_ok(&project);
-        assert!(project.join("build/manifest.json").is_file());
-        if name == "project" {
-            assert!(
-                project
-                    .join("build/pxi/cli_project_test/util/math.pxi")
-                    .is_file()
-            );
-            assert!(!project_bin_path().is_file());
-        }
-        self.run(&[
-            "run",
-            "--emit-interface-only",
-            "--project-root",
-            &path_to_arg(&project),
-        ])
-        .assert_failure()
-        .assert_contains("does not support --emit-interface-only");
+        with_project_fs_lock(name, || {
+            let project = cli_project(name);
+            rm_project_build_dir(&project);
+            self.build_interface_ok(&project);
+            assert!(project.join("build/manifest.json").is_file());
+            if name == "project" {
+                assert!(
+                    project
+                        .join("build/pxi/cli_project_test/util/math.pxi")
+                        .is_file()
+                );
+                assert!(!project_bin_path().is_file());
+            }
+            self.run(&[
+                "run",
+                "--emit-interface-only",
+                "--project-root",
+                &path_to_arg(&project),
+            ])
+            .assert_failure()
+            .assert_contains("does not support --emit-interface-only");
+        });
     }
 
     /// `phx check --emit-interface-only <entry>` — expect success.
@@ -432,15 +436,14 @@ fn path_to_arg(path: &Path) -> String {
         .to_string()
 }
 
-/// Remove a project's `build/` directory if present (acquires [`fixture_fs_lock`]).
+/// Remove a project's `build/` directory if present.
 pub fn rm_project_build(name: &str) {
-    let _lock = fixture_fs_lock();
-    rm_project_build_unlocked(name);
+    let _lock = project_fs_lock(name);
+    let (_ws, root) = materialize_project(name);
+    rm_project_build_dir(&root);
 }
 
-/// Remove a project's `build/` directory without acquiring the fixture lock.
-pub fn rm_project_build_unlocked(name: &str) {
-    let (_ws, root) = materialize_project(name);
+fn rm_project_build_dir(root: &Path) {
     let build = root.join("build");
     let _ = std::fs::remove_dir_all(build);
 }

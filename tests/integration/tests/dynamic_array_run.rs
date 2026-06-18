@@ -5,16 +5,14 @@
 use phx_compiler::{CompileError, check_file};
 use phx_diagnostics::TypeCheckError;
 use phx_test::{
-    ExpectedLocal, assert_main_locals, cli_project_main, fixture_fs_lock, force_build_project,
-    require_cli_project,
+    ExpectedLocal, assert_main_locals, cli_project_main, ensure_built_project, require_cli_project,
 };
 use phx_vm::{VmErrorKind, run};
 
 #[test]
 fn dynamic_array_smoke_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_smoke");
-    let built = force_build_project("dynamic_array_smoke");
+    let built = ensure_built_project("dynamic_array_smoke");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_smoke");
 
     run(verified).expect("run dynamic_array_smoke");
@@ -22,9 +20,8 @@ fn dynamic_array_smoke_fixture_runs() {
 
 #[test]
 fn dynamic_array_smoke_push_get_scalar_locals() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_smoke");
-    let built = force_build_project("dynamic_array_smoke");
+    let built = ensure_built_project("dynamic_array_smoke");
     // `check_sum` / `check_len` locals after push+get smoke.
     assert_main_locals(
         &built.module,
@@ -34,9 +31,8 @@ fn dynamic_array_smoke_push_get_scalar_locals() {
 
 #[test]
 fn dynamic_array_drop_smoke_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_drop_smoke");
-    let built = force_build_project("dynamic_array_drop_smoke");
+    let built = ensure_built_project("dynamic_array_drop_smoke");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_drop_smoke");
 
     run(verified).expect("run dynamic_array_drop_smoke");
@@ -46,17 +42,15 @@ fn dynamic_array_drop_smoke_fixture_runs() {
 /// `DynamicArray` must not leak stack slots.
 #[test]
 fn dynamic_array_drop_smoke_verifies_balanced_main_return() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_drop_smoke");
-    let built = force_build_project("dynamic_array_drop_smoke");
+    let built = ensure_built_project("dynamic_array_drop_smoke");
     phx_bytecode::verify(&built.module).expect("verify balanced main return stack for drop glue");
 }
 
 #[test]
 fn dynamic_array_grow_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_grow");
-    let built = force_build_project("dynamic_array_grow");
+    let built = ensure_built_project("dynamic_array_grow");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_grow");
 
     run(verified).expect("run dynamic_array_grow");
@@ -64,9 +58,8 @@ fn dynamic_array_grow_fixture_runs() {
 
 #[test]
 fn dynamic_array_grow_doubles_capacity_and_sums_elements() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_grow");
-    let built = force_build_project("dynamic_array_grow");
+    let built = ensure_built_project("dynamic_array_grow");
     // `check_sum` / `check_len` after eight pushes (forces grow past cap=4).
     assert_main_locals(
         &built.module,
@@ -76,9 +69,8 @@ fn dynamic_array_grow_doubles_capacity_and_sums_elements() {
 
 #[test]
 fn dynamic_array_pop_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_pop");
-    let built = force_build_project("dynamic_array_pop");
+    let built = ensure_built_project("dynamic_array_pop");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_pop");
 
     run(verified).expect("run dynamic_array_pop");
@@ -86,9 +78,8 @@ fn dynamic_array_pop_fixture_runs() {
 
 #[test]
 fn dynamic_array_pop_returns_popped_values_and_remaining_len() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_pop");
-    let built = force_build_project("dynamic_array_pop");
+    let built = ensure_built_project("dynamic_array_pop");
     assert_main_locals(
         &built.module,
         &[
@@ -102,9 +93,8 @@ fn dynamic_array_pop_returns_popped_values_and_remaining_len() {
 
 #[test]
 fn dynamic_array_index_oob_fails_at_runtime() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_index_oob");
-    let built = force_build_project("dynamic_array_index_oob");
+    let built = ensure_built_project("dynamic_array_index_oob");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_index_oob");
     let err = run(verified).expect_err("OOB dynamic_array index");
     assert!(
@@ -115,9 +105,8 @@ fn dynamic_array_index_oob_fails_at_runtime() {
 
 #[test]
 fn dynamic_array_nested_drop_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_nested_drop");
-    let built = force_build_project("dynamic_array_nested_drop");
+    let built = ensure_built_project("dynamic_array_nested_drop");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_nested_drop");
 
     run(verified).expect("run dynamic_array_nested_drop");
@@ -125,7 +114,6 @@ fn dynamic_array_nested_drop_fixture_runs() {
 
 #[test]
 fn dynamic_array_move_in_use_after_move_errors() {
-    let _lock = fixture_fs_lock();
     let path = cli_project_main("dynamic_array_move_in");
     let Err(CompileError::TypeCheck { bag, .. }) = check_file(&path) else {
         panic!("expected use-after-move when reusing value moved into DynamicArray");
@@ -141,9 +129,8 @@ fn dynamic_array_move_in_use_after_move_errors() {
 
 #[test]
 fn dynamic_array_uaf_fails_at_runtime() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_uaf");
-    let built = force_build_project("dynamic_array_uaf");
+    let built = ensure_built_project("dynamic_array_uaf");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_uaf");
     let err = run(verified).expect_err("use after free should fail");
     assert!(
@@ -154,9 +141,8 @@ fn dynamic_array_uaf_fails_at_runtime() {
 
 #[test]
 fn dynamic_array_double_free_fails_at_runtime() {
-    let _lock = fixture_fs_lock();
     require_cli_project("dynamic_array_double_free");
-    let built = force_build_project("dynamic_array_double_free");
+    let built = ensure_built_project("dynamic_array_double_free");
     let verified = phx_bytecode::verify(&built.module).expect("verify dynamic_array_double_free");
     let err = run(verified).expect_err("double free should fail");
     assert!(

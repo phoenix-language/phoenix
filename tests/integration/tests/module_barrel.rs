@@ -7,7 +7,7 @@ use phx_compiler::{
     unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
-use phx_test::{fixture_fs_lock, require_cli_project};
+use phx_test::require_cli_project;
 
 fn load_project(name: &str) -> Result<phx_compiler::unstable::ResolvedProgram, DiagnosticBag> {
     let root = require_cli_project(name);
@@ -23,14 +23,12 @@ fn load_project(name: &str) -> Result<phx_compiler::unstable::ResolvedProgram, D
 
 #[test]
 fn bin_barrel_reexport_resolves() {
-    let _lock = fixture_fs_lock();
     let resolved = load_project("modules_bin_barrel").expect("resolve barrel project");
     type_check(resolved).expect("typecheck barrel import util::add");
 }
 
 #[test]
 fn missing_module_entry_fails_load() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("modules_missing_mod");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -50,7 +48,6 @@ fn missing_module_entry_fails_load() {
 
 #[test]
 fn orphan_file_fails_load() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("modules_orphan_file");
     let config = ProjectConfig::load(&root).expect("load");
     let entry = config.default_entry_file();
@@ -68,14 +65,12 @@ fn orphan_file_fails_load() {
 
 #[test]
 fn std_error_import_path_flattened() {
-    let _lock = fixture_fs_lock();
     let resolved = load_project("std_errors").expect("resolve std_errors");
     type_check(resolved).expect("typecheck std::core::error::Error imports");
 }
 
 #[test]
 fn std_iter_for_in_has_plan() {
-    let _lock = fixture_fs_lock();
     require_cli_project("std_iter");
     let resolved = load_project("std_iter").expect("resolve std_iter");
     let typed = type_check(resolved).expect("typecheck std_iter");
@@ -99,7 +94,6 @@ fn std_iter_for_in_has_plan() {
 
 #[test]
 fn modules_bin_barrel_builds() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("modules_bin_barrel");
     let config = ProjectConfig::load(&root).expect("load");
     phx_compiler::build_project(&config, None, BuildOptions::force(true))

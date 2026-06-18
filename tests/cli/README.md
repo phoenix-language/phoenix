@@ -13,6 +13,8 @@ just test-lang         # broader integration subset
 cargo test -p phx-integration-tests --test cli_e2e
 ```
 
+`cli_e2e` is also included in workspace `cargo test --workspace` (CI runs it in parallel with other integration tests; no separate single-threaded job).
+
 ## Module root (`#import`)
 
 Phoenix resolves `#import` paths relative to a **module root** directory (the folder that mirrors `::` path segments).

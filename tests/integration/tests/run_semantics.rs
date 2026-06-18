@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use phx_test::{
-    ExpectedLocal, assert_main_locals, compile_fixture, compile_module_tree, force_build_project,
+    ExpectedLocal, assert_main_locals, compile_fixture, compile_module_tree, ensure_built_project,
 };
 
 #[test]
@@ -94,7 +94,7 @@ fn modules_import_adds_imported_values() {
 
 #[test]
 fn mvp_acceptance_along_plus_pick_is_four() {
-    let built = force_build_project("mvp_acceptance");
+    let built = ensure_built_project("mvp_acceptance");
     assert_main_locals(&built.module, &[(6, ExpectedLocal::S32(4))]);
 }
 
@@ -132,9 +132,8 @@ fn deref_ptr_reads_seventy_seven() {
 
 #[test]
 fn heap_alloc_reads_seventy_seven_from_heap() {
-    let _lock = phx_test::fixture_fs_lock();
     phx_test::require_cli_project("heap_alloc");
-    let built = phx_test::force_build_project("heap_alloc");
+    let built = phx_test::ensure_built_project("heap_alloc");
     assert_main_locals(&built.module, &[(2, ExpectedLocal::U8(77))]);
 }
 

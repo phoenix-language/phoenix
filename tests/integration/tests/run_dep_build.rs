@@ -8,13 +8,12 @@ use phx_compiler::{
     resolve_loaded_program, unstable::type_check,
 };
 use phx_diagnostics::DiagnosticBag;
-use phx_test::{build_cli_project, cli_project, discover_cli_project, fixture_fs_lock};
+use phx_test::{build_cli_project, cli_project, discover_cli_project};
 use phx_vm::run;
 
 use std::path::PathBuf;
 
 fn build_app_dep() -> PathBuf {
-    let _lock = fixture_fs_lock();
     let root = cli_project("app_dep");
     let config = discover_cli_project(&root);
     build_cli_project(&config, BuildOptions::force(true));
@@ -149,7 +148,6 @@ fn path_dep_generic_call_targets_mangled_export() {
 
 #[test]
 fn path_dep_std_smoke_builds_and_runs() {
-    let _lock = fixture_fs_lock();
     let root = cli_project("std_smoke");
     let config = discover_cli_project(&root);
     build_cli_project(&config, BuildOptions::force(true));
@@ -168,7 +166,6 @@ fn path_dep_std_smoke_builds_and_runs() {
 
 #[test]
 fn bundle_std_disabled_does_not_link_std() {
-    let _lock = fixture_fs_lock();
     let root = cli_project("no_bundle_std");
     let config = discover_cli_project(&root);
     assert!(

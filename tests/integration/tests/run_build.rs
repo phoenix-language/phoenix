@@ -4,13 +4,13 @@
 use phx_compiler::BuildError;
 use phx_compiler::BuildOptions;
 use phx_test::{
-    build_cli_project, cli_project, discover_cli_project, force_build_project, load_built_binary,
+    build_cli_project, cli_project, discover_cli_project, ensure_built_project, load_built_binary,
     repo_root,
 };
 
 #[test]
 fn project_build_and_load() {
-    let built = force_build_project("project");
+    let built = ensure_built_project("project");
     assert!(built.result.output_path.is_file());
     assert!(
         built.module.header.entry_function_id != 0 || !built.module.functions.functions.is_empty()
@@ -19,7 +19,7 @@ fn project_build_and_load() {
 
 #[test]
 fn mvp_acceptance_build_and_load() {
-    let built = force_build_project("mvp_acceptance");
+    let built = ensure_built_project("mvp_acceptance");
     assert!(built.result.output_path.is_file());
     assert!(
         built.module.header.entry_function_id != 0 || !built.module.functions.functions.is_empty()

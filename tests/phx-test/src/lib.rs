@@ -15,12 +15,13 @@ pub mod pipeline;
 pub mod programs;
 pub mod project;
 pub mod sandbox;
+pub mod sandbox_lock;
 pub mod semantics;
 pub mod workspace;
 
 pub use cli::{
     NEG_CHECK_FIXTURES, PhxCli, PhxOutput, SMOKE_FIXTURES, phx_bin_path, project_bin_path,
-    rm_project_build, rm_project_build_unlocked, shared_cli,
+    rm_project_build, shared_cli,
 };
 pub use compile::{compile_ok, expect_compile_err, expect_resolve_err, expect_typeck_err};
 pub use fixtures::{
@@ -32,7 +33,7 @@ pub use golden::{
     assert_golden, assert_golden_expected, format_check_file, format_check_with_module_root,
     format_compile_source, integration_diagnostics_dir, normalize_diagnostics,
 };
-pub use incremental::{FixturePatch, file_digest, fixture_fs_lock};
+pub use incremental::{FixturePatch, file_digest};
 pub use phx_programs::{
     DIAGNOSTIC_CASES, DiagnosticCase, DiagnosticKind, ModuleTree, NEGATIVE_CASES, ProjectSpec,
     SMOKE_PROGRAMS, SingleFile, SmokeProgram,
@@ -45,8 +46,10 @@ pub use pipeline::{
 };
 pub use programs::{lookup_module_tree, lookup_project, lookup_single, modules_main_tree};
 pub use project::{
-    BuiltProject, build_cli_project, discover_cli_project, force_build_project,
-    force_build_project_spec, load_built_binary,
+    BuiltProject, build_cli_project, build_std_project, discover_cli_project, ensure_built_project,
+    ensure_built_project_unlocked, force_build_project, force_build_project_spec,
+    force_build_project_unlocked, load_built_binary,
 };
+pub use sandbox_lock::{project_fs_lock, std_fs_lock, with_project_fs_lock};
 pub use semantics::{ExpectedLocal, assert_main_local, assert_main_locals};
 pub use workspace::{DEFAULT_RUN_TIMEOUT, TempWorkspace, run_with_timeout};

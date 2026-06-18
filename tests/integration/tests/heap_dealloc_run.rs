@@ -2,14 +2,13 @@
 
 #![allow(clippy::expect_used)]
 
-use phx_test::{fixture_fs_lock, force_build_project, require_cli_project};
+use phx_test::{ensure_built_project, require_cli_project};
 use phx_vm::{VmErrorKind, run};
 
 #[test]
 fn heap_dealloc_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("heap_dealloc");
-    let built = force_build_project("heap_dealloc");
+    let built = ensure_built_project("heap_dealloc");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_dealloc");
 
     run(verified).expect("run heap_dealloc");
@@ -17,7 +16,6 @@ fn heap_dealloc_fixture_runs() {
 
 #[test]
 fn heap_dealloc_unsafe_check_fails() {
-    let _lock = fixture_fs_lock();
     let root = require_cli_project("heap_dealloc_unsafe");
     let entry = root.join("src/main.phx");
     let err = phx_compiler::check_file(&entry).expect_err("dealloc outside unsafe");
@@ -30,9 +28,8 @@ fn heap_dealloc_unsafe_check_fails() {
 
 #[test]
 fn heap_dealloc_double_free_fails_at_runtime() {
-    let _lock = fixture_fs_lock();
     require_cli_project("heap_dealloc_double");
-    let built = force_build_project("heap_dealloc_double");
+    let built = ensure_built_project("heap_dealloc_double");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_dealloc_double");
     let err = run(verified).expect_err("double free should fail");
     assert!(
@@ -43,9 +40,8 @@ fn heap_dealloc_double_free_fails_at_runtime() {
 
 #[test]
 fn heap_uaf_read_after_free_fails_at_runtime() {
-    let _lock = fixture_fs_lock();
     require_cli_project("heap_uaf");
-    let built = force_build_project("heap_uaf");
+    let built = ensure_built_project("heap_uaf");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_uaf");
     let err = run(verified).expect_err("use after free should fail");
     assert!(
@@ -56,9 +52,8 @@ fn heap_uaf_read_after_free_fails_at_runtime() {
 
 #[test]
 fn heap_drop_dealloc_fixture_runs() {
-    let _lock = fixture_fs_lock();
     require_cli_project("heap_drop_dealloc");
-    let built = force_build_project("heap_drop_dealloc");
+    let built = ensure_built_project("heap_drop_dealloc");
     let verified = phx_bytecode::verify(&built.module).expect("verify heap_drop_dealloc");
 
     run(verified).expect("run heap_drop_dealloc");
