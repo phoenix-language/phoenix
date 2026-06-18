@@ -1573,7 +1573,9 @@ impl TypeChecker<'_> {
         &self,
         method: Symbol,
     ) -> Option<DefId> {
-        if self.resolved.interner.resolves_to(method, "fmt") {
+        if self.resolved.interner.resolves_to(method, "fmt")
+            || self.resolved.interner.resolves_to(method, "display")
+        {
             self.lang_items.display_trait
         } else {
             None
@@ -2600,6 +2602,30 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Primitive keyword for trait method dispatch (`42.fmt()` or `self.fmt()` with `self: &Self`).
+    fn trait_method_receiver_primitive(
+        &self,
+        receiver: TypeId,
+    ) -> Option<phx_syntax::token::Keyword> {
+        match self.types.get(receiver).clone() {
+            Ty::Primitive(kw) => Some(kw),
+            Ty::Ref { inner, .. } => match self.types.get(inner).clone() {
+                Ty::Primitive(kw) => Some(kw),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Whether `receiver` is `str` or `&str` for trait method dispatch.
+    fn trait_method_receiver_is_str(&self, receiver: TypeId) -> bool {
+        match self.types.get(receiver) {
+            Ty::Str => true,
+            Ty::Ref { inner, .. } => self.types.get(*inner) == &Ty::Str,
+            _ => false,
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     pub(in crate::typeck::check) fn check_method_call_with_generics(
         &mut self,
@@ -2611,7 +2637,7 @@ impl TypeChecker<'_> {
         span: Span,
         site_id: ExprId,
     ) -> TypeId {
-        if let Ty::Primitive(kw) = self.types.get(receiver).clone() {
+        if let Some(kw) = self.trait_method_receiver_primitive(receiver) {
             if let Some(fn_def) = find_trait_method_def_for_builtin(
                 &self.program_layout,
                 kw,
@@ -2629,9 +2655,12 @@ impl TypeChecker<'_> {
                     site_id,
                 );
             }
-            return self.check_primitive_method_call(kw, receiver, name, args, span, site_id);
+            if matches!(self.types.get(receiver), Ty::Primitive(_)) {
+                return self.check_primitive_method_call(kw, receiver, name, args, span, site_id);
+            }
+            return self.emit_unresolved_method(receiver, name, span);
         }
-        if self.types.get(receiver) == &Ty::Str {
+        if self.trait_method_receiver_is_str(receiver) {
             if let Some(fn_def) = find_trait_method_def_for_str(
                 &self.program_layout,
                 name.symbol,

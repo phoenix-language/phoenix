@@ -81,7 +81,7 @@ const PRELUDE_ITEMS: &[PreludeItem] = &[
         is_type: true,
     },
     PreludeItem {
-        module: "std::core::fmt",
+        module: "std::core::fmt_display",
         name: "Display",
         is_type: true,
     },

@@ -618,7 +618,15 @@ impl TypeChecker<'_> {
         if emit_layout {
             self.plan_drops_at_scope_depth(0);
             if let Some(mut builder) = self.layout.take() {
-                builder.set_expr_range(expr_start, self.next_expr);
+                let expr_end = if check_body {
+                    self.next_expr
+                } else {
+                    expr_start
+                };
+                if !check_body {
+                    self.next_expr = expr_start;
+                }
+                builder.set_expr_range(expr_start, expr_end);
                 self.functions.push(builder.finish());
             }
         }

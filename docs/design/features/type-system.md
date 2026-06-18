@@ -349,7 +349,7 @@ Core text in Language v0 is a **compiler-known** UTF-8 view — `Ty::Str` in the
 | Layer | What belongs there |
 |---|---|
 | **Language** | `str` type, `"…"` literals, Tier A casts (`str as [u8]`, `[u8; N] as str` when UTF-8 is provable at compile time); **Copyable** fat-pointer semantics |
-| **Std** | Owned growable text (`std::text::string::String`), formatting (`std::text::fmt`: `to_string`, `print`); pre-scheduler stdout (`std::io::write_stdout`, `std::io::write_display_buf` via [`io-bridge.md`](io-bridge.md)); V0 `Display::fmt` returns zero-terminated `[u8; 32]` (payload + `0u8`, rest zero) — primitives and `String` via `Type :: impl :: Display` in `std::core::fmt` |
+| **Std** | Owned growable text (`std::text::string::String`), formatting (`std::text::fmt`: `to_string`, `print`); pre-scheduler stdout (`std::io::write_stdout`, `std::io::write_display_buf` via [`io-bridge.md`](io-bridge.md)); V0 `Display::fmt` returns zero-terminated `[u8; 32]` (payload + `0u8`, rest zero); `Display::display` returns owned `String` (default body via `String::from_display_buf(self.fmt())`) — primitives and `String` via `Type :: impl :: Display` in `std::core::fmt` |
 | **Compiler (v0)** | `Ty::Str` special-case; lowers via `MakeStr` + constant-pool rodata; heap-backed views via V0-062 slices |
 
 **Representation (normative through Language v0):**

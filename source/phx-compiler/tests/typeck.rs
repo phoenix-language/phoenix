@@ -1270,6 +1270,103 @@ fn generic_impl_method_with_type_params_compile_ok() {
 }
 
 #[test]
+fn generic_impl_method_template_has_zero_width_expr_range() {
+    const SOURCE: &str = r"
+Box :: <t> struct { v: t };
+Box :: <t> impl {
+  get :: () => t { self.v };
+  peek :: () => t { self.v };
+};
+main :: () => { const x: s32 = 1; const _ = x; };
+";
+    let typed = typed_program(SOURCE);
+    let template_layouts: Vec<_> = typed
+        .functions
+        .iter()
+        .filter(|layout| {
+            let Some(def) = typed.resolved.defs.get(layout.def.index() as usize) else {
+                return false;
+            };
+            def.kind == DefKind::ImplMethod
+                && !typed.specialized_from.contains_key(&layout.def)
+                && (typed.resolved.interner.resolves_to(def.name, "get")
+                    || typed.resolved.interner.resolves_to(def.name, "peek"))
+        })
+        .collect();
+    assert_eq!(
+        template_layouts.len(),
+        2,
+        "expected template layouts for get and peek"
+    );
+    for layout in &template_layouts {
+        assert_eq!(
+            layout.expr_start, layout.expr_end,
+            "generic impl template must not allocate expression ids"
+        );
+    }
+    template_layouts
+        .windows(2)
+        .for_each(|pair| assert_eq!(pair[0].expr_end, pair[1].expr_start));
+    let main_layout = typed
+        .functions
+        .iter()
+        .find(|layout| typed.entry == Some(layout.def))
+        .expect("main layout");
+    assert!(
+        main_layout.expr_start < main_layout.expr_end,
+        "main should type-check its body expressions"
+    );
+}
+
+#[test]
+fn display_trait_default_calls_self_fmt_on_ref_receiver() {
+    compile_ok(
+        r"
+Display :: trait {
+    fmt :: (self: &Self) => [u8; 32];
+    display :: (self: &Self) => [u8; 32] {
+        self.fmt()
+    };
+};
+s32 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8]
+    };
+};
+main :: () => {
+    const n: s32 = 42;
+    const _buf: [u8; 32] = n.display();
+};
+",
+    );
+}
+
+#[test]
+fn display_trait_default_on_primitive_impl() {
+    compile_ok(
+        r"
+Display :: trait {
+    fmt :: (self: &Self) => [u8; 32];
+    display :: (self: &Self) => Text {
+        Text { len: 1 }
+    };
+};
+Text :: struct { len: s32 };
+s32 :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8]
+    };
+};
+main :: () => {
+    const n: s32 = 42;
+    const text = n.display();
+    const _ = text.len;
+};
+",
+    );
+}
+
+#[test]
 fn trait_default_empty_impl_typechecks() {
     compile_ok(
         "Counter :: struct { n: s32 }; Zero :: trait { zero :: () => Self { Counter { n: 0 } }; }; Counter :: impl :: Zero { }; main :: () => { const c: Counter = Counter::zero(); const _ = c.n; };",

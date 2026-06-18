@@ -10,6 +10,7 @@ pub mod clone;
 pub mod drop;
 pub mod cmp;
 pub mod fmt;
+pub mod fmt_display;
 pub mod alloc;
 pub mod memory;
 pub mod mem;

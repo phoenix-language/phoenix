@@ -388,15 +388,13 @@ fn monomorphize_functions(
         }
         if dep_export_shell {
             for node_id in &inst.call_sites {
-                for module in &typed.resolved.modules {
-                    resolution_patches.insert(
-                        ResolutionKey {
-                            module: module.id,
-                            node_id: *node_id,
-                        },
-                        spec_def,
-                    );
-                }
+                resolution_patches.insert(
+                    ResolutionKey {
+                        module: inst.owner_module,
+                        node_id: *node_id,
+                    },
+                    spec_def,
+                );
             }
             for def in typed.associated_fn_sites.values_mut() {
                 if *def == inst.base_fn {
@@ -452,15 +450,13 @@ fn monomorphize_functions(
         typed.primitive_method_sites.extend(primitive_method_sites);
         typed.value_types.extend(value_types);
         for node_id in &inst.call_sites {
-            for module in &typed.resolved.modules {
-                resolution_patches.insert(
-                    ResolutionKey {
-                        module: module.id,
-                        node_id: *node_id,
-                    },
-                    spec_def,
-                );
-            }
+            resolution_patches.insert(
+                ResolutionKey {
+                    module: inst.owner_module,
+                    node_id: *node_id,
+                },
+                spec_def,
+            );
         }
         for def in typed.associated_fn_sites.values_mut() {
             if *def == inst.base_fn {

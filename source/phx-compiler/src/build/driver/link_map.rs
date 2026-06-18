@@ -247,7 +247,10 @@ pub(super) fn verify_pxi_exports(
         return Ok(());
     };
     let old_pxi_path = resolve_manifest_path(build_root, &old_rec.pxi_path);
-    let old_pxi = PxiFile::read_from_path(&old_pxi_path).map_err(BuildError::Pxi)?;
+    let Ok(old_pxi) = PxiFile::read_from_path(&old_pxi_path) else {
+        // Stale manifest entry with a missing `.pxi` on disk — allow regeneration.
+        return Ok(());
+    };
     for exp in &new_pxi.exports {
         let Some(old_exp) = old_pxi.exports.iter().find(|e| e.name == exp.name) else {
             continue;
@@ -261,4 +264,50 @@ pub(super) fn verify_pxi_exports(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    use crate::build::manifest::{BuildManifest, ManifestModule};
+    use crate::pxi::PxiFile;
+
+    use super::verify_pxi_exports;
+
+    #[test]
+    fn verify_pxi_exports_tolerates_missing_old_interface_file() {
+        let mut modules = HashMap::new();
+        modules.insert(
+            "std::core::copyable".to_owned(),
+            ManifestModule {
+                logical_path: "std::core::copyable".to_owned(),
+                source: "src/core/copyable.phx".to_owned(),
+                source_hash: "abc".to_owned(),
+                pxi_hash: "def".to_owned(),
+                phx0_path: "phx0/std/core/copyable.phx0".to_owned(),
+                pxi_path: "pxi/std/core/copyable.pxi".to_owned(),
+            },
+        );
+        let old = BuildManifest {
+            entry: "std".to_owned(),
+            bin_path: "lib/std.phx0".to_owned(),
+            modules,
+        };
+        let new_pxi = PxiFile::parse(
+            r#"{
+  "format_version": 1,
+  "logical_module": "std::core::copyable",
+  "source_path": "src/core/copyable.phx",
+  "source_hash": "abc",
+  "exports": [],
+  "dependencies": []
+}"#,
+        )
+        .expect("parse new pxi");
+        verify_pxi_exports(&old, Path::new("/nonexistent/build"), "std::core::copyable", &new_pxi)
+            .expect("missing old .pxi should not block regeneration");
+    }
 }

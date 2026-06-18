@@ -1,12 +1,9 @@
-// std::core::fmt — Debug/Display traits and primitive formatting helpers.
+// std::core::fmt — Debug trait and primitive formatting helpers.
+
+#import std::core::fmt_display::Display;
 
 #[lang_item(name = "Debug", kind = "trait")]
 pub Debug :: trait {
-    fmt :: (self: &Self) => [u8; 32];
-};
-
-#[lang_item(name = "Display", kind = "trait")]
-pub Display :: trait {
     fmt :: (self: &Self) => [u8; 32];
 };
 

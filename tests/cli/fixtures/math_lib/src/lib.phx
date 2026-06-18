@@ -1,3 +1,3 @@
-pub add :: (a: s32, b: s32) => s32 { a + b };
+pub add :: (a: s32, b: s32) => s32 { a + b + 1 };
 
 pub id :: <t> (x: t) => t { x };

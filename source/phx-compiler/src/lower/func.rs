@@ -3,12 +3,10 @@
 use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
 use crate::lower::stmt::{lower_block_value, lower_function_return};
-use crate::resolver::DefId;
-use crate::resolver::DefKind;
+use crate::resolver::{DefId, DefKind};
 use crate::typeck::{
-    BindingKind, FunctionLayout, TypedProgram, generic_param_defs_for_type,
-    impl_type_def_for_method, is_generic_fn_template, is_generic_impl_method_template,
-    lookup_function,
+    BindingKind, FunctionLayout, TypedProgram, is_generic_fn_template,
+    is_generic_impl_method_template, lookup_function,
 };
 use phx_diagnostics::{LowerBag, LowerError};
 
@@ -25,24 +23,6 @@ pub fn lower_functions(
     let mut functions = Vec::new();
     for layout in &typed.functions {
         if is_generic_template(typed, layout.def) {
-            continue;
-        }
-        if layout.expr_start >= layout.expr_end
-            && typed.specialized_from.contains_key(&layout.def)
-        {
-            continue;
-        }
-        if layout.expr_start >= layout.expr_end
-            && typed
-                .resolved
-                .defs
-                .get(layout.def.index() as usize)
-                .is_some_and(|d| d.kind == DefKind::ImplMethod)
-            && impl_type_def_for_method(typed, layout.def).is_some_and(|type_def| {
-                generic_param_defs_for_type(&typed.resolved, type_def)
-                    .is_some_and(|params| !params.is_empty())
-            })
-        {
             continue;
         }
         if typed.lang_items.is_intrinsic_fn(layout.def) {
@@ -78,7 +58,12 @@ pub(crate) fn lower_one_function(
         .map_or(def_record.module, |base| base.module);
     let mut ctx = LowerCtx::new(typed, module, layout, constants, bag, source.body.span);
     ctx.set_site(source.body.span);
-    lower_block_value(&mut ctx, &source.body.inner);
+    let skip_template_body = layout.expr_start >= layout.expr_end
+        && (is_generic_impl_method_template(typed, layout.def)
+            || is_deferred_impl_method_template(typed, layout));
+    if !skip_template_body {
+        lower_block_value(&mut ctx, &source.body.inner);
+    }
     lower_function_return(&mut ctx, &source.body, layout.return_type);
     ctx.finish_expr_cursor();
     if ctx.bag.has_errors() {
@@ -115,6 +100,20 @@ pub(crate) fn lower_one_function(
         local_count: layout.local_count(),
         blocks,
     })
+}
+
+/// Returns true when `layout` is a generic impl method template whose body was not type-checked.
+fn is_deferred_impl_method_template(typed: &TypedProgram, layout: &FunctionLayout) -> bool {
+    if layout.expr_start < layout.expr_end {
+        return false;
+    }
+    if typed.specialized_from.contains_key(&layout.def) {
+        return false;
+    }
+    let Some(def) = typed.resolved.defs.get(layout.def.index() as usize) else {
+        return false;
+    };
+    def.kind == DefKind::ImplMethod
 }
 
 /// Returns true when `def` is a generic template replaced by monomorphization.

@@ -33,8 +33,7 @@ mod unify;
 
 pub(crate) use mono::{
     CrossCrateMonoReq, MonoInst, apply_mono_worklist, collect_cross_crate_mono_reqs,
-    generic_param_defs_for_type, impl_type_def_for_method, is_generic_fn_template,
-    is_generic_impl_method_template,
+    is_generic_fn_template, is_generic_impl_method_template,
 };
 
 pub use bindings::{Binding, BindingKind, ForInPlan, FunctionLayout, LocalSlot};

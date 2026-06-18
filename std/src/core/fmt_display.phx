@@ -1,0 +1,30 @@
+// std::core::fmt_display — Display trait and String formatting (avoids core/fmt ↔ string cycles).
+
+#import std::text::string::String;
+
+#[lang_item(name = "Display", kind = "trait")]
+pub Display :: trait {
+    fmt :: (self: &Self) => [u8; 32];
+    display :: (self: &Self) => String {
+        String::from_display_buf(self.fmt())
+    };
+};
+
+String :: impl :: Display {
+    fmt :: (self: &Self) => [u8; 32] {
+        var out: [u8; 32] = [0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8, 0u as u8];
+        var copy_len: u32 = self.len();
+        if copy_len > 31u {
+            copy_len = 31u;
+        };
+        var j: u32 = 0u;
+        while j < copy_len {
+            out[j] = self.get(j);
+            j = j + 1u;
+        };
+        if copy_len < 32u {
+            out[copy_len] = (0u as u8);
+        };
+        out
+    };
+};

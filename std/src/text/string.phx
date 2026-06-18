@@ -4,7 +4,6 @@
 #import std::core::clone::Clone;
 #import std::core::cmp::PartialEq;
 #import std::core::drop::Drop;
-#import std::core::fmt::{Display, empty_display_buf};
 #import std::core::memory::allocator::{Allocator, Global, Layout};
 #import std::core::slice::slice_from_raw_parts;
 
@@ -25,6 +24,21 @@ String :: impl {
             const ptr: *mut u8 = mut_alloc.alloc(layout);
             String { ptr: ptr, len: 0u, cap: 16u, alloc: mut_alloc }
         };
+    };
+
+    from_display_buf :: (bytes: [u8; 32]) => String {
+        var out: String = String::empty();
+        var i: u32 = 0u;
+        while i < 32u {
+            const b: u8 = bytes[i];
+            if b == (0u as u8) {
+                i = 32u;
+            } else {
+                out.push(b);
+                i = i + 1u;
+            };
+        };
+        out
     };
 
     from_str :: (s: str) => String {
@@ -141,24 +155,5 @@ String :: impl :: Drop {
                 mut_alloc.dealloc(self.ptr, layout);
             };
         };
-    };
-};
-
-String :: impl :: Display {
-    fmt :: (self: &Self) => [u8; 32] {
-        var out: [u8; 32] = empty_display_buf();
-        var copy_len: u32 = self.len();
-        if copy_len > 31u {
-            copy_len = 31u;
-        };
-        var j: u32 = 0u;
-        while j < copy_len {
-            out[j] = self.get(j);
-            j = j + 1u;
-        };
-        if copy_len < 32u {
-            out[copy_len] = (0u as u8);
-        };
-        out
     };
 };
