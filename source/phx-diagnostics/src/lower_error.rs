@@ -48,6 +48,13 @@ pub enum LowerError {
         /// Lowering site when drift was detected.
         span: Span,
     },
+    /// Missing bytecode layout metadata (`type_id`, struct field index, …).
+    MissingLayoutMetadata {
+        /// Invariant detail (for example `"bytecode type id for named type"`).
+        detail: &'static str,
+        /// Lowering site when the missing metadata was discovered.
+        span: Span,
+    },
 }
 
 impl LowerError {
@@ -60,7 +67,8 @@ impl LowerError {
             | Self::LimitExceeded { .. }
             | Self::MissingTryConvertLayout { .. }
             | Self::MissingExprType { .. }
-            | Self::ExprCursorDrift { .. } => DiagnosticCode::new("E4002"),
+            | Self::ExprCursorDrift { .. }
+            | Self::MissingLayoutMetadata { .. } => DiagnosticCode::new("E4002"),
         }
     }
 
@@ -70,7 +78,8 @@ impl LowerError {
         match self {
             Self::UnresolvedCallee { span }
             | Self::MissingExprType { span, .. }
-            | Self::ExprCursorDrift { span, .. } => Some(*span),
+            | Self::ExprCursorDrift { span, .. }
+            | Self::MissingLayoutMetadata { span, .. } => Some(*span),
             Self::InvalidBlockIndex { .. }
             | Self::LimitExceeded { .. }
             | Self::MissingTryConvertLayout { .. } => None,
@@ -115,6 +124,9 @@ impl fmt::Display for LowerError {
                     f,
                     "internal error: expression cursor drift during lowering (expected {expected}, found {found})"
                 )
+            }
+            Self::MissingLayoutMetadata { detail, .. } => {
+                write!(f, "internal error: missing {detail} during lowering")
             }
         }
     }
@@ -232,5 +244,20 @@ mod tests {
         assert!(err.span().is_some());
         assert!(err.to_string().contains("expected 10"), "{}", err);
         assert!(err.to_string().contains("found 12"), "{}", err);
+    }
+
+    #[test]
+    fn missing_layout_metadata_display_and_code() {
+        let err = LowerError::MissingLayoutMetadata {
+            detail: "bytecode type id for named type",
+            span: Span::new(0, 0),
+        };
+        assert_eq!(err.code(), DiagnosticCode::new("E4002"));
+        assert!(err.span().is_some());
+        assert!(
+            err.to_string().contains("bytecode type id for named type"),
+            "{}",
+            err
+        );
     }
 }

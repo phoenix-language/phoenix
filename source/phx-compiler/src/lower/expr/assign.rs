@@ -108,12 +108,15 @@ pub(crate) fn lower_assign_expr(
             if let PostfixOp::Field(field) = &ops[0] {
                 if let Some(def) = struct_def_from_base(ctx, base) {
                     let args = struct_args_from_base(ctx, base);
-                    let type_id = ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
-                    let field_index = ctx
-                        .typed
-                        .layout
-                        .struct_field_index(def, field.symbol, &args)
-                        .unwrap_or(0);
+                    let Some(type_id) = ctx.require_type_id_for_named(def, &args, target.span)
+                    else {
+                        return;
+                    };
+                    let Some(field_index) =
+                        ctx.require_struct_field_index(def, field.symbol, &args, field.span)
+                    else {
+                        return;
+                    };
                     ctx.emit_here(IrInst::SetField {
                         type_id,
                         field_index,

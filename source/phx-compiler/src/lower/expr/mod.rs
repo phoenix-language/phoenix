@@ -283,11 +283,10 @@ pub(super) fn lower_expr_inner(
                     })
                     .unwrap_or_else(|| variant.kind.clone());
                 if let crate::typeck::VariantKind::Struct(payload) = payload {
-                    let type_id = ctx
-                        .typed
-                        .layout
-                        .type_id_for_named(enum_def, &args)
-                        .unwrap_or(0);
+                    let Some(type_id) = ctx.require_type_id_for_named(enum_def, &args, name.span)
+                    else {
+                        return;
+                    };
                     for (fname, _) in &payload {
                         if let Some(StructFieldInit::Field { value, .. }) =
                             fields.iter().find(|f| {

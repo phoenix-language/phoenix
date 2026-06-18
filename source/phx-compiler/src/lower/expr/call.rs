@@ -135,13 +135,19 @@ fn lower_postfix_inner(
                                 };
                             }
                             if let Some((def, args)) = named_type_parts(ctx.typed, receiver_ty) {
-                                let type_id =
-                                    ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
-                                let field_index = ctx
-                                    .typed
-                                    .layout
-                                    .struct_field_index(def, field.symbol, &args)
-                                    .unwrap_or(0);
+                                let Some(type_id) =
+                                    ctx.require_type_id_for_named(def, &args, field.span)
+                                else {
+                                    return;
+                                };
+                                let Some(field_index) = ctx.require_struct_field_index(
+                                    def,
+                                    field.symbol,
+                                    &args,
+                                    field.span,
+                                ) else {
+                                    return;
+                                };
                                 let field_ty = ctx
                                     .typed
                                     .layout
@@ -247,12 +253,15 @@ fn lower_postfix_inner(
                     };
                 }
                 if let Some((def, args)) = named_type_parts(ctx.typed, receiver_ty) {
-                    let type_id = ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
-                    let field_index = ctx
-                        .typed
-                        .layout
-                        .struct_field_index(def, field.symbol, &args)
-                        .unwrap_or(0);
+                    let Some(type_id) = ctx.require_type_id_for_named(def, &args, field.span)
+                    else {
+                        return;
+                    };
+                    let Some(field_index) =
+                        ctx.require_struct_field_index(def, field.symbol, &args, field.span)
+                    else {
+                        return;
+                    };
                     let field_ty = ctx
                         .typed
                         .layout
@@ -303,8 +312,11 @@ fn lower_postfix_inner(
                     for arg in args {
                         lower_expr(ctx, arg);
                     }
-                    let (type_id, field_count) =
-                        tuple_struct_make_operands(ctx, struct_def, result_ty);
+                    let Some((type_id, field_count)) =
+                        tuple_struct_make_operands(ctx, struct_def, result_ty, base.span)
+                    else {
+                        return;
+                    };
                     ctx.emit_here(IrInst::MakeStruct {
                         type_id,
                         field_count,
@@ -319,11 +331,11 @@ fn lower_postfix_inner(
                             Ty::Named { def, args } if *def == meta.enum_def => args.clone(),
                             _ => Vec::new(),
                         };
-                        let type_id = ctx
-                            .typed
-                            .layout
-                            .type_id_for_named(meta.enum_def, &enum_args)
-                            .unwrap_or(0);
+                        let Some(type_id) =
+                            ctx.require_type_id_for_named(meta.enum_def, &enum_args, base.span)
+                        else {
+                            return;
+                        };
                         let payload_count = u32::try_from(args.len()).unwrap_or(u32::MAX);
                         ctx.emit_here(IrInst::MakeEnum {
                             type_id,
@@ -607,18 +619,19 @@ fn lower_primitive_method(
 }
 
 fn tuple_struct_make_operands(
-    ctx: &LowerCtx<'_>,
+    ctx: &mut LowerCtx<'_>,
     struct_def: DefId,
     result_ty: TypeId,
-) -> (u32, u32) {
+    span: phx_diagnostics::Span,
+) -> Option<(u32, u32)> {
     let (def, args) = named_type_parts(ctx.typed, result_ty).unwrap_or((struct_def, Vec::new()));
-    let type_id = ctx.typed.layout.type_id_for_named(def, &args).unwrap_or(0);
+    let type_id = ctx.require_type_id_for_named(def, &args, span)?;
     let field_count = ctx
         .typed
         .layout
         .struct_layout(def, &args)
         .map_or(0, |sl| u32::try_from(sl.fields.len()).unwrap_or(u32::MAX));
-    (type_id, field_count)
+    Some((type_id, field_count))
 }
 
 fn resolve_tuple_struct_ctor(ctx: &LowerCtx<'_>, base: &ExprNode) -> Option<DefId> {

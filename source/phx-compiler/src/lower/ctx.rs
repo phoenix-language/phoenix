@@ -110,6 +110,52 @@ impl<'a> LowerCtx<'a> {
             .push(self.module, LowerError::UnresolvedCallee { span });
     }
 
+    /// Records missing bytecode layout metadata and returns `None` to the caller.
+    pub(crate) fn error_missing_layout_metadata(&mut self, detail: &'static str, span: Span) {
+        self.bag.push(
+            self.module,
+            LowerError::MissingLayoutMetadata { detail, span },
+        );
+    }
+
+    /// Returns bytecode `type_id` for a named type, or records [`LowerError::MissingLayoutMetadata`].
+    pub(crate) fn require_type_id_for_named(
+        &mut self,
+        def: DefId,
+        args: &[TypeId],
+        span: Span,
+    ) -> Option<u32> {
+        self.typed.layout.type_id_for_named(def, args).or_else(|| {
+            self.error_missing_layout_metadata("bytecode type id for named type", span);
+            None
+        })
+    }
+
+    /// Returns bytecode `type_id` for `def`, or records [`LowerError::MissingLayoutMetadata`].
+    pub(crate) fn require_type_id(&mut self, def: DefId, span: Span) -> Option<u32> {
+        self.typed.layout.type_id(def).or_else(|| {
+            self.error_missing_layout_metadata("bytecode type id", span);
+            None
+        })
+    }
+
+    /// Returns struct field index for lowering, or records [`LowerError::MissingLayoutMetadata`].
+    pub(crate) fn require_struct_field_index(
+        &mut self,
+        def: DefId,
+        field: Symbol,
+        args: &[TypeId],
+        span: Span,
+    ) -> Option<u32> {
+        self.typed
+            .layout
+            .struct_field_index(def, field, args)
+            .or_else(|| {
+                self.error_missing_layout_metadata("struct field index", span);
+                None
+            })
+    }
+
     fn error_invalid_block(&mut self, block: u32) {
         self.bag
             .push(self.module, LowerError::InvalidBlockIndex { block });
@@ -506,6 +552,25 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e.error, LowerError::MissingExprType { expr_id, .. } if expr_id == expected_id)),
             "expected MissingExprType for id {expected_id}, got {bag:?}"
+        );
+    }
+
+    #[test]
+    fn missing_bytecode_type_id_records_error() {
+        let source = "Wrap :: struct { n: s32, }; main :: () => { const w: Wrap = Wrap { n: 42 }; const _ = w.n; };";
+        let mut unit = compile_source(source, None).expect("compile");
+        unit.typed.layout.type_ids.clear();
+        unit.typed.layout.specialized_type_ids.clear();
+        let err = crate::lower::lower(&unit.typed).expect_err("lower should fail");
+        assert!(
+            err.errors().iter().any(|e| {
+                matches!(
+                    e.error,
+                    LowerError::MissingLayoutMetadata { detail, .. }
+                        if detail.contains("bytecode type id")
+                )
+            }),
+            "expected MissingLayoutMetadata, got {err:?}"
         );
     }
 

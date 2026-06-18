@@ -357,13 +357,18 @@ pub(crate) fn bind_match_pattern(
         }
         Pattern::Struct { name, fields } => {
             if let Some(def) = struct_def_by_name(&ctx.typed.resolved, name.symbol) {
-                let type_id = ctx.typed.layout.type_id(def).unwrap_or(0);
+                let Some(type_id) = ctx.require_type_id(def, name.span) else {
+                    return;
+                };
                 for field in fields {
-                    let field_index = ctx
-                        .typed
-                        .layout
-                        .struct_field_index(def, field.name.symbol, &[])
-                        .unwrap_or(0);
+                    let Some(field_index) = ctx.require_struct_field_index(
+                        def,
+                        field.name.symbol,
+                        &[],
+                        field.name.span,
+                    ) else {
+                        return;
+                    };
                     ctx.emit_here(IrInst::LoadLocal {
                         slot: temp,
                         ty: temp_ty,
