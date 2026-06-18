@@ -155,6 +155,6 @@ Register both cases. Run `just pre-commit`.
 | Field | Value |
 |-------|-------|
 | Last completed task | 1 — Lower layout fallbacks → `LowerError` |
-| Last green commit | 2a77e9e |
+| Last green commit | 2848d50 |
 | Branch | trunk |
 | Blockers | — |
