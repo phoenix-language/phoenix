@@ -81,10 +81,13 @@ cargo run -p phx -- run
 **Just recipes** (requires [just](https://github.com/casey/just)):
 
 ```bash
+git clone --recurse-submodules https://github.com/phoenix-language/phoenix.git
+
 just phx run examples/hello/src/main.phx --dump-main
 just pre-commit    # fmt, clippy, doc-check, dep-check, test, test-lang
 just test-lang     # CLI E2E + diagnostics goldens
 just test          # full workspace tests
+just website dev   # marketing site (git submodule at website/)
 ```
 
 Demonstration programs: [examples/README.md](examples/README.md). MVP smoke project: [tests/cli/fixtures/mvp_acceptance/](tests/cli/fixtures/mvp_acceptance/). Fixture details: [tests/cli/README.md](tests/cli/README.md).

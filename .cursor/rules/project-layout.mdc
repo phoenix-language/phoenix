@@ -16,6 +16,7 @@ Cargo workspace; crates live under `source/`. One pipeline stage per crate — n
 | `source/phx-diagnostics` | Error types, codes, rendering, `explain` text — all user-facing diagnostics flow through here |
 | `source/phx-cli` / `source/phx` | CLI commands, arg parsing, reporting / binary entry point |
 | `std/` | Phoenix standard library written in Phoenix (`.phx`) |
+| `website/` | Marketing site — **git submodule** → `phoenix-language/website` (separate repo, PRs, and deploy) |
 | `tests/` | `integration/` (E2E + diagnostics fixtures), `cli/` (fixtures), `phx-test`, `ci/` (policy scripts) |
 
 **Feature order** for any new language feature: lexer → parser → AST → resolver → typeck → IR → codegen → verifier → VM → std → tests. Don't skip the resolver for `#import`/multi-file work.
@@ -36,6 +37,9 @@ Cargo workspace; crates live under `source/`. One pipeline stage per crate — n
 | Language E2E tests | `just test-lang` |
 | Lint / format | `just lint` / `just fmt` |
 | Full pre-commit gate | `just pre-commit` (fmt-check, clippy `-D warnings`, doc-check, dep-check, `cargo test --workspace`, test-lang) |
+| Website local dev | `just website dev` (delegates to `website/justfile` submodule) |
+
+Clone with `git clone --recurse-submodules`; existing clones run `git submodule update --init --recursive`. Website submodule workflow: see `.cursor/rules/website-submodule.mdc`.
 
 ## Completion gate
 

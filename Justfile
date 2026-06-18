@@ -66,3 +66,7 @@ update:
 
 audit:
     cargo audit
+
+# Website (git submodule — see docs/contributing.md)
+website *args:
+    just -f website/justfile {{args}}

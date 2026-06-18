@@ -5,10 +5,16 @@ Phoenix is an experimental systems language: parse → resolve → type-check �
 ## Quick start
 
 ```bash
-git clone <repo-url>
+git clone --recurse-submodules https://github.com/phoenix-language/phoenix.git
 cd phoenix
 cargo build -p phx
 just pre-commit
+```
+
+If you already cloned without submodules:
+
+```bash
+git submodule update --init --recursive
 ```
 
 `just pre-commit` runs format check, Clippy, doc check, dependency check, the full workspace test suite (`cargo test --workspace`), and language integration tests (`just test-lang`).
@@ -36,6 +42,7 @@ phoenix/
 │   ├── phx-cli/         # CLI library
 │   └── phx/             # `phx` binary entry
 ├── std/                 # bundled standard library (lib package)
+├── website/             # marketing site (git submodule → phoenix-language/website)
 ├── examples/            # demonstration programs (V0-052)
 ├── tests/
 │   ├── cli/fixtures/    # regression fixtures (not user-facing tutorials)
@@ -45,6 +52,38 @@ phoenix/
 ```
 
 Compiler pipeline order for language features: **lexer → parser → AST → resolver → typeck → lower → codegen → verifier → VM → tests**.
+
+## Website submodule
+
+The public marketing site lives in a separate repository and is included here as a git submodule at `website/`:
+
+- **Remote:** https://github.com/phoenix-language/website
+- **Local dev:** `just website dev` (serves static files on port 8080)
+- **Browser:** `just website open` (after starting the dev server)
+
+### Working on the website
+
+The submodule has its own history, PRs, and issues. Before editing, attach to a branch (submodules often start in detached HEAD):
+
+```bash
+cd website
+git checkout main
+```
+
+Commit and push website changes **inside the submodule first**, then record the new commit in the parent repo:
+
+```bash
+cd website
+git add .
+git commit -m "Update landing page"
+git push origin main
+cd ..
+git add website
+git commit -m "[infra]: bump website submodule"
+git push origin trunk
+```
+
+Never commit website source file changes only in the phoenix repo — the parent tracks a submodule pointer, not the site files themselves.
 
 ## Design authority
 

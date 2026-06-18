@@ -1,0 +1,64 @@
+---
+description: Git submodule workflow for website/ — separate repo, two-step commits, clone init
+alwaysApply: true
+---
+
+# Website submodule (`website/`)
+
+The marketing site at `website/` is a **git submodule** pointing at https://github.com/phoenix-language/website. It has its own Git history, PRs, issues, and deployment — not part of the compiler workspace crates.
+
+## Clone and init
+
+New clones must include submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/phoenix-language/phoenix.git
+```
+
+Existing clones:
+
+```bash
+git submodule update --init --recursive
+```
+
+An empty or missing `website/` directory means submodules were not initialized.
+
+## Local development
+
+- Nested Justfile: `website/justfile`
+- From repo root: `just website dev`, `just website open`, `just website --list`
+- Do **not** add website build/lint to `just pre-commit` unless explicitly requested — compiler CI stays Rust-only.
+
+## Editing the website
+
+Submodules often checkout a detached HEAD. Before new work:
+
+```bash
+cd website
+git checkout main
+```
+
+Make changes, then commit **inside the submodule first**:
+
+```bash
+cd website
+git add .
+git commit -m "Describe website change"
+git push origin main
+```
+
+Then bump the submodule pointer in the parent phoenix repo:
+
+```bash
+cd ..
+git add website
+git commit -m "[infra]: bump website submodule"
+```
+
+## Rules for agents
+
+1. **Never** commit website source files (HTML, CSS, JS, assets) only in the phoenix parent repo — they live in the submodule remote.
+2. **Always** commit and push website changes from inside `website/` before updating the parent pointer.
+3. Parent-repo commits that only change the submodule SHA use prefix `[infra]:` (e.g. `[infra]: bump website submodule`, `[infra]: add website git submodule`).
+4. When cloning or CI needs the site tree, ensure `git submodule update --init --recursive` runs.
+5. Website stack is currently static HTML (`index.html`, `style.css`, `scripts.js`); no pnpm/cargo in `website/` until migrated.
