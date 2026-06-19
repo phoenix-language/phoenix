@@ -40,3 +40,58 @@ Diagnostic goldens live in `phx-programs` as embedded `expected` strings; regene
 ```bash
 UPDATE_GOLDEN=1 cargo test -p phx-integration-tests --test diagnostics
 ```
+
+## `phx-programs` generator (`tests/phx-programs/generate.py`)
+
+Embedded programs in `tests/phx-programs/src/` can be regenerated from on-disk fixtures. **Keep the generator and committed Rust in sync** — future runs of the script must not wipe or drift from hand-edited cases.
+
+### What it reads and writes
+
+| Input | Generated module |
+|---|---|
+| `tests/cli/fixtures/*.phx` (smoke list in script) | `src/smoke.rs`, `src/single.rs` |
+| `tests/cli/fixtures/*.phx` (negative list) | `src/negative.rs` |
+| `tests/cli/fixtures/modules/` | `src/modules.rs` |
+| `tests/cli/fixtures/*/phoenix.toml` (each project dir) | `src/projects.rs` |
+| `tests/integration/diagnostics/{case}.phx` + `{case}.stderr` | `src/diagnostics.rs` |
+
+Run from repo root:
+
+```bash
+python3 tests/phx-programs/generate.py
+```
+
+Then `cargo test -p phx-integration-tests --test diagnostics` (or `just test`) to verify.
+
+### When adding or changing fixtures
+
+**Pick one workflow and finish both sides:**
+
+1. **On-disk first (preferred for new goldens)** — add `.phx` / `.stderr` under `tests/integration/diagnostics/` or fixtures under `tests/cli/fixtures/`, **add a row to the matching list in `generate.py`**, run the script, commit **both** the on-disk files and the regenerated `src/*.rs`.
+2. **Embedded first (ok for small edits)** — edit `tests/phx-programs/src/*.rs` directly **and** update the corresponding entry in `generate.py` (`SMOKE`, `NEGATIVE`, `gen_diagnostics()` `cases`, or ensure on-disk source exists so a later regen does not delete the case).
+
+**Do not:**
+
+- Edit only `diagnostics.rs` / `projects.rs` without updating `generate.py` — the next regen will drop the case or revert goldens.
+- Edit only `generate.py` without on-disk `.stderr` / fixture files when the generator reads those paths — regen will embed empty or stale `expected` strings.
+- Run `generate.py` when `tests/cli/fixtures/` is incomplete (smoke/single lists reference files that must exist on disk) — the script will fail partway and can leave `src/*.rs` half-written.
+
+### Diagnostic golden cases (`gen_diagnostics`)
+
+Each row in `gen_diagnostics()` → `cases` is `(case_name, kind, file_or_tree, project, entry)`:
+
+| `kind` | Meaning |
+|---|---|
+| `SingleFile` | Embedded single from `tests/cli/fixtures/{name}.phx` |
+| `DiagFile` | Source from `tests/integration/diagnostics/{name}.phx`; golden from `{name}.stderr` |
+| `CompileSource` | Inline `.phx` in `tests/integration/diagnostics/{case_name}.phx` |
+| `ModuleTree` | Module tree name under `tests/cli/fixtures/modules/` |
+| `Project` | Project dir name under `tests/cli/fixtures/` + entry path |
+
+Golden `.stderr` text must match normalized CLI output (path prefixes, gutter `|` alignment). Capture with `phx check`, or use `UPDATE_GOLDEN=1 cargo test -p phx-integration-tests --test diagnostics` and copy the printed block into the `.stderr` file before regen.
+
+### Checklist before committing test changes
+
+- [ ] On-disk fixture + embedded Rust + `generate.py` case list all updated together
+- [ ] `python3 tests/phx-programs/generate.py` succeeds (when fixtures tree is complete)
+- [ ] `cargo test -p phx-integration-tests --test diagnostics` passes for new/changed goldens
