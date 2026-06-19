@@ -155,6 +155,6 @@ Register both cases. Run `just pre-commit`.
 | Field | Value |
 |-------|-------|
 | Last completed task | 2 — Golden diagnostic: discarded std `Option` (E2042) |
-| Last green commit | (pending commit) |
+| Last green commit | db01d76 |
 | Branch | trunk |
 | Blockers | — |
