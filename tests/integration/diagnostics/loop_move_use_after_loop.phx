@@ -1,0 +1,11 @@
+Point :: struct { r: &s32 };
+
+main :: () => {
+    var n: s32 = 1;
+    var p: Point = Point { r: &n };
+    loop {
+        var q: Point = p;
+        break;
+    };
+    const _ = p.r;
+};

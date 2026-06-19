@@ -333,6 +333,36 @@ pub const DIAG_DISCARDED_STD_OPTION: DiagnosticCase = DiagnosticCase {
    = help: handle the value with `match`, `if const` / `if var`, or `?` inside a compatible return type",
 };
 
+const DIAG_LOOP_MOVE_USE_AFTER_LOOP_SOURCE: &str = r"Point :: struct { r: &s32 };
+
+main :: () => {
+    var n: s32 = 1;
+    var p: Point = Point { r: &n };
+    loop {
+        var q: Point = p;
+        break;
+    };
+    const _ = p.r;
+};
+";
+
+pub const DIAG_LOOP_MOVE_USE_AFTER_LOOP: DiagnosticCase = DiagnosticCase {
+    name: r"loop_move_use_after_loop",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_LOOP_MOVE_USE_AFTER_LOOP_SOURCE),
+    expected: r"error[E2017]: use of moved value `p`
+  --> tests/integration/diagnostics/loop_move_use_after_loop.phx:10:15
+   |
+10 |     const _ = p.r;
+   |               ^
+   = note: value `p` was moved here
+  --> tests/integration/diagnostics/loop_move_use_after_loop.phx:7:24
+  |
+7 |         var q: Point = p;
+  |                        ^
+   = help: use `p` only before it is moved, or bind a new value after the move",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -351,4 +381,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_TRY_FROM_MISSING,
     DIAG_DISCARDED_STD_RESULT,
     DIAG_DISCARDED_STD_OPTION,
+    DIAG_LOOP_MOVE_USE_AFTER_LOOP,
 ];

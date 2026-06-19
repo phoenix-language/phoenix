@@ -13,7 +13,7 @@ Work tasks **top to bottom**. Mark a task `[x]` only after `just pre-commit` pas
 |---|------|--------|
 | 1 | Lower layout `unwrap_or(0)` → `LowerError` | `[x]` |
 | 2 | Golden diagnostic: discarded std `Option` (E2042) | `[x]` |
-| 3 | Golden diagnostic: loop-carried use-after-move | `[ ]` |
+| 3 | Golden diagnostic: loop-carried use-after-move | `[x]` |
 | 4 | Golden diagnostic: if-arm ownership join | `[ ]` |
 | 5 | PXI malformed-export rejection tests | `[ ]` |
 

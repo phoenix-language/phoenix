@@ -349,6 +349,7 @@ def gen_diagnostics() -> None:
         ("try_from_missing", "Project", None, "std_try_from_missing", "src/main.phx"),
         ("discarded_std_result", "Project", None, "lint_std_result_discard", "src/main.phx"),
         ("discarded_std_option", "Project", None, "lint_std_option_discard", "src/main.phx"),
+        ("loop_move_use_after_loop", "DiagFile", "loop_move_use_after_loop.phx", None, None),
     ]
     lines = [
         "//! Golden diagnostic cases.\n",

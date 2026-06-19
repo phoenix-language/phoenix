@@ -1,0 +1,11 @@
+error[E2017]: use of moved value `p`
+  --> tests/integration/diagnostics/loop_move_use_after_loop.phx:10:15
+   |
+10 |     const _ = p.r;
+   |               ^
+   = note: value `p` was moved here
+  --> tests/integration/diagnostics/loop_move_use_after_loop.phx:7:24
+  |
+7 |         var q: Point = p;
+  |                        ^
+   = help: use `p` only before it is moved, or bind a new value after the move
