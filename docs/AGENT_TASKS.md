@@ -154,7 +154,7 @@ Register both cases. Run `just pre-commit`.
 
 | Field | Value |
 |-------|-------|
-| Last completed task | 3 — Golden diagnostic: loop-carried use-after-move |
-| Last green commit | 49fb1c4 |
+| Last completed task | 4 — Golden diagnostic: if-arm ownership join |
+| Last green commit | 4709cab |
 | Branch | trunk |
 | Blockers | — |
