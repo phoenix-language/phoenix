@@ -1,0 +1,13 @@
+Point :: struct { r: &s32 };
+
+main :: () => {
+    var n: s32 = 1;
+    var p: Point = Point { r: &n };
+    var c: bool = true;
+    if c {
+        var q: Point = p;
+    } else {
+        const _ = p.r;
+    };
+    const _ = p.r;
+};

@@ -350,6 +350,8 @@ def gen_diagnostics() -> None:
         ("discarded_std_result", "Project", None, "lint_std_result_discard", "src/main.phx"),
         ("discarded_std_option", "Project", None, "lint_std_option_discard", "src/main.phx"),
         ("loop_move_use_after_loop", "DiagFile", "loop_move_use_after_loop.phx", None, None),
+        ("if_branch_sibling_no_false_uam", "DiagFile", "if_branch_sibling_no_false_uam.phx", None, None),
+        ("if_branch_untaken_no_move", "DiagFile", "if_branch_untaken_no_move.phx", None, None),
     ]
     lines = [
         "//! Golden diagnostic cases.\n",

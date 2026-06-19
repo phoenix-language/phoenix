@@ -1,0 +1,11 @@
+error[E2017]: use of moved value `p`
+  --> tests/integration/diagnostics/if_branch_untaken_no_move.phx:12:15
+   |
+12 |     const _ = p.r;
+   |               ^
+   = note: value `p` was moved here
+  --> tests/integration/diagnostics/if_branch_untaken_no_move.phx:10:24
+   |
+10 |         var q: Point = p;
+   |                        ^
+   = help: use `p` only before it is moved, or bind a new value after the move

@@ -363,6 +363,70 @@ pub const DIAG_LOOP_MOVE_USE_AFTER_LOOP: DiagnosticCase = DiagnosticCase {
    = help: use `p` only before it is moved, or bind a new value after the move",
 };
 
+const DIAG_IF_BRANCH_SIBLING_NO_FALSE_UAM_SOURCE: &str = r"Point :: struct { r: &s32 };
+
+main :: () => {
+    var n: s32 = 1;
+    var p: Point = Point { r: &n };
+    var c: bool = true;
+    if c {
+        var q: Point = p;
+    } else {
+        const _ = p.r;
+    };
+    const _ = p.r;
+};
+";
+
+pub const DIAG_IF_BRANCH_SIBLING_NO_FALSE_UAM: DiagnosticCase = DiagnosticCase {
+    name: r"if_branch_sibling_no_false_uam",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_IF_BRANCH_SIBLING_NO_FALSE_UAM_SOURCE),
+    expected: r"error[E2017]: use of moved value `p`
+  --> tests/integration/diagnostics/if_branch_sibling_no_false_uam.phx:12:15
+   |
+12 |     const _ = p.r;
+   |               ^
+   = note: value `p` was moved here
+  --> tests/integration/diagnostics/if_branch_sibling_no_false_uam.phx:8:24
+  |
+8 |         var q: Point = p;
+  |                        ^
+   = help: use `p` only before it is moved, or bind a new value after the move",
+};
+
+const DIAG_IF_BRANCH_UNTAKEN_NO_MOVE_SOURCE: &str = r"Point :: struct { r: &s32 };
+
+main :: () => {
+    var n: s32 = 1;
+    var p: Point = Point { r: &n };
+    var c: bool = true;
+    if c {
+        const _ = p.r;
+    } else {
+        var q: Point = p;
+    };
+    const _ = p.r;
+};
+";
+
+pub const DIAG_IF_BRANCH_UNTAKEN_NO_MOVE: DiagnosticCase = DiagnosticCase {
+    name: r"if_branch_untaken_no_move",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_IF_BRANCH_UNTAKEN_NO_MOVE_SOURCE),
+    expected: r"error[E2017]: use of moved value `p`
+  --> tests/integration/diagnostics/if_branch_untaken_no_move.phx:12:15
+   |
+12 |     const _ = p.r;
+   |               ^
+   = note: value `p` was moved here
+  --> tests/integration/diagnostics/if_branch_untaken_no_move.phx:10:24
+   |
+10 |         var q: Point = p;
+   |                        ^
+   = help: use `p` only before it is moved, or bind a new value after the move",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -382,4 +446,6 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_DISCARDED_STD_RESULT,
     DIAG_DISCARDED_STD_OPTION,
     DIAG_LOOP_MOVE_USE_AFTER_LOOP,
+    DIAG_IF_BRANCH_SIBLING_NO_FALSE_UAM,
+    DIAG_IF_BRANCH_UNTAKEN_NO_MOVE,
 ];
