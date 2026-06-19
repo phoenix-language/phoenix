@@ -318,6 +318,21 @@ pub const DIAG_DISCARDED_STD_RESULT: DiagnosticCase = DiagnosticCase {
    = help: handle the value with `match`, `if const` / `if var`, or `?` inside a compatible return type",
 };
 
+pub const DIAG_DISCARDED_STD_OPTION: DiagnosticCase = DiagnosticCase {
+    name: r"discarded_std_option",
+    kind: DiagnosticKind::Project {
+        project_name: r"lint_std_option_discard",
+        entry: r"src/main.phx",
+    },
+    source: None,
+    expected: r"error[E2042]: discarded `Option` value must be handled
+  --> tests/cli/fixtures/lint_std_option_discard/src/main.phx:8:5
+  |
+8 |     maybe_one();
+  |     ^^^^^^^^^^^
+   = help: handle the value with `match`, `if const` / `if var`, or `?` inside a compatible return type",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -335,4 +350,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_TRY_OK_MISMATCH,
     DIAG_TRY_FROM_MISSING,
     DIAG_DISCARDED_STD_RESULT,
+    DIAG_DISCARDED_STD_OPTION,
 ];

@@ -21,3 +21,19 @@ fn discarded_std_result_is_type_error() {
         "expected DiscardedStdResult, got {bag}"
     );
 }
+
+#[test]
+fn discarded_std_option_is_type_error() {
+    let path = cli_project_main("lint_std_option_discard");
+    let err = check_file(&path).expect_err("expected type-check failure");
+    let bag = match err {
+        CompileError::TypeCheck { bag, .. } => bag,
+        other => panic!("expected type-check error, got {other}"),
+    };
+    assert!(
+        bag.errors()
+            .iter()
+            .any(|e| matches!(&e.error, TypeCheckError::DiscardedStdOption { .. })),
+        "expected DiscardedStdOption, got {bag}"
+    );
+}

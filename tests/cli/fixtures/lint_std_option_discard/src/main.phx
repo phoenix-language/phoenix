@@ -1,0 +1,10 @@
+#import std::core::option::{Option, Some, None};
+
+maybe_one :: () => Option<s32> {
+    Some(1)
+};
+
+main :: () => {
+    maybe_one();
+    const _ = 0;
+};

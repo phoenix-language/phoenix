@@ -12,7 +12,7 @@ Work tasks **top to bottom**. Mark a task `[x]` only after `just pre-commit` pas
 | # | Task | Status |
 |---|------|--------|
 | 1 | Lower layout `unwrap_or(0)` → `LowerError` | `[x]` |
-| 2 | Golden diagnostic: discarded std `Option` (E2042) | `[ ]` |
+| 2 | Golden diagnostic: discarded std `Option` (E2042) | `[x]` |
 | 3 | Golden diagnostic: loop-carried use-after-move | `[ ]` |
 | 4 | Golden diagnostic: if-arm ownership join | `[ ]` |
 | 5 | PXI malformed-export rejection tests | `[ ]` |
@@ -154,7 +154,7 @@ Register both cases. Run `just pre-commit`.
 
 | Field | Value |
 |-------|-------|
-| Last completed task | 1 — Lower layout fallbacks → `LowerError` |
-| Last green commit | 2848d50 |
+| Last completed task | 2 — Golden diagnostic: discarded std `Option` (E2042) |
+| Last green commit | (pending commit) |
 | Branch | trunk |
 | Blockers | — |

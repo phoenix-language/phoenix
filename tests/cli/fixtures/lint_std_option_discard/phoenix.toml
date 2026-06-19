@@ -1,0 +1,9 @@
+[project]
+name = "lint_std_option_discard"
+version = "0.1.0"
+description = "PHX-061 golden: discarded std Option must be handled (E2042)"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

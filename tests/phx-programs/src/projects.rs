@@ -1062,6 +1062,36 @@ dir = "build"
     files: PROJECT_LINT_STD_RESULT_DISCARD_FILES,
 };
 
+static PROJECT_LINT_STD_OPTION_DISCARD_FILES: &[(&str, &str)] = &[(
+    r"src/main.phx",
+    r"#import std::core::option::{Option, Some, None};
+
+maybe_one :: () => Option<s32> {
+    Some(1)
+};
+
+main :: () => {
+    maybe_one();
+    const _ = 0;
+};
+",
+)];
+
+pub const PROJECT_LINT_STD_OPTION_DISCARD: ProjectSpec = ProjectSpec {
+    name: r"lint_std_option_discard",
+    toml: r#"[project]
+name = "lint_std_option_discard"
+version = "0.1.0"
+description = "PHX-061 golden: discarded std Option must be handled (E2042)"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"
+"#,
+    files: PROJECT_LINT_STD_OPTION_DISCARD_FILES,
+};
+
 static PROJECT_MATH_LIB_FILES: &[(&str, &str)] = &[(
     r"src/lib.phx",
     r"pub add :: (a: s32, b: s32) => s32 { a + b + 1 };
@@ -2621,6 +2651,7 @@ pub const PROJECTS: &[ProjectSpec] = &[
     PROJECT_LINK_REBASE,
     PROJECT_LINT_DENY_PROJECT,
     PROJECT_LINT_STD_RESULT_DISCARD,
+    PROJECT_LINT_STD_OPTION_DISCARD,
     PROJECT_MATH_LIB,
     PROJECT_MODULES_BIN_BARREL,
     PROJECT_MODULES_MISSING_MOD,
