@@ -67,6 +67,45 @@ update:
 audit:
     cargo audit
 
-# Website (git submodule — see docs/contributing.md)
+# Website (git submodule — see docs/contributing.md and website/Justfile)
 website *args:
-    just -f website/justfile {{args}}
+    just -f website/Justfile {{args}}
+
+# Initialize the website submodule after clone.
+website-init:
+    git submodule update --init --recursive website
+
+# Show website submodule state vs the pointer recorded in this repo.
+website-status:
+    @echo "=== website submodule ==="
+    @git -C website status -sb
+    @git -C website log -1 --oneline
+    @echo ""
+    @echo "=== parent pointer (HEAD) ==="
+    @git ls-tree HEAD website
+    @echo ""
+    @echo "=== upstream website/main ==="
+    @git -C website fetch origin main --quiet 2>/dev/null || true
+    @git -C website log -1 --oneline origin/main 2>/dev/null || echo "(could not fetch origin/main)"
+
+# Fast-forward website/ to the latest origin/main.
+website-pull:
+    just website-init
+    git -C website fetch origin
+    git -C website checkout main
+    git -C website pull --ff-only origin main
+
+# Record the current website submodule SHA in the parent repo.
+website-bump message="[infra]: bump website submodule":
+    git add website
+    @git diff --cached --quiet website && echo "website pointer unchanged — nothing to commit" && exit 0 || git commit -m "{{message}}"
+
+# Pull latest website, then bump the parent pointer if it changed.
+website-sync:
+    just website-pull
+    just website-bump
+
+# Push website/main, then commit the updated submodule pointer here.
+website-publish message="[infra]: bump website submodule":
+    git -C website push origin main
+    just website-bump message="{{message}}"
