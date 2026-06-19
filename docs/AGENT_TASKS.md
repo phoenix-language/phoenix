@@ -154,7 +154,7 @@ Register both cases. Run `just pre-commit`.
 
 | Field | Value |
 |-------|-------|
-| Last completed task | 2 — Golden diagnostic: discarded std `Option` (E2042) |
-| Last green commit | db01d76 |
+| Last completed task | 3 — Golden diagnostic: loop-carried use-after-move |
+| Last green commit | 49fb1c4 |
 | Branch | trunk |
 | Blockers | — |
