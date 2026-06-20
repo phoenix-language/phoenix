@@ -1,4 +1,24 @@
 //! PHX0 [`BytecodeModule`] aggregate and file encode/decode.
+//!
+//! A module is the in-memory view of a PHX0 file: header, section table, and decoded section
+//! payloads. The code section holds a contiguous byte stream of [`Instruction`] records; function
+//! metadata in section 3 (`functions`) indexes slices of that stream via `code_offset` /
+//! `code_len`.
+//!
+//! ## PHX0 layout (MVP)
+//!
+//! | Section | Kind | Contents |
+//! |---------|------|----------|
+//! | 0 | Constants | [`ConstPool`] entries |
+//! | 1 | Types | [`TypeTable`] records |
+//! | 2 | Functions | [`FunctionTable`] metadata |
+//! | 3 | Code | raw instruction bytes |
+//! | 4 | Local layouts | per-function slot kinds |
+//! | 5 (optional) | Symbols | [`PcSpanTable`] when debug spans are present |
+//!
+//! [`BytecodeModule::encode`] and [`BytecodeModule::decode`] are inverse operations for valid
+//! modules. Decoding does not run the verifier — call [`super::verify`] before handing a module to
+//! the VM.
 
 use super::const_pool::ConstPool;
 use super::encode::{EncodeError, u32_len};
@@ -11,6 +31,10 @@ use super::section::{SectionEntry, SectionError, SectionKind, validate_section_t
 use super::types::TypeTable;
 
 /// Decoded Phoenix bytecode module (MVP).
+///
+/// Owns all section payloads for one compilation unit. Use [`BytecodeModule::empty`] for tests
+/// and [`BytecodeModule::decode`] to load from disk; [`BytecodeModule::encode`] serializes back
+/// to PHX0 bytes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BytecodeModule {
     /// File header.

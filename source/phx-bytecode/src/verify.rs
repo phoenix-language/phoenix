@@ -1,4 +1,19 @@
 //! Bytecode verifier — header, sections, control flow, and stack depth.
+//!
+//! [`verify`] is the single public entry point. It runs a fixed sequence of checks and, on
+//! success, returns a [`super::VerifiedModule`] proof token required by production VM APIs.
+//!
+//! ## Verification phases
+//!
+//! 1. **Header and sections** — magic, version, non-overlapping section payloads, flags vs PC
+//!    span section presence.
+//! 2. **Entry function** — `entry_function_id` exists and has zero arity (MVP `main`).
+//! 3. **PC spans** — optional debug map entries reference valid functions, files, and PCs.
+//! 4. **Per-function bodies** — decode instruction stream, validate jump targets and operand
+//!    indices, simulate stack depth along all CFG paths, check call/cast/indirect-call arity.
+//!
+//! Match on [`VerifyError`] to classify layout vs operand vs control-flow failures; variant docs
+//! describe the offending ids and offsets.
 
 use std::collections::{HashMap, HashSet};
 
@@ -431,11 +446,18 @@ impl std::error::Error for VerifyError {}
 
 /// Verifies `module` invariants required before execution (MVP subset).
 ///
-/// On success, returns a [`super::VerifiedModule`] token required by production VM entry points.
+/// Runs header/section checks, validates the entry function and optional PC span map, then walks
+/// every function body for well-formed instructions, control flow, and stack depth. On success,
+/// returns a [`super::VerifiedModule`] token required by production VM entry points.
 ///
 /// # Errors
 ///
-/// Returns [`VerifyError`] when layout, control flow, or stack limits are invalid.
+/// Returns [`VerifyError`] on the first failed check (layout, entry function, PC spans, or
+/// any function body).
+///
+/// # Panics
+///
+/// Never panics on malformed user or file input.
 pub fn verify(module: &BytecodeModule) -> Result<super::VerifiedModule<'_>, VerifyError> {
     verify_inner(module)?;
     Ok(super::VerifiedModule::new(module))

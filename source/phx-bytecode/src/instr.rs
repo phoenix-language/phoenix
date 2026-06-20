@@ -1,9 +1,28 @@
 //! Variable-length logical instructions (`opcode` + `operand_count` + operands).
+//!
+//! Each [`Instruction`] is the decoded view of one record in the code section. Operands are always
+//! `u32` indices — constant pool slots, type table rows, local slots, jump targets, or
+//! callee ids depending on the [`Opcode`]. Stack effects for each opcode are documented on
+//! [`Opcode`].
+//!
+//! ## Wire format
+//!
+//! ```text
+//! u8 opcode | u8 operand_count | operand_count × u32 (little-endian)
+//! ```
+//!
+//! [`Instruction::encode`] and [`Instruction::decode_at`] round-trip this layout. Operand count is
+//! capped at 255 ([`InstrError::TooManyOperands`]). [`Instruction::apply_link_bases`] rebases
+//! constant-pool and type-table indices when merging object files; function ids and jump targets
+//! are left unchanged.
 
 use super::decode::checked_entry_count;
 use super::opcode::Opcode;
 
 /// One decoded instruction (operands are `u32` indices only).
+///
+/// Construct via [`Instruction::decode_at`] or by filling `opcode` and `operands` directly before
+/// [`Instruction::encode`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instruction {
     /// Opcode discriminant.
