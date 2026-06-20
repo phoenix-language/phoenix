@@ -306,11 +306,50 @@ fn terminators_successors(inst: &Instruction, next: Option<&(u32, Instruction)>)
 }
 
 #[cfg(test)]
-#[allow(clippy::cast_lossless, clippy::expect_used)]
+#[allow(clippy::cast_lossless)]
 mod tests {
     use super::*;
     use crate::cast::PrimitiveKind;
     use crate::instr::Instruction;
+
+    trait TestEncode {
+        fn test_encode(&self) -> Vec<u8>;
+    }
+
+    impl TestEncode for Instruction {
+        fn test_encode(&self) -> Vec<u8> {
+            match self.encode() {
+                Ok(bytes) => bytes,
+                Err(err) => panic!("encode {self:?}: {err:?}"),
+            }
+        }
+    }
+
+    fn code_offset(len: usize) -> u32 {
+        match u32::try_from(len) {
+            Ok(offset) => offset,
+            Err(_) => panic!("code offset {len} exceeds u32::MAX"),
+        }
+    }
+
+    fn decode_at(code: &[u8], off: usize) -> (Instruction, usize) {
+        match Instruction::decode_at(code, off) {
+            Ok(pair) => pair,
+            Err(err) => panic!("decode at {off}: {err:?}"),
+        }
+    }
+
+    fn analyze_ok(
+        instructions: &[DecodedInst],
+        inst_starts: &HashSet<u32>,
+        fn_arity: &HashMap<u32, u16>,
+        return_depth: u32,
+    ) -> StackFlowSummary {
+        match analyze_stack_cfg(instructions, inst_starts, fn_arity, return_depth) {
+            Ok(summary) => summary,
+            Err(err) => panic!("analyze_stack_cfg failed: {err:?}"),
+        }
+    }
 
     #[test]
     fn jump_if_false_branch_underflow_rejected() {
@@ -332,20 +371,20 @@ mod tests {
         };
 
         let mut code = Vec::new();
-        code.extend(push_true.encode().expect("encode"));
-        code.extend(jump_if_false.encode().expect("encode"));
-        let fallthrough = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode().expect("encode"));
-        let branch = u32::try_from(code.len()).expect("offset");
-        code.extend(add.encode().expect("encode"));
+        code.extend(push_true.test_encode());
+        code.extend(jump_if_false.test_encode());
+        let fallthrough = code_offset(code.len());
+        code.extend(ret.test_encode());
+        let branch = code_offset(code.len());
+        code.extend(add.test_encode());
         let add_off = branch;
-        code.extend(ret.encode().expect("encode"));
+        code.extend(ret.test_encode());
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
         while off < code.len() {
-            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
-            instructions.push((u32::try_from(off).expect("offset"), inst));
+            let (inst, next) = decode_at(&code, off);
+            instructions.push((code_offset(off), inst));
             off = next;
         }
         instructions[1].1.operands[0] = branch;
@@ -377,19 +416,19 @@ mod tests {
         };
 
         let mut code = Vec::new();
-        code.extend(push_false.encode().expect("encode"));
-        code.extend(jump_if_true.encode().expect("encode"));
-        let add_off = u32::try_from(code.len()).expect("offset");
-        code.extend(add.encode().expect("encode"));
-        code.extend(ret.encode().expect("encode"));
-        let branch = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode().expect("encode"));
+        code.extend(push_false.test_encode());
+        code.extend(jump_if_true.test_encode());
+        let add_off = code_offset(code.len());
+        code.extend(add.test_encode());
+        code.extend(ret.test_encode());
+        let branch = code_offset(code.len());
+        code.extend(ret.test_encode());
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
         while off < code.len() {
-            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
-            instructions.push((u32::try_from(off).expect("offset"), inst));
+            let (inst, next) = decode_at(&code, off);
+            instructions.push((code_offset(off), inst));
             off = next;
         }
         instructions[1].1.operands[0] = branch;
@@ -431,26 +470,26 @@ mod tests {
 
         let mut code = Vec::new();
         let a = 0u32;
-        code.extend(entry_const.encode().expect("encode"));
-        let jump_if_off = u32::try_from(code.len()).expect("offset");
-        code.extend(jump_if.encode().expect("encode"));
-        code.extend(jump_else.encode().expect("encode"));
-        let b = u32::try_from(code.len()).expect("offset");
-        code.extend(branch_const.encode().expect("encode"));
-        let b_jump_off = u32::try_from(code.len()).expect("offset");
-        code.extend(jump_merge.encode().expect("encode"));
-        let c = u32::try_from(code.len()).expect("offset");
-        code.extend(branch_const.encode().expect("encode"));
-        let c_jump_off = u32::try_from(code.len()).expect("offset");
-        code.extend(jump_merge.encode().expect("encode"));
-        let d = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode().expect("encode"));
+        code.extend(entry_const.test_encode());
+        let jump_if_off = code_offset(code.len());
+        code.extend(jump_if.test_encode());
+        code.extend(jump_else.test_encode());
+        let b = code_offset(code.len());
+        code.extend(branch_const.test_encode());
+        let b_jump_off = code_offset(code.len());
+        code.extend(jump_merge.test_encode());
+        let c = code_offset(code.len());
+        code.extend(branch_const.test_encode());
+        let c_jump_off = code_offset(code.len());
+        code.extend(jump_merge.test_encode());
+        let d = code_offset(code.len());
+        code.extend(ret.test_encode());
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
         while off < code.len() {
-            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
-            let rel = u32::try_from(off).expect("offset");
+            let (inst, next) = decode_at(&code, off);
+            let rel = code_offset(off);
             instructions.push((rel, inst));
             off = next;
         }
@@ -465,8 +504,7 @@ mod tests {
 
         let _ = (jump_if_off, b_jump_off, c_jump_off);
         let inst_starts: HashSet<u32> = [a, b, c, d].into_iter().collect();
-        let summary =
-            analyze_stack_cfg(&instructions, &inst_starts, &HashMap::new(), 1).expect("cfg");
+        let summary = analyze_ok(&instructions, &inst_starts, &HashMap::new(), 1);
         assert_eq!(summary.max_depth, 1);
     }
 
@@ -481,15 +519,15 @@ mod tests {
             operands: vec![],
         };
         let mut code = Vec::new();
-        code.extend(push.encode().expect("encode"));
-        let ret_off = u32::try_from(code.len()).expect("offset");
-        code.extend(ret.encode().expect("encode"));
+        code.extend(push.test_encode());
+        let ret_off = code_offset(code.len());
+        code.extend(ret.test_encode());
 
         let mut instructions = Vec::new();
         let mut off = 0usize;
         while off < code.len() {
-            let (inst, next) = Instruction::decode_at(&code, off).expect("decode");
-            instructions.push((u32::try_from(off).expect("offset"), inst));
+            let (inst, next) = decode_at(&code, off);
+            instructions.push((code_offset(off), inst));
             off = next;
         }
 
