@@ -1,4 +1,18 @@
-//! `.pxi` JSON read/write (v1 signatures, v2 structured types).
+//! Parse and serialize `.pxi` interface files (format v1 and v2).
+//!
+//! ## On-disk shape
+//!
+//! A `.pxi` file is JSON with top-level `format_version`, `logical_module`, `source_hash`,
+//! optional `origin`, an `exports` array, and a `dependencies` array. Each export carries a
+//! stable [`PxiExport::export_id`], human-readable [`PxiExport::signature`], and (v2) optional
+//! structured [`PxiExport::ty`].
+//!
+//! ## Version support
+//!
+//! [`PxiFile::parse`] accepts `format_version` `1` or `2`. Legacy field `module_path` is
+//! rejected. Writers in the current compiler emit v2 via [`crate::pxi::build_pxi_for_module`].
+//!
+//! See `docs/design/features/pxi-format.md` for the full schema and cross-crate generic rules.
 
 use std::fmt::Write;
 use std::path::Path;
@@ -7,7 +21,10 @@ use super::hash::digest_bytes;
 use super::type_ast::{PxiType, parse_type_value};
 use crate::resolver::DefKind;
 
-/// Language item marker carried in `.pxi` exports.
+/// Language-item marker on a `.pxi` export (format v2).
+///
+/// Present when the export is a compiler-known item such as `Option` or an intrinsic;
+/// ordinary user exports omit this field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiLangItem {
     /// Stable language item name.
@@ -16,7 +33,10 @@ pub struct PxiLangItem {
     pub kind: String,
 }
 
-/// One exported symbol in a `.pxi` file.
+/// One exported symbol recorded in a `.pxi` file.
+///
+/// Corresponds to a `pub` item (or link-required impl method) from the module source.
+/// v2 exports include structured [`Self::ty`]; v1 exports carry [`Self::signature`] only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiExport {
     /// Stable id (`logical_module::name::kind`) for separate compilation.
@@ -35,13 +55,19 @@ pub struct PxiExport {
     pub lang_item: Option<PxiLangItem>,
 }
 
-/// Builds a stable export id for `.pxi` and link maps.
+/// Builds a stable export id: `logical_module::name::kind`.
+///
+/// Used in `.pxi` export records and link-time export maps. Generic specializations use
+/// mangled names in `name` (for example `id$s32`); see the design doc for mangling rules.
 #[must_use]
 pub fn stable_export_id(logical_module: &str, name: &str, kind: &str) -> String {
     format!("{logical_module}::{name}::{kind}")
 }
 
-/// One dependency entry.
+/// One direct module dependency listed in a `.pxi` file.
+///
+/// `pxi_hash` is the content digest of the dependency's `.pxi` at compile time; a changed
+/// hash invalidates incremental builds of importers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiDependency {
     /// Logical module path.
@@ -51,6 +77,9 @@ pub struct PxiDependency {
 }
 
 /// Parsed `.pxi` interface (format version 1 or 2).
+///
+/// Construct with [`PxiFile::parse`] or [`PxiFile::read_from_path`]; emit via
+/// [`crate::pxi::build_pxi_for_module`] during project builds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PxiFile {
     /// `1` (signatures only) or `2` (structured `type` on exports).
@@ -68,7 +97,9 @@ pub struct PxiFile {
 }
 
 impl PxiFile {
-    /// Serializes to JSON bytes.
+    /// Serializes this interface to canonical JSON text.
+    ///
+    /// The output is suitable for writing to disk and for computing [`Self::self_hash`].
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut out = String::new();
@@ -195,7 +226,10 @@ impl PxiFile {
         Self::parse(&text)
     }
 
-    /// Returns true when `source_path` bytes match `source_hash`.
+    /// Returns `true` when the bytes at `source_path` match [`Self::source_hash`].
+    ///
+    /// Used by the build driver to skip re-emitting interfaces for unchanged modules and to
+    /// decide whether a dependency `.pxi` still describes its source.
     #[must_use]
     pub fn source_is_fresh(&self, source_path: &Path) -> bool {
         std::fs::read(source_path).is_ok_and(|b| digest_bytes(&b) == self.source_hash)
@@ -209,7 +243,10 @@ impl PxiFile {
     }
 }
 
-/// `.pxi` parse/load errors.
+/// `.pxi` parse and load failures.
+///
+/// Malformed JSON, unsupported versions, and structural array errors surface here rather
+/// than as partial parse results.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PxiError {
     /// Unsupported `format_version`.
@@ -245,7 +282,10 @@ impl std::fmt::Display for PxiError {
 
 impl std::error::Error for PxiError {}
 
-/// Maps [`DefKind`] to `.pxi` export kind string.
+/// Maps a resolver [`DefKind`] to the `.pxi` export `kind` string.
+///
+/// Function-like defs map to `"fn"` or `"extern_fn"`; aggregate defs map to `"struct"`,
+/// `"enum"`, or `"type"`. Internal-only kinds (locals, params, impl blocks) map to `"other"`.
 #[must_use]
 pub fn def_kind_to_pxi(kind: DefKind) -> &'static str {
     match kind {
