@@ -73,7 +73,7 @@ pub fn run_unverified(module: &BytecodeModule) -> Result<(), VmError> {
 mod tests {
     use phx_bytecode::{
         BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-        Instruction, Opcode, TypeTable, verify,
+        Instruction, Opcode, PcSpanTable, TypeTable, verify,
     };
 
     use super::{
@@ -109,7 +109,7 @@ mod tests {
             },
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
         let verified = verify(&module).expect("verify");
         run(verified).expect("run");
@@ -135,7 +135,7 @@ mod tests {
             },
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         }
     }
 
@@ -199,7 +199,7 @@ mod tests {
             },
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
         let verified = verify(&module).expect("verify unit call/pop");
         run(verified).expect("run unit call/pop");
@@ -333,7 +333,7 @@ mod tests {
             },
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
         let err = run_unverified(&module).expect_err("unsupported const");
         assert_eq!(err.kind, VmErrorKind::UnsupportedConst);
@@ -412,7 +412,7 @@ mod tests {
             },
             code,
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
 
         let err = run_captured_unverified_with_heap_cap(&module, 32).expect_err("oom");
@@ -517,7 +517,7 @@ mod tests {
                     slots: vec![LocalSlotKind::primitive(PrimitiveKind::U64)],
                 }],
             },
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
 
         let verified = verify(&module).expect("verify heap uaf bytecode");

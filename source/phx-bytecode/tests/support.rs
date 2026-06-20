@@ -9,7 +9,7 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-    Instruction, LocalLayoutTable, Opcode, PrimitiveKind, TypeTable,
+    Instruction, LocalLayoutTable, Opcode, PcSpanTable, PrimitiveKind, TypeTable,
 };
 
 /// Minimal single-function module for verifier and mutation tests.
@@ -44,7 +44,7 @@ pub fn minimal_module(
         },
         code,
         local_layouts: LocalLayoutTable::default(),
-        pc_spans: Default::default(),
+        pc_spans: PcSpanTable::default(),
     }
 }
 
@@ -274,7 +274,7 @@ pub fn heap_alloc_roundtrip_module() -> BytecodeModule {
                 ],
             }],
         },
-        pc_spans: Default::default(),
+        pc_spans: PcSpanTable::default(),
     }
 }
 
@@ -444,6 +444,6 @@ pub fn heap_s32_slice_index_roundtrip_module() -> BytecodeModule {
                 ],
             }],
         },
-        pc_spans: Default::default(),
+        pc_spans: PcSpanTable::default(),
     }
 }
