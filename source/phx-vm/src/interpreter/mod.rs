@@ -1,4 +1,59 @@
-//! Opcode interpreter for one PHX0 module.
+//! Opcode dispatch loop for one [`BytecodeModule`](phx_bytecode::BytecodeModule) image.
+//!
+//! This module is the core of the Phoenix stack interpreter. A caller provides either a
+//! [`VerifiedModule`] (production path) or a raw [`BytecodeModule`] reference (mutation tests
+//! only); execution resolves the module entry function, drives a [`Machine`](crate::context::Machine)
+//! until the call stack drains, and returns success or a site-attributed [`VmError`].
+//!
+//! ## Relationship to [`VerifiedModule`]
+//!
+//! [`VerifiedModule`] is an opaque proof token from [`phx_bytecode::verify`] that the image
+//! passed static checks (valid jump targets, stack depth, section bounds). The interpreter
+//! assumes those invariants on the verified path but still returns [`VmError`] on runtime faults
+//! (division by zero, heap cap exhaustion, stack underflow). The `*_unverified` entry points skip
+//! the token and are `#[doc(hidden)]` for VM mutation tests that inject malformed bytecode.
+//!
+//! Production callers reach this module through [`crate::run`] and [`crate::run_with_heap_cap`],
+//! which delegate to [`interpret`] and discard captured state on success.
+//!
+//! ## Execution model
+//!
+//! 1. Resolve the module entry function ([`ENTRY_NONE`](phx_bytecode::ENTRY_NONE) is rejected).
+//! 2. Build a [`Machine`](crate::context::Machine) with the requested heap cap
+//!    ([`DEFAULT_HEAP_CAP_BYTES`](crate::context::DEFAULT_HEAP_CAP_BYTES) by default).
+//! 3. Push the entry frame and loop: decode the next [`Instruction`] at the active frame PC,
+//!    advance PC, then [`dispatch_opcode`] into a submodule handler.
+//! 4. On [`Opcode::Return`](phx_bytecode::Opcode::Return) when only the entry frame remains,
+//!    build [`VmRunCapture`] and exit. Nested returns pop callee frames and push the return value
+//!    onto the caller's stack.
+//!
+//! [`dispatch_opcode`] is the single match over [`Opcode`]; submodule files implement one opcode
+//! family each and mutate [`ExecutionContext`](crate::context::ExecutionContext) and/or
+//! [`VmRuntime`](crate::context::VmRuntime). Stack convention matches codegen: binary ops pop `b`
+//! then `a` and push `op(a, b)`.
+//!
+//! ## Submodules
+//!
+//! | Submodule | Responsibility |
+//! | --- | --- |
+//! | `aggregates` | Structs, enums, tuples, arrays, slices, strings, indexing |
+//! | `arith` | Arithmetic, comparison, cast, bitwise, logical negation |
+//! | `control` | Branches, calls, returns, stack pop |
+//! | `indirect` | Function pointers and indirect call |
+//! | `locals` | Constants and local load/store |
+//! | `memory` | Linear heap alloc/free, pointer load/store, address-of |
+//! | `util` | Shared stack helpers (scalar pop, operand decoding) |
+//!
+//! ## Entry points
+//!
+//! | Function | Audience |
+//! | --- | --- |
+//! | [`interpret`] | Production — run a [`VerifiedModule`] until entry returns |
+//! | [`run_captured`] | `#[doc(hidden)]` — same as [`interpret`] but returns [`VmRunCapture`] |
+//! | [`run_captured_with_heap_cap`] | `#[doc(hidden)]` — captured run with custom heap cap |
+//! | [`interpret_unverified`] | `#[doc(hidden)]` — mutation / error-path tests without verify token |
+//! | [`run_captured_unverified`] | `#[doc(hidden)]` — captured unverified run |
+//! | [`run_captured_unverified_with_heap_cap`] | `#[doc(hidden)]` — unverified run + heap cap |
 
 mod aggregates;
 mod arith;
@@ -14,48 +69,68 @@ use crate::context::{DEFAULT_HEAP_CAP_BYTES, Machine};
 use crate::error::{VmError, VmErrorKind};
 use crate::frame::{Aggregate, Value};
 
-/// Captured VM state when the entry function returns (integration tests only).
+/// Snapshot of VM state when the module entry function returns.
 ///
-/// Populated by [`run_captured`] and related `#[doc(hidden)]` helpers. Production callers use
-/// [`crate::run`] and do not need this struct.
+/// Populated by [`run_captured`] and related `#[doc(hidden)]` helpers. Integration tests and
+/// `phx run --dump-main` inspect [`Self::main_locals`] or [`Self::main_local`] to assert computed
+/// results without parsing stdout. [`Self::aggregates`] holds the run-wide struct/enum/tuple arena
+/// at return time. [`Self::return_value`] is set when the entry function leaves a value on the
+/// operand stack at top-level [`Opcode::Return`](phx_bytecode::Opcode::Return).
+///
+/// Production callers use [`crate::run`] or [`interpret`] and do not need this struct.
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct VmRunCapture {
-    /// Local slots for `main` at return (index matches bytecode local layout).
+    /// Local slots for the entry function at return (index matches bytecode local layout).
     pub main_locals: Vec<Value>,
-    /// Aggregate arena at return (for struct/enum inspection in tests).
+    /// Aggregate arena at return (for struct/enum/tuple inspection in tests).
     pub aggregates: Vec<Aggregate>,
-    /// Stack value popped at top-level `Return`, if the stack was non-empty.
+    /// Operand-stack value popped at top-level `Return`, if the stack was non-empty.
     pub return_value: Option<Value>,
 }
 
 impl VmRunCapture {
-    /// Returns the value stored in `main` local slot `index`, if present.
+    /// Returns the value stored in the entry function's local slot `index`, if present.
     ///
     /// Used by `phx run --dump-main` and integration tests to assert computed results without
-    /// parsing stdout.
+    /// parsing stdout. Out-of-range indices return `None` rather than panicking.
+    ///
+    /// # Panics
+    ///
+    /// Never panics.
     #[must_use]
     pub fn main_local(&self, index: usize) -> Option<Value> {
         self.main_locals.get(index).copied()
     }
 }
 
-/// Runs a verified `module` starting at `entry` until `main` returns.
+/// Runs a verified module from its entry function until entry returns.
+///
+/// Discards operand-stack and local state on success. For integration tests that need entry
+/// locals or the optional return value, use the `#[doc(hidden)]` [`run_captured`] helper or
+/// [`crate::run`] at the crate root (which calls this function).
 ///
 /// # Errors
 ///
-/// Returns [`VmError`] on runtime failure.
+/// Returns [`VmError`] when execution fails ([`VmErrorKind::StackUnderflow`], heap cap exhaustion,
+/// `Trap`, and other runtime faults). Site-attributed errors include `(function_id, pc)` when the
+/// fault occurs during instruction dispatch.
+///
+/// # Panics
+///
+/// Never panics on verified bytecode or malformed user bytecode; returns [`VmError`] instead.
 pub fn interpret(verified: VerifiedModule<'_>) -> Result<(), VmError> {
     run_captured(verified).map(|_| ())
 }
 
-/// Runs a verified `module` and returns captured `main` state at entry return.
+/// Runs a verified module and returns captured entry state at return.
 ///
 /// Integration-test harness only; production callers use [`interpret`] or [`crate::run`].
 ///
-/// On success, inspect [`VmRunCapture::main_locals`] or [`VmRunCapture::main_local`] for `main`
-/// slot values, and [`VmRunCapture::return_value`] when the entry function leaves a value on the
-/// stack at `Return`.
+/// On success, inspect [`VmRunCapture::main_locals`] or [`VmRunCapture::main_local`] for entry
+/// slot values, [`VmRunCapture::aggregates`] for struct/enum handles, and
+/// [`VmRunCapture::return_value`] when the entry function leaves a value on the stack at
+/// [`Opcode::Return`](phx_bytecode::Opcode::Return).
 ///
 /// # Errors
 ///
@@ -69,11 +144,19 @@ pub fn run_captured(verified: VerifiedModule<'_>) -> Result<VmRunCapture, VmErro
     run_captured_with_heap_cap(verified, DEFAULT_HEAP_CAP_BYTES)
 }
 
-/// Runs a verified `module` with a custom heap byte cap (integration / stress tests only).
+/// Runs a verified module with a custom linear-heap byte cap (integration / stress tests only).
+///
+/// Same execution loop as [`run_captured`]; only the [`VmRuntime`](crate::context::VmRuntime)
+/// heap limit differs. When allocation would exceed `heap_cap`, returns
+/// [`VmErrorKind::OutOfMemory`].
 ///
 /// # Errors
 ///
 /// Returns [`VmError`] on runtime failure or heap cap exhaustion.
+///
+/// # Panics
+///
+/// Never panics on verified bytecode or malformed user bytecode; returns [`VmError`] instead.
 #[doc(hidden)]
 pub fn run_captured_with_heap_cap(
     verified: VerifiedModule<'_>,
@@ -82,31 +165,53 @@ pub fn run_captured_with_heap_cap(
     run_captured_unverified_with_heap_cap(verified.module(), heap_cap)
 }
 
-/// Runs `module` without a verification token (mutation / VM error-path tests only).
+/// Runs a module without a verification token (mutation / VM error-path tests only).
+///
+/// Skips the [`VerifiedModule`] proof from [`phx_bytecode::verify`]. Do not use for production
+/// execution of untrusted images. On success, discards captured state like [`interpret`].
 ///
 /// # Errors
 ///
-/// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
+/// Returns [`VmError`] on invalid bytecode, unsupported opcodes, or runtime faults.
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmError`] instead.
 #[doc(hidden)]
 pub fn interpret_unverified(module: &BytecodeModule) -> Result<(), VmError> {
     run_captured_unverified(module).map(|_| ())
 }
 
-/// Runs `module` without a verification token (mutation / VM error-path tests only).
+/// Runs a module without a verification token and returns captured entry state (tests only).
+///
+/// Same as [`run_captured`] but accepts a raw [`BytecodeModule`] reference. See
+/// [`interpret_unverified`] for when to use the unverified path.
 ///
 /// # Errors
 ///
-/// Returns [`VmError`] on invalid bytecode or unsupported opcodes.
+/// Returns [`VmError`] on invalid bytecode, unsupported opcodes, or runtime faults.
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmError`] instead.
 #[doc(hidden)]
 pub fn run_captured_unverified(module: &BytecodeModule) -> Result<VmRunCapture, VmError> {
     run_captured_unverified_with_heap_cap(module, DEFAULT_HEAP_CAP_BYTES)
 }
 
-/// Runs `module` without a verification token and with a custom heap cap (tests only).
+/// Runs a module without a verification token and with a custom heap cap (tests only).
+///
+/// Combines [`run_captured_unverified`] and [`run_captured_with_heap_cap`]. This is the
+/// implementation root for all other entry points in this module.
 ///
 /// # Errors
 ///
-/// Returns [`VmError`] on invalid bytecode, unsupported opcodes, or heap cap exhaustion.
+/// Returns [`VmError`] on invalid bytecode, unsupported opcodes, runtime faults, or heap cap
+/// exhaustion ([`VmErrorKind::OutOfMemory`]).
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmError`] instead.
 #[doc(hidden)]
 pub fn run_captured_unverified_with_heap_cap(
     module: &BytecodeModule,
