@@ -2,10 +2,24 @@
 //!
 //! ## Pass role
 //!
-//! Called from [`super::resolve_loaded_program`] while building import prefaces for each module.
-//! Resolves a single [`ImportDirective`] to local bindings (value and type namespaces), including
-//! `.pxi` type tables for cross-package imports and [`super::discover::is_module_importable`]
-//! visibility checks for submodule paths.
+//! Called from [`super::resolve_loaded_program`] (and block-scoped import sites in
+//! [`crate::resolver::walk`]) while building import prefaces for each module. Resolves a single
+//! [`ImportDirective`] to local bindings in value and type namespaces, including `.pxi` type
+//! tables for cross-package imports and [`super::discover::is_module_importable`] visibility
+//! checks for submodule paths.
+//!
+//! ## Resolution flow
+//!
+//! 1. Canonicalize the import target path against workspace and dependency package names.
+//! 2. Look up the dependency module in `path_index`; emit nothing when the module was not loaded.
+//! 3. Reject private submodule paths via the submodule registry.
+//! 4. Build the export map from AST exports or, when a fresh `.pxi` exists, filtered PXI exports.
+//! 5. For glob imports, bind every exported symbol; otherwise bind listed identifiers or the
+//!    single-item import form.
+//! 6. Attach PXI type and lang-item metadata for cross-package defs when build artifacts are fresh.
+//!
+//! Diagnostics for duplicate imports, missing exports, and private symbols are pushed into
+//! [`ImportResolveCtx::bag`]; the function returns successfully collected bindings either way.
 //!
 //! [`ImportResolveCtx`] bundles the loaded program tables needed for one resolution pass.
 
@@ -29,36 +43,52 @@ use super::path::ModulePath;
 type ExportMap = HashMap<Symbol, DefId>;
 
 /// Context for resolving one `#import` directive in a loaded program.
+///
+/// Holds read-only views of the loaded module graph and mutable side tables for PXI metadata and
+/// diagnostics. Constructed per import site in [`super::resolve_loaded_program`] or resolver walk.
 pub(crate) struct ImportResolveCtx<'a> {
-    /// Module containing the import.
+    /// Module that contains the `#import` being resolved.
     pub module: &'a LoadedModule,
-    /// All modules in the loaded program.
+    /// All modules in the loaded program, indexed by [`ModuleId`].
     pub modules: &'a [LoadedModule],
-    /// Logical path → module id.
+    /// Canonical logical path string → module id (from [`super::loader::LoadedProgram::path_index`]).
     pub path_index: &'a HashMap<String, ModuleId>,
-    /// Per-module export maps.
+    /// Per-module export maps: symbol → defining [`DefId`] in the dependency module.
     pub exports: &'a [ExportMap],
-    /// All definitions.
+    /// Flat definition table shared across modules.
     pub defs: &'a [Def],
-    /// Build layout when resolving under a project.
+    /// Build layout when resolving under a project; `None` for standalone loads without artifacts.
     pub layout: Option<&'a BuildLayout>,
-    /// Workspace package name.
+    /// Workspace package name used to canonicalize import paths.
     pub workspace_name: &'a str,
-    /// Path-dependency package names.
+    /// Path-dependency package names (first segment aliases for dependency roots).
     pub dep_names: &'a [&'a str],
-    /// Interner for symbol names.
+    /// Interner for resolving symbol names in diagnostics and PXI lookup.
     pub interner: &'a mut Interner,
-    /// Structured types from dependency `.pxi` for imported defs.
+    /// Structured types from dependency `.pxi` files, keyed by imported [`DefId`].
     pub import_types: &'a mut HashMap<DefId, PxiType>,
-    /// Language item markers from dependency `.pxi` for imported defs.
+    /// Language item markers from dependency `.pxi` files, keyed by imported [`DefId`].
     pub import_lang_items: &'a mut HashMap<DefId, LangItemMarker>,
-    /// Diagnostic bag.
+    /// Diagnostic bag for import errors (duplicate, not found, not exported, private submodule).
     pub bag: &'a mut DiagnosticBag,
-    /// Submodule graph for visibility checks.
+    /// Submodule graph for `pub mod` / visibility checks between importer and target.
     pub submodules: &'a SubmoduleRegistry,
 }
 
-/// Resolves one `#import` into scope bindings `(symbol, def_id, is_type, span)`.
+/// Resolves one `#import` directive into scope bindings.
+///
+/// Returns `(local_symbol, def_id, is_type_namespace, import_span)` tuples ready to insert into
+/// the importer's import preface. When the target module is missing from `path_index`, returns an
+/// empty vector without emitting a diagnostic (the loader already reported unloadable modules).
+///
+/// Duplicate bindings in `seen` produce [`ResolveError::DuplicateImport`]. Missing or non-exported
+/// symbols produce [`ResolveError::ImportNotFound`] or [`ResolveError::ImportNotExported`].
+/// Imports of non-importable submodule paths produce [`ResolveError::PrivateSubmodule`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input; internal index conversions use fallbacks for corrupt
+/// module ids.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn resolve_import_directive(
     imp: &ImportDirective,
