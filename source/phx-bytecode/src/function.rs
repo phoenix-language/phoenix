@@ -1,4 +1,21 @@
-//! Function metadata records.
+//! Function metadata records (PHX0 functions section).
+//!
+//! Each [`FunctionRecord`] is a 28-byte row describing one function: arity, locals, stack budget,
+//! code slice, and return type. The code section holds raw instruction bytes; functions-section
+//! rows index that stream via `code_offset` + `code_len`.
+//!
+//! ## Owning passes
+//!
+//! - **Codegen** — emits one record per IR function with verifier-computed `stack_max`.
+//! - **Verifier** — validates records against code-section bounds, decodes bodies, and checks
+//!   `stack_max` against CFG analysis ([`crate::stack_flow`]).
+//! - **VM** — loads metadata when resolving calls and setting up frames.
+//!
+//! ## Public API
+//!
+//! - [`FunctionRecord`] — one function row.
+//! - [`FunctionTable`] — section encode/decode ([`FunctionTable::encode`] /
+//!   [`FunctionTable::decode`]).
 
 use crate::decode::checked_entry_count;
 

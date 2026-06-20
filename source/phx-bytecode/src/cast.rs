@@ -1,7 +1,19 @@
 //! Primitive cast targets shared by codegen and VM.
 //!
 //! Conversions use truncating/wrapping Rust casts on purpose — Phoenix `as` is explicit
-//! and may narrow or change representation (see design type-system.md).
+//! and may narrow or change representation (see `docs/design/type-system.md`).
+//!
+//! ## Wire encoding
+//!
+//! [`PrimitiveKind`] is the stable `u8` operand of [`crate::Opcode::Cast`]. Reserved slot-kind
+//! tags [`SLOT_KIND_AGG`] and [`SLOT_KIND_FN_PTR`] are shared with
+//! [`crate::local_layout`] (not cast operands).
+//!
+//! ## Owning passes
+//!
+//! - **Codegen** — emits cast operands and local slot kind bytes into PHX0 sections.
+//! - **Verifier** — validates `CAST` operand bytes and local-layout slot tags.
+//! - **VM** — [`PrimitiveKind::apply_cast`] implements runtime `as` on [`crate::ScalarValue`].
 
 use crate::scalar::{
     ScalarValue, scalar_from_f64, scalar_from_i128, scalar_from_u128, scalar_to_f64,

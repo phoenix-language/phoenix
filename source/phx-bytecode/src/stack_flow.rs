@@ -2,6 +2,24 @@
 //!
 //! Linear instruction order is not control-flow order: short-circuit `&&` / `||` place
 //! successor blocks after unrelated paths, so depth must be tracked per block entry.
+//!
+//! ## Owning pass
+//!
+//! Called from [`crate::verify`] during per-function body checks. Codegen may use
+//! [`return_stack_depth`] when emitting [`crate::Opcode::Return`] and relies on the same depth
+//! rules via [`crate::stack_effect`].
+//!
+//! ## Inputs and outputs
+//!
+//! - **In** — decoded instruction stream, block-entry offsets, callee arity map, required return
+//!   depth from the function's return type.
+//! - **Out** — [`StackFlowSummary::max_depth`] on success, or [`StackFlowError`] when a path
+//!   underflows, join depths disagree, or `RETURN` depth mismatches the return type.
+//!
+//! ## Public API
+//!
+//! - [`analyze_stack_cfg`] — CFG worklist simulation from offset `0`.
+//! - [`return_stack_depth`] — operand-stack cells required at `RETURN` for a type-table id.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
