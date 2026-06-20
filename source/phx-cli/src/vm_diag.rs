@@ -1,4 +1,9 @@
-//! Maps [`VmError`] bytecode sites to Phoenix source locations via PHX0 section 5.
+//! VM runtime error formatting with Phoenix source locations.
+//!
+//! When a loaded [`BytecodeModule`] includes PHX0 section 5 PC span tables,
+//! [`format_vm_error`] maps a [`VmError`] bytecode site to a file, line, and
+//! column in Phoenix source. Callers supply optional [`SourceContext`] so
+//! project-relative paths and in-memory entry source resolve without extra I/O.
 
 use std::path::{Path, PathBuf};
 
@@ -7,6 +12,11 @@ use phx_diagnostics::line_col;
 use phx_vm::VmError;
 
 /// Optional filesystem and in-memory source context for resolving PC spans.
+///
+/// Pass project root and entry path when running a `phoenix.toml` project or a
+/// standalone file. When `entry_source` is set for the entry path, section-5
+/// lookups avoid re-reading the file from disk (used by `phx run` on standalone
+/// programs).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SourceContext<'a> {
     /// Project root (`phoenix.toml` directory) for project-relative paths in section 5.
@@ -27,8 +37,10 @@ struct ResolvedSite {
 
 /// Formats a VM runtime error for CLI output.
 ///
-/// When section 5 PC spans are present and resolvable, appends `at path:line:col`.
-/// Otherwise falls back to `(function id, pc)` when the error carries a bytecode site.
+/// When section 5 PC spans are present and resolvable, appends `at path:line:col`
+/// to the error kind (for example `division by zero at src/main.phx:3:1`).
+/// Otherwise falls back to the default [`VmError`] display, which includes
+/// `(function id, pc)` when the error carries a bytecode site.
 #[must_use]
 pub fn format_vm_error(module: &BytecodeModule, err: &VmError, ctx: &SourceContext<'_>) -> String {
     match resolve_vm_site(module, err, ctx) {
