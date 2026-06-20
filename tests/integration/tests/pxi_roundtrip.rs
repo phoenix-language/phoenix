@@ -122,6 +122,132 @@ fn pxi_lang_item_round_trip() {
     assert_eq!(li.kind, "intrinsic");
 }
 
+fn prim(name: &str) -> PxiType {
+    PxiType::Primitive(name.to_owned())
+}
+
+fn named(path: &str, args: Vec<PxiType>) -> PxiType {
+    PxiType::Named {
+        path: path.to_owned(),
+        args,
+    }
+}
+
+fn nested_option(depth: usize) -> PxiType {
+    if depth == 0 {
+        prim("s32")
+    } else {
+        named("std::core::option::Option", vec![nested_option(depth - 1)])
+    }
+}
+
+fn assert_pxi_file_round_trips(pxi: &PxiFile) {
+    let json = pxi.to_json();
+    let back = PxiFile::parse(&json).expect("parse round-trip json");
+    assert_eq!(&back, pxi);
+}
+
+#[test]
+fn pxi_v2_nested_generic_type_json_round_trip() {
+    let fixtures = [
+        named("std::core::option::Option", vec![prim("s32")]),
+        named(
+            "std::core::option::Option",
+            vec![named(
+                "std::core::result::Result",
+                vec![prim("s32"), prim("bool")],
+            )],
+        ),
+        named(
+            "std::collections::dynamic_array::DynamicArray",
+            vec![named("std::core::option::Option", vec![prim("s32")])],
+        ),
+    ];
+    for ty in fixtures {
+        let pxi = PxiFile {
+            format_version: 2,
+            logical_module: "std::core::option".to_owned(),
+            source_hash: "h".to_owned(),
+            origin: None,
+            exports: vec![PxiExport {
+                export_id: "std::core::option::wrap::fn".to_owned(),
+                name: "wrap".to_owned(),
+                kind: "fn".to_owned(),
+                signature: "(T) => Option<T>".to_owned(),
+                ty: Some(ty),
+                function_id: None,
+                lang_item: None,
+            }],
+            dependencies: vec![],
+        };
+        assert_pxi_file_round_trips(&pxi);
+    }
+}
+
+#[test]
+fn pxi_v2_nested_generic_depth_property_round_trip() {
+    for depth in 1..=6 {
+        let ty = nested_option(depth);
+        let pxi = PxiFile {
+            format_version: 2,
+            logical_module: "m".to_owned(),
+            source_hash: "h".to_owned(),
+            origin: None,
+            exports: vec![PxiExport {
+                export_id: format!("m::depth_{depth}::fn"),
+                name: format!("depth_{depth}"),
+                kind: "fn".to_owned(),
+                signature: "(s32) => s32".to_owned(),
+                ty: Some(ty),
+                function_id: None,
+                lang_item: None,
+            }],
+            dependencies: vec![],
+        };
+        assert_pxi_file_round_trips(&pxi);
+    }
+}
+
+#[test]
+fn pxi_v2_nested_generic_write_read_round_trip() {
+    let ty = named(
+        "std::core::result::Result",
+        vec![
+            named(
+                "std::core::option::Option",
+                vec![named(
+                    "std::collections::dynamic_array::DynamicArray",
+                    vec![prim("s32")],
+                )],
+            ),
+            prim("bool"),
+        ],
+    );
+    let pxi = PxiFile {
+        format_version: 2,
+        logical_module: "m".to_owned(),
+        source_hash: "h".to_owned(),
+        origin: None,
+        exports: vec![PxiExport {
+            export_id: "m::nested::fn".to_owned(),
+            name: "nested".to_owned(),
+            kind: "fn".to_owned(),
+            signature: "(DynamicArray<Option<s32>>) => Result<Option<DynamicArray<s32>>, bool>"
+                .to_owned(),
+            ty: Some(ty),
+            function_id: Some(7),
+            lang_item: None,
+        }],
+        dependencies: vec![],
+    };
+    let dir = std::env::temp_dir().join(format!("phx-pxi-nested-generic-{}", std::process::id()));
+    let path = dir.join("nested.pxi");
+    pxi.write_to_path(&path).expect("write pxi");
+    let back = PxiFile::read_from_path(&path).expect("read pxi");
+    assert_eq!(&back, &pxi);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn import_types_map_populated_for_single_file() {
     let source =
