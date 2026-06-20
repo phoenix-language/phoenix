@@ -55,22 +55,28 @@ impl SingleThreadScheduler {
 
     /// Dequeues the next runnable context and marks it [`ContextState::Running`].
     ///
-    /// Returns `None` when the run queue is empty or a context is already running.
-    #[must_use]
-    pub fn run_next(&mut self) -> Option<RunningGuard<'_>> {
+    /// Returns `Ok(None)` when the run queue is empty or a context is already running.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError::ContextNotFound`] when the run queue references a
+    /// context id that is not present in the scheduler table.
+    pub fn run_next(&mut self) -> Result<Option<RunningGuard<'_>>, SchedulerError> {
         if self.running.is_some() {
-            return None;
+            return Ok(None);
         }
-        let id = self.run_queue.pop()?;
+        let Some(id) = self.run_queue.pop() else {
+            return Ok(None);
+        };
         let ctx = self
             .context_mut(id)
-            .expect("invariant: queued id must exist");
+            .ok_or(SchedulerError::ContextNotFound(id))?;
         ctx.set_state(ContextState::Running);
         self.running = Some(id);
-        Some(RunningGuard {
+        Ok(Some(RunningGuard {
             scheduler: self,
             id,
-        })
+        }))
     }
 
     /// Moves a parked context back to the runnable queue.
@@ -93,7 +99,7 @@ impl SingleThreadScheduler {
         }
         let ctx = self
             .context_mut(id)
-            .expect("invariant: context must exist after lookup");
+            .ok_or(SchedulerError::ContextNotFound(id))?;
         ctx.set_state(ContextState::Runnable);
         self.run_queue.push(id);
         Ok(())
@@ -177,43 +183,41 @@ impl RunningGuard<'_> {
     /// Executes one harness step on the running context.
     ///
     /// Re-enqueues the context when steps remain; otherwise marks it [`ContextState::Done`].
-    pub fn step(self) -> StepOutcome {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError::ContextNotFound`] if the running context was removed
+    /// from the scheduler (should not occur while the guard is live).
+    pub fn step(self) -> Result<StepOutcome, SchedulerError> {
         let id = self.id;
-        let remaining = {
+        let outcome = {
             let ctx = self
                 .scheduler
                 .context_mut(id)
-                .expect("invariant: running context must exist");
-            ctx.dec_step()
-        };
-        let outcome = if remaining == 0 {
-            let ctx = self
-                .scheduler
-                .context_mut(id)
-                .expect("invariant: running context must exist");
-            ctx.set_state(ContextState::Done);
-            StepOutcome::Completed(id)
-        } else {
-            let ctx = self
-                .scheduler
-                .context_mut(id)
-                .expect("invariant: running context must exist");
-            ctx.set_state(ContextState::Runnable);
-            self.scheduler.run_queue.push(id);
-            StepOutcome::Stepped {
-                id,
-                steps_remaining: remaining,
+                .ok_or(SchedulerError::ContextNotFound(id))?;
+            let remaining = ctx.dec_step();
+            if remaining == 0 {
+                ctx.set_state(ContextState::Done);
+                StepOutcome::Completed(id)
+            } else {
+                ctx.set_state(ContextState::Runnable);
+                self.scheduler.run_queue.push(id);
+                StepOutcome::Stepped {
+                    id,
+                    steps_remaining: remaining,
+                }
             }
         };
         self.scheduler.clear_running(id);
-        outcome
+        Ok(outcome)
     }
 
     /// Parks the running context with `reason` without re-enqueueing it.
     ///
     /// # Errors
     ///
-    /// Returns [`SchedulerError::InvalidTransition`] if the context is no longer running
+    /// Returns [`SchedulerError::ContextNotFound`] when the context id is unknown, or
+    /// [`SchedulerError::InvalidTransition`] if the context is no longer running
     /// (should not occur while the guard is live).
     pub fn park(self, reason: ParkReason) -> Result<(), SchedulerError> {
         let id = self.id;
@@ -232,7 +236,7 @@ impl RunningGuard<'_> {
         let ctx = self
             .scheduler
             .context_mut(id)
-            .expect("invariant: running context must exist");
+            .ok_or(SchedulerError::ContextNotFound(id))?;
         ctx.set_state(ContextState::Parked(reason));
         self.scheduler.clear_running(id);
         Ok(())
@@ -255,7 +259,10 @@ mod tests {
         assert_eq!(sched.context_count(), 3);
         assert_eq!(sched.runnable_count(), 3);
 
-        let guard = sched.run_next().expect("dequeue first context");
+        let guard = sched
+            .run_next()
+            .expect("dequeue first context")
+            .expect("dequeue first context");
         assert_eq!(guard.id(), a);
         guard.park(ParkReason::AwaitIo).expect("park running a");
 
@@ -268,10 +275,10 @@ mod tests {
         assert!(sched.run_queue().contains(b));
         assert!(sched.run_queue().contains(c));
 
-        let guard = sched.run_next().expect("dequeue b");
+        let guard = sched.run_next().unwrap().expect("dequeue b");
         assert_eq!(guard.id(), b);
         assert!(matches!(
-            guard.step(),
+            guard.step().expect("step b"),
             StepOutcome::Stepped {
                 id,
                 steps_remaining: 1
@@ -280,13 +287,20 @@ mod tests {
 
         let guard = sched
             .run_next()
+            .unwrap()
             .expect("dequeue c while b waits in queue tail");
         assert_eq!(guard.id(), c);
-        assert!(matches!(guard.step(), StepOutcome::Completed(id) if id == c));
+        assert!(matches!(
+            guard.step().expect("step c"),
+            StepOutcome::Completed(id) if id == c
+        ));
 
-        let guard = sched.run_next().expect("dequeue b again");
+        let guard = sched.run_next().unwrap().expect("dequeue b again");
         assert_eq!(guard.id(), b);
-        assert!(matches!(guard.step(), StepOutcome::Completed(id) if id == b));
+        assert!(matches!(
+            guard.step().expect("finish b"),
+            StepOutcome::Completed(id) if id == b
+        ));
 
         assert_eq!(sched.done_count(), 2);
         assert_eq!(sched.runnable_count(), 0);
@@ -297,8 +311,8 @@ mod tests {
         assert_eq!(sched.runnable_count(), 1);
 
         while sched.runnable_count() > 0 {
-            let guard = sched.run_next().expect("drain runnable queue");
-            match guard.step() {
+            let guard = sched.run_next().unwrap().expect("drain runnable queue");
+            match guard.step().expect("drain step") {
                 StepOutcome::Stepped { .. } => {}
                 StepOutcome::Completed(id) => assert_eq!(id, a),
             }
@@ -307,7 +321,7 @@ mod tests {
         assert_eq!(sched.done_count(), 3);
         assert_eq!(sched.parked_count(), 0);
         assert_eq!(sched.runnable_count(), 0);
-        assert!(sched.run_next().is_none());
+        assert!(sched.run_next().unwrap().is_none());
     }
 
     #[test]
@@ -329,7 +343,7 @@ mod tests {
     fn park_reason_await_message_round_trip() {
         let mut sched = SingleThreadScheduler::new();
         let id = sched.spawn(2);
-        let guard = sched.run_next().expect("run");
+        let guard = sched.run_next().unwrap().expect("run");
         guard
             .park(ParkReason::AwaitMessage)
             .expect("park for mailbox");
@@ -338,9 +352,15 @@ mod tests {
             Some(ContextState::Parked(ParkReason::AwaitMessage))
         );
         sched.resume(id).expect("wakeup after message");
-        let guard = sched.run_next().expect("run after resume");
-        assert!(matches!(guard.step(), StepOutcome::Stepped { .. }));
-        let guard = sched.run_next().expect("finish");
-        assert!(matches!(guard.step(), StepOutcome::Completed(cid) if cid == id));
+        let guard = sched.run_next().unwrap().expect("run after resume");
+        assert!(matches!(
+            guard.step().expect("step after resume"),
+            StepOutcome::Stepped { .. }
+        ));
+        let guard = sched.run_next().unwrap().expect("finish");
+        assert!(matches!(
+            guard.step().expect("final step"),
+            StepOutcome::Completed(cid) if cid == id
+        ));
     }
 }
