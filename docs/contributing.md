@@ -17,17 +17,29 @@ If you already cloned without submodules:
 git submodule update --init --recursive
 ```
 
-`just pre-commit` runs format check, Clippy, doc check, dependency check, the full workspace test suite (`cargo test --workspace`), and language integration tests (`just test-lang`).
+`just pre-commit` runs `fmt`, `lint`, `doc-check`, `dep-check`, and `test` (`cargo test --workspace`).
 
 ## Common commands
 
 | Command | Purpose |
 |---------|---------|
+| `just build` | `cargo build --workspace` |
+| `just run <file>` | Compile and execute a Phoenix source file via the CLI |
 | `just phx <args>` | Run the local `phx` CLI (e.g. `just phx check file.phx`) |
-| `just pre-commit` | Pre-PR gate: fmt, lint, docs, deps, workspace tests, `test-lang` |
-| `just test-lang` | CLI E2E, run smoke, and diagnostic golden tests |
-| `just test` | `cargo test --workspace` |
+| `just test` | `cargo test --workspace` (all crate and integration tests) |
+| `just test-lang` | Faster language subset: `cli_e2e`, `run_smoke`, `diagnostics` only |
+| `just pre-commit` | Pre-PR gate: fmt, lint, doc-check, dep-check, test |
 | `just build-std` | Build the bundled `std` library package |
+
+## When to run which gate
+
+| Situation | Command |
+|-----------|---------|
+| Before opening or updating a PR | `just pre-commit` |
+| Iterating on Rust/compiler changes after fmt/lint already pass | `just test` |
+| Touching CLI fixtures, diagnostics goldens, or language E2E only | `just test-lang` (faster than the full workspace) |
+
+`just pre-commit` auto-formats with `just fmt` and runs the full workspace test suite. Use `just test-lang` during tight CLI/diagnostic loops; use `just test` when you need every crate's tests but not the fmt/lint/doc/dep steps.
 
 ## Repository layout
 
