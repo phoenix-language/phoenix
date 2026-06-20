@@ -51,44 +51,45 @@ Grammar overview: [docs/design/grammer.md](docs/design/grammer.md). Formal gramm
 
 ## Trying it
 
-Build the `phx` compiler from the repo root:
+Clone with submodules, then build from the repo root (requires [just](https://github.com/casey/just)):
 
 ```bash
-cargo build -p phx
+git clone --recurse-submodules https://github.com/phoenix-language/phoenix.git
+cd phoenix
+just build
 ```
 
 Single file (no `phoenix.toml`):
 
 ```bash
-cargo run -p phx -- check path/to/file.phx
-cargo run -p phx -- run path/to/file.phx
-cargo run -p phx -- run path/to/file.phx --dump-main   # print main locals (MVP debug channel)
+just phx check path/to/file.phx
+just run path/to/file.phx
+just phx run path/to/file.phx --dump-main   # print main locals (MVP debug channel)
 ```
 
 Multi-file modules:
 
 ```bash
-cargo run -p phx -- check --module-src src path/to/main.phx
+just phx check --module-src src path/to/main.phx
 ```
 
 Project with `phoenix.toml` at the root (`module_src`, `[build].dir`, etc.):
 
 ```bash
-cargo run -p phx -- build
-cargo run -p phx -- run
+just phx build
+just phx run
 ```
 
-**Just recipes** (requires [just](https://github.com/casey/just)):
+**Common Just recipes:**
 
 ```bash
-git clone --recurse-submodules https://github.com/phoenix-language/phoenix.git
-
-just phx run examples/hello/src/main.phx --dump-main
-just pre-commit    # fmt, clippy, doc-check, dep-check, test, test-lang
-just test-lang     # CLI E2E + diagnostics goldens
-just test          # full workspace tests
+just test          # cargo test --workspace
+just test-lang     # faster CLI E2E + diagnostics subset (cli_e2e, run_smoke, diagnostics)
+just pre-commit    # fmt, lint, doc-check, dep-check, test — pre-PR gate
 just website dev   # marketing site (git submodule at website/)
 ```
+
+See [docs/contributing.md](docs/contributing.md) for when to run `just pre-commit` vs `just test`.
 
 Demonstration programs: [examples/README.md](examples/README.md). MVP smoke project: [tests/cli/fixtures/mvp_acceptance/](tests/cli/fixtures/mvp_acceptance/). Fixture details: [tests/cli/README.md](tests/cli/README.md).
 
