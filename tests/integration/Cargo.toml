@@ -11,6 +11,7 @@ workspace = true
 [dev-dependencies]
 phx-test = { path = "../phx-test" }
 phx-bytecode = { path = "../../source/phx-bytecode" }
+phx-cli = { path = "../../source/phx-cli" }
 phx-compiler = { path = "../../source/phx-compiler" }
 phx-diagnostics = { path = "../../source/phx-diagnostics" }
 phx-vm = { path = "../../source/phx-vm" }

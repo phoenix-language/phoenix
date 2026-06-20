@@ -45,6 +45,7 @@ name = "phx-integration-tests"
 version = "0.1.0"
 dependencies = [
  "phx-bytecode",
+ "phx-cli",
  "phx-compiler",
  "phx-diagnostics",
  "phx-test",
