@@ -1,6 +1,6 @@
 # Agent task queue
 
-**Updated:** 2026-06-18  
+**Updated:** 2026-06-20  
 **Source:** `docs/ROADMAP.md` Milestones 0–1 and 7 (foundation integrity, diagnostics)
 
 Work tasks **top to bottom**. Mark a task `[x]` only after `just pre-commit` passes and the acceptance criteria are met. Do **one task per loop iteration** — do not start the next task in the same run if the current one is unfinished.
@@ -15,7 +15,7 @@ Work tasks **top to bottom**. Mark a task `[x]` only after `just pre-commit` pas
 | 2 | Golden diagnostic: discarded std `Option` (E2042) | `[x]` |
 | 3 | Golden diagnostic: loop-carried use-after-move | `[x]` |
 | 4 | Golden diagnostic: if-arm ownership join | `[x]` |
-| 5 | PXI malformed-export rejection tests | `[ ]` |
+| 5 | PXI malformed-export rejection tests | `[x]` |
 
 ---
 
@@ -154,7 +154,7 @@ Register both cases. Run `just pre-commit`.
 
 | Field | Value |
 |-------|-------|
-| Last completed task | 4 — Golden diagnostic: if-arm ownership join |
-| Last green commit | 4709cab |
-| Branch | trunk |
+| Last completed task | 5 — PXI malformed-export rejection tests (PHX-040, PR #14) |
+| Last green commit | eaec68d |
+| Branch | agent/v0-sprint/20260620-docs-agent-tasks |
 | Blockers | — |
