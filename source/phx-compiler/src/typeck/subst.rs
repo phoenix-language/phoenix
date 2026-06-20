@@ -1,7 +1,25 @@
 //! Type substitution for explicit generic instantiation.
 //!
-//! [`Substitution`] maps generic parameter [`DefId`]s to concrete [`TypeId`]s when checking or
-//! cloning monomorphized definitions.
+//! [`Substitution`] maps generic parameter [`DefId`]s to concrete [`TypeId`]s when checking
+//! monomorphized definitions, cloning impl templates, or applying explicit type arguments at
+//! a call site.
+//!
+//! # Generic parameter aliasing
+//!
+//! Structs, impls, and functions each declare their own [`DefKind::GenericParam`] entries.
+//! Lowering may resolve a type reference to any declaration with the same symbol in the same
+//! module. [`Substitution::extend_generic_param_aliases`] mirrors bindings across same-name
+//! params so [`Substitution::concrete_for_generic`] succeeds regardless of which declaration
+//! was referenced.
+//!
+//! # Structural application
+//!
+//! [`Substitution::apply`] walks a type tree, replacing generic parameter heads with their
+//! concrete bindings and recursing into type arguments. A depth stack detects self-referential
+//! generic instantiations and stops recursion at the revisiting node to avoid infinite loops.
+//!
+//! Leaf types ([`Ty::Primitive`], [`Ty::Unit`], [`Ty::Error`], [`Ty::Var`], [`Ty::Str`]) are
+//! returned unchanged.
 
 use std::collections::HashMap;
 
@@ -10,6 +28,9 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 use super::types::{Ty, TypeId, TypeInterner};
 
 /// Maps generic parameter definitions to concrete types at an instantiation site.
+///
+/// Bindings are keyed by [`DefId`] of the generic parameter. Lookups fall back to
+/// same-symbol aliases in the same module via [`Self::concrete_for_generic`].
 #[derive(Debug, Clone, Default)]
 pub struct Substitution {
     map: HashMap<DefId, TypeId>,
@@ -23,17 +44,26 @@ impl Substitution {
     }
 
     /// Binds generic parameter `param` to concrete type `ty`.
+    ///
+    /// Overwrites any prior binding for the same `param`.
     pub fn insert(&mut self, param: DefId, ty: TypeId) {
         self.map.insert(param, ty);
     }
 
-    /// Returns the concrete type for `param`, if bound.
+    /// Returns the concrete type bound directly to `param`, if any.
+    ///
+    /// Does not consult same-symbol aliases; use [`Self::concrete_for_generic`] for
+    /// declaration-agnostic lookup.
     #[must_use]
     pub fn get(&self, param: DefId) -> Option<TypeId> {
         self.map.get(&param).copied()
     }
 
-    /// Returns the concrete type for `param`, if bound directly or via same-symbol alias.
+    /// Returns the concrete type for `def`, bound directly or via a same-symbol generic param.
+    ///
+    /// When `def` is a [`DefKind::GenericParam`], searches [`Self::map`] for an entry whose
+    /// parameter shares `def`'s symbol and module. Returns `None` when `def` is not a generic
+    /// parameter or no matching binding exists.
     #[must_use]
     pub fn concrete_for_generic(&self, def: DefId, resolved: &ResolvedProgram) -> Option<TypeId> {
         if let Some(concrete) = self.map.get(&def).copied() {
@@ -60,7 +90,10 @@ impl Substitution {
     /// Binds every same-symbol [`DefKind::GenericParam`] in `module` to match existing entries.
     ///
     /// Struct and impl templates each declare their own generic parameters; lowering may
-    /// resolve to either declaration's [`DefId`]. Monomorphization keys the impl params.
+    /// resolve to either declaration's [`DefId`]. Monomorphization keys the impl params,
+    /// so this helper propagates bindings to sibling param declarations with the same name.
+    ///
+    /// Existing bindings are preserved; only missing keys are inserted via [`HashMap::or_insert`].
     pub fn extend_generic_param_aliases(&mut self, resolved: &ResolvedProgram, module: u32) {
         let mut aliases = Vec::new();
         for (&primary, &concrete) in &self.map {
@@ -89,7 +122,15 @@ impl Substitution {
         }
     }
 
-    /// Applies `subst` throughout `id`, interning fresh nodes when needed.
+    /// Applies `subst` throughout `id`, interning fresh nodes when structure changes.
+    ///
+    /// Returns `id` unchanged when `subst` is empty. Generic parameter heads are replaced
+    /// with their concrete binding; composite types are rebuilt with substituted components.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed input. Out-of-range type ids propagate as [`Ty::Error`]
+    /// through the interner; cyclic generic instantiations stop at the revisiting node.
     #[must_use]
     pub fn apply(
         types: &mut TypeInterner,

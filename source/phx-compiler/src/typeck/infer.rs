@@ -1,7 +1,33 @@
 //! Local call-site type inference for generic instantiations.
 //!
-//! [`InferenceCtx`] introduces fresh type variables at call sites and binds them from argument
-//! and return types before explicit mono args are collected.
+//! [`InferenceCtx`] allocates fresh [`Ty::Var`] nodes at generic call sites and binds them by
+//! unifying against argument and return types. Explicit mono type arguments are collected only
+//! after inference variables are resolved to concrete types.
+//!
+//! # Inference variables
+//!
+//! Each call to [`InferenceCtx::fresh_var`] allocates a monotonically increasing `u32` id and
+//! interns a [`Ty::Var`] in the shared [`TypeInterner`]. Bindings live in
+//! [`InferenceCtx::bindings`] until [`InferenceCtx::resolve`] walks the substitution chain.
+//!
+//! # Unification rules
+//!
+//! [`InferenceCtx::unify`] is **local** to one inference scope — it does not perform global
+//! Hindley–Milner generalization. It:
+//!
+//! - Delegates structural equality to [`super::unify::same_type`] (alias-aware) before binding.
+//! - Binds a variable to a concrete type when one side is [`Ty::Var`] and the other is not.
+//! - Recurses into [`Ty::Named`], [`Ty::Tuple`], [`Ty::Array`], [`Ty::Slice`], [`Ty::Ref`],
+//!   [`Ty::Ptr`], and [`Ty::Fn`] when heads match.
+//! - Returns `false` on head mismatch, arity mismatch, or conflicting prior bindings.
+//!
+//! Distinct primitives and mismatched named definitions never unify through inference alone;
+//! the caller surfaces a type error when `unify` returns `false`.
+//!
+//! # Scope
+//!
+//! One [`InferenceCtx`] is created per generic call expression. It is not shared across
+//! sibling calls or nested inference sites.
 
 use std::collections::HashMap;
 
@@ -11,6 +37,11 @@ use super::types::{Ty, TypeId, TypeInterner};
 use super::unify::{AliasEnv, same_type};
 
 /// Fresh type variables and bindings for one call-site inference scope.
+///
+/// Tracks the next variable id and a map from inference variable id to bound [`TypeId`].
+/// Callers in `typeck::check` create one context per generic call, introduce variables for
+/// each inferred generic parameter, unify against the callee signature, then read resolved
+/// types via [`Self::resolve`] before building a [`super::subst::Substitution`].
 #[derive(Debug, Default)]
 pub struct InferenceCtx {
     next_var: u32,
@@ -24,7 +55,10 @@ impl InferenceCtx {
         Self::default()
     }
 
-    /// Allocates a fresh inference variable.
+    /// Allocates a fresh inference variable and interns it as [`Ty::Var`].
+    ///
+    /// Variable ids are unique within this [`InferenceCtx`] and monotonically increasing.
+    #[must_use]
     pub fn fresh_var(&mut self, types: &mut TypeInterner) -> TypeId {
         let id = self.next_var;
         self.next_var = self.next_var.saturating_add(1);
@@ -33,7 +67,13 @@ impl InferenceCtx {
 
     /// Unifies two types under local inference rules.
     ///
-    /// Returns `false` on conflict.
+    /// Resolves inference variables in `a` and `b` before comparing. When one side is a free
+    /// [`Ty::Var`], records a binding in [`Self::bindings`]. Structural types unify
+    /// component-wise when their heads and arities match.
+    ///
+    /// Returns `true` when the types are equal or a consistent binding was recorded;
+    /// `false` on head mismatch, arity mismatch, or a binding conflict with a prior
+    /// assignment to the same variable.
     pub fn unify(
         &mut self,
         types: &mut TypeInterner,
@@ -200,7 +240,10 @@ impl InferenceCtx {
         true
     }
 
-    /// Resolves inference variables to a concrete type.
+    /// Resolves inference variables to a concrete type, updating bindings along the chain.
+    ///
+    /// Walks [`Ty::Var`] bindings transitively and path-compresses each visited variable
+    /// to the final resolved [`TypeId`]. Unbound variables are returned unchanged.
     #[must_use]
     pub fn resolve(&mut self, types: &mut TypeInterner, id: TypeId) -> TypeId {
         match types.get(id).clone() {
@@ -217,7 +260,10 @@ impl InferenceCtx {
         }
     }
 
-    /// Returns `true` when `id` is a fully resolved concrete type (no free vars).
+    /// Returns `true` when `id` is fully resolved (no free [`Ty::Var`] after [`Self::resolve`]).
+    ///
+    /// Used to decide whether all inferred generic parameters have concrete types before
+    /// collecting explicit mono arguments or emitting an inference failure diagnostic.
     #[must_use]
     pub fn is_resolved(&mut self, types: &mut TypeInterner, id: TypeId) -> bool {
         let resolved = self.resolve(types, id);
