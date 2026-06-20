@@ -1,7 +1,22 @@
-//! Name resolution for a single Phoenix source file.
+//! Name resolution for Phoenix programs.
 //!
-//! Builds a [`ResolvedProgram`]: definition table plus [`ResolutionKey`] → [`DefId`] for name uses.
-//! The syntax AST is left unchanged; the type checker will read side tables and the [`Interner`].
+//! ## Pass role
+//!
+//! Consumes a parsed [`SourceFile`] and produces a [`ResolvedProgram`]: a dense definition table
+//! ([`Def`] / [`DefId`]) plus side maps from name-use sites to definitions. The syntax AST is left
+//! unchanged; [`crate::typeck`] reads [`ResolvedProgram::resolutions`], [`ResolvedProgram::closures`],
+//! and the shared [`Interner`].
+//!
+//! ## Entry points
+//!
+//! - [`resolve`] — single-file resolve for tests and one-unit checks; file-level `#import` is rejected
+//! - Multi-module resolve (imports, exports, `.pxi` type tables) is driven by [`crate::modules`]
+//!
+//! ## Output invariants
+//!
+//! After a successful pass, reachable identifier and type-name uses in the AST have entries in
+//! [`ResolvedProgram::resolutions`] keyed by [`ResolutionKey`], except for built-in names such as
+//! `Self` inside trait and impl signatures.
 
 mod def_id;
 pub(crate) mod scopes;
@@ -43,83 +58,103 @@ pub(crate) struct ProgramImportEnv<'a> {
     pub submodules: &'a crate::modules::SubmoduleRegistry,
 }
 
-/// Key for a name-use resolution entry (module + parse-time [`AstNodeId`], not span alone).
+/// Key for a name-use entry in [`ResolvedProgram::resolutions`].
+///
+/// Pairs the owning module id with the parse-time [`AstNodeId`] at the use site. Node ids are stable
+/// for a given parse and are reused by typeck; source spans alone are not used as map keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResolutionKey {
-    /// Owning module (program-wide id).
+    /// Owning module (dense program-wide id; `0` for single-file [`resolve`]).
     pub module: u32,
-    /// AST node or identifier id at the use site (unique per module parse).
+    /// Identifier or AST node id at the use site (unique within one module parse).
     pub node_id: AstNodeId,
 }
 
-/// Captured outer binding for a closure body.
+/// One outer binding captured while resolving a closure body.
+///
+/// Lowering reads these entries to build the closure environment. The resolver deduplicates by
+/// [`DefId`] within each closure's [`ClosureInfo::upvars`] list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosureUpvar {
-    /// Captured name.
+    /// Interned source name of the captured binding.
     pub symbol: Symbol,
-    /// Definition being captured.
+    /// Definition id of the binding in an enclosing scope.
     pub def_id: DefId,
 }
 
-/// Resolved closure metadata keyed by closure [`DefId`].
+/// Capture metadata for a closure definition ([`DefKind::Closure`]).
+///
+/// Stored in [`ResolvedProgram::closures`] keyed by the closure's own [`DefId`]. Nested closures
+/// set [`Self::parent`] to the immediately enclosing closure def when one is active.
 #[derive(Debug, Clone, Default)]
 pub struct ClosureInfo {
-    /// Parent closure when nested, if any.
+    /// Enclosing closure def when this closure is nested, if any.
     pub parent: Option<DefId>,
-    /// Outer bindings referenced from the closure body.
+    /// Outer bindings referenced from the closure body (deduplicated by def id).
     pub upvars: Vec<ClosureUpvar>,
 }
 
-/// One source module in a loaded program.
+/// One source module in a multi-file [`ResolvedProgram`].
+///
+/// Single-file [`resolve`] produces a one-element [`ResolvedProgram::modules`] vector with id `0`,
+/// logical path `"main"`, and an empty [`Self::filesystem`] path.
 #[derive(Debug, Clone)]
 pub struct SourceModule {
-    /// Module id (dense index).
+    /// Dense module id (matches [`ResolutionKey::module`] and [`Def::module`]).
     pub id: u32,
-    /// Logical path (`a::b`) for diagnostics.
+    /// Logical module path (`a::b`) used in diagnostics and import paths.
     pub logical_path: String,
-    /// Path to the `.phx` file.
+    /// Filesystem path to the `.phx` source file.
     pub filesystem: PathBuf,
-    /// Source text.
+    /// Original source text for this module.
     pub source: SourceText,
-    /// Parsed AST for this file.
+    /// Parsed AST root for this file.
     pub program: Program,
 }
 
-/// Result of resolving a loaded program (one or more modules).
+/// Result of name resolution for one compilation unit (one or more modules).
 ///
-/// Exposes full AST and side tables for in-tree passes and tests. Not a stable public API surface
-/// for external IDEs or tooling until a narrower facade is introduced.
+/// Carries the parsed AST unchanged plus side tables consumed by [`crate::typeck`]. Re-exported from
+/// [`crate::unstable`] for in-tree tests and tooling — not a stable embedder API; prefer
+/// [`crate::facade::check_file`] for external callers.
 #[derive(Debug, Clone)]
 pub struct ResolvedProgram {
-    /// Entry module program (root file).
+    /// AST of the entry (root) module — same as `modules[root].program`.
     pub program: Program,
-    /// All modules in the loaded program (topological order).
+    /// All modules in load order (one entry for single-file [`resolve`]).
     pub modules: Vec<SourceModule>,
-    /// Entry module id.
+    /// Module id of the entry file ([`SourceModule::id`] of the root).
     pub root: u32,
-    /// Interner from parse.
+    /// Shared symbol interner from parse (names for all modules in multi-file loads).
     pub interner: Interner,
-    /// All definitions in this unit.
+    /// Dense definition table; index with [`DefId::index`].
     pub defs: Vec<Def>,
-    /// Resolved uses keyed by AST node id.
+    /// Successful name resolutions: use-site [`ResolutionKey`] → defining [`DefId`].
     pub resolutions: HashMap<ResolutionKey, DefId>,
-    /// Closure capture tables keyed by closure definition id.
+    /// Closure capture metadata keyed by closure [`DefId`].
     pub closures: HashMap<DefId, ClosureInfo>,
-    /// Definition id of `main` when present and valid.
+    /// [`DefId`] of `main` when declared in the entry module with a valid signature.
     pub main_fn: Option<DefId>,
-    /// Structured types from fresh dependency `.pxi` v2 (imported `DefId` → type).
+    /// Structured types from dependency `.pxi` v2 keyed by imported [`DefId`] (multi-module only).
     pub import_types: std::collections::HashMap<DefId, crate::pxi::PxiType>,
-    /// Language item markers from dependency `.pxi` (imported `DefId` → marker).
+    /// Language-item markers from dependency `.pxi` keyed by imported [`DefId`] (multi-module only).
     pub import_lang_items: std::collections::HashMap<DefId, crate::lang_items::LangItemMarker>,
-    /// Item attribute metadata keyed by definition id.
+    /// `#[deprecated]` / `#[must_use]` metadata keyed by [`DefId`].
     pub def_attrs: crate::attrs::DefAttrs,
 }
 
-/// Resolves names in `source` (single file, no `#import` loading).
+/// Resolves names in a single parsed [`SourceFile`].
+///
+/// Runs definition collection and a full AST walk: introduces bindings in separate value and type
+/// namespaces, records each identifier/type-name use in [`ResolvedProgram::resolutions`], validates
+/// the entry `main` signature when present, and fills closure capture tables. File-level `#import`
+/// directives emit [`ResolveError::ImportNotSupported`]; use the module loader for cross-file imports.
 ///
 /// # Errors
 ///
-/// Returns a [`DiagnosticBag`] when any resolve errors were collected.
+/// Returns a [`DiagnosticBag`] of [`ResolveError`] diagnostics when any unresolved name, duplicate
+/// definition, overlapping trait impl, or invalid `main` signature was collected. The pass continues
+/// after individual errors so multiple issues surface in one run.
 pub fn resolve(source: &SourceFile) -> Result<ResolvedProgram, DiagnosticBag> {
     let mut resolver = Resolver {
         source,
