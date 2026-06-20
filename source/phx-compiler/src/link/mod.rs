@@ -1,4 +1,35 @@
 //! PHX0 linker — merge per-module object files into one executable image.
+//!
+//! Each compiled Phoenix module is a standalone [`BytecodeModule`] (constants, types, function
+//! table, code section). The build driver assigns globally unique `function_id` values across the
+//! workspace and path dependencies, then calls [`link_modules`] to concatenate sections and
+//! rebase pool indices so cross-module calls resolve correctly.
+//!
+//! ## Pipeline position
+//!
+//! Runs after per-module codegen in the build driver ([`crate::build::driver::package`]) and
+//! before PHX0 encode/verify. Workspace crates link local modules plus dependency `.phx0` objects
+//! collected by [`crate::build::driver::link_map`].
+//!
+//! ## Merge strategy
+//!
+//! | Section | Merge rule |
+//! | ------- | ---------- |
+//! | Constants | Append; [`phx_bytecode::Opcode::Const`] / [`phx_bytecode::Opcode::MakeStr`] operands rebased by per-module offset |
+//! | Types | Append; `type_id` and type-table operands rebased (see [`link_modules`]) |
+//! | Functions | Append; `function_id` must be unique across inputs |
+//! | Code | Append; each function body patched via [`phx_bytecode::Instruction::apply_link_bases`] |
+//! | Local layouts / PC spans | Append / merge |
+//!
+//! [`phx_bytecode::Opcode::Call`] and [`phx_bytecode::Opcode::MakeFnPtr`] operands are **not**
+//! rewritten — codegen assigns global ids before link (see `build_global_fn_map` in the build
+//! driver).
+//!
+//! ## Public API
+//!
+//! [`LinkInput`] carries one object file; [`link_modules`] returns a single linked
+//! [`BytecodeModule`]. Failures surface as [`LinkError`] and are wrapped by
+//! [`crate::build::BuildError::Link`] during `phx build`.
 
 use phx_bytecode::{
     BytecodeModule, ConstPool, ENTRY_NONE, FileHeader, FunctionRecord, FunctionTable, InstrError,
@@ -6,7 +37,11 @@ use phx_bytecode::{
 };
 use std::collections::HashMap;
 
-/// One module object to link.
+/// One module object file supplied to the linker.
+///
+/// The build driver sets [`logical_path`](Self::logical_path) for diagnostics (for example when
+/// two inputs claim the same `function_id`). [`module`](Self::module) is the decoded PHX0 object
+/// produced by [`crate::codegen::codegen`] for that compilation unit.
 #[derive(Debug, Clone)]
 pub struct LinkInput {
     /// Logical module path (for diagnostics).
@@ -15,7 +50,10 @@ pub struct LinkInput {
     pub module: BytecodeModule,
 }
 
-/// Linker failure.
+/// Failure while merging PHX0 object files.
+///
+/// Returned by [`link_modules`]. Embedders using [`crate::build::build_project`] receive these
+/// as [`crate::build::BuildError::Link`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkError {
     /// Section or offset does not fit in `u32`.
@@ -74,6 +112,10 @@ impl std::error::Error for LinkError {}
 
 /// Merges `inputs` into one [`BytecodeModule`].
 ///
+/// Concatenates constant pools, type tables, function records, and code sections from each
+/// [`LinkInput`], rebasing per-module indices so the linked image is self-consistent. Sets
+/// [`phx_bytecode::FileHeader::entry_function_id`] on the result.
+///
 /// ## Function ids and `Call` operands
 ///
 /// Per-module codegen assigns **globally unique** `function_id` values before link (see
@@ -87,11 +129,21 @@ impl std::error::Error for LinkError {}
 /// [`phx_bytecode::Opcode::CallIndirect`].
 /// Duplicate `function_id` across inputs is [`LinkError::DuplicateFunctionId`].
 ///
-/// `entry_function_id` is the global id of `main` (or [`ENTRY_NONE`] for libraries).
+/// `entry_function_id` is the global id of `main` (or [`ENTRY_NONE`] for libraries). A single
+/// input is returned unchanged (aside from the header entry field) when ids are already valid.
 ///
 /// # Errors
 ///
-/// Returns [`LinkError`] on duplicate ids or missing entry.
+/// Returns [`LinkError::EmptyInput`] when `inputs` is empty.
+/// Returns [`LinkError::DuplicateFunctionId`] when two modules share a `function_id`.
+/// Returns [`LinkError::InvalidEntry`] when `entry_function_id` is not [`ENTRY_NONE`] and no
+/// merged function record matches.
+/// Returns [`LinkError::SectionTooLarge`] when a section length exceeds `u32::MAX`.
+/// Returns [`LinkError::Instruction`] when bytecode patching fails to decode an instruction.
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode — decode failures become [`LinkError::Instruction`].
 #[allow(clippy::too_many_lines)]
 pub fn link_modules(
     inputs: &[LinkInput],
@@ -226,6 +278,7 @@ fn link_return_type_id(return_type_id: u32, type_base: u32) -> u32 {
     }
 }
 
+/// Returns the function body slice from the module code section, or empty when out of bounds.
 fn slice_code(code: &[u8], offset: u32, len: u32) -> &[u8] {
     let start = usize::try_from(offset).unwrap_or(0);
     let end = start.saturating_add(usize::try_from(len).unwrap_or(0));
@@ -236,6 +289,7 @@ fn slice_code(code: &[u8], offset: u32, len: u32) -> &[u8] {
     }
 }
 
+/// Decodes `body`, rebases pool operands, and re-encodes for the merged image.
 fn patch_code(
     body: &[u8],
     const_base: u32,
