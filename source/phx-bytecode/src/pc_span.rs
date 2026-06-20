@@ -1,6 +1,24 @@
-//! PHX0 section 5 phase-1 payload: `(function_id, pc) → source span`.
+//! PHX0 symbols section (kind `5`) phase-1 payload: `(function_id, pc) → source span`.
 //!
-//! Wire format (sub-version 1): see `docs/design/features/debug.md` § "Section 5 phase 1".
+//! Dev builds attach a sorted PC span map so the CLI and VM can resolve runtime error sites to
+//! UTF-8 source byte ranges. Present when header flag [`PHX0_HAS_DEBUG`] is set. Codegen records
+//! spans in debug builds; the linker merges tables across compilation units via
+//! [`PcSpanTable::merge_from`].
+//!
+//! Wire format (sub-version [`PC_SPAN_SUB_VERSION`]): `docs/design/features/debug.md` §
+//! "Section 5 phase 1".
+//!
+//! ## Payload layout
+//!
+//! `sub_version` (4), `file_count` (4), path strings (`path_len` + UTF-8 bytes), `entry_count`
+//! (4), then 20-byte rows (`function_id`, `pc`, `file_id`, `span_start`, `span_end`). Rows must
+//! be sorted by `(function_id, pc)` ascending.
+//!
+//! ## In this module
+//!
+//! - [`PcSpanEntry`] — one `(function_id, pc)` site mapped to a source file and span.
+//! - [`PcSpanTable`] — paths plus sorted entries; encode/decode and lookup APIs.
+//! - [`PcSpanError`] — decode validation failures.
 
 use crate::decode::checked_entry_count;
 

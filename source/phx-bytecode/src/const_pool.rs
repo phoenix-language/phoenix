@@ -1,4 +1,20 @@
-//! Constants section payload.
+//! PHX0 constants section (kind `1`) — literal pool for `CONST` operands.
+//!
+//! The compiler lowers Phoenix literals and static byte blobs into a pooled table; the VM loads
+//! values via [`ConstEntry`] indices referenced by [`crate::Instruction`] operands. The verifier
+//! rejects entries whose payload width does not match the consuming instruction's primitive kind.
+//!
+//! Wire layout: `docs/design/features/vm-linear.md` § "Constants section".
+//!
+//! ## Payload layout
+//!
+//! `u32` entry count, then per entry: `const_tag` (1), reserved (1), `byte_len` (2), payload.
+//!
+//! ## In this module
+//!
+//! - [`ConstTag`] — wire discriminant for signed/unsigned/float/bytes/bool payloads.
+//! - [`ConstEntry`] — one tagged payload row.
+//! - [`ConstPool`] — full section body; [`ConstPool::encode`] / [`ConstPool::decode`].
 
 use crate::decode::checked_entry_count;
 
