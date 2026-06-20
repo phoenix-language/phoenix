@@ -1,160 +1,291 @@
 # Agent task queue
 
 **Updated:** 2026-06-20  
-**Source:** `docs/ROADMAP.md` Milestones 0–1 and 7 (foundation integrity, diagnostics)
+**Maintainer:** v0 sprint orchestrator (master agent) — **not** a static checklist.
 
-Work tasks **top to bottom**. Mark a task `[x]` only after `just pre-commit` passes and the acceptance criteria are met. Do **one task per loop iteration** — do not start the next task in the same run if the current one is unfinished.
+This file is the **active work queue** for autonomous agents. The orchestrator **reads it every iteration**, assigns the top unchecked items to workers, and **updates it** when tasks complete, block, or are split.
 
----
+**Authority for behavior:** `docs/design/`  
+**Backlog when queue is thin:** `docs/mvp-finish-todo.md` (P3), `docs/ROADMAP.md`, live codebase reconnaissance (see `.cursor/skills/v0-sprint-orchestrator/SKILL.md`).
 
-## Status
-
-| # | Task | Status |
-|---|------|--------|
-| 1 | Lower layout `unwrap_or(0)` → `LowerError` | `[x]` |
-| 2 | Golden diagnostic: discarded std `Option` (E2042) | `[x]` |
-| 3 | Golden diagnostic: loop-carried use-after-move | `[x]` |
-| 4 | Golden diagnostic: if-arm ownership join | `[x]` |
-| 5 | PXI malformed-export rejection tests | `[x]` |
+**Work mix:** Prefer **FEATURE / TESTS / BUGFIX** over docs-only. At most **one DOCS-only** task per iteration unless the user requests a docs pass.
 
 ---
 
-## Task 1 — Replace lower layout `unwrap_or(0)` fallbacks
+## Queue policy
 
-**Finding:** PHX-030 / PHX-041 (silent fallback cleanup)  
-**Priority:** Milestone 0 — no silent wrong bytecode from missing layout metadata
+### Capacity
 
-### Problem
+| Limit | Value |
+|-------|--------|
+| **Active tasks** (unchecked in table below) | **8 max** |
+| **Workers per iteration** | 1–3 (no overlapping files) |
 
-Several lowering paths encode `type_id: 0` or `field_index: 0` when layout lookup fails instead of recording a `LowerError`. That can miscompile instead of failing loudly.
+### When the queue is full (8 unchecked tasks)
 
-### Files
+1. **Do not add** new rows until a task is marked `[x]`, moved to **Deferred**, or cancelled with a one-line reason in the handoff.
+2. **Still run iterations** — pull work only from the **top unchecked** tasks (by priority order in the table).
+3. **One-off fixes** (flaky test, CI red on `trunk`) may be fixed **without** queueing if they block the sprint; note them in **Handoff notes** and optionally add a retroactive row after the fix.
+4. **Replenish** when active count drops below **5**: pull the next **vertical slice** from `mvp-finish-todo.md` P3 or from recon (missing test, verifier gap, diagnostic golden).
+5. **Docs-only rustdoc** does **not** get queue slots while active FEATURE/TESTS tasks remain — use the optional **Backlog (unscheduled)** section instead.
 
-- `source/phx-compiler/src/lower/expr/assign.rs`
-- `source/phx-compiler/src/lower/expr/call.rs`
-- `source/phx-compiler/src/lower/expr/match.rs`
-- `source/phx-compiler/src/lower/expr/mod.rs`
-- `source/phx-compiler/src/lower/expr/intrinsic.rs` (if applicable)
+### Task lifecycle
 
-Search for `.unwrap_or(0)` on `type_id_for_named`, `type_id`, and `struct_field_index`.
+```text
+Backlog (mvp-finish / recon) → Active queue (this file) → Worker branch + PR → [x] + handoff → Completed log
+```
+
+- Mark `[x]` only after gates pass and acceptance criteria are met (`just pre-commit` when semantics change).
+- **BLOCKED** tasks: leave `[ ]`, add `**Blocked:** …` under the task body; orchestrator picks a different task.
+- **Split** a task that grew too large: mark original `[x]` with “split into #N/A, #N/B”, add child rows.
+
+---
+
+## Active queue
+
+Work **top to bottom** within each priority band. Orchestrator may run up to three **non-overlapping** tasks per iteration.
+
+| # | Task | Stream | Priority | Status |
+|---|------|--------|----------|--------|
+| 6 | PHX-070-p4 — Release strip of PHX0 section 5 | FEATURE | P3 | `[ ]` |
+| 7 | PHX-070-p5 — PC span map across nested / indirect calls | FEATURE | P3 | `[ ]` |
+| 8 | PHX-borrow-0 — `&mut T` exclusivity (no lifetimes) | FEATURE | P3 | `[ ]` |
+| 9 | PHX-borrow-1 — `&T` shared borrow + double-borrow diagnostic | FEATURE | P3 | `[ ]` |
+| 10 | PHX-sched-0 — Scheduler types + park/resume unit harness | FEATURE | P3 | `[ ]` |
+| 11 | PHX-sched-1 — Document schedulable I/O contract in runtime-transparency | INFRA | P3 | `[ ]` |
+| 12 | Golden diagnostic — double mutable borrow | TESTS | P3 | `[ ]` |
+| 13 | Verifier — hostile PHX0 section 5 / stripped-module cases | TESTS | P3 | `[ ]` |
+
+**Optional (queue when &lt; 5 active):**
+
+| # | Task | Stream | Status |
+|---|------|--------|--------|
+| 14 | README + CONTRIBUTING sync with `just pre-commit` / sprint workflow | INFRA | `[ ]` |
+| 15 | Stabilize flaky `heap_uaf_cli_shows_source_span_on_stderr` | BUGFIX | `[ ]` |
+
+---
+
+## Task 6 — PHX-070-p4: Release strip of section 5
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/debug.md` (Layer 2, release profile)  
+**Depends on:** PHX-070-p1/p2 on trunk (`PcSpanTable`, CLI `format_vm_error`, link `merge_from`)
+
+### Goal
+
+`phx build --release` (or equivalent profile flag) produces PHX0 **without** section 5; verifier accepts stripped modules; dev builds still emit spans.
 
 ### Work
 
-1. On layout miss, push an appropriate `LowerError` (add a variant if needed) and **return without emitting** the bad instruction.
-2. Add or extend unit tests in `source/phx-compiler/tests/lower.rs` that prove lowering fails (bag contains error) when layout metadata is inconsistent — do not rely on bytecode with operand `0`.
-3. Run `just pre-commit`.
-
-### Acceptance
-
-- No production `unwrap_or(0)` remains on layout/type-table lookups in the files above.
-- At least one new lowering test covers a miss path.
-- `just pre-commit` green.
-
----
-
-## Task 2 — Golden diagnostic: discarded std `Option`
-
-**Finding:** M7 / PHX-061 (golden diagnostics)  
-**Priority:** Milestone 7 — std value discard errors are user-visible and regression-locked
-
-### Problem
-
-`DiscardedStdResult` (E2041) has a golden fixture (`tests/integration/diagnostics/discarded_std_result.*`). `DiscardedStdOption` (E2042) does not.
-
-### Work
-
-1. Add `tests/integration/diagnostics/discarded_std_option.phx` — a minimal program that calls a std function returning `Option` and discards it as a statement (mirror the Result fixture pattern).
-2. Add matching `discarded_std_option.stderr` golden output.
-3. Register the case in `tests/phx-test` diagnostic case list (same pattern as `discarded_std_result`).
-4. Run `just pre-commit` (and `UPDATE_GOLDEN=1` only if you intentionally change unrelated goldens).
-
-### Acceptance
-
-- `cargo test -p phx-integration-tests --test diagnostics` passes.
-- Golden mentions E2042 / discarded std Option wording consistent with `phx-diagnostics` registry.
-
----
-
-## Task 3 — Golden diagnostic: loop-carried use-after-move
-
-**Finding:** PHX-024 (Critical) + PHX-061  
-**Priority:** Milestone 0 — loop back-edge move semantics are decided and tested
-
-### Problem
-
-Unit tests exist in `source/phx-compiler/tests/typeck.rs` (`loop_move_then_use_after_loop_errors`, etc.) but there is no CLI golden diagnostic fixture for loop-carried moves.
-
-### Work
-
-1. Add `tests/integration/diagnostics/loop_move_use_after_loop.phx` — outer `var` moved inside `loop { … }`, then used after the loop (must error with use-after-move citing the move site).
-2. Add `loop_move_use_after_loop.stderr` golden.
-3. Register in diagnostic cases.
+1. Wire release profile through `build` driver / codegen to omit PC span emission.
+2. Clear or omit `PHX0_HAS_DEBUG` when no debug sections are written.
+3. Add tests: release artifact has no section 5; `verify()` passes; dev artifact still has spans.
 4. Run `just pre-commit`.
 
 ### Acceptance
 
-- Golden shows use-after-move diagnostic with span on the move site inside the loop.
-- Matches `docs/design/features/ownership.md` loop semantics (conservative: move-in-loop of outer binding is always an error).
+- Release-linked module verifies and runs; no section 5 payload.
+- Dev build unchanged for `heap_uaf` source-map integration test.
+- `just pre-commit` green.
 
 ---
 
-## Task 4 — Golden diagnostic: if-arm ownership join
+## Task 7 — PHX-070-p5: PC span map for nested / indirect calls
 
-**Finding:** PHX-023 (Critical) + PHX-061  
-**Priority:** Milestone 0 — fork/join ownership across branches
+**Stream:** FEATURE  
+**Design:** `docs/design/features/debug.md` (Phase 1 PC span map)
 
-### Problem
+### Goal
 
-`OwnershipTracker::join_arms` is implemented, but CLI goldens do not lock the two key user-visible behaviors:
-- Sibling branch must **not** cause a false use-after-move (only one arm runs).
-- Binding moved on **any** arm must be treated as moved after the `if`/`match`.
+VM faults in **callees** (not only entry / top frame) resolve to the correct Phoenix source line when section 5 is present.
 
 ### Work
 
-Add **two** golden pairs (four files total):
-
-1. **`if_branch_sibling_no_false_uam`** — e.g. `if cond { use(x); } else { drop(x); }` then `use(x)` after the `if` must **error** (join marks moved), not silently pass.
-2. **`if_branch_untaken_no_move`** — e.g. only the non-moving arm is reachable by construction *or* document with a program where one arm moves and the other uses, and use-after-`if` errors. Pick the clearest minimal program; mirror existing typeck tests if helpful.
-
-Register both cases. Run `just pre-commit`.
+1. Audit codegen span recording for `Call` / `CallIndirect` sites and callee bodies.
+2. Fix gaps so `(function_id, pc)` in errors from nested calls map via merged `PcSpanTable`.
+3. Add integration test: program with helper that traps; stderr shows helper’s `.phx` line (new fixture or extend `heap_uaf`).
+4. Run `just pre-commit`.
 
 ### Acceptance
 
-- Two new golden diagnostic fixtures pass in integration diagnostics test.
-- Behavior matches flow-insensitive join documented in `ownership.md`.
+- New or extended integration test fails on trunk before fix and passes after.
+- `format_vm_error` output includes `path:line:col` for the faulting callee.
 
 ---
 
-## Task 5 — PXI malformed-export rejection tests
+## Task 8 — PHX-borrow-0: `&mut T` exclusivity
 
-**Finding:** PHX-040  
-**Priority:** Milestone 3 — reject malformed `.pxi` instead of partial-parse
+**Stream:** FEATURE  
+**Design:** `docs/design/features/ownership.md`, ROADMAP deferred borrow checker
 
-### Problem
+### Goal
 
-`source/phx-compiler/src/pxi/format.rs` returns `PxiError` for bad input, but there are no dedicated unit tests proving malformed exports fail cleanly.
+First borrow-checker slice: reject **two overlapping `&mut T`** to the same binding (no lifetime syntax).
 
 ### Work
 
-1. Add `source/phx-compiler/tests/pxi.rs` (or extend an existing test module) with table-driven cases:
-   - unsupported `format_version`
-   - missing required fields (`logical_module`, `source_hash`, …)
-   - truncated / malformed JSON fragments
-2. Assert `PxiFile::parse` returns `Err(PxiError::…)` with stable error kind — no panic.
+1. Type-check `&mut` borrows with an exclusivity map (creation + use sites).
+2. Emit a clear `TypeCheckError` (new code or reuse closest existing) with spans on both borrows.
+3. Unit tests in `source/phx-compiler/tests/typeck.rs` (positive + negative).
+4. Run `just pre-commit`.
+
+### Acceptance
+
+- Minimal `.phx` fixture that takes two `&mut` aliases of one `var` fails type-check.
+- Non-conflicting sequential borrows still accepted (if spec allows) or documented as follow-up.
+
+---
+
+## Task 9 — PHX-borrow-1: `&T` shared borrow
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/ownership.md`  
+**Depends on:** Task 8 (shared infrastructure)
+
+### Goal
+
+Allow multiple `&T` to the same binding; reject `&T` + `&mut T` overlap.
+
+### Work
+
+1. Extend borrow map for shared vs exclusive.
+2. Tests: two `&T` OK; `&T` + `&mut T` error.
 3. Run `just pre-commit`.
 
 ### Acceptance
 
-- At least 3 malformed-input cases covered.
-- All tests pass; no new dependencies.
+- Table-driven typeck tests; no new surface syntax.
 
 ---
 
-## Handoff notes (agent fills in)
+## Task 10 — PHX-sched-0: Scheduler skeleton
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/runtime-transparency.md`, `docs/design/mvp.md` shipping order
+
+### Goal
+
+In-tree **scheduler data structures** and a **single-threaded** park/resume harness — **no** Phoenix syntax, no std I/O yet.
+
+### Work
+
+1. Add `phx-vm` (or `phx-runtime` if already scaffolded) module: runnable contexts, run queue, park reason enum.
+2. Unit tests: spawn N contexts, park one, resume, complete — all on one OS thread.
+3. Document public Rust API in module rustdoc (Tier-A).
+4. Run `just test` (no language semantics change → `just pre-commit` optional unless touching compiler).
+
+### Acceptance
+
+- Tests pass without new opcodes or `phx` CLI changes.
+- No new crates.io deps.
+
+---
+
+## Task 11 — PHX-sched-1: Schedulable I/O contract doc
+
+**Stream:** INFRA  
+**Design:** `docs/design/features/runtime-transparency.md`
+
+### Goal
+
+Document the **contract** between future std I/O and the scheduler (park points, wakeup, error propagation) so Task 10+ can proceed without ad-hoc design.
+
+### Work
+
+1. Add a “Schedulable I/O” subsection to `runtime-transparency.md` (or linked doc): who calls `park`, what wakes a context, how errors surface.
+2. Cross-link from `mvp-finish-todo.md` P3 scheduler item.
+3. No code changes required; if only docs, `just fmt-check` N/A for md — skip `pre-commit` unless Rust touched.
+
+### Acceptance
+
+- Design doc PR reviewable in isolation; orchestrator can queue implementation slices after merge.
+
+---
+
+## Task 12 — Golden diagnostic: double mutable borrow
+
+**Stream:** TESTS  
+**Depends on:** Task 8
+
+### Goal
+
+CLI golden locks user-visible diagnostic for double `&mut` borrow.
+
+### Work
+
+1. `tests/integration/diagnostics/double_mut_borrow.phx` + `.stderr` golden.
+2. Register in `phx-test` diagnostic case list.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- `cargo test -p phx-integration-tests --test diagnostics` passes.
+
+---
+
+## Task 13 — Verifier: section 5 / stripped module cases
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/vm-linear.md`
+
+### Goal
+
+Mutation-style tests proving verifier accepts valid stripped modules and rejects corrupt section 5.
+
+### Work
+
+1. Extend `phx-bytecode` tests: truncated section 5, bad `sub_version`, overlapping entries.
+2. Assert stable `VerifyError` / `PcSpanError` kinds — no panic.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- At least 3 negative cases; workspace tests green.
+
+---
+
+## Backlog (unscheduled)
+
+_Not counted toward the 8-task cap._ Orchestrator promotes items here when the active queue has fewer than 5 tasks.
+
+| Idea | Stream | Source |
+|------|--------|--------|
+| `phx explain` gap for new borrow errors | QOL | recon |
+| Tier-A rustdoc on one **complex** pass (only if no FEATURE queued) | DOCS | last resort |
+| Website a11y / copy | WEBSITE | `website/` submodule |
+| Actors / mailboxes | — | **Deferred** — post-MVP, no slice without design |
+
+---
+
+## Completed — audit phase (2026-06-20)
+
+| # | Task | Notes |
+|---|------|-------|
+| 1 | Lower layout `unwrap_or(0)` → `LowerError` | PHX-030/041 |
+| 2 | Golden: discarded std `Option` (E2042) | PHX-061 |
+| 3 | Golden: loop-carried use-after-move | PHX-024 |
+| 4 | Golden: if-arm ownership join | PHX-023 |
+| 5 | PXI malformed-export rejection tests | PHX-040, PR #14 |
+
+## Completed — sprint / PHX-070 (already on trunk)
+
+| Item | Notes |
+|------|-------|
+| PHX-070-p1 | `PcSpanTable` / section 5 codegen — PR #12 |
+| PHX-070-p2 | CLI `format_vm_error` — PR #13 |
+| PHX-070-p2b | Link `PcSpanTable::merge_from` in `link/mod.rs` |
+| PHX-070-p2c | Integration `sourcemap_run.rs` / `heap_uaf` CLI span test |
+
+_Do not re-queue the above unless a regression appears._
+
+---
+
+## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | 5 — PXI malformed-export rejection tests (PHX-040, PR #14) |
-| Last green commit | eaec68d |
-| Branch | agent/v0-sprint/20260620-docs-agent-tasks |
+| Last completed task | — (refresh after next merge) |
+| Last trunk SHA | `777805cd` |
+| Active queue count | 8 / 8 |
 | Blockers | — |
+| Next replenish | When #6–#8 complete → borrow goldens + sched doc |

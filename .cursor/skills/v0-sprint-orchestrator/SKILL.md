@@ -39,7 +39,7 @@ Sprints that spend **>30% of iterations on rustdoc-only PRs** are off-target. Th
 
 **Rules:**
 
-- **At most one docs-only worker** per iteration unless every audit item in `docs/AGENT_TASKS.md` is done **and** the user explicitly asked for a docs pass.
+- **At most one docs-only worker** per iteration. If the **last two** iterations were all-docs, the **next must have zero** docs-only workers.
 - If the last **two** iterations were all-docs, the **next iteration must be zero docs-only workers**.
 - Tag each planned task with a **stream**: `FEATURE` | `TESTS` | `BUGFIX` | `INFRA` | `DOCS` | `WEBSITE`.
 
@@ -159,7 +159,7 @@ Use judgment — not every probe every tick:
 
 | Probe | What to look for | Example task |
 |-------|------------------|----------------|
-| **Audit queue** | Unchecked rows in `docs/AGENT_TASKS.md`, P0/P1 in `mvp-finish-todo.md` | Golden diagnostic, layout hardening |
+| **Audit queue** | Unchecked rows in `docs/AGENT_TASKS.md` (max 8 active); if full, see queue policy in that file | Feature slice, golden, verifier case |
 | **ROADMAP / P3 slices** | Next shippable slice for PHX-070, borrow checker, scheduler | Link span merge test |
 | **Test gaps** | Compiler pass with logic but thin `tests/` coverage | New `lower.rs` negative case |
 | **Flaky / failing tests** | Recent CI or local flakes | Stabilize `cli_e2e` race |
@@ -177,8 +177,8 @@ Record findings in the iteration handoff: **what you checked → what you queued
 
 1. **P0/P1 regressions** — broken tests, wrong codegen, announce blockers (`mvp-finish-todo.md` P0–P1).
 2. **Feature slices** — PHX-070, borrow checker phase 0, scheduler spike (at least one per 2 iterations when backlog allows).
-3. **Tests & audit items** — `AGENT_TASKS.md`, golden diagnostics, malformed PXI.
-4. **Bug fixes & flakes** — from recon or CI.
+3. **Active queue** — unchecked rows in `docs/AGENT_TASKS.md` (top-first). If queue full, do not add; pull from P3 only when &lt; 5 active.
+4. **Tests & recon** — golden diagnostics, verifier gaps, flakes.
 5. **Infra / README / contributing** — when feature queue is thin.
 6. **Docs-only rustdoc** — **last**, max one worker, thin modules only.
 
