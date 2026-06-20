@@ -47,8 +47,9 @@ pub use pipeline::{
 pub use programs::{lookup_module_tree, lookup_project, lookup_single, modules_main_tree};
 pub use project::{
     BuiltProject, build_cli_project, build_std_project, discover_cli_project, ensure_built_project,
-    ensure_built_project_unlocked, force_build_project, force_build_project_spec,
-    force_build_project_unlocked, load_built_binary,
+    ensure_built_project_unlocked, ensure_built_project_with_options, force_build_project,
+    force_build_project_spec, force_build_project_unlocked, force_built_project_with_options,
+    load_built_binary,
 };
 pub use sandbox_lock::{project_fs_lock, std_fs_lock, with_project_fs_lock};
 pub use semantics::{ExpectedLocal, assert_main_local, assert_main_locals};
