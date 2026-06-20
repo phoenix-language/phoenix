@@ -445,6 +445,31 @@ pub const DIAG_INVALID_CAST: DiagnosticCase = DiagnosticCase {
    = help: explicit casts between `S32` and `Bool` are not allowed in MVP; use a supported cast target (numeric primitives, array→slice, str→[u8])",
 };
 
+const DIAG_DOUBLE_MUT_BORROW_SOURCE: &str = r"main :: () => {
+    var x: s32 = 1;
+    const a = &mut x;
+    const b = &mut x;
+    const _ = ();
+};
+";
+
+pub const DIAG_DOUBLE_MUT_BORROW: DiagnosticCase = DiagnosticCase {
+    name: r"double_mut_borrow",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_DOUBLE_MUT_BORROW_SOURCE),
+    expected: r"error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/double_mut_borrow.phx:4:15
+  |
+4 |     const b = &mut x;
+  |               ^^^^^^
+   = note: `x` was mutably borrowed here
+  --> tests/integration/diagnostics/double_mut_borrow.phx:3:15
+  |
+3 |     const a = &mut x;
+  |               ^^^^^^
+   = help: finish using the first `&mut x` borrow before creating another",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -467,4 +492,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_IF_BRANCH_SIBLING_NO_FALSE_UAM,
     DIAG_IF_BRANCH_UNTAKEN_NO_MOVE,
     DIAG_INVALID_CAST,
+    DIAG_DOUBLE_MUT_BORROW,
 ];

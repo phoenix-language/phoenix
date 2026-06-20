@@ -1,0 +1,6 @@
+main :: () => {
+    var x: s32 = 1;
+    const a = &mut x;
+    const b = &mut x;
+    const _ = ();
+};
