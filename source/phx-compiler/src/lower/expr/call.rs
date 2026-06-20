@@ -1,4 +1,23 @@
 //! Postfix chains, calls, methods, and `?` lowering.
+//!
+//! Walks [`PostfixOp`](phx_syntax::ast::expr::PostfixOp) suffixes on a base expression: field
+//! access, indexing, calls, method dispatch, and [`TrySiteMeta`](crate::typeck::TrySiteMeta) `?`
+//! propagation. VM intrinsics delegate to [`super::intrinsic::lower_intrinsic_call`].
+//!
+//! Static `ident(args)` and ref-receiver method calls consume the base expression's typeck id
+//! without loading the callee/receiver ident — keep these paths aligned with
+//! [`super::lower_expr_inner`]'s cursor rules documented in the parent module.
+//!
+//! Struct layout helpers ([`struct_def_from_base`], [`emit_load_struct_base`],
+//! [`store_base_local`]) are shared with [`super::assign`] for compound stores.
+//!
+//! ## Invariants
+//!
+//! - **Call order:** arguments are lowered left-to-right; the callee layout comes from
+//!   [`TypedProgram::functions`](crate::typeck::TypedProgram::functions) or method/try metadata
+//!   keyed by postfix [`ExprId`](crate::typeck::ExprId).
+//! - **Receiver refs:** `&mut self` methods may [`IrInst::AddressOfLocal`] an ident receiver or
+//!   spill an evaluated value to a match temp before taking its address.
 
 use phx_syntax::Symbol;
 use phx_syntax::ast::expr::{Expr, ExprNode, PostfixOp};

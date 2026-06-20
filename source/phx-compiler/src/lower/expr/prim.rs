@@ -1,4 +1,12 @@
-//! Primitive kind resolution for lowering when typeck expr types are still generic.
+//! Primitive kind resolution when typeck expression types are still generic.
+//!
+//! After monomorphization some expression nodes retain unresolved or parametric types; bytecode
+//! opcodes still need a concrete [`PrimitiveKind`](phx_bytecode::PrimitiveKind) wire tag. This
+//! module inspects operand shape (literals, bindings, single field chains) to pick a kind when
+//! [`primitive_kind_for_type`](crate::typeck::primitive_kind_for_type) returns `None`.
+//!
+//! [`prim_kind_for_binop`] is used by [`super::literal::lower_binary`];
+//! [`pointee_type_for_deref_operand`] supports pointer deref in [`super::lower_expr_inner`].
 
 use phx_syntax::Symbol;
 use phx_syntax::ast::expr::{Expr, ExprNode, PostfixOp};
