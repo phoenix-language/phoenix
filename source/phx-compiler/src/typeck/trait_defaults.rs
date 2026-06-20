@@ -1,7 +1,23 @@
 //! Trait default method inheritance for empty or partial trait impl blocks.
 //!
 //! Synthesizes missing trait method bodies from defaults, allocates synthetic [`DefId`]s, and
-//! merges them into [`ResolvedProgram`] before body checking completes.
+//! merges them into [`ResolvedProgram`] before impl-body type checking completes.
+//!
+//! ## When synthesis runs
+//!
+//! [`crate::typeck::check::type_check`] calls [`synthesize_inherited_methods`] for each trait impl
+//! whose block omits methods that carry default bodies in the trait definition. Synthetic defs are
+//! held in `pending_inherited_defs` until [`merge_pending_inherited_defs`] runs at type-check
+//! finish, then exposed through [`TypedProgram::inherited_trait_methods`] for body checking and
+//! lowering lookup via [`lookup_function`].
+//!
+//! ## Key types
+//!
+//! | Type | Role |
+//! |------|------|
+//! | [`InheritedTraitMethods`] | Synthetic `DefId` → cloned default body AST |
+//! | [`InheritedByInst`] | Groups inherited methods by [`TraitInstKey`] for impl checking |
+//! | [`InheritedSynthesisCtx`] | Inputs passed to [`synthesize_inherited_methods`] |
 
 use std::collections::HashMap;
 
