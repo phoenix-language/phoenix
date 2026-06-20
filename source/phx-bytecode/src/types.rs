@@ -1,4 +1,21 @@
-//! Types section records (metadata for verifier / debug).
+//! PHX0 types section (kind `2`) — stable type ids for verifier and debug metadata.
+//!
+//! Records describe primitive widths, struct/enum shapes, and function signatures referenced
+//! by function records, cast targets, and optional debug spans. Execution may rely on pre-lowered
+//! opcodes; the verifier uses this table for arity and layout checks.
+//!
+//! Wire layout: `docs/design/features/vm-linear.md` § "Types section".
+//!
+//! ## Payload layout
+//!
+//! `u32` record count, then per record: `type_id` (4), `kind` (1), flags (1), `aux_len` (2),
+//! `aux_bytes`.
+//!
+//! ## In this module
+//!
+//! - [`TypeKind`] — record discriminant (`Unit`, primitives, `Struct`, `Enum`, `FnSig`).
+//! - [`TypeRecord`] — one type row with optional aux metadata.
+//! - [`TypeTable`] — full section body; [`TypeTable::encode`] / [`TypeTable::decode`].
 
 use crate::decode::checked_entry_count;
 

@@ -1,4 +1,21 @@
-//! Section table entries for PHX0 modules.
+//! PHX0 section table — maps [`SectionKind`] tags to file offsets and payload lengths.
+//!
+//! Every PHX0 file stores a contiguous table after the 24-byte header; each 12-byte row points
+//! to one section payload (constants, types, functions, code, symbols, local layouts). The
+//! verifier validates bounds, unique kinds, and non-overlapping ranges via
+//! [`validate_section_table`] before decoding section bodies.
+//!
+//! Wire layout: `docs/design/features/vm-linear.md` § "Section table".
+//!
+//! ## Table row layout
+//!
+//! `section_kind` (2), reserved (2), `offset` (4), `length` (4).
+//!
+//! ## In this module
+//!
+//! - [`SectionKind`] — MVP section tags (`Constants` … `LocalLayouts`).
+//! - [`SectionEntry`] — one table row; [`SectionEntry::encode`] / [`SectionEntry::decode`].
+//! - [`validate_section_table`] — layout checks on untrusted section tables.
 
 use std::collections::HashSet;
 
