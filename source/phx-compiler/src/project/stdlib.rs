@@ -1,4 +1,19 @@
-//! Locating the bundled Phoenix standard library (`std` package).
+//! Bundled standard library (`std` package) discovery and dependency injection (M2).
+//!
+//! When [`ProjectConfig::bundle_std`] is true (the default), [`apply_bundled_std`] locates
+//! the compiler-shipped `std` project and inserts a `path` dependency keyed `"std"`.
+//!
+//! ## Search order
+//!
+//! 1. [`PHOENIX_STD_ENV`] when set and pointing at a valid `std` `phoenix.toml`
+//! 2. Ancestors of `std::env::current_exe()` containing `std/phoenix.toml` with `project.name = "std"`
+//! 3. Ancestors of the process current directory (same rule)
+//!
+//! ## Entry points
+//!
+//! - [`resolve_bundled_std_root`] — locate the `std` package root on disk
+//! - [`apply_bundled_std`] — mutate a [`ProjectConfig`] to add the bundled dependency
+//! - [`dependency_path_for_root`] — prefer project-relative paths in `phoenix.toml`
 
 use std::path::{Path, PathBuf};
 
