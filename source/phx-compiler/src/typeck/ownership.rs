@@ -1,12 +1,15 @@
-//! Use-after-move and mutable-borrow tracking for the type checker (MVP).
+//! Use-after-move and borrow tracking for the type checker (MVP).
 //!
 //! [`OwnershipTracker`] records whether each local binding is still valid after
-//! moves and whether an active `&mut` borrow overlaps a new one. The expression
+//! moves, active shared (`&T`) borrows, and exclusive `&mut` borrows. The expression
 //! and statement checkers call [`OwnershipTracker::move_binding`] at move sites and
 //! [`OwnershipTracker::moved_at`] before reads; a moved binding produces a
 //! [`TypeCheckError::UseAfterMove`](super::TypeCheckError::UseAfterMove)
 //! diagnostic that cites the original move span. Overlapping `&mut` borrows of the
-//! same binding produce [`TypeCheckError::OverlappingMutBorrow`].
+//! same binding produce [`TypeCheckError::OverlappingMutBorrow`]. An active `&mut`
+//! borrow blocks new shared borrows, and active shared borrows block new `&mut`
+//! borrows — both produce [`TypeCheckError::SharedMutBorrowConflict`]. Multiple
+//! concurrent `&T` borrows of the same binding are allowed.
 //!
 //! # MVP model
 //!
@@ -64,6 +67,15 @@ struct BindingEntry {
     depth: u32,
 }
 
+/// An active shared (`&T`) borrow of a local binding.
+#[derive(Debug, Clone)]
+struct SharedBorrowEntry {
+    symbol: Symbol,
+    binding_depth: u32,
+    depth: u32,
+    span: Span,
+}
+
 /// An active `&mut` borrow of a local binding.
 #[derive(Debug, Clone)]
 struct MutBorrowEntry {
@@ -92,6 +104,7 @@ struct MutBorrowEntry {
 pub struct OwnershipTracker {
     bindings: Vec<BindingEntry>,
     mut_borrows: Vec<MutBorrowEntry>,
+    shared_borrows: Vec<SharedBorrowEntry>,
     scope_depth: u32,
 }
 
@@ -123,6 +136,8 @@ impl OwnershipTracker {
             .retain(|entry| entry.depth <= self.scope_depth);
         self.mut_borrows
             .retain(|entry| entry.depth <= self.scope_depth);
+        self.shared_borrows
+            .retain(|entry| entry.depth <= self.scope_depth);
     }
 
     /// Returns the scope depth of the innermost active binding named `symbol`.
@@ -142,6 +157,29 @@ impl OwnershipTracker {
             .iter()
             .find(|entry| entry.symbol == symbol && entry.binding_depth == binding_depth)
             .map(|entry| entry.span)
+    }
+
+    /// Returns the span of an active shared (`&T`) borrow of `symbol`, if any.
+    #[must_use]
+    pub fn active_shared_borrow(&self, symbol: Symbol) -> Option<Span> {
+        let binding_depth = self.active_binding_depth(symbol)?;
+        self.shared_borrows
+            .iter()
+            .find(|entry| entry.symbol == symbol && entry.binding_depth == binding_depth)
+            .map(|entry| entry.span)
+    }
+
+    /// Records an active shared (`&T`) borrow of the innermost binding named `symbol`.
+    pub fn register_shared_borrow(&mut self, symbol: Symbol, span: Span) {
+        let Some(binding_depth) = self.active_binding_depth(symbol) else {
+            return;
+        };
+        self.shared_borrows.push(SharedBorrowEntry {
+            symbol,
+            binding_depth,
+            depth: self.scope_depth,
+            span,
+        });
     }
 
     /// Records an active `&mut` borrow of the innermost binding named `symbol`.
@@ -254,6 +292,19 @@ impl OwnershipTracker {
                 });
                 if !duplicate {
                     out.mut_borrows.push(borrow.clone());
+                }
+            }
+            for borrow in &arm.shared_borrows {
+                if borrow.depth > base.scope_depth {
+                    continue;
+                }
+                let duplicate = out.shared_borrows.iter().any(|existing| {
+                    existing.symbol == borrow.symbol
+                        && existing.binding_depth == borrow.binding_depth
+                        && existing.span == borrow.span
+                });
+                if !duplicate {
+                    out.shared_borrows.push(borrow.clone());
                 }
             }
         }
@@ -425,6 +476,78 @@ mod tests {
         t.register_mut_borrow(sym, borrow_span);
         t.exit_scope();
         assert_eq!(t.conflicting_mut_borrow(sym), None);
+    }
+
+    #[test]
+    fn multiple_shared_borrows_allowed() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let first = Span::new(1, 2);
+        let second = Span::new(3, 4);
+
+        let mut t = OwnershipTracker::new();
+        t.define(sym, ty);
+        t.register_shared_borrow(sym, first);
+        t.register_shared_borrow(sym, second);
+        assert_eq!(t.conflicting_mut_borrow(sym), None);
+        assert_eq!(t.active_shared_borrow(sym), Some(first));
+    }
+
+    #[test]
+    fn shared_borrow_blocked_by_active_mut() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let mut_span = Span::new(1, 2);
+
+        let mut t = OwnershipTracker::new();
+        t.define(sym, ty);
+        t.register_mut_borrow(sym, mut_span);
+        assert_eq!(t.conflicting_mut_borrow(sym), Some(mut_span));
+        assert_eq!(t.active_shared_borrow(sym), None);
+    }
+
+    #[test]
+    fn mut_borrow_blocked_by_active_shared() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let shared_span = Span::new(1, 2);
+
+        let mut t = OwnershipTracker::new();
+        t.define(sym, ty);
+        t.register_shared_borrow(sym, shared_span);
+        assert_eq!(t.conflicting_mut_borrow(sym), None);
+        assert_eq!(t.active_shared_borrow(sym), Some(shared_span));
+    }
+
+    #[test]
+    fn exit_scope_releases_shared_borrow() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let borrow_span = Span::new(5, 6);
+
+        let mut t = OwnershipTracker::new();
+        t.define(sym, ty);
+        t.enter_scope();
+        t.register_shared_borrow(sym, borrow_span);
+        t.exit_scope();
+        assert_eq!(t.active_shared_borrow(sym), None);
+    }
+
+    #[test]
+    fn join_arms_unions_active_shared_borrows() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let borrow_span = Span::new(5, 6);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+
+        let mut arm_a = base.clone();
+        arm_a.register_shared_borrow(sym, borrow_span);
+        let arm_b = base.clone();
+
+        let joined = OwnershipTracker::join_arms(&base, &[arm_a, arm_b]);
+        assert_eq!(joined.active_shared_borrow(sym), Some(borrow_span));
     }
 
     #[test]

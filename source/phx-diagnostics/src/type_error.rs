@@ -11,7 +11,7 @@
 //! ([`LowerError`]). On success, the driver merges trait defaults and runs monomorphization;
 //! on failure, [`TypeCheckBag`] is returned without a [`TypedProgram`].
 //!
-//! ## Diagnostic codes (E2001–E2046)
+//! ## Diagnostic codes (E2001–E2048)
 //!
 //! Stable codes are assigned in [`crate::type_error_registry`] via the
 //! [`typecheck_error_registry!`] macro. Each variant maps to exactly one code; [`TypeCheckError::code`]
@@ -66,6 +66,7 @@
 //! | E2045 | [`TypeCheckError::LangItemInvalid`] | Malformed `#[lang_item]` attribute |
 //! | E2046 | [`TypeCheckError::GenericNestingTooDeep`] | Generic nesting exceeds monomorph limit |
 //! | E2047 | [`TypeCheckError::OverlappingMutBorrow`] | Two active `&mut` borrows of one binding |
+//! | E2048 | [`TypeCheckError::SharedMutBorrowConflict`] | Shared and mutable borrow overlap |
 //!
 //! ## Integration with [`crate::format`] and ancillary notes
 //!
@@ -160,7 +161,7 @@ pub enum MismatchKind {
 /// A type-check error produced while analyzing the AST.
 ///
 /// Each variant maps to a stable [`DiagnosticCode`](crate::code::DiagnosticCode) via
-/// [`TypeCheckError::code`] (E2001–E2046). Primary source locations are available through
+/// [`TypeCheckError::code`] (E2001–E2048). Primary source locations are available through
 /// [`TypeCheckError::span`] for caret rendering in [`crate::format::format_typecheck_error`].
 /// Variants with secondary spans (move sites, borrow sites, duplicate lang items) attach extra
 /// notes through [`crate::type_notes::typecheck_ancillary`].
@@ -382,6 +383,17 @@ pub enum TypeCheckError {
         prior_span: Span,
         /// Second (conflicting) borrow site.
         span: Span,
+    },
+    /// Shared and mutable borrows of the same local binding overlap.
+    SharedMutBorrowConflict {
+        /// Borrowed binding name.
+        name: String,
+        /// Prior conflicting borrow site.
+        prior_span: Span,
+        /// New (conflicting) borrow site.
+        span: Span,
+        /// Whether the new borrow is `&mut` (true) or shared `&` (false).
+        new_borrow_is_mut: bool,
     },
     /// Concrete type at a generic instantiation does not implement a required trait bound.
     TraitNotSatisfied {

@@ -470,6 +470,9 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         "E2047" => {
             Some("Two overlapping `&mut` borrows of the same local binding are not allowed.")
         }
+        "E2048" => Some(
+            "A shared (`&T`) borrow and a mutable (`&mut T`) borrow of the same local binding cannot overlap.",
+        ),
         "E3001" => Some("The parser encountered unexpected tokens."),
         "E3002" => Some(
             "Input ended before the parser found a required token — add the missing `}`, `)`, `;`, or close an unclosed string or comment.",

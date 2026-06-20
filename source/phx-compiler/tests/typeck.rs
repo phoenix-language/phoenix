@@ -244,6 +244,78 @@ fn sequential_mut_borrow_after_block_ok() {
 }
 
 #[test]
+fn multiple_shared_borrows_ok() {
+    compile_ok("main :: () => { var x: s32 = 1; const a = &x; const b = &x; const _ = (); };");
+}
+
+#[test]
+fn sequential_shared_borrow_after_block_ok() {
+    compile_ok(
+        "main :: () => { var x: s32 = 1; { const _a = &x; }; const _b = &x; const _ = (); };",
+    );
+}
+
+struct SharedMutBorrowCase {
+    name: &'static str,
+    source: &'static str,
+    new_borrow_is_mut: bool,
+}
+
+#[test]
+fn shared_mut_borrow_conflict_cases() {
+    let cases = [
+        SharedMutBorrowCase {
+            name: "shared_then_mut",
+            source: "main :: () => { var x: s32 = 1; const a = &x; const b = &mut x; const _ = (); };",
+            new_borrow_is_mut: true,
+        },
+        SharedMutBorrowCase {
+            name: "mut_then_shared",
+            source: "main :: () => { var x: s32 = 1; const a = &mut x; const b = &x; const _ = (); };",
+            new_borrow_is_mut: false,
+        },
+    ];
+    for case in cases {
+        let bag = typeck_err(case.source);
+        let err = bag
+            .errors()
+            .iter()
+            .find(|e| matches!(&e.error, TypeCheckError::SharedMutBorrowConflict { .. }))
+            .unwrap_or_else(|| panic!("{}: expected SharedMutBorrowConflict", case.name));
+        if let TypeCheckError::SharedMutBorrowConflict {
+            name,
+            prior_span,
+            span,
+            new_borrow_is_mut,
+        } = &err.error
+        {
+            assert_eq!(name, "x", "{}", case.name);
+            assert_eq!(
+                *new_borrow_is_mut, case.new_borrow_is_mut,
+                "{}: new_borrow_is_mut",
+                case.name
+            );
+            if case.new_borrow_is_mut {
+                let shared = case.source.find("&x").expect("shared &x");
+                let mut_b = case.source.rfind("&mut x").expect("&mut x");
+                assert!(mut_b > shared);
+                assert_eq!(prior_span.start, u32::try_from(shared).unwrap());
+                assert_eq!(span.start, u32::try_from(mut_b).unwrap());
+            } else {
+                let mut_a = case.source.find("&mut x").expect("&mut x");
+                let shared = case.source.rfind("&x").expect("shared &x");
+                assert!(shared > mut_a);
+                assert_eq!(prior_span.start, u32::try_from(mut_a).unwrap());
+                assert_eq!(span.start, u32::try_from(shared).unwrap());
+            }
+        }
+        let interner = phx_syntax::Interner::new();
+        let msg = phx_diagnostics::format_typecheck_error(case.source, &interner, &err.error);
+        assert!(msg.contains("note:"), "{}", case.name);
+    }
+}
+
+#[test]
 fn single_mut_borrow_ok() {
     compile_ok("main :: () => { var x: s32 = 1; const a = &mut x; const _ = a; };");
 }
