@@ -1,4 +1,9 @@
-//! Global function-id map and dependency link inputs.
+//! Global function-id map and dependency link inputs (M2).
+//!
+//! Assigns stable function indices across workspace and path-dependency exports for
+//! codegen and link. Reads dependency `.pxi` `function_id` fields, verifies export
+//! signature stability, and appends decoded dependency `.phx0` modules to the link
+//! input list.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

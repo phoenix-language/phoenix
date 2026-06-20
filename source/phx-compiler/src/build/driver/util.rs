@@ -1,4 +1,7 @@
-//! I/O helpers and module-path utilities for the build driver.
+//! I/O helpers and module-path utilities for the build driver (M2).
+//!
+//! Maps entry source files to logical module paths, filters workspace-owned modules,
+//! and normalizes filesystem errors into [`BuildError::Io`].
 
 use std::path::{Path, PathBuf};
 

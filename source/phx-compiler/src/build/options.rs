@@ -1,4 +1,8 @@
-//! Options for [`super::driver::build_project`] and [`super::driver::load_project_binary`].
+//! Build and load options for the project driver (M2).
+//!
+//! [`BuildOptions`] controls incremental behavior and interface-only emission for
+//! [`super::build_project`]. [`LoadOptions`] controls optional bytecode verification when
+//! loading a linked binary via [`super::load_project_binary_with_options`].
 
 /// Controls optional bytecode verification when loading a linked binary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -7,7 +11,7 @@ pub struct LoadOptions {
     pub verify_on_load: bool,
 }
 
-/// Controls incremental and interface-only project builds.
+/// Controls incremental rebuild and interface-only emission for [`super::build_project`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BuildOptions {
     /// Rebuild all modules regardless of manifest staleness.

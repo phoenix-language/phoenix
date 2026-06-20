@@ -1,4 +1,8 @@
-//! `.pxi` / `.phx0` artifact emission and manifest recording.
+//! Per-module `.pxi` / `.phx0` artifact emission and manifest recording (M2).
+//!
+//! Walks workspace modules after type-check, skipping unchanged modules when the
+//! manifest and dependency hashes match. Emits interface files, optionally codegen
+//! object bytecode, collects [`LinkInput`] slices, and assembles a new [`BuildManifest`].
 
 use std::collections::HashMap;
 use std::path::Path;

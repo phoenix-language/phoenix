@@ -1,4 +1,9 @@
-//! Build driver errors (M2).
+//! Build driver errors for `phx build`, link, and artifact I/O (M2).
+//!
+//! [`BuildError`] wraps failures from project config, each compiler pass, `.pxi`
+//! emission, linking, PHX0 encode/verify, incremental interface staleness, and
+//! filesystem operations. The CLI and embedders map these to user-facing diagnostics
+//! via [`BuildError::to_message`].
 
 use std::path::PathBuf;
 

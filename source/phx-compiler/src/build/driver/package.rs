@@ -1,4 +1,9 @@
-//! Per-package and dependency build orchestration.
+//! Per-package and path-dependency build orchestration (M2 driver entry).
+//!
+//! Contains the public driver APIs [`build_project`], [`emit_interfaces_from_compiled`],
+//! [`load_project_binary`], and [`load_project_binary_with_options`], plus internal
+//! `build_package` / `build_dependency` helpers that implement incremental rebuild,
+//! cross-crate monomorphization reconciliation, and link.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -32,6 +37,10 @@ use super::util::{entry_logical_path, io_err, io_err_path};
 
 /// Builds the project and writes `build/` artifacts.
 ///
+/// Builds path dependencies first (under `build/deps/`), then the workspace crate.
+/// Respects [`BuildOptions::force`] and incremental manifest staleness; on a full
+/// cache hit returns the existing linked output without re-running type-check.
+///
 /// # Errors
 ///
 /// Returns [`BuildError`] on configuration, compile, link, or I/O failure.
@@ -47,6 +56,11 @@ pub fn build_project(
 }
 
 /// Writes `.pxi` files and `manifest.json` after a successful type-check.
+///
+/// Used when the caller already ran resolve/type-check (e.g. `phx check --emit-interface-only`)
+/// and only needs interface artifacts without per-module codegen or link. When
+/// [`BuildOptions::emit_interface_only`] is set, the returned [`BuildResult::output_path`]
+/// points at `manifest.json` rather than the linked binary.
 ///
 /// # Errors
 ///
@@ -97,10 +111,10 @@ pub fn emit_interfaces_from_compiled(
     })
 }
 
-/// Loads the linked binary from `build/bin` for `config`.
+/// Loads the linked binary from `build/bin/` for `config`.
 ///
 /// Decode-only by default; see [`LoadOptions::verify_on_load`] on
-/// [`load_project_binary_with_options`].
+/// [`load_project_binary_with_options`]. Requires `project.type = bin`.
 ///
 /// # Errors
 ///
@@ -109,10 +123,11 @@ pub fn load_project_binary(config: &ProjectConfig) -> Result<BytecodeModule, Bui
     load_project_binary_with_options(config, LoadOptions::default())
 }
 
-/// Loads the linked binary from `build/bin` for `config`.
+/// Loads the linked binary from `build/bin/` for `config`.
 ///
 /// When [`LoadOptions::verify_on_load`] is enabled, malformed bytecode that decodes
 /// successfully is rejected with [`BuildError::Verify`] before returning the module.
+/// Requires `project.type = bin`.
 ///
 /// # Errors
 ///

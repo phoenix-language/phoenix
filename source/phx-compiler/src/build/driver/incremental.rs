@@ -1,4 +1,9 @@
-//! Incremental freshness checks for workspace and dependency builds.
+//! Incremental freshness checks for workspace and path-dependency builds (M2).
+//!
+//! Compares live source and `.pxi` digests against `build/manifest.json` to decide
+//! whether a module, workspace, or prebuilt dependency crate can be reused without
+//! recompilation. Drives skip paths in the artifact emitter and early-return in
+//! [`super::package::build_project`].
 
 use std::collections::HashSet;
 
