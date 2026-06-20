@@ -1,4 +1,22 @@
-//! Emit `.pxi` from a typed crate.
+//! Emit `.pxi` interface files from a type-checked module.
+//!
+//! ## Pass role
+//!
+//! Called by the build driver after resolve and type-check. Walks `pub` exports (plus
+//! specialized generic exports and trait/inherent impl methods required for linking) and
+//! produces a format-v2 [`PxiFile`] with structured types, stable export ids, optional
+//! `function_id` values, and direct-import dependency hashes.
+//!
+//! ## Export selection
+//!
+//! [`build_pxi_for_module`] includes:
+//!
+//! - Every `pub` item listed in the module's export map
+//! - Monomorphized generic exports recorded in [`TypedProgram::specialized_from`](crate::typeck::TypedProgram::specialized_from)
+//! - Non-`pub` function bodies on trait/inherent impls (so dependents can link associated fns)
+//!
+//! Generic templates omit `function_id`; concrete specializations include the global PHX0 id
+//! when `global_fn` is supplied.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -18,7 +36,17 @@ use crate::typeck::BindingKind;
 use crate::typeck::TypedProgram;
 use crate::typeck::{is_generic_fn_template, is_generic_impl_method_template, mangle_export_id};
 
-/// Builds a [`PxiFile`] (format v2) for one module in a typed crate.
+/// Builds a format-v2 [`PxiFile`] for one module in a typed program.
+///
+/// `logical_path` becomes [`PxiFile::logical_module`]. `source_path` is hashed into
+/// [`PxiFile::source_hash`]. `module_id` selects defs belonging to this module.
+/// `exports` maps exported symbol names to [`DefId`] values from resolve.
+/// `dependencies` are copied verbatim (typically from [`module_dependencies`]).
+/// When `global_fn` is present, non-template `fn` exports receive a PHX0 `function_id`.
+///
+/// # Panics
+///
+/// Never panics on user input; missing source files yield an empty digest for `source_hash`.
 #[must_use]
 pub fn build_pxi_for_module(
     logical_path: &str,
@@ -248,7 +276,13 @@ fn export_signature_fallback(
     }
 }
 
-/// Collects direct import dependencies with current `.pxi` hashes.
+/// Collects direct `#import` dependencies with current `.pxi` content digests.
+///
+/// Walks imports in `module`, canonicalizes each target against `workspace_name` and
+/// `dep_names`, and reads the dependency's on-disk `.pxi` at `layout` artifact paths.
+/// Duplicate imports and unresolved targets are skipped. Missing or unreadable `.pxi`
+/// files produce an empty `pxi_hash` (forcing rebuild when the dependency is compiled).
+#[must_use]
 pub fn module_dependencies(
     module: &LoadedModule,
     layout: &BuildLayout,
