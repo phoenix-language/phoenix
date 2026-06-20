@@ -1,8 +1,37 @@
-//! Build [`LangItemRegistry`] from resolved source and dependency `.pxi` markers.
+//! Collect `#[lang_item]` markers into a [`LangItemRegistry`].
 //!
-//! Walks all modules in a [`ResolvedProgram`](crate::resolver::ResolvedProgram), extracts
-//! `#[lang_item]` attributes from std items, merges dependency import metadata, and
-//! auto-links enum variants for marked `Option`/`Result` templates.
+//! Walks every module in a [`ResolvedProgram`](crate::resolver::ResolvedProgram), parses
+//! `#[lang_item]` attributes on std definitions, merges markers rehydrated from dependency
+//! `.pxi` import metadata, validates each pair against the closed v1 registry, and auto-links
+//! sibling variant ctors for registered `Option`/`Result` enum templates.
+//!
+//! ## Pipeline position
+//!
+//! [`build_lang_item_registry`] is invoked at the start of type checking (see
+//! `typeck::check::decl`) after name resolution. Its output is stored on
+//! [`TypedProgram`](crate::typeck::TypedProgram) and consulted by expression checking,
+//! monomorphization, lowering, and PXI export.
+//!
+//! ## Owning pass
+//!
+//! - **Type checking (setup)** — builds the registry once per program; diagnostics are
+//!   collected into a [`TypeCheckBag`](phx_diagnostics::TypeCheckBag) without aborting
+//!   collection when individual markers fail validation.
+//!
+//! ## Sources scanned
+//!
+//! - Std source items under the `std::` logical module tree (`#[lang_item]` on functions,
+//!   enums, and traits).
+//! - [`ResolvedProgram::import_lang_items`](crate::resolver::ResolvedProgram) entries from
+//!   linked dependency `.pxi` files (fill gaps when the current program does not define the
+//!   same `(kind, name)` locally).
+//!
+//! User modules may not declare language items — attempts produce
+//! [`TypeCheckError::LangItemReserved`](crate::typeck::TypeCheckError::LangItemReserved).
+//!
+//! ## In this module
+//!
+//! - [`build_lang_item_registry`] — main entry: scan, validate, deduplicate, auto-link variants.
 
 use phx_diagnostics::{Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::Interner;
@@ -25,13 +54,18 @@ struct MarkerSite {
 
 /// Builds the language item registry for `resolved`, reporting errors into `bag`.
 ///
-/// Source markers under `std::` are validated and deduplicated. Import markers from
-/// dependency `.pxi` files fill gaps when the same `(kind, name)` is not already
-/// defined in the current program. After insertion, variant ctors for registered
-/// `Option`/`Result` enums are auto-linked when not explicitly marked.
+/// Scans all modules for `#[lang_item]` attributes on std items, validates each marker against
+/// the closed v1 registry, deduplicates by `(kind, name)`, and merges dependency import markers
+/// from [`ResolvedProgram::import_lang_items`](crate::resolver::ResolvedProgram) when the
+/// current program does not already define the same key. After insertion, variant ctors for
+/// registered `Option`/`Result` enums are auto-linked via
+/// [`super::validate::auto_variants_for_enum`] when not explicitly marked.
 ///
-/// Diagnostics are pushed into `bag` and collection continues — the returned registry
-/// contains every successfully registered item even when errors were reported.
+/// Diagnostics ([`TypeCheckError::LangItemReserved`](crate::typeck::TypeCheckError::LangItemReserved),
+/// [`TypeCheckError::LangItemInvalid`](crate::typeck::TypeCheckError::LangItemInvalid),
+/// [`TypeCheckError::LangItemDuplicate`](crate::typeck::TypeCheckError::LangItemDuplicate)) are
+/// pushed into `bag` and collection continues — the returned registry contains every
+/// successfully registered item even when errors were reported.
 ///
 /// # Panics
 ///
