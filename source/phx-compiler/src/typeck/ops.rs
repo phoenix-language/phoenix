@@ -1,7 +1,40 @@
-//! Operator typing for MVP primitives.
+//! Operator and cast typing for MVP primitives.
 //!
-//! [`check_binary`] and related helpers assign result types for arithmetic, comparison, and
-//! logical operators on interned primitive types.
+//! Assigns result types for binary and unary operators and validates explicit `as` casts on
+//! interned primitive and pointer types. Called from [`super::check`] during expression typing;
+//! does not emit diagnostics — callers report errors when these helpers return `None` or
+//! `false`.
+//!
+//! # Role in type checking
+//!
+//! Encodes Phoenix's Tier-A operator rules: operands must agree in type (no implicit numeric
+//! widening), comparisons on primitives and pointers produce `bool`, arithmetic preserves the
+//! operand type, and bitwise operators require integer operands. Reference operators (`&`,
+//! `&mut`, `*`) construct or peel [`Ty::Ref`] / [`Ty::Ptr`] as appropriate.
+//!
+//! # Binary operators
+//!
+//! [`check_binary`] requires `lhs == rhs` before inspecting the operator. Logical `&&`/`||`
+//! require `bool`; comparisons accept primitives, pointers, and named types; arithmetic
+//! requires numeric primitives; `%` and bitwise ops require integer primitives; `**` (pow) is
+//! not yet supported and always returns `None`.
+//!
+//! # Unary operators
+//!
+//! [`check_unary`] handles negation and bitwise not on numeric/integer types, logical not on
+//! `bool`, dereference of references and pointers, and address-of (`&` / `&mut`) on named
+//! types, primitives, and arrays.
+//!
+//! # Explicit casts
+//!
+//! [`check_cast`] validates `as` conversions under alias normalization via [`super::unify::AliasEnv`]:
+//!
+//! - Numeric primitives may cast across width and signed/unsigned/float combinations except
+//!   involving `bool`.
+//! - `[T; N]` may cast to `[T]` (array to slice view).
+//! - `str` may cast to `[u8]` (byte view).
+//! - Pointer element types may cast when at least one side is `u8`.
+//! - Identical types always succeed.
 
 use phx_syntax::token::Keyword;
 
@@ -9,13 +42,17 @@ use super::types::{Ty, TypeId, TypeInterner};
 use super::unify::{AliasEnv, normalize_type};
 use crate::typeck::builtins::bool_type;
 
-/// Result of checking a binary operator.
+/// Result of successfully checking a binary operator.
 pub struct BinOpResult {
-    /// Result type of the operation.
+    /// Interned result type of the operation (for example `bool` for comparisons, operand type
+    /// for arithmetic).
     pub result: TypeId,
 }
 
-/// Returns result type for `op` on `lhs` and `rhs`, or `None` if invalid.
+/// Returns the result type for binary `op` on `lhs` and `rhs`.
+///
+/// Returns `None` when operands differ, the operator is unsupported for the operand type, or
+/// the operator has no MVP typing rule (for example [`phx_syntax::ast::expr::BinOp::Pow`]).
 #[must_use]
 pub fn check_binary(
     types: &mut TypeInterner,
@@ -83,7 +120,10 @@ pub fn check_binary(
     }
 }
 
-/// Returns result type for unary `op` on `operand`.
+/// Returns the result type for unary `op` applied to `operand`.
+///
+/// Returns `None` when the operator is invalid for the operand type (for example negation on
+/// `bool`, or address-of on a reference).
 #[must_use]
 pub fn check_unary(
     types: &mut TypeInterner,
@@ -133,10 +173,11 @@ pub fn check_unary(
     }
 }
 
-/// Returns `true` when `from` may be cast to `to` explicitly (MVP Tier A casts).
+/// Returns `true` when an explicit `as` cast from `from` to `to` is allowed.
 ///
-/// Numeric casts allow cross-width and signed/unsigned/float combinations via explicit `as`;
-/// `bool` is excluded. View casts: array→slice, str→`[u8]`. There is no implicit widening.
+/// Types are normalized through type aliases before comparison. See the
+/// [module-level cast rules](self#explicit-casts) for supported conversions. There is no
+/// implicit widening — this helper is only for explicit `as` expressions.
 #[must_use]
 pub fn check_cast(env: &AliasEnv<'_>, from: TypeId, to: TypeId) -> bool {
     let from = normalize_type(env, from);

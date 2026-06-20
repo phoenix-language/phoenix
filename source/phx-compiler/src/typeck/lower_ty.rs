@@ -1,7 +1,30 @@
-//! Lower AST [`Type`] nodes to interned [`Ty`].
+//! Lower AST [`Type`] syntax nodes to interned [`Ty`] values.
 //!
-//! [`lower_type`] resolves syntax type names through the definition table built by
-//! [`build_type_def_map`]. Shared by declaration collection and expression checking.
+//! Translates surface type annotations into the type checker's internal representation.
+//! Shared by declaration collection (fields, signatures, trait bounds) and expression
+//! checking (casts, `as` targets, type-ascription contexts).
+//!
+//! # Role in type checking
+//!
+//! Runs during the [`super::check`] walk whenever a type appears in the AST. Does not perform
+//! semantic validation beyond name lookup — unresolved type names produce [`Ty::Error`] via
+//! [`error_type`]. Generic parameters are injected into the lookup map by [`push_generics`]
+//! for the duration of a scoped check (function body, impl block, etc.).
+//!
+//! # Type name resolution
+//!
+//! [`build_type_def_map`] indexes all struct, enum, type alias, generic param, and trait
+//! definitions by interned name symbol. [`lower_type`] resolves [`Type::Named`] through this
+//! map; a missing entry yields [`Ty::Error`], which downstream passes treat as a poison type.
+//!
+//! # Supported syntax shapes
+//!
+//! Maps each [`Type`] variant to the corresponding [`Ty`]:
+//!
+//! - Primitives and `()` → [`Ty::Primitive`] / [`Ty::Unit`]; the `str` keyword → [`Ty::Str`].
+//! - Named types with optional generic arguments → [`Ty::Named`].
+//! - Function, reference, pointer, tuple, array, and slice forms → matching [`Ty`] variants.
+//! - [`Type::SelfAssoc`] is not yet supported and lowers to [`Ty::Error`].
 
 use phx_syntax::ast::Node;
 use phx_syntax::ast::ident::TypeName;
@@ -10,9 +33,16 @@ use phx_syntax::ast::types::Type;
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::{DefId, DefKind, ResolutionKey, ResolvedProgram};
 
+/// Maps interned type name symbols to their defining [`DefId`].
+///
+/// Built once per compilation unit by [`build_type_def_map`] and extended locally by
+/// [`push_generics`] when entering generic scopes.
 pub type TypeDefMap = std::collections::HashMap<phx_syntax::Symbol, DefId>;
 
-/// Lowers `ty` using `type_defs` for named types.
+/// Lowers a syntax [`Type`] annotation to an interned [`TypeId`].
+///
+/// Recursively lowers nested types (generics, tuple elements, reference inner types, etc.).
+/// Unresolved named types intern [`Ty::Error`].
 #[must_use]
 pub fn lower_type(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type) -> TypeId {
     lower_type_inner(types, type_defs, ty)
@@ -89,7 +119,10 @@ fn lower_type_inner(types: &mut TypeInterner, type_defs: &TypeDefMap, ty: &Type)
     }
 }
 
-/// Interned poison type id for unresolved types (singleton per interner growth).
+/// Returns the interned poison type ([`Ty::Error`]) for unresolved or invalid types.
+///
+/// Callers use this id to propagate failure without aborting the check walk. Multiple calls
+/// may share the same interned [`Ty::Error`] node within a [`TypeInterner`].
 #[must_use]
 pub fn error_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Error)
@@ -103,7 +136,10 @@ fn lookup_type_def(type_defs: &TypeDefMap, name: &TypeName) -> Option<DefId> {
     type_defs.get(&name.symbol).copied()
 }
 
-/// Builds a map of type names to defs from resolved definitions.
+/// Builds a name-to-definition map from the resolved definition table.
+///
+/// Includes structs, enums, type aliases, generic parameters, and traits — every definition
+/// kind that may appear as a type name in surface syntax.
 #[must_use]
 pub fn build_type_def_map(defs: &[crate::resolver::Def]) -> TypeDefMap {
     let mut map = TypeDefMap::new();
@@ -123,7 +159,11 @@ pub fn build_type_def_map(defs: &[crate::resolver::Def]) -> TypeDefMap {
     map
 }
 
-/// Pushes generic params into `type_defs` for the duration of a scope.
+/// Inserts generic parameter names into `type_defs` for the duration of a scoped check.
+///
+/// Resolves each parameter through [`ResolvedProgram::resolutions`] first, then falls back to
+/// a module-local [`DefKind::GenericParam`] search. Parameters that cannot be resolved are
+/// skipped silently — [`lower_type`] will produce [`Ty::Error`] if they are referenced.
 pub fn push_generics(
     type_defs: &mut TypeDefMap,
     resolved: &ResolvedProgram,

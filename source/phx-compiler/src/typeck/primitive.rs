@@ -1,7 +1,31 @@
-//! Maps typeck primitives to bytecode cast operands.
+//! Primitive type bridges to bytecode and builtin trait impl recognition.
 //!
-//! Bridges interned [`Ty`] primitives to [`PrimitiveKind`] and [`LocalSlotKind`] for lowering and
-//! recognizes builtin trait methods on primitives (`eq`, `clone`) for direct opcode emission.
+//! Maps interned [`Ty::Primitive`] nodes to [`PrimitiveKind`] and [`LocalSlotKind`] for
+//! lowering and codegen, and recognizes trait methods declared on builtin receivers
+//! (`s32 :: impl :: Trait { … }`, `str :: impl :: Trait { … }`).
+//!
+//! # Role in type checking
+//!
+//! Used from [`super::check`] when assigning local slot kinds in [`super::bindings`], when
+//! emitting primitive comparisons and casts in [`crate::lower`], and when deciding whether a
+//! function definition is a compiler-known builtin impl method that can bypass generic
+//! dispatch. Does not perform operator typing — see [`super::ops`] for arithmetic and
+//! comparison rules.
+//!
+//! # Bytecode mapping
+//!
+//! [`primitive_kind_for_type`] and [`keyword_to_primitive_kind`] translate Phoenix primitive
+//! keywords to wire [`PrimitiveKind`] tags used in cast and load/store opcodes.
+//! [`slot_kind_for_binding`] classifies a binding's type into a [`LocalSlotKind`]: primitives
+//! get a typed slot, references and pointers use a `u64` word, function types use a fn-pointer
+//! slot, and all other shapes use an aggregate slot.
+//!
+//! # Builtin impl receivers
+//!
+//! Phoenix allows trait impl blocks directly on primitive type names and on `str`.
+//! [`is_builtin_type_impl_method`] and [`is_str_builtin_impl_method`] walk the resolved AST
+//! to confirm that `fn_def` belongs to such an impl block, enabling the type checker and
+//! lowering passes to treat `eq`, `clone`, `fmt`, and similar methods as direct opcode sites.
 
 use phx_bytecode::{LocalSlotKind, PrimitiveKind};
 use phx_syntax::Interner;
@@ -14,7 +38,9 @@ use crate::typeck::TypedProgram;
 
 use super::types::{Ty, TypeId, TypeInterner};
 
-/// Returns wire cast kind for a primitive type id.
+/// Returns the wire [`PrimitiveKind`] for a primitive [`TypeId`], if any.
+///
+/// Returns `None` when `ty` is not [`Ty::Primitive`].
 #[must_use]
 pub fn primitive_kind_for_type(types: &TypeInterner, ty: TypeId) -> Option<PrimitiveKind> {
     match types.get(ty) {
@@ -23,7 +49,10 @@ pub fn primitive_kind_for_type(types: &TypeInterner, ty: TypeId) -> Option<Primi
     }
 }
 
-/// Maps a Phoenix primitive keyword to a cast kind (MVP int/bool only).
+/// Maps a Phoenix primitive keyword to a bytecode [`PrimitiveKind`].
+///
+/// Covers all MVP numeric, float, and bool primitives. Non-primitive keywords (for example
+/// `struct`, `fn`) return `None`.
 #[must_use]
 pub fn keyword_to_primitive_kind(kw: Keyword) -> Option<PrimitiveKind> {
     Some(match kw {
@@ -44,7 +73,9 @@ pub fn keyword_to_primitive_kind(kw: Keyword) -> Option<PrimitiveKind> {
     })
 }
 
-/// Byte size for pointer load/store of a primitive (`s128`/`u128` use 8 bytes in MVP VM).
+/// Returns the byte size used for pointer load/store of a primitive.
+///
+/// `s128` and `u128` report 8 bytes in the MVP VM (values are truncated to a machine word).
 #[allow(dead_code)]
 #[must_use]
 pub fn primitive_byte_size(kind: PrimitiveKind) -> u8 {
@@ -60,7 +91,9 @@ pub fn primitive_byte_size(kind: PrimitiveKind) -> u8 {
     }
 }
 
-/// Returns `1` when the primitive is signed integer (not float/bool).
+/// Returns `1` when the primitive is a signed integer, `0` otherwise.
+///
+/// Used by load opcodes to sign-extend narrow integer values. Float and bool kinds return `0`.
 #[must_use]
 pub fn primitive_load_signed(kind: PrimitiveKind) -> u8 {
     match kind {
@@ -76,7 +109,11 @@ pub fn primitive_load_signed(kind: PrimitiveKind) -> u8 {
     }
 }
 
-/// Maps a binding type to a bytecode local slot kind.
+/// Maps a binding type to the [`LocalSlotKind`] used in [`super::bindings`].
+///
+/// Function types use a fn-pointer slot; references and raw pointers use a `u64` word;
+/// primitives use a typed primitive slot; all other shapes (structs, enums, tuples) use an
+/// aggregate slot.
 #[must_use]
 pub fn slot_kind_for_binding(types: &TypeInterner, ty: TypeId) -> LocalSlotKind {
     if matches!(types.get(ty), Ty::Fn { .. }) {
@@ -90,7 +127,9 @@ pub fn slot_kind_for_binding(types: &TypeInterner, ty: TypeId) -> LocalSlotKind 
     }
 }
 
-/// Returns `true` when `kw` is an MVP integer primitive (signed or unsigned).
+/// Returns `true` when `kw` names an MVP integer primitive (signed or unsigned).
+///
+/// Excludes floats and `bool`. Shared with [`super::ops::check_cast`] for cast legality.
 #[must_use]
 pub fn is_int_keyword(kw: Keyword) -> bool {
     matches!(
@@ -123,7 +162,10 @@ const IMPL_PRIMITIVE_KEYWORDS: [Keyword; 11] = [
     Keyword::F64,
 ];
 
-/// Returns the primitive keyword when `symbol` names a builtin impl receiver (`s32`, `bool`, …).
+/// Returns the primitive keyword when `symbol` names a builtin impl receiver.
+///
+/// Recognizes interned type names such as `s32`, `bool`, and `f64` that appear as the
+/// receiver in `TypeName :: impl :: Trait { … }` blocks.
 #[must_use]
 pub fn keyword_for_impl_type_symbol(interner: &Interner, symbol: Symbol) -> Option<Keyword> {
     IMPL_PRIMITIVE_KEYWORDS
@@ -138,6 +180,10 @@ pub fn is_str_impl_type_symbol(interner: &Interner, symbol: Symbol) -> bool {
 }
 
 /// Returns `true` when `fn_def` is a trait method on a builtin primitive or `str` receiver.
+///
+/// Walks the module's impl blocks to confirm the method's enclosing impl uses a primitive
+/// type name or `str` as its receiver. Used to route known methods (for example primitive
+/// `eq` and `clone`) to direct bytecode emission.
 #[must_use]
 pub fn is_builtin_type_impl_method(typed: &TypedProgram, fn_def: DefId) -> bool {
     let Some(base_def) = typed.resolved.defs.get(fn_def.index() as usize) else {
@@ -149,7 +195,9 @@ pub fn is_builtin_type_impl_method(typed: &TypedProgram, fn_def: DefId) -> bool 
     builtin_impl_receiver_for_method(&typed.resolved, base_def.module, fn_def)
 }
 
-/// Returns `true` when `fn_def` is `str`'s trait method (`str :: impl :: Trait { fmt … }`).
+/// Returns `true` when `fn_def` is a trait method on the `str` builtin receiver.
+///
+/// Narrower than [`is_builtin_type_impl_method`] — matches only `str :: impl :: Trait` blocks.
 #[must_use]
 pub fn is_str_builtin_impl_method(typed: &TypedProgram, fn_def: DefId) -> bool {
     let Some(base_def) = typed.resolved.defs.get(fn_def.index() as usize) else {
