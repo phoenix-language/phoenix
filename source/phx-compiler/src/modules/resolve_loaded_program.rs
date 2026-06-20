@@ -7,10 +7,43 @@
 //! [`SubmoduleRegistry`]), then resolve bodies with import prefaces built by
 //! [`super::import_resolve`] and optional prelude bindings from [`super::prelude`].
 //!
+//! ## Pipeline
+//!
+//! 1. **Phase 1 — collect** — For each module in load order, run [`Resolver`] in
+//!    `collect_only` mode to register top-level defs and build per-module export maps. Merge local
+//!    [`DefId`] values into one flat program table via [`try_remap_local_def_id`]. Validate `main`
+//!    placement for bin vs lib packages. Modules that emit resolve errors in this phase are
+//!    recorded in `phase1_skip` and skipped in phase 2.
+//! 2. **Reexports** — [`apply_reexports`] walks `pub use`-style edges from
+//!    [`SubmoduleRegistry::reexports`] and copies child export [`DefId`] values into parent export
+//!    maps (one- and two-segment forms only).
+//! 3. **Phase 2 — resolve bodies** — For each module not in `phase1_skip`, build import prefaces
+//!    with [`build_import_bindings`] (explicit `#import` directives plus optional prelude), then
+//!    run [`Resolver`] with the merged def table and [`ProgramImportEnv`] so bodies, types, and
+//!    expressions bind against cross-module names. Append any defs discovered during body resolve
+//!    (e.g. nested items) to the merged table.
+//!
+//! ## Inputs and outputs
+//!
+//! - **In:** [`LoadedProgram`] — parsed modules, shared [`Interner`], path index, submodule graph,
+//!   package metadata, and `prelude_enabled` flag from project config.
+//! - **Out:** [`ResolvedProgram`] — root module AST, flat def/resolution/closure tables, merged
+//!   `import_types` / `import_lang_items` from dependency `.pxi` files, and optional `main_fn`
+//!   [`DefId`] for bin packages.
+//!
+//! ## Invariants
+//!
+//! - Every [`DefId`] in export maps and resolutions refers to an index in the merged `defs` vec.
+//! - Phase 2 never runs on a module that failed phase 1, avoiding cascaded errors from a broken
+//!   export table.
+//! - Prelude bindings are injected only for workspace-owned modules when
+//!   [`LoadedProgram::prelude_enabled`] is set; dependency package modules never receive prelude
+//!   names implicitly.
+//!
 //! ## Entry points
 //!
 //! - [`resolve_loaded_program`] — sole public entry; merges all modules into one def table and
-//!   resolution map
+//!   resolution map.
 
 use std::collections::{HashMap, HashSet};
 
@@ -31,9 +64,14 @@ use super::prelude::{PreludeCtx, prelude_bindings};
 use crate::project::PackageType;
 use crate::pxi::PxiType;
 
+/// Per-module export map: exported symbol → defining [`DefId`] in the merged program table.
 type ExportMap = HashMap<Symbol, DefId>;
 
 /// Maps a module-local [`DefId`] into the merged program table.
+///
+/// During phase 1 each module's resolver allocates local ids starting at zero; this adds the
+/// module's base offset in the merged `defs` vec. Returns [`DefIdOverflow`] when the global
+/// index would exceed the [`DefId`] capacity.
 fn try_remap_local_def_id(def_base: usize, local: DefId) -> Result<DefId, DefIdOverflow> {
     let index = def_base
         .checked_add(local.index() as usize)
@@ -42,15 +80,37 @@ fn try_remap_local_def_id(def_base: usize, local: DefId) -> Result<DefId, DefIdO
 }
 
 /// Allocates the next global [`DefId`] when appending defs during module merge.
+///
+/// The new id equals the current length of the merged `defs` vec. Returns
+/// [`DefIdOverflow`] when the table is full.
 fn try_alloc_merged_def_id(len: usize) -> Result<DefId, DefIdOverflow> {
     DefId::try_from_index(len)
 }
 
 /// Resolves all modules in `loaded` into a [`ResolvedProgram`].
 ///
+/// Runs the two-phase pipeline described in the module docs: collect defs and exports, apply
+/// submodule reexports, then resolve bodies with import and prelude prefaces. On success the
+/// returned program uses the root module's AST as the entry surface; cross-module metadata lives
+/// in the flat `defs`, `resolutions`, and side tables.
+///
 /// # Errors
 ///
-/// Returns [`DiagnosticBag`] when imports, duplicates, or `main` validation fail.
+/// Returns [`DiagnosticBag`] when any of the following occur (non-exhaustive):
+///
+/// - [`ResolveError::MainForbiddenInLib`] — root module defines `main` in a library package.
+/// - [`ResolveError::ProgramTooLarge`] — merged def table exceeds [`DefId`] capacity.
+/// - Import resolution failures from [`super::import_resolve`] (duplicate import, not exported,
+///   private submodule).
+/// - Reexport failures from [`apply_reexports`] (missing child module or item).
+/// - Body-resolution errors from [`Resolver`] (unresolved names, invalid `main`, etc.).
+///
+/// Modules that fail phase 1 are skipped in phase 2; their errors are still included in the bag.
+///
+/// # Panics
+///
+/// Never panics on malformed user input; def-id arithmetic uses fallible conversions and emits
+/// [`ResolveError::ProgramTooLarge`] instead of overflowing.
 #[allow(clippy::too_many_lines)]
 pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, DiagnosticBag> {
     let LoadedProgram {
@@ -311,6 +371,16 @@ pub fn resolve_loaded_program(loaded: LoadedProgram) -> Result<ResolvedProgram, 
     })
 }
 
+/// Applies `pub use` reexports from [`SubmoduleRegistry`] into parent export maps.
+///
+/// For each parent module, reads [`SubmoduleRegistry::reexports`] entries and copies the target
+/// [`DefId`] into the parent's export map under the reexported name. Supports:
+///
+/// - **One segment** — reexport an item already exported by the parent module itself.
+/// - **Two segments** — `child::item` where `child` is a direct submodule of the parent.
+///
+/// Longer paths and missing child modules or items push [`ResolveError::ModuleNotFound`] or
+/// [`ResolveError::ImportNotExported`] into `bag` and skip that entry.
 fn apply_reexports(
     modules: &[LoadedModule],
     submodules: &SubmoduleRegistry,
@@ -379,6 +449,16 @@ fn apply_reexports(
     }
 }
 
+/// Builds the import preface for one module before body resolution.
+///
+/// Resolves every `#import` in the module's AST via [`resolve_import_directive`], tracking seen
+/// symbols to reject duplicates. When `prelude_enabled` and the module belongs to the workspace
+/// package ([`module_belongs_to_workspace`]), appends implicit bindings from
+/// [`super::prelude::prelude_bindings`].
+///
+/// Returns `(local_symbol, def_id, is_type_namespace, import_span)` tuples consumed by
+/// [`Resolver::import_bindings`]. Side effects: pushes import diagnostics into `bag` and merges
+/// PXI type/lang-item metadata into `import_types` and `import_lang_items`.
 #[allow(clippy::too_many_arguments)]
 fn build_import_bindings(
     module: &LoadedModule,
@@ -425,11 +505,18 @@ fn build_import_bindings(
     bindings
 }
 
+/// Returns `true` when `path` is the workspace root module or a submodule under it.
+///
+/// Dependency package modules (different first path segment) do not receive implicit prelude
+/// bindings even when prelude is enabled for the workspace.
 fn module_belongs_to_workspace(path: &super::path::ModulePath, workspace_name: &str) -> bool {
     let key = path.display();
     key == workspace_name || key.starts_with(&format!("{workspace_name}::"))
 }
 
+/// Returns the source span of a top-level `main` function, if present.
+///
+/// Used for diagnostics when `main` is forbidden (lib package) or when def-id remapping fails.
 fn main_function_span(program: &Program, interner: &Interner) -> Option<Span> {
     for item in &program.items {
         if let TopLevelDecl::Function(f) = &item.inner.decl
