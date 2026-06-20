@@ -2,6 +2,14 @@
 //!
 //! Handles primitives, named types, generics, references, pointers, tuples, arrays, slices, and
 //! function types `:: (…) => T`.
+//!
+//! ## Entry points
+//!
+//! - [`Parser::parse_type`] — any type expression (annotations, casts, fields)
+//! - [`Parser::parse_generic_params`] — `<T>` or `<T: Bound, …>` on declarations
+//! - [`Parser::parse_generic_args`] — `<T, …>` at use sites (opening `<` already consumed)
+//! - [`Parser::parse_trait_bound`] — one trait bound in a generic parameter list
+//! - [`Parser::parse_int_lit`] — integer literal tokens (shared with patterns and const eval)
 
 use phx_diagnostics::{ExpectedToken, ParseError};
 
@@ -232,8 +240,9 @@ impl Parser<'_> {
         }
     }
 
-    /// Parses comma-separated type arguments; the leading `<` must already be consumed.
     /// Parses `<T, …>` type arguments (opening `<` already consumed).
+    ///
+    /// Handles nested `>>` by setting [`Parser::deferred_generic_closing`] for the enclosing list.
     pub(crate) fn parse_generic_args(&mut self) -> Result<Vec<Node<Type>>, ParseError> {
         let mut args = vec![self.parse_type_expr()?];
         while self.eat_kind(&TokenKind::Comma) {

@@ -2,6 +2,13 @@
 //!
 //! Handles `#import`, `pub`, `Name :: struct/enum/trait`, `type` aliases, `impl` blocks, and
 //! function signatures. Module paths reuse lexer slices (`&str`) and intern them without copying.
+//!
+//! ## Entry points
+//!
+//! - [`Parser::parse_import`] — file header imports
+//! - [`Parser::parse_top_level_item`] — one declaration per loop iteration in [`super::parse_program`]
+//! - [`Parser::parse_param`] — function and closure parameters
+//! - [`Parser::parse_path`] — qualified paths (reserved for unified path parsing)
 
 use phx_diagnostics::ExpectedToken;
 
@@ -16,6 +23,11 @@ use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
     /// Parses `#import path [:: { items }];`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::UnexpectedToken`] or [`ParseError::UnexpectedEof`] when the
+    /// directive is malformed, or [`ParseError::InternTableFull`] when the intern table is exhausted.
     pub(crate) fn parse_import(&mut self) -> Result<Node<ImportDirective>, ParseError> {
         let start = self.checkpoint();
         self.expect_kind(ExpectedToken::Punct("#import"), &TokenKind::HashImport)?;
@@ -85,6 +97,11 @@ impl Parser<'_> {
     }
 
     /// Parses a `::`-separated path (value and type segments).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::UnexpectedToken`] when the path is empty or the next token is not
+    /// an identifier or type name.
     #[allow(dead_code)] // Used when qualified paths are unified with expression path parsing.
     pub(crate) fn parse_path(&mut self) -> Result<crate::ast::Path, ParseError> {
         let mut segments = Vec::new();
@@ -115,6 +132,13 @@ impl Parser<'_> {
     }
 
     /// Parses one `pub`? top-level declaration followed by `;`.
+    ///
+    /// Dispatches on the leading keyword or identifier to struct/enum/trait/type/const/var/extern
+    /// forms. Attributes are parsed first via [`Parser::parse_attribute_list`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a syntax error when the item is incomplete or uses unsupported syntax.
     pub(crate) fn parse_top_level_item(&mut self) -> Result<Node<TopLevelItem>, ParseError> {
         let start = self.checkpoint();
         let attrs = self.parse_attribute_list()?;
@@ -612,6 +636,10 @@ impl Parser<'_> {
     }
 
     /// Parses one parameter (`self` or `name: Ty`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::UnexpectedToken`] when neither `self` nor `ident : type` is present.
     pub(crate) fn parse_param(&mut self) -> Result<Param, ParseError> {
         if matches!(
             self.peek_kind(),

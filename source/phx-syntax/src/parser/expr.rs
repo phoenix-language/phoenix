@@ -2,6 +2,13 @@
 //!
 //! Precedence runs from low to high: assignment → logical → bitwise → arithmetic → unary →
 //! postfix → primary. Path and struct literal parsing borrow identifier text from tokens as `&str`.
+//!
+//! ## Entry points
+//!
+//! - [`Parser::parse_expr`] — full expression (assignment level and below)
+//! - [`Parser::parse_logical_or_expr`] — `||` without assignment
+//! - [`Parser::parse_equality_expr`] — `==` / `!=` without logical ops
+//! - [`Parser::parse_literal`] — numeric, byte, bool, and unit literals
 
 use phx_diagnostics::ExpectedToken;
 
@@ -19,6 +26,9 @@ use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
     /// Parses an expression (assignment level and below).
+    ///
+    /// Entry for statement tails, match arms, and function bodies. Delegates to the cast/assign
+    /// chain starting at [`Self::parse_cast_expr`].
     pub(crate) fn parse_expr(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_cast_expr()
     }
@@ -63,7 +73,7 @@ impl Parser<'_> {
 
     // Precedence (low → high): `||`, `&&`, equality, relational, `|`, `^`, `&`, shifts, `+/-`, `*`, `**`.
 
-    /// Parses left-associative `||`.
+    /// Parses left-associative `||` (without assignment operators).
     pub(crate) fn parse_logical_or_expr(&mut self) -> Result<ExprNode, ParseError> {
         self.parse_binary_chain(Self::parse_logical_and_expr, BinOp::Or, &TokenKind::OrOr)
     }
@@ -99,6 +109,7 @@ impl Parser<'_> {
         ))
     }
 
+    /// Parses left-associative `==` and `!=` (without logical operators).
     pub(crate) fn parse_equality_expr(&mut self) -> Result<ExprNode, ParseError> {
         let mut left = self.parse_relational_expr()?;
         while matches!(self.peek_kind(), TokenKind::EqEq | TokenKind::Ne) {
@@ -626,6 +637,10 @@ impl Parser<'_> {
     }
 
     /// Parses a numeric, byte, float, bool, or unit literal.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::UnexpectedToken`] when the cursor is not on a literal token.
     pub(crate) fn parse_literal(&mut self) -> Result<Literal, ParseError> {
         match self.peek_kind() {
             TokenKind::Integer { value, suffix } => {

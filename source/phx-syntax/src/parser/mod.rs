@@ -1,8 +1,51 @@
 //! Recursive-descent parser for Phoenix source.
 //!
-//! The `Parser` holds the token cursor, source slice, and [`Interner`]. Submodules split the
-//! grammar by syntactic category (`decl`, `expr`, `stmt`, `pat`, `types`). Entry point:
-//! [`parse`].
+//! ## Public entry points
+//!
+//! Call [`parse`] for a single file, or [`parse_with_interner`] when building a crate and
+//! reusing one [`Interner`] across multiple compilation units. Both functions:
+//!
+//! 1. Lex the source via [`crate::lexer::lex`].
+//! 2. Run the internal [`Parser`] over the token stream.
+//! 3. Return a [`ParseResult`] containing a [`SourceFile`] (program + interner) and any
+//!    collected diagnostics.
+//!
+//! ## Grammar layout
+//!
+//! The internal [`Parser`] holds the token cursor, source slice, and [`Interner`]. Submodules
+//! split the grammar by syntactic category:
+//!
+//! | Submodule | Parses |
+//! |-----------|--------|
+//! | `decl` | imports, functions, types, impls, modules |
+//! | `expr` | expressions and literals |
+//! | `stmt` | statements and blocks |
+//! | `pat` | patterns |
+//! | `types` | type expressions |
+//! | `attr` | `#[…]` item attributes |
+//!
+//! ## Error recovery
+//!
+//! [`parse`] and [`parse_with_interner`] always enable recovery mode. On a syntax error the
+//! parser records a [`ParseError`] into a [`ParseBag`] and resumes at a **sync point** instead
+//! of aborting the file:
+//!
+//! - **Top-level items** (imports, declarations): [`Parser::sync_top_level`] skips tokens until
+//!   the next plausible item start (`;`, `}`, attribute, keyword, or identifier).
+//! - **Statements** (inside blocks): [`Parser::sync_stmt`] skips until `;`, `}`, or EOF.
+//!
+//! ### Invariants
+//!
+//! - **Never panics on user input.** Malformed source, lexer failures, and exhausted intern
+//!   tables produce [`ParseError`] values; they do not trigger Rust panics.
+//! - **Always returns a value.** Even when lexing fails or every top-level item errors, callers
+//!   receive a [`ParseResult`] with an (possibly empty) [`Program`] and populated `errors`.
+//! - **Recovery is best-effort.** Sync points advance the cursor; if progress stalls (cursor
+//!   unchanged at EOF), the top-level loop stops to avoid an infinite skip.
+//! - **Partial AST is valid for downstream passes.** Later compiler stages should inspect
+//!   [`ParseResult::has_errors`] and/or merge `errors` before assuming a complete tree.
+//! - **Spans refer to the original `source` string.** The returned [`SourceFile`] does not
+//!   own source text; offsets in diagnostics and AST nodes index into the `&str` argument.
 
 mod attr;
 mod decl;
@@ -24,7 +67,11 @@ use crate::token::{Keyword, Token, TokenKind};
 /// Sentinel returned by [`Parser::peek_kind`] / [`Parser::peek_at`] past the token stream.
 const EOF_KIND: TokenKind<'static> = TokenKind::Eof;
 
-/// Parser over a token stream and source text.
+/// Mutable parse state over a lexed token stream and source text.
+///
+/// Callers outside this module use [`parse`] / [`parse_with_interner`]; submodule impl blocks
+/// extend `Parser` with category-specific `parse_*` methods. The cursor (`pos`) only moves
+/// forward via [`Parser::bump`] except when speculative parsing restores a [`Parser::checkpoint`].
 pub(crate) struct Parser<'src> {
     /// Original source buffer (for spans and literal text).
     source: &'src str,
@@ -501,7 +548,10 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Parses imports then top-level items until EOF.
+    /// Parses `#import` directives then top-level items until EOF.
+    ///
+    /// With recovery enabled, import and item errors are recorded and parsing continues at
+    /// [`Self::sync_top_level`]; without recovery, the first error aborts the parse.
     fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut imports = Vec::new();
         while matches!(self.peek_kind(), TokenKind::HashImport) {
@@ -539,10 +589,30 @@ impl<'src> Parser<'src> {
     }
 }
 
-/// Parses `source` into a [`SourceFile`] (program + interner).
+/// Parses a single Phoenix source file into a [`SourceFile`].
 ///
-/// Always returns a [`ParseResult`]: `value` holds the partial or complete AST;
-/// `errors` is non-empty when lexical or syntactic diagnostics were collected.
+/// Convenience wrapper around [`parse_with_interner`] that allocates a fresh [`Interner`].
+/// Use this for one-off parses (tests, REPL, single-file tools). For multi-file crates,
+/// prefer [`parse_with_interner`] so identifier symbols are shared across units.
+///
+/// # Recovery
+///
+/// Lex and parse errors are collected; parsing continues at sync points (see module docs).
+/// Check [`ParseResult::has_errors`] before treating the AST as complete.
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
+///
+/// # Examples
+///
+/// ```
+/// use phx_syntax::parse;
+///
+/// let result = parse("main :: () => { };");
+/// assert!(!result.has_errors());
+/// assert_eq!(result.value.program.items.len(), 1);
+/// ```
 #[must_use]
 pub fn parse(source: &str) -> ParseResult<SourceFile> {
     parse_with_interner(source, &mut Interner::new())
@@ -584,10 +654,28 @@ fn primitive_type_keyword_name(kw: Keyword) -> &'static str {
     }
 }
 
-/// Parses `source` using `interner` for all identifiers (shared across a crate).
+/// Parses `source`, interning identifiers into `interner`.
 ///
-/// Always returns a [`ParseResult`]: `value` holds the partial or complete AST;
-/// `errors` is non-empty when lexical or syntactic diagnostics were collected.
+/// Takes ownership of the interner's current contents via [`std::mem::take`], parses, then
+/// writes the updated table back into `interner`. Callers building a crate can pass the same
+/// `interner` for every file so [`Symbol`](crate::Symbol) ids are stable across compilation units.
+///
+/// # Recovery
+///
+/// Recovery mode is always enabled. Behavior on failure:
+///
+/// | Stage | On error |
+/// |-------|----------|
+/// | Lex | Returns an empty [`Program`] and a single [`ParseError::Lex`]; no parse pass runs. |
+/// | Parse (top-level) | Records the error, syncs to the next item, continues until EOF. |
+/// | Parse (fatal in non-recovery paths) | Recorded and replaced with an empty program (should not occur via this entry point). |
+///
+/// The returned [`ParseResult::value`] always contains a [`SourceFile`] whose `program` may be
+/// partial when `errors` is non-empty.
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
 #[must_use]
 pub fn parse_with_interner(source: &str, interner: &mut Interner) -> ParseResult<SourceFile> {
     let empty_program = Program {

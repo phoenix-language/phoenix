@@ -2,6 +2,11 @@
 //!
 //! Blocks mix statements (with `;`) and optional trailing expressions. Control flow includes
 //! `if`/`match` as expressions via [`Parser::parse_expr_without_semi`].
+//!
+//! ## Entry points
+//!
+//! - [`Parser::parse_block`] — braced block items
+//! - [`Parser::parse_stmt`] — one statement (including `let`, control flow, and expression stmts)
 
 use phx_diagnostics::ExpectedToken;
 
@@ -12,6 +17,8 @@ use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
     /// Parses `{ items… }` as a [`Block`].
+    ///
+    /// With recovery enabled, a missing `}` records an error and returns a partial block.
     pub(crate) fn parse_block(&mut self) -> Result<BlockNode, ParseError> {
         let start = self.checkpoint();
         self.expect_kind(ExpectedToken::Punct("{"), &TokenKind::LBrace)?;
@@ -99,6 +106,9 @@ impl Parser<'_> {
     }
 
     /// Parses a single statement (must include `;` where required by grammar).
+    ///
+    /// Dispatches on `let`, `return`, `break`, `continue`, `for`, `while`, and expression
+    /// statements. Uses [`Parser::sync_stmt`] on error when recovery is active.
     #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_stmt(&mut self) -> Result<StmtNode, ParseError> {
         let start = self.checkpoint();
