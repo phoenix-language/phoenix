@@ -1,4 +1,21 @@
 //! `if`, `match`, and block expressions.
+//!
+//! Builds CFG diamonds for conditional and pattern control flow: fresh blocks, conditional
+//! [`IrInst::JumpIf`], unconditional [`IrInst::Jump`] to a merge block, and scrutinee temps for
+//! pattern tests. [`lower_block_expr`] evaluates a block for its value, leaving the tail on the
+//! stack.
+//!
+//! [`emit_arm_condition`] and [`bind_match_pattern`] are also used by statement lowering (e.g.
+//! `for-in` desugar and loop pattern guards in [`super::super::stmt`]). [`block_ends_with_unconditional_jump`]
+//! suppresses redundant merge jumps when an arm ends in `return` or `break`.
+//!
+//! ## Invariants
+//!
+//! - **Scrutinee temps:** pattern `if` and `match` arms store the scrutinee in a match temp
+//!   ([`LowerCtx::next_match_temp`](crate::lower::ctx::LowerCtx::next_match_temp)) before testing
+//!   or binding; temps do not participate in normal scope drop glue.
+//! - **Merge fall-through:** arms append a jump to the merge block unless
+//!   [`block_ends_with_unconditional_jump`] is already true for that arm's tail block.
 
 use phx_syntax::Symbol;
 use phx_syntax::ast::expr::{ExprNode, IfCondition};

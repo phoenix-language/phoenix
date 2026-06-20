@@ -1,4 +1,12 @@
 //! VM intrinsic call lowering.
+//!
+//! Maps typeck [`IntrinsicSite`](crate::typeck::IntrinsicSite) markers (recorded on postfix call
+//! sites) to a single [`IrInst`](crate::ir::IrInst) each. Invoked from [`super::call`] when the
+//! callee resolves to a compiler-known intrinsic rather than a user function body.
+//!
+//! [`IntrinsicSite::SizeOf`] reads the compile-time byte size from
+//! [`TypedProgram::size_of_literals`](crate::typeck::TypedProgram::size_of_literals), with a
+//! fallback for specialized generic functions via [`size_of_bytes_for_specialized_fn`].
 
 use crate::ir::IrConst;
 use crate::ir::IrInst;

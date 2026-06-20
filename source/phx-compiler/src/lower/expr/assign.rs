@@ -1,4 +1,19 @@
 //! Assignment and compound store lowering.
+//!
+//! Implements `target = value` for locals, through-pointers (`*ptr = …`), struct fields, and
+//! slice/array indices. [`lower_assign_expr`] evaluates the RHS first (with the element type for
+//! index stores), then emits the appropriate store instruction.
+//!
+//! Target addresses are prepared by [`lower_assign_target`]: field stores reuse
+//! [`super::call::emit_load_struct_base`]; index stores push base and index before the value.
+//! Ref-to-struct bindings skip an extra base pop after [`IrInst::SetField`].
+//!
+//! ## Invariants
+//!
+//! - **Expr cursor:** assignment is one typeck expression node; only the RHS consumes a
+//!   [`ExprId`](crate::typeck::ExprId) via [`super::lower_expr_typed`].
+//! - **Primitive stores:** [`IrInst::PtrStore`] and [`IrInst::IndexStore`] require a resolved
+//!   wire kind from the value type or, for indices, the indexable element type.
 
 use phx_syntax::ast::expr::{Expr, ExprNode, PostfixOp, UnaryOp};
 

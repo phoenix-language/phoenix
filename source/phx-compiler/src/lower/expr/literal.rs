@@ -1,4 +1,16 @@
 //! Literals, identifiers, paths, and binary operators.
+//!
+//! Leaf expression forms that push a single stack value: constants via [`IrInst::Const`],
+//! locals via [`IrInst::LoadLocal`], and resolved defs via [`IrInst::LoadFn`]. Binary ops
+//! evaluate operands left-to-right then emit [`IrInst::BinOp`].
+//!
+//! [`intern_literal`] maps AST [`Literal`](phx_syntax::ast::lit::Literal) nodes to the IR
+//! constant pool, applying the typeck-assigned primitive kind when the literal is contextually
+//! typed. [`utf8_bytes_for_str_cast`] supports the `arr as str` fast path in
+//! [`super::lower_expr_inner`] without a runtime copy when the operand is known UTF-8 rodata.
+//!
+//! Wire kinds for generic monomorphizations fall back to [`super::prim::prim_kind_for_binop`]
+//! when `result_ty` is not yet a concrete primitive.
 
 use phx_syntax::ast::expr::{BinOp, Expr, ExprNode};
 use phx_syntax::ast::ident::{Ident, Path, PathSegment};
