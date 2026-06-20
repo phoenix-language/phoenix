@@ -1,4 +1,9 @@
-//! `build/manifest.json` for incremental rebuilds.
+//! `build/manifest.json` — incremental rebuild metadata (M2).
+//!
+//! Records per-module source digests, `.pxi` hashes, and artifact paths so the build
+//! driver can skip unchanged modules. [`BuildManifest::read`] / [`BuildManifest::write`]
+//! round-trip the JSON format; [`module_is_up_to_date`] compares live hashes against a
+//! stored record including dependency `.pxi` edges.
 
 use std::collections::HashMap;
 use std::fmt::Write;

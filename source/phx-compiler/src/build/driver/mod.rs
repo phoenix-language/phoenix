@@ -1,6 +1,26 @@
-//! `phx build` driver — artifacts under `build/`.
+//! `phx build` driver — orchestrates compile, emit, link, and incremental cache (M2).
 //!
-//! ## Module map
+//! Owns the end-to-end project build pipeline after [`ProjectConfig`](crate::project::ProjectConfig)
+//! is resolved: dependency prebuild, whole-program load/type-check, per-module artifact
+//! emission, global function-id assignment, cross-crate link, and manifest update.
+//!
+//! ## Pipeline
+//!
+//! 1. Recursively build path dependencies (`build/deps/{name}/`).
+//! 2. Load the workspace program; compare against `build/manifest.json`.
+//! 3. On cache miss: resolve → type-check → (optional) lower/codegen per module.
+//! 4. Emit `.pxi` interfaces; emit or reuse `.phx0` objects; link into `bin/` or `lib/`.
+//! 5. Write updated manifest and return [`BuildResult`].
+//!
+//! ## Public entry points
+//!
+//! Re-exported at the [`crate::build`] root:
+//!
+//! - [`build_project`] — primary CLI/embedder build API
+//! - [`emit_interfaces_from_compiled`] — interface-only path after external type-check
+//! - [`load_project_binary`] / [`load_project_binary_with_options`] — decode linked bin
+//!
+//! ## Submodule map
 //!
 //! - [`package`] — project and dependency build orchestration
 //! - [`incremental`] — manifest and `.pxi` freshness checks
