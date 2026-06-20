@@ -25,13 +25,16 @@
 //! | [`RunQueue`] | FIFO runnable queue |
 //! | [`SingleThreadScheduler`] | Spawn, run, park, resume harness |
 //! | [`SchedulerError`] | Invalid park/resume transitions |
+//! | [`IoWaitRegistry`] | Tracks [`ParkReason::AwaitIo`] waits and wakeups (PHX-sched-2) |
 
 mod context;
 mod harness;
+mod io_wait;
 mod park;
 mod queue;
 
 pub use context::{ContextId, ContextState, RunnableContext, StepOutcome};
 pub use harness::{RunningGuard, SchedulerError, SingleThreadScheduler};
+pub use io_wait::{IoHandle, IoWaitError, IoWaitRegistry};
 pub use park::ParkReason;
 pub use queue::RunQueue;
