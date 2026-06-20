@@ -244,10 +244,51 @@ impl RunningGuard<'_> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::scheduler::{ParkReason, StepOutcome};
+
+    fn run_next_guard<'a>(sched: &'a mut SingleThreadScheduler, label: &str) -> RunningGuard<'a> {
+        match sched.run_next() {
+            Ok(Some(guard)) => guard,
+            Ok(None) => panic!("{label}: expected runnable context"),
+            Err(err) => panic!("{label}: {err:?}"),
+        }
+    }
+
+    fn step_ok(guard: RunningGuard<'_>, label: &str) -> StepOutcome {
+        match guard.step() {
+            Ok(outcome) => outcome,
+            Err(err) => panic!("{label}: {err:?}"),
+        }
+    }
+
+    fn park_ok(guard: RunningGuard<'_>, reason: ParkReason, label: &str) {
+        if let Err(err) = guard.park(reason) {
+            panic!("{label}: {err:?}");
+        }
+    }
+
+    fn resume_ok(sched: &mut SingleThreadScheduler, id: ContextId, label: &str) {
+        if let Err(err) = sched.resume(id) {
+            panic!("{label}: {err:?}");
+        }
+    }
+
+    fn resume_err(sched: &mut SingleThreadScheduler, id: ContextId, label: &str) -> SchedulerError {
+        match sched.resume(id) {
+            Err(err) => err,
+            Ok(()) => panic!("{label}: expected resume error"),
+        }
+    }
+
+    fn run_next_none(sched: &mut SingleThreadScheduler, label: &str) {
+        match sched.run_next() {
+            Ok(None) => {}
+            Ok(Some(_)) => panic!("{label}: expected empty run queue"),
+            Err(err) => panic!("{label}: {err:?}"),
+        }
+    }
 
     #[test]
     fn spawn_n_contexts_park_one_resume_complete_on_one_thread() {
@@ -259,12 +300,9 @@ mod tests {
         assert_eq!(sched.context_count(), 3);
         assert_eq!(sched.runnable_count(), 3);
 
-        let guard = sched
-            .run_next()
-            .expect("dequeue first context")
-            .expect("dequeue first context");
+        let guard = run_next_guard(&mut sched, "dequeue first context");
         assert_eq!(guard.id(), a);
-        guard.park(ParkReason::AwaitIo).expect("park running a");
+        park_ok(guard, ParkReason::AwaitIo, "park running a");
 
         assert_eq!(
             sched.state_of(a),
@@ -275,30 +313,27 @@ mod tests {
         assert!(sched.run_queue().contains(b));
         assert!(sched.run_queue().contains(c));
 
-        let guard = sched.run_next().unwrap().expect("dequeue b");
+        let guard = run_next_guard(&mut sched, "dequeue b");
         assert_eq!(guard.id(), b);
         assert!(matches!(
-            guard.step().expect("step b"),
+            step_ok(guard, "step b"),
             StepOutcome::Stepped {
                 id,
                 steps_remaining: 1
             } if id == b
         ));
 
-        let guard = sched
-            .run_next()
-            .unwrap()
-            .expect("dequeue c while b waits in queue tail");
+        let guard = run_next_guard(&mut sched, "dequeue c while b waits in queue tail");
         assert_eq!(guard.id(), c);
         assert!(matches!(
-            guard.step().expect("step c"),
+            step_ok(guard, "step c"),
             StepOutcome::Completed(id) if id == c
         ));
 
-        let guard = sched.run_next().unwrap().expect("dequeue b again");
+        let guard = run_next_guard(&mut sched, "dequeue b again");
         assert_eq!(guard.id(), b);
         assert!(matches!(
-            guard.step().expect("finish b"),
+            step_ok(guard, "finish b"),
             StepOutcome::Completed(id) if id == b
         ));
 
@@ -306,13 +341,13 @@ mod tests {
         assert_eq!(sched.runnable_count(), 0);
         assert_eq!(sched.parked_count(), 1);
 
-        sched.resume(a).expect("resume parked a");
+        resume_ok(&mut sched, a, "resume parked a");
         assert_eq!(sched.state_of(a), Some(ContextState::Runnable));
         assert_eq!(sched.runnable_count(), 1);
 
         while sched.runnable_count() > 0 {
-            let guard = sched.run_next().unwrap().expect("drain runnable queue");
-            match guard.step().expect("drain step") {
+            let guard = run_next_guard(&mut sched, "drain runnable queue");
+            match step_ok(guard, "drain step") {
                 StepOutcome::Stepped { .. } => {}
                 StepOutcome::Completed(id) => assert_eq!(id, a),
             }
@@ -321,14 +356,14 @@ mod tests {
         assert_eq!(sched.done_count(), 3);
         assert_eq!(sched.parked_count(), 0);
         assert_eq!(sched.runnable_count(), 0);
-        assert!(sched.run_next().unwrap().is_none());
+        run_next_none(&mut sched, "run queue drained");
     }
 
     #[test]
     fn resume_non_parked_context_returns_invalid_transition() {
         let mut sched = SingleThreadScheduler::new();
         let id = sched.spawn(1);
-        let err = sched.resume(id).expect_err("runnable cannot resume");
+        let err = resume_err(&mut sched, id, "runnable cannot resume");
         assert!(matches!(
             err,
             SchedulerError::InvalidTransition {
@@ -343,23 +378,21 @@ mod tests {
     fn park_reason_await_message_round_trip() {
         let mut sched = SingleThreadScheduler::new();
         let id = sched.spawn(2);
-        let guard = sched.run_next().unwrap().expect("run");
-        guard
-            .park(ParkReason::AwaitMessage)
-            .expect("park for mailbox");
+        let guard = run_next_guard(&mut sched, "run");
+        park_ok(guard, ParkReason::AwaitMessage, "park for mailbox");
         assert_eq!(
             sched.state_of(id),
             Some(ContextState::Parked(ParkReason::AwaitMessage))
         );
-        sched.resume(id).expect("wakeup after message");
-        let guard = sched.run_next().unwrap().expect("run after resume");
+        resume_ok(&mut sched, id, "wakeup after message");
+        let guard = run_next_guard(&mut sched, "run after resume");
         assert!(matches!(
-            guard.step().expect("step after resume"),
+            step_ok(guard, "step after resume"),
             StepOutcome::Stepped { .. }
         ));
-        let guard = sched.run_next().unwrap().expect("finish");
+        let guard = run_next_guard(&mut sched, "finish");
         assert!(matches!(
-            guard.step().expect("final step"),
+            step_ok(guard, "final step"),
             StepOutcome::Completed(cid) if cid == id
         ));
     }

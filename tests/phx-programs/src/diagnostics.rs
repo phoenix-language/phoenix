@@ -469,6 +469,30 @@ pub const DIAG_DOUBLE_MUT_BORROW: DiagnosticCase = DiagnosticCase {
   |               ^^^^^^
    = help: finish using the first `&mut x` borrow before creating another",
 };
+const DIAG_SHARED_MUT_BORROW_SOURCE: &str = r"main :: () => {
+    var x: s32 = 1;
+    const a = &x;
+    const b = &mut x;
+    const _ = ();
+};
+";
+
+pub const DIAG_SHARED_MUT_BORROW: DiagnosticCase = DiagnosticCase {
+    name: r"shared_mut_borrow",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_SHARED_MUT_BORROW_SOURCE),
+    expected: r"error[E2048]: cannot borrow `x` as mutable while it is borrowed
+  --> tests/integration/diagnostics/shared_mut_borrow.phx:4:15
+  |
+4 |     const b = &mut x;
+  |               ^^^^^^
+   = note: `x` was borrowed here
+  --> tests/integration/diagnostics/shared_mut_borrow.phx:3:15
+  |
+3 |     const a = &x;
+  |               ^^
+   = help: finish using shared borrows of `x` before creating `&mut x`",
+};
 
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
@@ -493,4 +517,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_IF_BRANCH_UNTAKEN_NO_MOVE,
     DIAG_INVALID_CAST,
     DIAG_DOUBLE_MUT_BORROW,
+    DIAG_SHARED_MUT_BORROW,
 ];

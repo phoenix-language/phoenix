@@ -1,0 +1,11 @@
+error[E2048]: cannot borrow `x` as mutable while it is borrowed
+  --> tests/integration/diagnostics/shared_mut_borrow.phx:4:15
+  |
+4 |     const b = &mut x;
+  |               ^^^^^^
+   = note: `x` was borrowed here
+  --> tests/integration/diagnostics/shared_mut_borrow.phx:3:15
+  |
+3 |     const a = &x;
+  |               ^^
+   = help: finish using shared borrows of `x` before creating `&mut x`

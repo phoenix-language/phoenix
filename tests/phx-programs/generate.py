@@ -354,6 +354,7 @@ def gen_diagnostics() -> None:
         ("if_branch_untaken_no_move", "DiagFile", "if_branch_untaken_no_move.phx", None, None),
         ("invalid_cast", "DiagFile", "invalid_cast.phx", None, None),
         ("double_mut_borrow", "DiagFile", "double_mut_borrow.phx", None, None),
+        ("shared_mut_borrow", "DiagFile", "shared_mut_borrow.phx", None, None),
     ]
     lines = [
         "//! Golden diagnostic cases.\n",
