@@ -1,7 +1,19 @@
-//! IR to PHX0 bytecode codegen.
+//! IR-to-PHX0 bytecode codegen.
 //!
-//! Flattens per-function CFGs into the code section, builds constant and function tables,
-//! and sets `entry_function_id` to `main` or [`ENTRY_NONE`] when no entry is configured.
+//! Consumes a lowered [`IrModule`](crate::ir::IrModule) plus its
+//! [`TypedProgram`](crate::typeck::TypedProgram) and emits a [`BytecodeModule`] ready for
+//! [`phx_bytecode::verify`] and the VM.
+//!
+//! Each function's basic blocks are flattened into the module code section; constant pool,
+//! type metadata, function records, and per-function local layouts are built alongside.
+//! `entry_function_id` is set from [`IrModule::entry`](crate::ir::IrModule::entry) when present,
+//! otherwise [`ENTRY_NONE`].
+//!
+//! ## Entry points
+//!
+//! - [`codegen`] — single compilation unit (see [`crate::compile_compilation_unit`])
+//! - [`codegen_module`] — one module slice in a multi-module project build, with global function
+//!   ids for cross-module [`IrInst::Call`](crate::ir::IrInst::Call) targets
 
 mod const_pool;
 mod emit;
@@ -338,11 +350,31 @@ fn build_fn_arity_map(
     map
 }
 
-/// Lowers `ir` to a [`BytecodeModule`] ready for [`phx_bytecode::verify`] and the VM.
+/// Emits bytecode for a single [`IrModule`] (one compilation unit).
+///
+/// Walks every function in `ir`, emits PHX0 instructions via [`emit::emit_function`], and
+/// assembles the constants, types, functions, code, and local-layout sections. Function ids in
+/// the output match [`IrFunction::id`](crate::ir::IrFunction::id) indices; direct
+/// [`IrInst::Call`](crate::ir::IrInst::Call) operands use the same local id map.
+///
+/// The types section is the full program layout from
+/// [`TypedProgram::layout`](crate::typeck::TypedProgram::layout) (structs, enums, and function
+/// signatures). `entry_function_id` resolves `ir.entry` through the local def→id map, or
+/// [`ENTRY_NONE`] when no entry is configured.
+///
+/// In debug builds, optional PC→source span tables are recorded.
+///
+/// Primary consumer: [`crate::compile_compilation_unit`]. For per-module slices in a project
+/// build, use [`codegen_module`] instead.
 ///
 /// # Errors
 ///
-/// Returns `CodegenError` when section sizes exceed `u32::MAX`.
+/// Returns [`CodegenError::SectionTooLarge`] when a section length, arity, or local count does
+/// not fit in its on-disk field (`u32` / `u16`).
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
 pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, CodegenError> {
     use error::u32_section;
     let layout = &typed.layout;
@@ -424,11 +456,31 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     })
 }
 
-/// Codegens one module's IR slice using global function ids for [`crate::ir::IrInst::Call`].
+/// Emits bytecode for one module's IR slice inside a multi-module project build.
+///
+/// Like [`codegen`], but function ids and call targets come from `global_fn`, which maps each
+/// [`DefId`](crate::resolver::DefId) to its stable id across the whole link graph. That lets
+/// [`IrInst::Call`](crate::ir::IrInst::Call) in this module reach functions defined in sibling
+/// modules.
+///
+/// The types section is pruned to ids referenced by aggregate and indirect-call IR in this slice
+/// (see [`collect_type_ids_from_ir`] and [`build_module_type_table`]); emitted instructions remap
+/// global type ids through the returned dense local table.
+///
+/// When `is_entry_module` is true, `entry_function_id` resolves `ir.entry` through `global_fn`;
+/// otherwise it is [`ENTRY_NONE`]. `source_file`, when provided, is stored in the debug PC span
+/// table so runtime diagnostics can attribute PCs to a source path.
+///
+/// Primary consumer: the project build driver in [`crate::build`].
 ///
 /// # Errors
 ///
-/// Returns `CodegenError` when section sizes exceed `u32::MAX`.
+/// Returns [`CodegenError::SectionTooLarge`] when a section length, arity, or local count does
+/// not fit in its on-disk field (`u32` / `u16`).
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
 #[allow(clippy::implicit_hasher)]
 pub fn codegen_module(
     ir: &IrModule,
