@@ -1,4 +1,24 @@
 //! Shared lowering context: expression-type cursor and CFG builder.
+//!
+//! [`LowerCtx`] is the per-function mutable state for the lowering pass. It owns the basic-block
+//! graph under construction, tracks the expression-type cursor that must stay aligned with typeck,
+//! and records lowering errors into a shared [`LowerBag`](phx_diagnostics::LowerBag).
+//!
+//! ## Invariants
+//!
+//! - **`next_expr` cursor:** starts at [`FunctionLayout::expr_start`](crate::typeck::FunctionLayout::expr_start);
+//!   each expression visit calls [`LowerCtx::expr_ty`] (or peeks without advancing in controlled
+//!   paths documented in [`super::expr`]). Must equal `expr_end` when [`LowerCtx::finish_expr_cursor`]
+//!   runs.
+//! - **`scope_depth`:** incremented by [`LowerCtx::enter_scope`] / decremented by
+//!   [`LowerCtx::exit_scope`]; exit emits drop glue for bindings at that depth via
+//!   [`super::drop_glue`], matching typeck's binding lifetimes.
+//! - **`current` block:** all [`LowerCtx::emit`] calls append to `blocks[current]` until
+//!   [`LowerCtx::set_current`] switches emission; terminators must not be followed by more insts
+//!   in the same block.
+//! - **Loop labels:** [`LoopLabels`] on [`LowerCtx::loop_stack`] supply `break` / `continue`
+//!   targets; exit blocks use [`LOOP_EXIT_TARGET_BASE`] placeholders patched after the loop body
+//!   by [`LowerCtx::patch_loop_exit_targets`].
 
 use phx_syntax::Symbol;
 
@@ -15,9 +35,15 @@ use phx_bytecode::SLOT_KIND_FN_PTR;
 use phx_diagnostics::{LowerBag, LowerError, Span};
 
 /// Jump target placeholder for a loop exit not yet allocated (`0xF000_0000 + slot`).
+///
+/// Replaced with a real block index after the loop body is lowered; see
+/// [`LowerCtx::patch_loop_exit_targets`].
 pub const LOOP_EXIT_TARGET_BASE: u32 = 0xF000_0000;
 
 /// Jump targets for `break` / `continue` in the innermost active loop.
+///
+/// `exit_slot` indexes [`LowerCtx::pending_loop_exits`] until the exit block is allocated;
+/// [`LowerCtx::loop_exit_target`] produces the placeholder jump target stored in IR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoopLabels {
     /// Index into [`LowerCtx::pending_loop_exits`]; resolved after the loop body.
@@ -27,6 +53,10 @@ pub struct LoopLabels {
 }
 
 /// Mutable state while lowering one function body.
+///
+/// Created by [`LowerCtx::new`] with a single empty entry block. Callers in [`super::func`],
+/// [`super::stmt`], and [`super::expr`] drive AST walks; the context enforces cursor and CFG
+/// invariants and accumulates [`LowerError`](phx_diagnostics::LowerError)s without panicking.
 pub struct LowerCtx<'a> {
     /// Typed program (AST, types, resolutions).
     pub typed: &'a TypedProgram,
@@ -64,6 +94,9 @@ pub struct LowerCtx<'a> {
 
 impl<'a> LowerCtx<'a> {
     /// Creates a context with a single empty entry block.
+    ///
+    /// Initializes `next_expr` from `layout.expr_start` and `scope_depth` to zero. Does not
+    /// pre-allocate loop or match state beyond empty vectors.
     #[must_use]
     pub fn new(
         typed: &'a TypedProgram,
@@ -94,11 +127,16 @@ impl<'a> LowerCtx<'a> {
     }
 
     /// Enters a nested block scope for drop-glue tracking.
+    ///
+    /// Must be paired with [`Self::exit_scope`] on all paths (including early `return`).
     pub fn enter_scope(&mut self) {
         self.scope_depth = self.scope_depth.saturating_add(1);
     }
 
     /// Leaves a nested block scope, emitting drop glue for bindings at this depth.
+    ///
+    /// Decrements `scope_depth` after [`super::drop_glue::emit_scope_drops`] runs for the depth
+    /// being exited.
     pub fn exit_scope(&mut self) {
         crate::lower::drop_glue::emit_scope_drops(self, self.scope_depth, self.scope_depth);
         self.scope_depth = self.scope_depth.saturating_sub(1);
@@ -273,6 +311,9 @@ impl<'a> LowerCtx<'a> {
     }
 
     /// Verifies the expression cursor ended at `layout.expr_end`.
+    ///
+    /// Called once per function after the body and trailing return lowering. Mismatch records
+    /// [`LowerError::ExprCursorDrift`](phx_diagnostics::LowerError::ExprCursorDrift).
     pub fn finish_expr_cursor(&mut self) {
         if self.next_expr != self.layout.expr_end {
             self.bag.push(
@@ -380,7 +421,10 @@ impl<'a> LowerCtx<'a> {
     }
 }
 
-/// Looks up a use-site resolution.
+/// Looks up a use-site resolution from the resolver pass.
+///
+/// Keys combine `module` with the AST node's id; returns `None` when the name was unresolved
+/// at resolve time (lowering may still emit errors at the call site).
 #[must_use]
 pub fn lookup_resolution(
     resolved: &ResolvedProgram,
@@ -394,6 +438,9 @@ pub fn lookup_resolution(
 }
 
 /// Returns the interned unit type id.
+///
+/// Used as a poison fallback when [`LowerCtx::expr_ty`] cannot find a type entry; index `0` if
+/// unit is missing from the type table (should not happen after successful typeck).
 #[must_use]
 pub fn unit_ty(typed: &TypedProgram) -> TypeId {
     use crate::typeck::Ty;
@@ -423,6 +470,9 @@ pub fn bool_ty(typed: &TypedProgram) -> TypeId {
 }
 
 /// Wire primitive kind byte for `ty` (aggregate types use [`SLOT_KIND_AGG`]).
+///
+/// Function types map to [`SLOT_KIND_FN_PTR`]; pointers and references use `U64`; other primitives
+/// come from [`primitive_kind_for_type`](crate::typeck::primitive_kind_for_type).
 #[must_use]
 pub fn prim_kind_byte(typed: &TypedProgram, ty: TypeId) -> u8 {
     if matches!(typed.types.get(ty), Ty::Fn { .. }) {
@@ -446,12 +496,18 @@ pub fn ir_const_prim_kind(lit: &IrConst) -> u8 {
 }
 
 /// Maps slot for symbol in layout.
+///
+/// Returns the [`LocalSlot`](crate::typeck::LocalSlot) assigned during typeck layout for a
+/// binding name in the current function.
 #[must_use]
 pub fn slot_for_symbol(layout: &FunctionLayout, symbol: Symbol) -> Option<LocalSlot> {
     layout.binding(symbol).map(|b| b.slot)
 }
 
 /// Resolves bytecode struct `type_id` and field layout for a struct literal.
+///
+/// Prefers an exact match in [`ProgramLayout::struct_layout`](crate::typeck::ProgramLayout); when
+/// generic args are present, falls back to a unique specialized entry in `specialized_structs`.
 #[must_use]
 pub fn struct_lit_layout_ops<'a>(
     layout: &'a ProgramLayout,
