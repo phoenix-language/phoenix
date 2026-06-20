@@ -119,6 +119,7 @@ fn heap_uaf_runtime_error_maps_to_source_span() {
 
 #[test]
 fn heap_uaf_cli_shows_source_span_on_stderr() {
+    ensure_built_project("heap_uaf");
     let project = require_cli_project("heap_uaf");
     let out = shared_cli().run_project_fails(&project);
     out.assert_contains("runtime error:");
