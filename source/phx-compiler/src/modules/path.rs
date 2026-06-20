@@ -1,4 +1,12 @@
 //! Logical module paths and filesystem mapping.
+//!
+//! ## Pass role
+//!
+//! Bridges Phoenix logical paths (`pkg::a::b`) and on-disk layout (`lib.phx`, `a.phx`, `a/mod.phx`).
+//! Used by the loader to canonicalize `#import` targets, map entry files to logical paths, and
+//! locate dependency modules under each package's `module_src` root.
+//!
+//! [`ModulePath`] is the shared type across load, discover, and import resolve.
 
 use std::path::{Path, PathBuf};
 

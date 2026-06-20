@@ -1,4 +1,10 @@
 //! Implicit prelude bindings when `[project] prelude = true` and std is linked.
+//!
+//! ## Pass role
+//!
+//! Injects a fixed set of `std::core::*` names into workspace modules during
+//! [`super::resolve_loaded_program`] when [`LoadedProgram::prelude_enabled`] is set. Bindings
+//! are resolved against the loaded `std` package's export maps, not hard-coded def ids.
 
 use std::collections::{HashMap, HashSet};
 

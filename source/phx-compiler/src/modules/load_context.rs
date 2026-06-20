@@ -1,4 +1,16 @@
 //! Multi-package program loading (workspace + path dependencies).
+//!
+//! ## Pass role
+//!
+//! Describes which package roots participate in one compile: the workspace crate and its path
+//! dependencies. [`ProgramLoadContext`] is built from [`ProjectConfig`] or standalone CLI flags
+//! and passed to [`super::load_program_with_context`].
+//!
+//! ## Entry points
+//!
+//! - [`ProgramLoadContext::from_config`] — `phoenix.toml` workspace + declared deps
+//! - [`ProgramLoadContext::from_standalone`] — ad-hoc `--module-src` with optional path deps
+//! - [`ProgramLoadContext::package_for_logical`] — resolve first path segment to a package root
 
 use std::path::PathBuf;
 

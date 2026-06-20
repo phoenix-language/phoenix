@@ -1,4 +1,20 @@
-//! Load all modules reachable from the entry file.
+//! Load every module reachable from the compile entry.
+//!
+//! ## Pass role
+//!
+//! Walks the module graph starting at the entry file: reads and parses each `.phx`, records
+//! `mod` declarations via [`super::discover::SubmoduleRegistry`], follows `#import` edges across
+//! packages, and validates project layout when a [`BuildLayout`] is present. On success returns
+//! [`LoadedProgram`] for [`super::resolve_loaded_program`].
+//!
+//! ## Entry points
+//!
+//! - [`load_program`] — infers a single workspace package from `module_root`
+//! - [`load_program_with_context`] — full workspace + dependency roots from [`ProgramLoadContext`]
+//!
+//! Load errors (I/O, parse, missing module, ambiguous entry, import cycle without fresh `.pxi`)
+//! are pushed into the caller's [`DiagnosticBag`]; both functions return `None` when the bag
+//! already contains errors.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -19,7 +35,9 @@ use super::load_context::ProgramLoadContext;
 use super::path::ModulePath;
 use crate::project::{BuildLayout, PackageType};
 
-/// Dense module identifier.
+/// Dense identifier for one module in a loaded program.
+///
+/// Index matches position in [`LoadedProgram::modules`] (`id.index()` is the vector slot).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleId(u32);
 
@@ -37,7 +55,7 @@ impl ModuleId {
     }
 }
 
-/// One loaded source module.
+/// One parsed source module before cross-module resolve.
 #[derive(Debug, Clone)]
 pub struct LoadedModule {
     /// Module id.
@@ -52,7 +70,10 @@ pub struct LoadedModule {
     pub program: Program,
 }
 
-/// All modules in a loaded program before resolve.
+/// All modules in a program after load and import-graph validation, before resolve.
+///
+/// [`Self::modules`] is indexed by [`ModuleId`]; [`Self::path_index`] maps
+/// [`ModulePath::display()`] strings to ids for import resolution.
 #[derive(Debug, Clone)]
 pub struct LoadedProgram {
     /// Shared interner across modules.
@@ -101,7 +122,16 @@ pub fn load_program(
     load_program_with_context(entry_file, &ctx, None, bag)
 }
 
-/// Loads a program from `entry_file` using workspace + dependency packages.
+/// Loads a program from `entry_file` using workspace and dependency package roots.
+///
+/// Enqueues lib package roots, optional `std` when prelude is enabled, declared submodules, and
+/// cross-package `#import` targets. When `layout` is `Some`, runs filesystem layout validation
+/// (orphan files, ambiguous `foo.phx` + `foo/mod.phx`, missing module entries).
+///
+/// # Errors
+///
+/// Returns `None` and records diagnostics in `bag` on I/O failure, parse failure, missing modules,
+/// layout violations, or import cycles that cannot be escaped via fresh `.pxi` artifacts.
 #[allow(clippy::too_many_lines)]
 pub fn load_program_with_context(
     entry_file: &Path,
