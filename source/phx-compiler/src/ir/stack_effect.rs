@@ -1,4 +1,19 @@
 //! IR operand-stack simulation shared by validation and codegen.
+//!
+//! Models the implicit expression stack that [`IrInst`](super::IrInst) instructions manipulate.
+//! Each instruction's effect is delegated to [`phx_bytecode::apply_stack_effect`] with IR-specific
+//! arity (calls, structs, tuples) resolved from either the typed program or codegen callee maps.
+//!
+//! ## Entry points
+//!
+//! | Function | Consumer | Merge policy |
+//! |---|---|---|
+//! | [`analyze_ir_stack_cfg`] | [`super::validate::validate_function`] | Strict — join blocks must agree on depth |
+//! | [`compute_ir_stack_max`] | [`crate::codegen::emit`] | Conservative — join depth is `max` of predecessors |
+//! | [`apply_ir_stack_effect_typed`] | [`analyze_ir_stack_cfg`] | Per-instruction step with [`IrError`] reporting |
+//! | [`apply_ir_stack_effect_emit`] | [`compute_ir_stack_max`] | Per-instruction step; ignores underflow |
+//!
+//! [`is_ir_terminator`] and [`fn_param_count`] are shared helpers for structure checks and call arity.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -10,6 +25,10 @@ use crate::resolver::DefId;
 use crate::typeck::{Ty, TypedProgram};
 
 /// Stack simulation failure during codegen max-depth analysis.
+///
+/// Distinct from [`phx_diagnostics::IrError`] used by validation — codegen has resolved function ids
+/// and only needs to know when a callee mapping is missing before emitting
+/// [`FunctionRecord::stack_max`](phx_bytecode::FunctionRecord::stack_max).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StackSimError {
     /// Call or drop references a callee with no function id mapping.
@@ -20,6 +39,10 @@ pub enum StackSimError {
 }
 
 /// Returns true when `inst` ends basic-block control flow.
+///
+/// Terminators are [`IrInst::Return`], [`IrInst::Jump`], [`IrInst::JumpIf`], and
+/// [`IrInst::TrapGivenMismatch`]. Used by [`super::validate::validate_function`] to ensure each
+/// block has at most one terminator and that it is the final instruction.
 #[must_use]
 pub fn is_ir_terminator(inst: &IrInst) -> bool {
     matches!(
@@ -32,6 +55,11 @@ pub fn is_ir_terminator(inst: &IrInst) -> bool {
 }
 
 /// Returns callee parameter count from `typed.value_types`, or `0` when unknown.
+///
+/// Used when simulating [`IrInst::Call`] and [`IrInst::DropLocal`] stack pops. If the callee def
+/// is missing from `typed.value_types` or is not a [`Ty::Fn`](crate::typeck::Ty::Fn), arity `0` is
+/// assumed (conservative for validation; codegen uses the resolved arity map in
+/// [`compute_ir_stack_max`] instead).
 #[must_use]
 pub fn fn_param_count(typed: &TypedProgram, callee: DefId) -> u32 {
     let Some(&fn_ty) = typed.value_types.get(&callee) else {
@@ -45,9 +73,15 @@ pub fn fn_param_count(typed: &TypedProgram, callee: DefId) -> u32 {
 
 /// Applies one IR instruction's stack effect using typed callee arity.
 ///
+/// Maps each [`IrInst`] variant to its corresponding [`Opcode`] stack effect, passing call arity
+/// from [`fn_param_count`] and struct/tuple/array field counts from instruction operands. Updates
+/// `depth` in place; jump and return terminators do not change depth after any operand pops.
+///
 /// # Errors
 ///
-/// Returns [`IrError::StackUnderflow`] when the simulated depth would underflow.
+/// Returns [`IrError::StackUnderflow`] when the simulated depth would underflow before executing
+/// `inst`. Diagnostic fields identify `def_index`, `block`, `inst_index`, pre-instruction `depth`,
+/// and the instruction [`Span`].
 #[allow(clippy::too_many_lines)]
 pub fn apply_ir_stack_effect_typed(
     inst: &IrInst,
@@ -216,9 +250,13 @@ pub fn apply_ir_stack_effect_typed(
 
 /// Applies one IR instruction's stack effect using codegen callee maps.
 ///
+/// Same opcode mapping as [`apply_ir_stack_effect_typed`], but resolves [`IrInst::Call`] and
+/// [`IrInst::DropLocal`] arity from `def_to_fn` and `fn_arity` instead of the typed program.
+/// Underflow is not reported — max-depth analysis only needs monotonic depth tracking.
+///
 /// # Errors
 ///
-/// Returns [`StackSimError::MissingCallee`] when a call target has no function id mapping.
+/// Returns [`StackSimError::MissingCallee`] when a call or drop target has no entry in `def_to_fn`.
 #[allow(clippy::too_many_lines)]
 pub fn apply_ir_stack_effect_emit(
     inst: &IrInst,
@@ -348,9 +386,15 @@ pub fn apply_ir_stack_effect_emit(
 
 /// CFG-aware stack validation: merge blocks must agree on entry depth.
 ///
+/// Walks `func` blocks starting at block 0 with entry depth 0, applying
+/// [`apply_ir_stack_effect_typed`] per instruction and propagating depth along edges (jumps,
+/// conditional branches, and fallthrough). When multiple predecessors reach the same target block,
+/// their exit depths must match exactly — mismatches produce [`IrError::JoinDepthMismatch`].
+///
 /// # Errors
 ///
-/// Returns the first [`IrError`] encountered during simulation.
+/// Returns the first [`IrError`] encountered during simulation — stack underflow on any instruction
+/// or join depth mismatch at a merge block.
 pub fn analyze_ir_stack_cfg(func: &IrFunction, typed: &TypedProgram) -> Result<(), IrError> {
     if func.blocks.is_empty() {
         return Ok(());
@@ -457,9 +501,15 @@ pub fn analyze_ir_stack_cfg(func: &IrFunction, typed: &TypedProgram) -> Result<(
 
 /// CFG-aware max stack depth for codegen (conservative merge at join blocks).
 ///
+/// Walks `func` like [`analyze_ir_stack_cfg`] but merges join-block entry depth with `max` of
+/// predecessor depths instead of requiring equality. Tracks the peak depth seen across all blocks
+/// and applies a conservative floor from parameter count, local count, and a fixed slack term so
+/// emitted [`FunctionRecord::stack_max`](phx_bytecode::FunctionRecord::stack_max) satisfies the
+/// bytecode verifier.
+///
 /// # Errors
 ///
-/// Returns [`StackSimError::MissingCallee`] when a call target has no function id mapping.
+/// Returns [`StackSimError::MissingCallee`] when a call or drop target has no entry in `def_to_fn`.
 pub fn compute_ir_stack_max(
     func: &IrFunction,
     def_to_fn: &HashMap<DefId, u32>,
