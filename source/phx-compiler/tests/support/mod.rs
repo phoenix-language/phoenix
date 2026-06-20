@@ -3,6 +3,9 @@
 #![allow(
     dead_code,
     clippy::expect_used,
+    clippy::explicit_auto_deref,
+    clippy::manual_let_else,
+    clippy::match_wild_err_arm,
     clippy::missing_panics_doc,
     clippy::unwrap_used
 )]
@@ -15,7 +18,6 @@ use phx_diagnostics::{DiagnosticBag, TypeCheckBag};
 use phx_programs::ModuleTree;
 
 /// Unwrap a test [`Result`], panicking with `context` on failure.
-#[must_use]
 pub fn test_ok<T, E: std::fmt::Debug>(result: Result<T, E>, context: &str) -> T {
     match result {
         Ok(value) => value,

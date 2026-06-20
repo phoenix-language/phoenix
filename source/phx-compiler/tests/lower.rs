@@ -22,7 +22,7 @@ fn lower_unit(unit: &phx_compiler::unstable::CompilationUnit) -> phx_compiler::u
     test_ok(lower(&unit.typed), "lower")
 }
 
-fn main_fn<'a>(ir: &'a phx_compiler::unstable::IrModule) -> &'a phx_compiler::unstable::IrFunction {
+fn main_fn(ir: &phx_compiler::unstable::IrModule) -> &phx_compiler::unstable::IrFunction {
     test_some(
         ir.functions.iter().find(|f| Some(f.def) == ir.entry),
         "main",
