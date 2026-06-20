@@ -382,9 +382,9 @@ mod tests {
         // Simulate a stale running guard: context stayed Parked while the worker
         // slot still names it as running.
         {
-            let ctx = sched
-                .context_mut(id)
-                .expect("context must exist for double-park setup");
+            let Some(ctx) = sched.context_mut(id) else {
+                panic!("context must exist for double-park setup");
+            };
             ctx.set_state(ContextState::Parked(ParkReason::AwaitMessage));
             sched.running = Some(id);
         }
