@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-    Instruction, LocalLayoutTable, Opcode, TypeTable, VerifyError,
+    Instruction, LocalLayoutTable, Opcode, PcSpanTable, TypeTable, VerifyError,
 };
 use phx_compiler::{
     BuildError, BuildOptions, LoadOptions, ProjectConfig, build_project, load_project_binary,
@@ -73,7 +73,7 @@ fn malformed_module_bytes() -> Vec<u8> {
         },
         code,
         local_layouts: LocalLayoutTable::default(),
-        pc_spans: Default::default(),
+        pc_spans: PcSpanTable::default(),
     };
     module.encode().expect("encode malformed module")
 }
