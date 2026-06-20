@@ -1,4 +1,13 @@
-//! Module constant pool builder (dedupe literal payloads).
+//! IR literal → PHX0 constant pool builder.
+//!
+//! Part of the [`codegen`](crate::codegen) pass. [`ConstPoolBuilder`] converts
+//! [`IrConst`](crate::ir::IrConst) values from [`IrModule::constants`](crate::ir::IrModule::constants)
+//! into wire-format [`ConstEntry`](phx_bytecode::ConstEntry) payloads, deduplicating identical
+//! tag/payload pairs so shared literals occupy one pool slot.
+//!
+//! Emission ([`super::emit`]) resolves [`IrInst::Const`](crate::ir::IrInst::Const) and
+//! [`IrInst::MakeStr`](crate::ir::IrInst::MakeStr) operands through
+//! [`ConstPoolBuilder::pool_index_for_literal`], which maps each IR literal index to its pool index.
 
 use std::collections::HashMap;
 
@@ -8,19 +17,22 @@ use crate::codegen::CodegenError;
 use crate::codegen::error::u32_section;
 use crate::ir::IrConst;
 
-/// Key for deduplicating constant pool entries.
+/// Dedupe key: wire tag byte plus encoded payload bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PoolKey {
     tag: u8,
     payload: Vec<u8>,
 }
 
-/// Builder for a deduplicated [`ConstPool`].
+/// Builds a deduplicated module [`ConstPool`] from IR literals.
+///
+/// Call [`Self::fill_from_ir`] once per module, then look up pool indices while emitting
+/// instructions; finish with [`Self::finish`].
 #[derive(Debug, Default)]
 pub struct ConstPoolBuilder {
     entries: Vec<ConstEntry>,
     dedupe: HashMap<PoolKey, u32>,
-    /// Maps IR literal index → pool index.
+    /// IR literal index → constant pool index (parallel to `IrModule::constants`).
     ir_to_pool: Vec<u32>,
 }
 
@@ -71,7 +83,7 @@ impl ConstPoolBuilder {
             .ok_or(CodegenError::MissingLiteralIndex { literal_index })
     }
 
-    /// Finishes the pool.
+    /// Consumes the builder and returns the assembled constant pool section.
     #[must_use]
     pub fn finish(self) -> ConstPool {
         ConstPool {
@@ -80,6 +92,7 @@ impl ConstPoolBuilder {
     }
 }
 
+/// Encodes one IR literal as a wire-format constant entry (tag + little-endian payload).
 fn ir_const_to_entry(lit: &IrConst) -> ConstEntry {
     match lit {
         IrConst::Int(v, kind) => {
@@ -118,7 +131,7 @@ fn ir_const_to_entry(lit: &IrConst) -> ConstEntry {
     }
 }
 
-/// Narrowing/wrapping casts for literal pool bytes (Phoenix `as` semantics).
+/// Encodes an integer literal for `kind`, using Phoenix narrowing/wrapping `as` semantics.
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,

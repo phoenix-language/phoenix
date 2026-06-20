@@ -1,8 +1,13 @@
-//! Codegen failures.
+//! IR → PHX0 bytecode lowering failures.
+//!
+//! [`CodegenError`] covers the [`codegen`](crate::codegen) pass: section size limits,
+//! constant pool and symbol-table lookups, control-flow layout, and instruction encoding.
+//! [`crate::compile::CompileError::Codegen`] and [`crate::build::BuildError::Codegen`]
+//! wrap these for single-unit and project builds respectively.
 
 use phx_bytecode::{EncodeError, InstrError};
 
-/// IR → bytecode lowering failure.
+/// Failure while lowering IR to PHX0 bytecode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
     /// Section or offset does not fit in `u32`.
@@ -87,7 +92,13 @@ impl From<InstrError> for CodegenError {
     }
 }
 
-/// Converts `len` to `u32` for codegen tables.
+/// Converts a section length or index to `u32` for PHX0 on-disk fields.
+///
+/// Used when recording code offsets, pool indices, and other table sizes during emission.
+///
+/// # Errors
+///
+/// Returns [`CodegenError::SectionTooLarge`] when `len` exceeds [`u32::MAX`].
 pub fn u32_section(section: &'static str, len: usize) -> Result<u32, CodegenError> {
     u32::try_from(len).map_err(|_| CodegenError::SectionTooLarge { section, len })
 }
