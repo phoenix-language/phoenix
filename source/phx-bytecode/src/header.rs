@@ -1,4 +1,28 @@
 //! PHX0 file header (24 bytes, little-endian).
+//!
+//! The first 24 bytes of every PHX0 image: magic, format version, flags, section count, and the
+//! executable entry function id. The section table immediately follows the header.
+//!
+//! Wire layout: `docs/design/features/vm-linear.md` § "File header".
+//!
+//! ## Field layout
+//!
+//! `magic` (4), `version_major` (2), `version_minor` (2), `flags` (4), `section_count` (4),
+//! `entry_function_id` (4), reserved (4).
+//!
+//! ## Owning passes
+//!
+//! - **Codegen / linker** — emit headers with [`VERSION_MAJOR`] / [`VERSION_MINOR`], set
+//!   [`ENTRY_NONE`] for library objects without `main`.
+//! - **Decoder** — [`FileHeader::decode`] validates magic and supported version range.
+//! - **Verifier** — checks `section_count`, flags vs optional debug sections, and that
+//!   `entry_function_id` names a zero-arity `main` (or [`ENTRY_NONE`]).
+//!
+//! ## In this module
+//!
+//! - [`MAGIC`], [`VERSION_MAJOR`], [`VERSION_MINOR`], [`ENTRY_NONE`] — wire constants.
+//! - [`FileHeader`] — parsed header; [`FileHeader::encode`] / [`FileHeader::decode`].
+//! - [`HeaderError`] — decode and version failures.
 
 /// ASCII magic bytes for Phoenix bytecode files.
 pub const MAGIC: [u8; 4] = *b"PHX0";
