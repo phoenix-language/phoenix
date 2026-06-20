@@ -1,4 +1,28 @@
 //! MVP bytecode opcodes (stable discriminants per format version).
+//!
+//! Each [`Opcode`] is the first byte of a code-section record; operands follow as
+//! `operand_count × u32` (see [`crate::Instruction`]). Numeric assignments are fixed for a given
+//! `(version_major, version_minor)` pair — the verifier rejects unknown bytes and the VM dispatch
+//! table must match this enum.
+//!
+//! Stack effects are documented on each variant (`[] → [value]`, `[a, b] → [sum]`, …). CFG-aware
+//! depth simulation lives in [`crate::stack_flow`]; per-instruction deltas in [`crate::stack_effect`].
+//!
+//! Wire layout and opcode families: `docs/design/features/vm-linear.md` § "Code section".
+//!
+//! ## Owning passes
+//!
+//! - **Codegen** — lowers typed IR to [`Opcode`] + operands; must stay in sync with
+//!   [`crate::stack_effect`] and local-layout slot kinds.
+//! - **Verifier** — decodes opcode bytes via [`Opcode::from_u8`], validates operand counts and
+//!   indices against section tables.
+//! - **VM** — interprets the same discriminants at runtime.
+//!
+//! ## In this module
+//!
+//! - [`Opcode`] — stable `u8` instruction tags through [`Opcode::SliceLen`].
+//! - [`Opcode::from_u8`] / [`Opcode::as_u8`] — wire encode/decode.
+//! - [`OpcodeError`] — unknown opcode byte.
 
 /// MVP instruction opcode (wire: single `u8`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
