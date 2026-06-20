@@ -1,24 +1,38 @@
-//! IR instructions and stack effects (MVP subset).
+//! IR instructions, function indices, and operand-stack contracts (MVP subset).
 //!
-//! Aligns with opcode families in `docs/design/features/vm-linear.md`; numeric opcodes are
-//! assigned during codegen.
+//! [`IrInst`] is the typed, stack-oriented instruction set between lowering and codegen. Each
+//! variant documents its operand-stack effect; [`super::validate::validate_ir`] simulates depth at
+//! CFG merge points, and [`phx_bytecode::verify`](../../../phx-bytecode/src/verify.rs) checks the
+//! emitted bytecode.
+//!
+//! ## Related types
+//!
+//! - [`IrFunctionId`] — dense function index in an [`IrModule`](super::IrModule).
+//! - [`LocalSlot`] — re-exported from typeck; slot indices match [`FunctionLayout`](crate::typeck::FunctionLayout).
+//! - [`IrBinOp`] — binary operator discriminant lowered from typed expressions.
+//!
+//! Opcode wire values are assigned in codegen; families align with
+//! `docs/design/features/vm-linear.md`.
 
 use crate::resolver::DefId;
 pub use crate::typeck::LocalSlot;
 use crate::typeck::TypeId;
 
-/// Dense index of a function in an [`IrModule`](super::IrModule).
+/// Dense index of a lowered function inside an [`IrModule`](super::IrModule).
+///
+/// Lowering assigns ids `0..functions.len()-1` in emission order. Codegen and the VM use the same
+/// index as the bytecode function table key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IrFunctionId(u32);
 
 impl IrFunctionId {
-    /// Creates an id from a raw index (lowering internal use).
+    /// Wraps a raw module function index (lowering and test helpers).
     #[must_use]
     pub const fn from_raw(index: u32) -> Self {
         Self(index)
     }
 
-    /// Returns the raw index.
+    /// Returns the underlying index into [`IrModule::functions`](super::IrModule::functions).
     #[must_use]
     pub const fn index(self) -> u32 {
         self.0
@@ -280,6 +294,10 @@ pub enum IrInst {
 }
 
 /// Binary operators mirrored from type-checked expressions.
+///
+/// Lowering maps each variant to an [`IrInst::BinOp`] (or dedicated compare/cast paths). Codegen
+/// translates to [`phx_bytecode::Opcode`] (`Add`, `Eq`, `Shl`, etc.). New operators require
+/// typeck, IR, bytecode, and verifier updates together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum IrBinOp {

@@ -3,6 +3,18 @@
 //! IR is the handoff between type checking and bytecode codegen. It is built only from
 //! [`TypedProgram`](crate::typeck::TypedProgram) — lowering must not re-walk unresolved AST.
 //!
+//! ## Public API
+//!
+//! | Type / function | Module | Role |
+//! |---|---|---|
+//! | [`IrModule`] | `mod` | Whole lowered unit (functions, entry, constants) |
+//! | [`IrFunction`] | [`func`] | One CFG + signature |
+//! | [`IrInst`], [`IrBinOp`], [`IrFunctionId`] | [`inst`] | Instructions and indices |
+//! | [`IrBasicBlock`], [`SpannedInst`] | `block`, `spanned` | CFG nodes and span-tagged insts |
+//! | [`IrConst`] | `const_lit` | Module constant pool entries |
+//! | [`validate_ir`], [`validation_enabled`] | `validate` | Pre-codegen structural checks |
+//! | [`compute_ir_stack_max`], [`StackSimError`] | `stack_effect` | Stack depth analysis |
+//!
 //! ## Invariants
 //!
 //! - Every value-producing instruction is associated with a [`TypeId`](crate::typeck::TypeId)
@@ -54,18 +66,33 @@ pub use validate::{validate_function, validate_ir, validation_enabled};
 use crate::resolver::DefId;
 
 /// A compiled module in IR form (single-file MVP).
+///
+/// Produced by [`crate::lower::lower`] from a [`TypedProgram`](crate::typeck::TypedProgram) and
+/// consumed by [`crate::codegen::codegen_module`] (after optional [`validate_ir`]). This is the
+/// last structured graph before bytecode emission; embedders should use
+/// [`crate::facade::compile_to_module`] rather than holding an [`IrModule`] across releases.
+///
+/// ## Lookup
+///
+/// - Resolve a function body by [`IrFunctionId::index`] into [`Self::functions`].
+/// - Match [`IrFunction::def`] against [`TypedProgram::functions`](crate::typeck::TypedProgram::functions)
+///   for slot layout and expression metadata during validation.
+/// - [`Self::entry`] mirrors the typed program entry and selects the VM root when present.
 #[derive(Debug, Clone)]
 pub struct IrModule {
-    /// Functions lowered from the typed program.
+    /// All lowered functions in dense [`IrFunctionId`] order (index `i` ↔ `IrFunctionId::from_raw(i)`).
     pub functions: Vec<IrFunction>,
-    /// [`DefId`] of `main`, if present.
+    /// [`DefId`] of `main :: () => ()` when the compilation unit defines an entry point.
     pub entry: Option<DefId>,
-    /// Module constant pool (indices used by [`IrInst::Const`]).
+    /// Module constant pool; [`IrInst::Const`] and [`IrInst::MakeStr`] reference indices here.
     pub constants: Vec<IrConst>,
 }
 
 impl IrModule {
-    /// Creates an empty module (placeholder until lowering is implemented).
+    /// Returns an empty module with no functions, entry, or constants.
+    ///
+    /// Used by tests and incremental lowering scaffolding; production pipelines populate fields via
+    /// [`crate::lower::lower`].
     #[must_use]
     pub fn empty() -> Self {
         Self {
