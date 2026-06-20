@@ -1,7 +1,22 @@
 //! `?` operator lowering metadata.
 //!
-//! Records [`TrySiteMeta`] per postfix `?` expression so lowering can emit the correct failure
-//! arm (return scrutinee or `From::from` conversion).
+//! Records [`TrySiteMeta`] per postfix `?` expression during type checking so lowering can emit the
+//! correct failure arm without re-deriving enum tags or local slots from the AST.
+//!
+//! ## Pipeline placement
+//!
+//! 1. **Type check** — [`super::check::expr`] recognizes postfix `?`, validates scrutinee type
+//!    (`Option` or `Result`), and pushes [`TrySiteMeta`] keyed by expression [`super::types::ExprId`].
+//! 2. **Lower** — [`crate::lower::expr`] reads the map and emits branch/return glue for
+//!    [`TryFailureMode::ReturnScrutinee`] or monomorphized `From::from` for
+//!    [`TryFailureMode::ConvertErr`].
+//!
+//! ## Failure modes
+//!
+//! | Mode | When | Lowering behavior |
+//! |------|------|-------------------|
+//! | [`TryFailureMode::ReturnScrutinee`] | Scrutinee and enclosing return use the same enum shape | Return scrutinee unchanged (V0-042) |
+//! | [`TryFailureMode::ConvertErr`] | `Result` err types differ but `From` applies | Convert Err payload via monomorphized `From::from` (V0-059) |
 
 use super::bindings::LocalSlot;
 use super::types::TypeId;
