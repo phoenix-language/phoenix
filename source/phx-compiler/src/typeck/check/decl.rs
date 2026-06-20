@@ -1,4 +1,7 @@
 //! Top-level declaration collection and checking.
+//!
+//! First pass over modules: lower type signatures, collect struct fields, register trait and impl
+//! metadata, and seed [`ProgramLayout`] before function bodies are checked.
 
 use std::collections::{HashMap, HashSet};
 

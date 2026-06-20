@@ -1,4 +1,7 @@
 //! Monomorphization: duplicate generic functions and type layouts for explicit instantiation sites.
+//!
+//! After the main check pass, [`monomorphize`] clones generic templates for each collected
+//! [`MonoInst`], validates trait bounds, and patches call-site metadata to specialized callees.
 
 use std::collections::HashMap;
 

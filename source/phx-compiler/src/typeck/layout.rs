@@ -1,4 +1,7 @@
 //! Struct/enum layout tables for lowering and bytecode metadata.
+//!
+//! Builds [`ProgramLayout`] with field offsets, variant tags, trait impl keys, and bytecode
+//! type-table ids. Populated during type checking and read by lowering and codegen.
 
 use std::collections::HashMap;
 use std::collections::HashSet;

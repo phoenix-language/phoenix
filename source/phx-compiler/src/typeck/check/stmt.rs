@@ -1,4 +1,7 @@
 //! Statement, block, loop, and drop planning.
+//!
+//! Type-checks control flow, records loop binding plans and drop points, and coordinates with
+//! [`crate::typeck::ownership::OwnershipTracker`] for move semantics at statement boundaries.
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::decl::{Function, Param};

@@ -1,4 +1,7 @@
 //! Stable symbol mangling for monomorphized definitions and `.pxi` export ids.
+//!
+//! [`mangle_symbol`] and [`mangle_export_id`] produce deterministic names from template bases
+//! and concrete type arguments for linkage and interface files.
 
 use super::display::format_type;
 use super::types::{TypeId, TypeInterner};

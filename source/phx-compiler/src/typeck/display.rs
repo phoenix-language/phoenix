@@ -1,4 +1,7 @@
 //! Format [`TypeId`] for diagnostics.
+//!
+//! Renders interned types as human-readable strings for type errors and mangling, resolving
+//! definition names through the [`Interner`] and definition table.
 
 use phx_syntax::Interner;
 

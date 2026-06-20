@@ -1,4 +1,7 @@
 //! Trait default method inheritance for empty or partial trait impl blocks.
+//!
+//! Synthesizes missing trait method bodies from defaults, allocates synthetic [`DefId`]s, and
+//! merges them into [`ResolvedProgram`] before body checking completes.
 
 use std::collections::HashMap;
 

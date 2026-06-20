@@ -1,4 +1,7 @@
 //! Trait bound checking at generic instantiation sites.
+//!
+//! Validates that concrete type arguments satisfy declared trait bounds when monomorphizing
+//! functions, types, and impl methods.
 
 use std::collections::HashMap;
 

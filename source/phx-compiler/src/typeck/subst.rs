@@ -1,4 +1,7 @@
 //! Type substitution for explicit generic instantiation.
+//!
+//! [`Substitution`] maps generic parameter [`DefId`]s to concrete [`TypeId`]s when checking or
+//! cloning monomorphized definitions.
 
 use std::collections::HashMap;
 

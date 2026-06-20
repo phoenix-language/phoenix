@@ -1,4 +1,7 @@
 //! Type equality and branch unification.
+//!
+//! [`same_type`] compares types under alias expansion ([`normalize_type`]). Used for `if`/`match`
+//! branch joins, pattern compatibility, and generic constraint checks.
 
 use std::collections::{HashMap, HashSet};
 

@@ -1,4 +1,7 @@
 //! Inherent and trait impl checking.
+//!
+//! Type-checks impl block members with `Self` and associated type context, validates trait impl
+//! coherence, and checks inherited default methods against implementer types.
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::decl::{Function, ImplMember, Param, TopLevelDecl, TraitItem};

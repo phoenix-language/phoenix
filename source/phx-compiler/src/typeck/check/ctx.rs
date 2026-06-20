@@ -1,4 +1,7 @@
 //! Shared type-checker context: constructors, scope, errors, and finish.
+//!
+//! [`TypeChecker`] helpers for allocating expression ids, recording diagnostics, entering scopes,
+//! and extracting finished side tables at the end of the pass.
 
 use std::collections::HashMap;
 

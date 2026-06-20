@@ -1,4 +1,7 @@
 //! Operator typing for MVP primitives.
+//!
+//! [`check_binary`] and related helpers assign result types for arithmetic, comparison, and
+//! logical operators on interned primitive types.
 
 use phx_syntax::token::Keyword;
 
