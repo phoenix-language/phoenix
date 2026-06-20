@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used)]
 
-use phx_bytecode::verify;
+use phx_bytecode::{PcSpanTable, verify};
 use phx_cli::vm_diag::{SourceContext, format_vm_error};
 use phx_test::{ensure_built_project, require_cli_project, shared_cli};
 use phx_vm::{VmErrorKind, run};
@@ -50,7 +50,7 @@ fn vm_error_without_debug_section_falls_back_to_bytecode_site() {
     require_cli_project("heap_uaf");
     let built = ensure_built_project("heap_uaf");
     let mut module = built.module.clone();
-    module.pc_spans = Default::default();
+    module.pc_spans = PcSpanTable::default();
     module.header.flags &= !phx_bytecode::PHX0_HAS_DEBUG;
     module.header.section_count = 5;
 
