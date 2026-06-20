@@ -1,7 +1,36 @@
 //! Inherent and trait impl checking.
 //!
-//! Type-checks impl block members with `Self` and associated type context, validates trait impl
-//! coherence, and checks inherited default methods against implementer types.
+//! Second-phase checking for `impl` blocks after [`super::decl`] collects signatures and seeds
+//! [`crate::typeck::layout::ProgramLayout`]. Sets `Self` and associated-type context, validates
+//! trait impl coherence (exhaustiveness, unsafe rules, Copy/Drop conflicts), and type-checks impl
+//! method bodies. Also supplies monomorphization helpers and trait method lookup for
+//! [`super::expr`] method dispatch.
+//!
+//! # Responsibilities
+//!
+//! - **Impl blocks** — [`TypeChecker::check_impl_decl`] checks inherent and trait impl members under
+//!   the correct `Self` type and active trait-associated-type map.
+//! - **Unsafe impl rules** — [`TypeChecker::validate_impl_unsafe`] enforces unsafe-trait/impl
+//!   pairing and method-level `unsafe` agreement with the trait definition.
+//! - **Trait method resolution** — free functions such as [`find_trait_method_def`] locate concrete
+//!   or template impl methods in `ProgramLayout` for builtins, `str`, and user types.
+//! - **Monomorphization** — [`TypeChecker::check_function_specialized`] re-checks a mono instance
+//!   with substituted generics; helpers map impl-type parameters to concrete args.
+//! - **Layout binding scan** — [`TypeChecker::collect_layout_bindings_block`] registers `const`/`var`
+//!   slots for generic impl templates without full body type-checking.
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::check_impl_decl`] | Check one impl block: methods, assoc types, inherited defaults. |
+//! | [`TypeChecker::check_function`] | Check a non-generic impl method (or defer generic templates). |
+//! | [`TypeChecker::check_function_specialized`] | Re-check a monomorphized impl method body. |
+//! | [`TypeChecker::validate_impl_unsafe`] | Validate unsafe trait/impl/method pairing. |
+//! | [`TypeChecker::check_copyable_drop_conflict`] | Reject Copy+Drop on the same type via conflicting impls. |
+//! | [`find_trait_method_def`] | Resolve a trait method on a named type implementer. |
+//! | [`TypeChecker::check_trait_method_call_on_builtin`] | Type-check a method call on a primitive receiver. |
+//! | [`function_body_uses_impl_receiver`] | AST scan: does the body reference implicit `self`? |
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::decl::{Function, ImplMember, Param, TopLevelDecl, TraitItem};
@@ -25,6 +54,9 @@ use crate::typeck::types::ExprId;
 use crate::typeck::types::{Ty, TypeId};
 
 impl TypeChecker<'_> {
+    /// Returns whether a trait method signature is effectively `unsafe`.
+    ///
+    /// A method is unsafe when the trait is marked `unsafe` or the method itself is `unsafe`.
     pub(in crate::typeck::check) fn trait_method_sig_unsafe(
         sig: &phx_syntax::ast::decl::FunctionSig,
         trait_unsafe: bool,
@@ -32,6 +64,10 @@ impl TypeChecker<'_> {
         trait_unsafe || sig.unsafe_
     }
 
+    /// Validates `unsafe` pairing between a trait impl block and its trait definition.
+    ///
+    /// Emits diagnostics when a safe trait is implemented in an `unsafe impl`, an unsafe trait
+    /// lacks `unsafe impl`, or impl method `unsafe` flags disagree with the trait item.
     pub(in crate::typeck::check) fn validate_impl_unsafe(
         &mut self,
         type_name: &TypeName,
@@ -107,6 +143,11 @@ impl TypeChecker<'_> {
             }
         }
     }
+    /// Type-checks one monomorphized function or impl method instance.
+    ///
+    /// Applies `mono_args` to the template signature, sets `impl_self_type` when checking an impl
+    /// method on a generic type, and runs body checking with substitution active. Called from
+    /// [`crate::typeck::mono`] after instantiation sites are collected.
     pub(crate) fn check_function_specialized(
         &mut self,
         f: &Function,
@@ -192,6 +233,10 @@ impl TypeChecker<'_> {
         })
     }
 
+    /// Maps a standalone generic-parameter [`TypeId`] to its monomorphized concrete type.
+    ///
+    /// Uses the active substitution map, explicit `mono_args`, or `impl_self_type` argument slots
+    /// in that order. Unmapped parameters are returned unchanged.
     pub(in crate::typeck::check) fn mono_substitute_generic_param(
         &mut self,
         ty: TypeId,
@@ -360,6 +405,10 @@ impl TypeChecker<'_> {
             this.types.intern(&Ty::Fn { params, ret })
         })
     }
+    /// Rejects impl blocks that would make a type both Copyable and Drop.
+    ///
+    /// Called when collecting a Copyable or Drop trait impl; checks the opposite trait via
+    /// [`crate::typeck::layout::ProgramLayout`].
     pub(in crate::typeck::check) fn check_copyable_drop_conflict(
         &mut self,
         type_def: DefId,
@@ -433,6 +482,11 @@ impl TypeChecker<'_> {
         self.resolved.interner.resolves_to(symbol, "Self")
     }
 
+    /// Type-checks one inherent or trait `impl` block.
+    ///
+    /// Pushes impl generics, sets `Self` and associated-type context for trait impls, checks each
+    /// method body, validates trait exhaustiveness, and verifies inherited default methods against
+    /// the implementer type.
     pub(in crate::typeck::check) fn check_impl_decl(
         &mut self,
         type_name: &TypeName,
@@ -500,6 +554,10 @@ impl TypeChecker<'_> {
         self.type_defs = saved_defs;
     }
 
+    /// Type-checks a function or impl method declaration.
+    ///
+    /// Skips generic templates (mono re-check handles them). For generic impl methods on generic
+    /// types, runs a layout-oriented body scan; otherwise performs full body checking.
     pub(in crate::typeck::check) fn check_function(&mut self, f: &Function) {
         if !f.derives.is_empty() {
             self.push_unsupported("#[derive] attribute", f.body.span);
@@ -604,6 +662,10 @@ impl TypeChecker<'_> {
 }
 
 /// Returns whether `block` references the implicit impl receiver (`self`).
+///
+/// Used by [`super::stmt`] to decide whether a generic impl method template needs a receiver
+/// parameter in its monomorphized signature.
+#[must_use]
 pub(in crate::typeck::check) fn function_body_uses_impl_receiver(block: &Block) -> bool {
     block.items.iter().any(block_item_uses_impl_receiver)
 }
@@ -701,6 +763,8 @@ fn if_condition_uses_impl_receiver(condition: &IfCondition) -> bool {
     }
 }
 
+/// Resolves a trait method on a struct or enum implementer in [`ProgramLayout`].
+#[must_use]
 pub(in crate::typeck::check) fn find_trait_method_def(
     layout: &ProgramLayout,
     type_def: DefId,
@@ -827,6 +891,10 @@ fn find_trait_method_def_for_implementer(
 }
 
 impl TypeChecker<'_> {
+    /// Type-checks a trait method call with a primitive or builtin receiver.
+    ///
+    /// Validates arity and argument types against the resolved impl method, records
+    /// [`MethodCallSiteMeta`] for lowering, and applies receiver move rules.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::typeck::check) fn check_trait_method_call_on_builtin(
         &mut self,
