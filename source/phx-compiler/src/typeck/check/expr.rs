@@ -1,7 +1,41 @@
-//! Expression type checking, calls, and postfix operators.
+//! Expression type checking, call dispatch, and monomorphization hooks.
 //!
-//! Assigns [`TypeId`]s to expressions, resolves method and associated fn dispatch, records call-site
-//! metadata for monomorphization and lowering, and checks operand types for operators.
+//! Walks [`Expr`] / [`ExprNode`] trees during body checking (invoked from [`super::stmt`]), assigns
+//! a [`TypeId`] to every expression, and records lowering metadata (`ExprId` → type, call sites,
+//! method dispatch plans). Errors accumulate in the checker bag; checking continues after failures.
+//!
+//! # Responsibilities
+//!
+//! - **Expression dispatch** — literals, paths, blocks, operators, `if`/`match`, casts, and
+//!   unsupported forms (`lambda`, `range`, runtime directives).
+//! - **Postfix chains** — field access, indexing, method calls, function calls, and `?` try
+//!   propagation via [`TypeChecker::check_postfix_with_move`].
+//! - **Call resolution** — free functions, associated fns, enum/ tuple struct constructors,
+//!   intrinsics, and extern symbols through [`TypeChecker::check_call_with_generics`] and
+//!   [`TypeChecker::check_method_call_with_generics`].
+//! - **Monomorphization hooks** — record explicit generic instantiations at call sites
+//!   ([`TypeChecker::record_mono_inst`], [`TypeChecker::record_type_mono_inst`]) and queue impl
+//!   method monos when a named type is first instantiated
+//!   ([`TypeChecker::queue_impl_method_monos`]).
+//! - **Ownership at use sites** — move non-`Copy` identifiers on use, validate assign targets, and
+//!   flag locals that escape via references.
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::check_expr_node`] | Type-check an [`ExprNode`]; record move + [`ExprId`]. |
+//! | [`TypeChecker::check_expr_node_read`] | Same, but receiver reads do not move bindings. |
+//! | [`TypeChecker::check_expr_node_infer`] | Infer types only — no [`ExprId`] allocation. |
+//! | [`TypeChecker::check_expr`] | Core match on [`Expr`] variants (literals through blocks). |
+//! | [`TypeChecker::check_postfix_with_move`] | Field/method/call/index/try postfix chain. |
+//! | [`TypeChecker::check_call_with_generics`] | Resolve generic args, check arity, record mono. |
+//! | [`TypeChecker::check_method_call_with_generics`] | Inherent/trait/primitive method dispatch. |
+//! | [`TypeChecker::check_assign_expr`] | Assignment lhs/rhs compatibility and move-from-rhs. |
+//! | [`TypeChecker::record_mono_inst`] | Append a function monomorphization site. |
+//! | [`TypeChecker::record_type_mono_inst`] | Append a type (enum/struct) monomorphization. |
+//!
+//! Operator typing delegates to [`crate::typeck::ops`]; pattern arms live in [`super::pattern`].
 
 use std::collections::HashMap;
 
@@ -98,6 +132,10 @@ impl TypeChecker<'_> {
         let v = self.lang_items.some_variant?;
         Some(self.resolved.defs.get(v.index() as usize)?.name)
     }
+    /// Type-check an assignment expression and return the rhs type.
+    ///
+    /// Validates lhs/rhs compatibility, records move-from-rhs when the value is a non-`Copy`
+    /// identifier, and rejects moved assign targets.
     pub(in crate::typeck::check) fn check_assign_expr(
         &mut self,
         target: &ExprNode,
@@ -122,6 +160,7 @@ impl TypeChecker<'_> {
         rhs
     }
 
+    /// Type of an assignment lhs: binding, field, index, or `*ptr`.
     pub(in crate::typeck::check) fn check_assign_target(&mut self, target: &ExprNode) -> TypeId {
         match &target.inner {
             Expr::Ident(ident) => {
@@ -192,6 +231,7 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Mark a non-`Copy` identifier binding as moved when used as a `let` initializer.
     pub(in crate::typeck::check) fn move_if_non_copyable(&mut self, init: &ExprNode, ty: TypeId) {
         if self.is_copyable_ty(ty) {
             return;
@@ -201,10 +241,12 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Type-check `expr`, recording moves and allocating a lowering [`ExprId`].
     pub(in crate::typeck::check) fn check_expr_node(&mut self, expr: &ExprNode) -> TypeId {
         self.check_expr_node_inner(expr, true, true)
     }
 
+    /// Type-check `expr` for read-only use (field/method receivers); does not move bindings.
     pub(in crate::typeck::check) fn check_expr_node_read(&mut self, expr: &ExprNode) -> TypeId {
         self.check_expr_node_inner(expr, false, true)
     }
@@ -214,6 +256,10 @@ impl TypeChecker<'_> {
         self.check_expr_node_inner(expr, false, false)
     }
 
+    /// Shared driver for [`TypeChecker::check_expr_node`] and read/infer variants.
+    ///
+    /// When `record_expr_id` is true, stores `(ExprId, TypeId)` and span-indexed types for
+    /// discard linting. When `record_move` is true, non-`Copy` identifier uses consume bindings.
     pub(in crate::typeck::check) fn check_expr_node_inner(
         &mut self,
         expr: &ExprNode,
@@ -234,6 +280,10 @@ impl TypeChecker<'_> {
         ty
     }
 
+    /// Type-check one [`Expr`] with explicit move and [`ExprId`] policy.
+    ///
+    /// Ident and postfix forms honor `record_move`; all other variants delegate to
+    /// [`TypeChecker::check_expr`].
     pub(in crate::typeck::check) fn check_expr_with_move(
         &mut self,
         expr: &Expr,
@@ -265,6 +315,11 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Core expression dispatcher: match on [`Expr`] and return its type.
+    ///
+    /// Does not allocate a lowering [`ExprId`]; callers that need expression maps should use
+    /// [`TypeChecker::check_expr_node`]. Postfix chains are handled here only when reached
+    /// directly (not via [`TypeChecker::check_expr_with_move`]).
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_expr(&mut self, expr: &Expr, span: Span) -> TypeId {
         match expr {
@@ -386,10 +441,12 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Type-check a block expression; return the trailing value type (or unit).
     pub(in crate::typeck::check) fn check_block_expr(&mut self, block: &BlockNode) -> TypeId {
         self.check_block_value(&block.inner)
     }
 
+    /// Infer the type of a literal (including suffix-refined integers and floats).
     pub(in crate::typeck::check) fn check_literal(&mut self, lit: &Literal) -> TypeId {
         match lit {
             Literal::Int(i) => int_literal_type(
@@ -408,10 +465,12 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Resolve an identifier use: binding type, value def, or use-after-move error.
     pub(in crate::typeck::check) fn check_ident(&mut self, ident: &Ident, span: Span) -> TypeId {
         self.check_ident_inner(ident, span, true)
     }
 
+    /// [`TypeChecker::check_ident`] with optional move recording for postfix/assign paths.
     pub(in crate::typeck::check) fn check_ident_inner(
         &mut self,
         ident: &Ident,
@@ -458,6 +517,7 @@ impl TypeChecker<'_> {
         self.unit
     }
 
+    /// Resolve a single-segment path to a value, function item, or named type.
     pub(in crate::typeck::check) fn check_path(&mut self, path: &Path, span: Span) -> TypeId {
         if path.segments.len() == 1 {
             match &path.segments[0] {
@@ -754,6 +814,7 @@ impl TypeChecker<'_> {
         ret
     }
 
+    /// Type-check a postfix chain with default move recording (no [`ExprId`]).
     pub(in crate::typeck::check) fn check_postfix(
         &mut self,
         base: &ExprNode,
@@ -763,6 +824,10 @@ impl TypeChecker<'_> {
         self.check_postfix_with_move(base, ops, span, true, ExprId::from_raw(0))
     }
 
+    /// Type-check field, method, call, index, and `?` postfix operators left-to-right.
+    ///
+    /// Chooses read vs move for the receiver based on the operator chain, then dispatches to
+    /// method/call/intrinsic/associated-fn helpers and records indirect-call metadata.
     pub(in crate::typeck::check) fn check_postfix_with_move(
         &mut self,
         base: &ExprNode,
@@ -909,6 +974,9 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Record or merge a function monomorphization site for later [`super::mono::monomorphize`].
+    ///
+    /// Rejects instantiations whose generic nesting exceeds [`MAX_GENERIC_TYPE_NESTING`].
     pub(in crate::typeck::check) fn record_mono_inst(
         &mut self,
         base_fn: DefId,
@@ -943,6 +1011,7 @@ impl TypeChecker<'_> {
         });
     }
 
+    /// Record a named type (enum/struct) monomorphization and queue dependent impl methods.
     pub(in crate::typeck::check) fn record_type_mono_inst(
         &mut self,
         base_def: DefId,
@@ -976,6 +1045,7 @@ impl TypeChecker<'_> {
         });
     }
 
+    /// Queue monomorphizations for non-generic inherent/trait methods on `type_def(args)`.
     pub(in crate::typeck::check) fn queue_impl_method_monos(
         &mut self,
         type_def: DefId,
@@ -2373,6 +2443,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Type-check a call when the callee may carry explicit generic arguments.
+    ///
+    /// Resolves concrete type args (AST, inference, or partial), substitutes into the fn type,
+    /// checks argument arity/types, and records a mono site when the callee expression is tracked.
     pub(in crate::typeck::check) fn check_call_with_generics(
         &mut self,
         callee: TypeId,
@@ -2629,6 +2703,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Dispatch a method call on primitives, `str`, or named types (inherent then trait).
+    ///
+    /// Resolves generic args on the method, plans ref-receiver temps when needed, and records
+    /// [`MethodCallSiteMeta`] / [`PrimitiveMethodSite`] for lowering.
     #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     pub(in crate::typeck::check) fn check_method_call_with_generics(
         &mut self,
