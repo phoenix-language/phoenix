@@ -1,6 +1,18 @@
 //! Type expression AST.
 //!
-//! Surface types: primitives, named types, generics, refs, pointers, tuples, arrays, slices, fn types.
+//! Surface type syntax only — not semantic types after type checking. The main payload is [`Type`];
+//! annotations and fields wrap types in [`Node<Type>`].
+//!
+//! ## Forms
+//!
+//! Primitives ([`Keyword`]), named types with optional generics, function types
+//! `:: (…) => T`, references and raw pointers, tuples, fixed arrays, slices, and parenthesized
+//! types.
+//!
+//! ## Generics
+//!
+//! [`GenericParam`] appears on declarations (`<T>` or `<T: Bound>`). Generic arguments at use sites
+//! are `Vec<Node<Type>>` on named types and path segments.
 
 use crate::ast::Node;
 use crate::ast::ident::{Ident, TypeName};

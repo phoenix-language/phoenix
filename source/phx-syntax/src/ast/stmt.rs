@@ -1,6 +1,18 @@
 //! Statement and block AST.
 //!
-//! Statements inside blocks; blocks may end with a trailing expression value.
+//! Statements inside blocks; blocks may end with a trailing expression value (Rust-style implicit
+//! return). The main payloads are [`Stmt`] and [`Block`]; spanned aliases are [`StmtNode`] and
+//! [`BlockNode`].
+//!
+//! ## Blocks
+//!
+//! [`BlockItem`] mixes semicolon-terminated statements, trailing expressions, and block-scoped
+//! `#import` directives. Function bodies, `if`/`match` arms, and loop bodies all use [`Block`].
+//!
+//! ## Statements
+//!
+//! Bindings (`const`, `var`), control flow (`while`, `for`, `loop`, `break`, `continue`,
+//! `return`), assignment/expression statements, and `#unsafe` blocks.
 
 use crate::ast::Node;
 use crate::ast::decl::ImportDirective;

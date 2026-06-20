@@ -1,6 +1,14 @@
 //! Phoenix syntax — lexer, parser, and AST.
 //!
-//! Typical use: [`lex`] → [`parse`] → [`SourceFile`] (program + [`Interner`]) for later passes.
+//! Front of the compiler pipeline. Call [`parse`] on source text to obtain a [`SourceFile`]
+//! (untyped [`Program`] plus [`Interner`]) for resolver, type checker, and later passes.
+//!
+//! ## Typical pipeline
+//!
+//! [`lex`] → [`parse`] → [`SourceFile`] → resolver → typeck → lower → codegen
+//!
+//! Most embedders call only [`parse`] or [`parse_with_interner`]. Incremental lexing via
+//! [`Lexer`] is available when a pass needs to interleave tokenization with other work.
 //!
 //! ## Modules
 //!
@@ -10,6 +18,17 @@
 //! - [`parser`] — recursive-descent parser; public entries [`parse`] and [`parse_with_interner`].
 //! - [`intern`] — [`Interner`] and [`Symbol`] for identifier deduplication.
 //! - [`source_file`] — [`SourceFile`] bundles [`Program`] + interner after parse.
+//! - [`attr_collect`] — gather bracket `#[…]` attributes from AST nodes for later passes.
+//! - [`import_walk`] — collect all `#import` directives (file scope and block scope).
+//!
+//! ## Invariants
+//!
+//! - **AST is untyped.** Types in [`ast::Type`] are surface syntax only; semantic types live in
+//!   `phx-compiler` after type checking.
+//! - **Spans index the parse `source` string.** [`SourceFile`] does not own source text.
+//! - **Identifiers are interned.** AST name fields use [`Symbol`], not `String` (except literal
+//!   and attribute string payloads).
+//! - **Never panics on user input.** Lex and parse return structured errors in [`ParseResult`].
 
 pub mod ast;
 pub mod attr_collect;
