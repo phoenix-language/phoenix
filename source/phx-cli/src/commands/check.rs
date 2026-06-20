@@ -60,7 +60,7 @@ use std::fs;
 use std::time::Instant;
 
 use phx_compiler::{
-    BuildLayout, BuildOptions, CompileError, DiagnosticContext, ProgramLoadContext,
+    BuildLayout, BuildOptions, BuildProfile, CompileError, DiagnosticContext, ProgramLoadContext,
     emit_interfaces_from_compiled, load_program_with_context, resolve_loaded_program,
     unstable::type_check,
 };
@@ -210,6 +210,7 @@ pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) 
         let options = BuildOptions {
             force: false,
             emit_interface_only: true,
+            profile: BuildProfile::Dev,
         };
         match emit_interfaces_from_compiled(config, &loaded, &typed, options, None) {
             Ok(result) => {

@@ -3,14 +3,30 @@
 
 mod support;
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use phx_bytecode::verify;
-use phx_bytecode::{BytecodeModule, ConstTag, ENTRY_NONE, Opcode};
+use phx_bytecode::{BytecodeModule, ConstTag, ENTRY_NONE, Opcode, PHX0_HAS_DEBUG};
 use phx_compiler::{
-    compile_source,
+    BuildProfile, compile_source,
     unstable::{IrBinOp, IrInst, IrModule, codegen, lower},
 };
+
+fn codegen_module_with_profile(source: &str, profile: BuildProfile) -> BytecodeModule {
+    let unit = compile_source(source, Some(Path::new("profile_test.phx"))).expect("compile_source");
+    let ir = lower(&unit.typed).expect("lower");
+    let global_fn: HashMap<_, _> = ir.functions.iter().map(|f| (f.def, f.id.index())).collect();
+    phx_compiler::unstable::codegen_module(
+        &ir,
+        &unit.typed,
+        &global_fn,
+        true,
+        Some("profile_test.phx"),
+        profile,
+    )
+    .expect("codegen_module")
+}
 
 #[test]
 fn codegen_emits_pc_span_section_in_dev_builds() {
@@ -36,6 +52,43 @@ fn codegen_emits_pc_span_section_in_dev_builds() {
             .lookup_exact(0, 0)
             .is_some_and(|e| e.span_end > e.span_start)
     );
+}
+
+#[test]
+fn codegen_module_dev_profile_keeps_debug_sections() {
+    let module = codegen_module_with_profile(
+        "main :: () => { const n: s32 = 1; const _ = n; };",
+        BuildProfile::Dev,
+    );
+    verify(&module).expect("verify");
+    assert!(
+        !module.pc_spans.entries.is_empty(),
+        "dev profile should keep PC span debug rows"
+    );
+    assert_ne!(module.header.flags & PHX0_HAS_DEBUG, 0);
+    assert_eq!(module.header.section_count, 6);
+}
+
+#[test]
+fn codegen_module_release_profile_strips_debug_sections() {
+    let module = codegen_module_with_profile(
+        "main :: () => { const n: s32 = 1; const _ = n; };",
+        BuildProfile::Release,
+    );
+    verify(&module).expect("verify");
+    assert!(
+        module.pc_spans.entries.is_empty(),
+        "release profile should strip PC span debug rows"
+    );
+    assert_eq!(module.header.flags & PHX0_HAS_DEBUG, 0);
+    assert_eq!(module.header.section_count, 5);
+
+    let bytes = module.encode().expect("encode");
+    let decoded = BytecodeModule::decode(&bytes).expect("decode");
+    verify(&decoded).expect("verify decoded release module");
+    assert!(decoded.pc_spans.entries.is_empty());
+    assert_eq!(decoded.header.flags & PHX0_HAS_DEBUG, 0);
+    assert_eq!(decoded.header.section_count, 5);
 }
 
 #[test]

@@ -369,6 +369,7 @@ mod tests {
         let old = BuildManifest {
             entry: "std".to_owned(),
             bin_path: "lib/std.phx0".to_owned(),
+            profile: "dev".to_owned(),
             modules,
         };
         let new_pxi = PxiFile::parse(

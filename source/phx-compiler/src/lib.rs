@@ -64,7 +64,7 @@ mod unit;
 pub mod unstable;
 
 pub use build::{
-    BuildError, BuildOptions, BuildResult, LoadOptions, build_project,
+    BuildError, BuildOptions, BuildProfile, BuildResult, LoadOptions, build_project,
     emit_interfaces_from_compiled, load_project_binary, load_project_binary_with_options,
 };
 pub use byte_size::{ByteSizeError, parse_byte_size};

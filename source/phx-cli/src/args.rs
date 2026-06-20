@@ -156,6 +156,8 @@ pub struct ProjectCommandArgs {
     pub force_build: bool,
     /// Emit `.pxi` interfaces and manifest only.
     pub emit_interface_only: bool,
+    /// Build with release artifact policy (strip debug sections).
+    pub release: bool,
     /// When set, overrides project `[lint] deny` for this command.
     pub lint_deny: Option<LintDenyConfig>,
 }
@@ -394,6 +396,7 @@ fn parse_project_flags(
                 args.project_root = Some(PathBuf::from(path));
             }
             "--build" => args.force_build = true,
+            "--release" => args.release = true,
             "--emit-interface-only" => args.emit_interface_only = true,
             "--deny" => {
                 args.lint_deny = Some(parse_deny_flag(None)?);

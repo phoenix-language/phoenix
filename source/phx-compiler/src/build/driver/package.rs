@@ -209,13 +209,16 @@ fn build_package(
 
     let manifest_path = layout.manifest_path();
     let old_manifest = BuildManifest::read(&manifest_path);
+    let compatible_manifest = old_manifest
+        .as_ref()
+        .filter(|manifest| manifest.matches_profile(options.profile));
 
-    let artifact_fresh = old_manifest
+    let artifact_fresh = compatible_manifest
         .as_ref()
         .is_some_and(|old| all_modules_fresh(old, &loaded, &layout, &ctx));
     let linked_output_fresh = output_path.is_file();
     let needs_full = options.force
-        || old_manifest.is_none()
+        || compatible_manifest.is_none()
         || !artifact_fresh
         || (!options.emit_interface_only && !linked_output_fresh);
 
@@ -270,7 +273,7 @@ fn build_package(
         bin_path: &output_path.display().to_string(),
         entry_logical: &entry_logical,
         options,
-        old_manifest: old_manifest.as_ref(),
+        old_manifest: compatible_manifest,
         global_fn: &global_fn,
     };
     let (link_inputs, manifest) = write_interfaces_and_collect_objects(&ctx)?;

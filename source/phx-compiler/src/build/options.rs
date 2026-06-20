@@ -15,6 +15,7 @@
 //! | --- | --- |
 //! | [`BuildOptions::force`] | Bypass incremental staleness checks; rebuild every workspace module and re-link. |
 //! | [`BuildOptions::emit_interface_only`] | Write `.pxi` and `manifest.json` only; skip per-module `.phx0` codegen and final link. |
+//! | [`BuildOptions::profile`] | Choose dev vs release artifact policy (debug metadata emitted or stripped). |
 //!
 //! When `emit_interface_only` is set, [`super::BuildResult::output_path`] points at
 //! `manifest.json` rather than the linked `build/bin/` or `build/lib/` artifact.
@@ -43,12 +44,49 @@ pub struct LoadOptions {
     pub verify_on_load: bool,
 }
 
-/// Controls incremental rebuild and interface-only emission for project builds.
+/// Build profile controlling dev vs release PHX0 emission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BuildProfile {
+    /// Default local build profile: keep debug metadata such as section 5 spans.
+    #[default]
+    Dev,
+    /// Distribution profile: strip optional debug metadata from emitted PHX0.
+    Release,
+}
+
+impl BuildProfile {
+    /// Returns `true` when this profile should emit debug sections into PHX0.
+    #[must_use]
+    pub const fn emits_debug_sections(self) -> bool {
+        matches!(self, Self::Dev)
+    }
+
+    /// Stable manifest token for this profile.
+    #[must_use]
+    pub const fn as_manifest_str(self) -> &'static str {
+        match self {
+            Self::Dev => "dev",
+            Self::Release => "release",
+        }
+    }
+
+    /// Parses a profile token loaded from `build/manifest.json`.
+    #[must_use]
+    pub fn from_manifest_str(value: &str) -> Option<Self> {
+        match value {
+            "dev" => Some(Self::Dev),
+            "release" => Some(Self::Release),
+            _ => None,
+        }
+    }
+}
+
+/// Controls incremental rebuild, profile selection, and interface-only emission for project builds.
 ///
 /// Passed to [`super::build_project`] and [`super::emit_interfaces_from_compiled`].
 /// Incremental skips are driven by `build/manifest.json` staleness unless
 /// [`BuildOptions::force`] is set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildOptions {
     /// Rebuild all workspace modules regardless of manifest staleness.
     ///
@@ -63,6 +101,23 @@ pub struct BuildOptions {
     /// and only need interface artifacts for downstream crates. When set,
     /// [`super::BuildResult::output_path`] is the manifest path, not the linked binary.
     pub emit_interface_only: bool,
+
+    /// Artifact profile used for codegen and incremental cache compatibility.
+    ///
+    /// [`BuildProfile::Dev`] keeps debug sections in emitted `.phx0` objects and linked
+    /// outputs. [`BuildProfile::Release`] strips optional debug metadata so section 5 is
+    /// absent and `PHX0_HAS_DEBUG` remains clear.
+    pub profile: BuildProfile,
+}
+
+impl Default for BuildOptions {
+    fn default() -> Self {
+        Self {
+            force: false,
+            emit_interface_only: false,
+            profile: BuildProfile::Dev,
+        }
+    }
 }
 
 impl BuildOptions {
@@ -85,6 +140,7 @@ impl BuildOptions {
         Self {
             force,
             emit_interface_only: false,
+            profile: BuildProfile::Dev,
         }
     }
 }
