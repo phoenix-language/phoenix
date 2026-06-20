@@ -5,15 +5,8 @@
 use phx_bytecode::{PHX0_HAS_DEBUG, verify};
 use phx_cli::vm_diag::{SourceContext, format_vm_error};
 use phx_compiler::{BuildOptions, BuildProfile};
-use phx_test::{
-    discover_cli_project, force_built_project_with_options, load_built_binary, require_cli_project,
-    shared_cli,
-};
+use phx_test::{force_built_project_with_options, require_cli_project};
 use phx_vm::{VmErrorKind, run};
-
-fn path_to_arg(path: &std::path::Path) -> String {
-    path.to_string_lossy().into_owned()
-}
 
 #[test]
 fn release_build_strips_section_5_and_debug_flag() {
@@ -56,23 +49,23 @@ fn dev_build_keeps_section_5_for_contrast() {
 }
 
 #[test]
-fn release_build_cli_strips_section_5() {
-    let project = require_cli_project("heap_uaf");
-    shared_cli()
-        .run(&[
-            "build",
-            "--release",
-            "--build",
-            "--project-root",
-            &path_to_arg(&project),
-        ])
-        .assert_success();
+fn release_build_manifest_records_release_profile() {
+    let built = force_built_project_with_options(
+        "project",
+        BuildOptions::force(true).with_profile(BuildProfile::Release),
+    );
+    assert!(
+        built.module.pc_spans.entries.is_empty(),
+        "release profile should strip PC spans in linked output"
+    );
+    assert_eq!(built.module.header.flags & PHX0_HAS_DEBUG, 0);
 
-    let config = discover_cli_project(&project);
-    let module = load_built_binary(&config).expect("load release heap_uaf binary");
-    assert!(module.pc_spans.entries.is_empty());
-    assert_eq!(module.header.flags & PHX0_HAS_DEBUG, 0);
-    verify(&module).expect("CLI release module should verify");
+    let manifest = built.config.root.join("build/manifest.json");
+    let text = std::fs::read_to_string(&manifest).expect("read manifest");
+    assert!(
+        text.contains(r#""profile": "release""#),
+        "expected release profile in manifest, got:\n{text}"
+    );
 }
 
 #[test]
