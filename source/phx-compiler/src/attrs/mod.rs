@@ -1,4 +1,28 @@
-//! Definition metadata from item attributes.
+//! Bracket-attribute parsing and definition metadata for the compiler front end.
+//!
+//! Parses `#[...]` attributes attached to AST items and builds metadata consumed by later
+//! passes: derive lists, lint suppression, and per-definition attribute records.
+//!
+//! ## Supported attributes
+//!
+//! | Attribute | Role in this module |
+//! |-----------|---------------------|
+//! | `#[derive(...)]` | Merged into [`DeriveDirective`] lists before [`crate::derive::expand_derives`] |
+//! | `#[deprecated(...)]` | Stored on [`ItemAttrs`] and surfaced by the lint pass |
+//! | `#[must_use]` | Stored on [`ItemAttrs`] and surfaced by the lint pass |
+//! | `#[allow(...)]` | Parsed into [`phx_diagnostics::LintKind`] values for lexical suppression |
+//!
+//! Other attributes (`#[cfg(...)]`, `#[lang_item]`, …) are handled by sibling modules.
+//!
+//! ## Pipeline position
+//!
+//! 1. [`merge_bracket_derives_into_program`] runs in the module loader and single-file
+//!    compile path immediately after parse, before [`crate::cfg::strip_cfg`].
+//! 2. During resolution, [`item_attrs_for_top_level`] and [`item_attrs_for_function`] build
+//!    [`ItemAttrs`] for each definition; results are stored in [`DefAttrs`] on
+//!    [`crate::resolver::ResolvedProgram`].
+//! 3. The lint pass reads [`DefAttrs`] and calls [`parse_allow_lint_kinds`] to honor
+//!    `#[allow(...)]` on module items and function bodies.
 
 use std::collections::HashMap;
 
@@ -11,6 +35,9 @@ use phx_syntax::{Interner, attr_collect::top_level_bracket_attrs};
 use crate::resolver::DefId;
 
 /// Metadata attached to a definition from `#[...]` attributes.
+///
+/// Collected during resolution and read by the lint pass. Only attributes that affect
+/// downstream compiler behavior are represented here; unknown attributes are ignored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ItemAttrs {
     /// `#[deprecated(...)]` when present.
@@ -31,9 +58,17 @@ pub struct DeprecatedMeta {
 }
 
 /// Map from definition id to item attribute metadata.
+///
+/// Populated by the resolver walk and consumed by [`crate::lint::lint_program`].
 pub type DefAttrs = HashMap<DefId, ItemAttrs>;
 
-/// Collects `#[derive(...)]` from bracket attributes into each item's derive list.
+/// Merges `#[derive(...)]` from bracket attributes into each item's derive list.
+///
+/// Top-level item attributes and nested function attributes are both scanned so derive
+/// directives written in bracket form match those written in declaration syntax.
+///
+/// Called before [`crate::derive::expand_derives`] in the module loader and
+/// [`crate::compile::compile_source`].
 pub fn merge_bracket_derives_into_program(program: &mut Program, interner: &Interner) {
     for item in &mut program.items {
         merge_bracket_derives_into_decl(&mut item.inner.decl, &item.inner.attrs, interner);
@@ -63,6 +98,9 @@ fn merge_bracket_derives_into_decl(
 }
 
 /// Collects `#[derive(...)]` traits from bracket attributes into a derive list.
+///
+/// Each `#[derive(A, B)]` becomes one [`DeriveDirective`] with the listed type names.
+/// Non-type arguments are skipped.
 #[must_use]
 pub fn derive_from_bracket_attrs(
     interner: &Interner,
@@ -101,6 +139,8 @@ pub fn attr_named(interner: &Interner, attr: &Attribute, name: &str) -> bool {
 }
 
 /// Parses `#[deprecated(...)]` from bracket attributes, if any.
+///
+/// Returns the first matching attribute; later `#[deprecated]` attributes are ignored.
 #[must_use]
 pub fn deprecated_from_attrs(
     interner: &Interner,
@@ -134,6 +174,9 @@ pub fn deprecated_from_attrs(
 }
 
 /// Allow lint names from `#[allow(...)]` on the given attributes.
+///
+/// Accepts flag form (`#[allow(deprecated)]`) and named form (`#[allow(deprecated = …)]`);
+/// only the lint name symbol is collected.
 #[must_use]
 pub fn allow_names_from_attrs(interner: &Interner, attrs: &[Node<Attribute>]) -> Vec<Symbol> {
     let mut names = Vec::new();
@@ -153,6 +196,9 @@ pub fn allow_names_from_attrs(interner: &Interner, attrs: &[Node<Attribute>]) ->
 }
 
 /// Builds [`ItemAttrs`] from bracket attributes on a top-level item.
+///
+/// Merges the item's outer attributes with nested function attributes when the item is a
+/// function declaration (`must_use` is OR-ed; first `deprecated` wins on the outer attrs).
 #[must_use]
 pub fn item_attrs_for_top_level(interner: &Interner, item: &TopLevelItem) -> ItemAttrs {
     let refs = top_level_bracket_attrs(item);
@@ -183,7 +229,11 @@ pub fn item_attrs_from_bracket(interner: &Interner, attrs: &[Node<Attribute>]) -
     }
 }
 
-/// Parses `#[allow(...)]` names into [`LintKind`] values; returns errors for unknown names.
+/// Parses `#[allow(...)]` names into [`LintKind`] values.
+///
+/// # Errors
+///
+/// Returns an error string when an allow name is not a known lint (`deprecated`, `must_use`).
 pub fn parse_allow_lint_kinds(
     interner: &Interner,
     attrs: &[Node<Attribute>],

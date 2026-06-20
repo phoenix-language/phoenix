@@ -1,4 +1,26 @@
 //! Conditional compilation (`#[cfg(...)]`) stripping before name resolution.
+//!
+//! Evaluates compile-time configuration predicates on module items and impl members, then
+//! removes AST nodes whose `#[cfg(...)]` attributes are false. Inactive code never reaches
+//! the resolver, type checker, or codegen.
+//!
+//! ## Supported predicates
+//!
+//! | Form | Meaning |
+//! |------|---------|
+//! | `target_os = "…"` | Matches [`CompileCfg::target_os`] |
+//! | `target_arch = "…"` | Matches [`CompileCfg::target_arch`] |
+//! | `debug_assertions` | True when [`CompileCfg::debug_assertions`] is set |
+//! | `not(...)` | Negates a single nested predicate |
+//!
+//! Multiple arguments on one `#[cfg(...)]` are AND-ed. Items with no `#[cfg]` are always kept.
+//! Associated types in impl blocks are never cfg-stripped.
+//!
+//! ## Pipeline position
+//!
+//! [`strip_cfg`] runs immediately after parse in [`crate::modules::loader`] and
+//! [`crate::compile::compile_source`], before [`crate::derive::expand_derives`] and resolution.
+//! [`CompileCfg::host`] supplies the default configuration from the build driver's target triple.
 
 use phx_diagnostics::Span;
 use phx_syntax::ast::Node;
@@ -7,6 +29,9 @@ use phx_syntax::ast::decl::{ImplMember, TopLevelDecl, TopLevelItem};
 use phx_syntax::{Interner, Program};
 
 /// Host compile-time configuration for `#[cfg(...)]` evaluation.
+///
+/// Passed to [`strip_cfg`]. Tests and embedders may construct custom values to simulate
+/// cross-target builds without recompiling the compiler.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileCfg {
     /// `target_os` string (e.g. `linux`, `macos`, `windows`).
@@ -19,6 +44,9 @@ pub struct CompileCfg {
 
 impl CompileCfg {
     /// Builds configuration from the host triple (build driver default).
+    ///
+    /// Uses [`std::env::consts::OS`] and [`std::env::consts::ARCH`] for target fields and
+    /// [`cfg!(debug_assertions)`] for the debug flag.
     #[must_use]
     pub fn host() -> Self {
         Self {
@@ -30,6 +58,9 @@ impl CompileCfg {
 }
 
 /// Failure while evaluating or stripping `#[cfg(...)]`.
+///
+/// Surfaced as [`phx_diagnostics::ResolveError::InvalidCfg`] in the module loader and
+/// single-file compile path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CfgError {
     /// Related source span.
@@ -40,9 +71,14 @@ pub struct CfgError {
 
 /// Removes items and impl members whose `#[cfg(...)]` predicates are false.
 ///
+/// Mutates `program.items` in place: inactive top-level declarations are dropped, and
+/// inactive methods inside `impl` blocks are removed. Function declarations combine item-level
+/// and function-level `#[cfg]` with logical AND.
+///
 /// # Errors
 ///
-/// Returns `CfgError` when a cfg predicate uses an unknown key or malformed argument.
+/// Returns [`CfgError`] when a cfg predicate uses an unknown key, malformed argument, or
+/// invalid `not(...)` arity.
 pub fn strip_cfg(
     program: &mut Program,
     compile_cfg: &CompileCfg,
