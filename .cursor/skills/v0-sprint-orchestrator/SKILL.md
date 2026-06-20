@@ -19,7 +19,7 @@ You are the **master orchestrator**. Each iteration you **plan**, **delegate**, 
 
 | Role | Who | Responsibility |
 |------|-----|----------------|
-| **Master orchestrator** | This agent on each loop tick | Orient on `trunk`, build/update the iteration task list, spawn workers, open missing PRs, mark done items, start next iteration when idle |
+| **Master orchestrator** | This agent on each loop tick | Orient on `trunk`, build/update the iteration task list, spawn workers, open missing PRs, **batch-merge green PRs after the full iteration completes**, mark done items, start next iteration when idle |
 | **Worker subagent** | One Task per task | Single scoped task on an isolated branch: implement → fmt → test → commit → push → PR |
 
 Workers do **one task per branch**. The master may queue 1–3 parallel workers when tasks do not overlap files.
@@ -34,7 +34,7 @@ Workers do **one task per branch**. The master may queue 1–3 parallel workers 
 - **Parallelism:** Up to 3 workers per iteration; **no overlapping files** across concurrent workers.
 - **Commit format:** `[stage]: description` — e.g. `[typeck]: …`, `[docs]: …`, `[infra]: …`, `[website]: …`.
 - **Push + PR:** After gates pass, push branch and open PR to `trunk` (website work: see Website section — PR targets `website` repo `main`, then optional parent submodule bump).
-- **Do not merge to `trunk` automatically.**
+- **Merge policy:** Only the **master orchestrator** may merge into `trunk`, and **only once per iteration** after **all** workers spawned for that iteration have finished (success or BLOCKED). **Never merge on a single subagent completion callback** — wait for the full batch of 1–3 workers to report back, then merge eligible PRs together. Workers must **never** merge.
 
 ### Quality gate (every worker, in order)
 
@@ -181,7 +181,7 @@ Workflow:
 6. gh pr create --base trunk --head <branch> …  (or website repo PR)
 7. Return: branch, SHA, PR URL, test summary, or BLOCKED: <reason>
 
-Do NOT merge. Do NOT push if gates fail.
+Do NOT merge (master merges at iteration end only). Do NOT push if gates fail.
 ```
 
 PR body template:
@@ -195,15 +195,48 @@ PR body template:
 - [x] `just test` green
 - [ ] Reviewer: …
 
-Automated sprint agent — do not merge without review.
+Automated sprint agent — master may merge after the iteration batch if CI is green.
 ```
 
 ### 4. Integrate
 
 - Log PR URLs; open any missing PRs from worker summaries.
+- **Do not merge yet** if any worker from this iteration is still running.
+- When **every** worker spawned for this iteration has reported (see §4a), run the batch merge step.
 - Mark completed items in the Completed log (this file or tell user).
 - **If all workers finished and before `END_EPOCH`:** go to §1 immediately (early iteration).
 - **If workers still running:** wait; do not spawn overlapping work.
+
+### 4a. Batch merge (master only — end of iteration)
+
+Run **once per iteration**, after all spawned workers have returned. **Do not** merge when handling an individual subagent completion notification unless you have confirmed the rest of the iteration is also done.
+
+For each PR opened by a **successful** worker in this iteration:
+
+1. Verify GitHub CI: `rust` job **SUCCESS** (`gh pr view <num> --json statusCheckRollup`).
+2. Verify PR is **MERGEABLE** (no conflicts with current `trunk`).
+3. If a PR is behind `trunk` after an earlier merge in the same batch, update it first:
+   ```bash
+   gh pr update-branch <num> --rebase   # or merge trunk on the branch if rebase fails
+   ```
+   Wait for CI green again before merging.
+4. Merge into `trunk`:
+   ```bash
+   gh pr merge <num> --merge --delete-branch
+   ```
+   Use `--squash` only if the repo convention requires it.
+
+**Skip merge** when: worker returned BLOCKED, CI failing, merge conflicts unresolved, or the PR touches forbidden scope (new semantics, new deps).
+
+After merging all eligible PRs:
+
+```bash
+git fetch origin
+git checkout trunk && git pull --ff-only origin trunk
+just test   # optional smoke; stop sprint if trunk breaks
+```
+
+Update the Completed log with merged PR numbers. Then proceed to the next iteration (§1) if before `END_EPOCH`.
 
 ### 5. Loop tick (15 minutes)
 
