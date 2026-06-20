@@ -1,7 +1,26 @@
 //! Generic type nesting depth for monomorphization guardrails.
 //!
 //! Rejects excessively nested or cyclic generic instantiations before monomorphization expands
-//! templates ([`MAX_GENERIC_TYPE_NESTING`]).
+//! templates. The checker uses these limits to fail fast with
+//! [`TypeCheckError::GenericNestingTooDeep`](phx_diagnostics::TypeCheckError::GenericNestingTooDeep)
+//! instead of blowing up compile time or memory during specialization.
+//!
+//! # Depth model
+//!
+//! [`type_nesting_depth`] counts nesting layers in the type graph:
+//!
+//! - Primitives, unit, `str`, inference variables, and error types contribute `0`.
+//! - A [`Ty::Named`] with type arguments contributes `1 + max(child depths)`.
+//! - Tuples, arrays, slices, references, pointers, and function types use the maximum depth
+//!   among their component types (function types include both parameters and return).
+//!
+//! [`check_named_instantiation_depth`] adds one layer for the named head being instantiated,
+//! on top of the maximum depth among explicit type arguments.
+//!
+//! # Cycles
+//!
+//! A revisiting [`TypeId`] during traversal is treated as a cycle and reported as exceeding
+//! the limit (same error path as depth overflow).
 
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::DefId;
@@ -9,11 +28,11 @@ use crate::resolver::DefId;
 /// Maximum allowed nesting depth for monomorphized generic types.
 pub const MAX_GENERIC_TYPE_NESTING: usize = 64;
 
-/// Returns generic nesting depth of `id`, or an error when a cycle is detected.
+/// Returns the generic nesting depth of `id`.
 ///
 /// # Errors
 ///
-/// Returns `Err(())` when the type graph contains a cycle.
+/// Returns `Err(())` when the type graph contains a cycle reachable from `id`.
 pub fn type_nesting_depth(types: &TypeInterner, id: TypeId) -> Result<usize, ()> {
     depth_inner(types, id, &mut Vec::new())
 }
@@ -22,7 +41,8 @@ pub fn type_nesting_depth(types: &TypeInterner, id: TypeId) -> Result<usize, ()>
 ///
 /// # Errors
 ///
-/// Returns `Err(depth)` when depth exceeds the limit or a cycle is detected.
+/// Returns `Err(depth)` when `depth` exceeds the limit or a cycle is detected (reported as
+/// `MAX_GENERIC_TYPE_NESTING + 1` from underlying cycle detection).
 pub fn check_type_nesting_depth(types: &TypeInterner, id: TypeId) -> Result<(), usize> {
     let depth = type_nesting_depth(types, id).map_err(|()| MAX_GENERIC_TYPE_NESTING + 1)?;
     if depth > MAX_GENERIC_TYPE_NESTING {
@@ -32,11 +52,12 @@ pub fn check_type_nesting_depth(types: &TypeInterner, id: TypeId) -> Result<(), 
     }
 }
 
-/// Maximum nesting depth among `args`, or an error on cycle.
+/// Returns the maximum nesting depth among `args`.
 ///
 /// # Errors
 ///
-/// Returns `Err(depth)` when any argument exceeds the limit or a cycle is detected.
+/// Returns `Err(depth)` when any argument exceeds [`MAX_GENERIC_TYPE_NESTING`] or a cycle
+/// is detected.
 pub fn max_depth_of_args(types: &TypeInterner, args: &[TypeId]) -> Result<usize, usize> {
     let mut max = 0usize;
     for arg in args {
@@ -49,11 +70,14 @@ pub fn max_depth_of_args(types: &TypeInterner, args: &[TypeId]) -> Result<usize,
     Ok(max)
 }
 
-/// Nesting depth of `def` instantiated at `args`.
+/// Checks nesting depth of a named type `def` instantiated at `args`.
+///
+/// Computes `1 + max_depth_of_args(args)` and compares against [`MAX_GENERIC_TYPE_NESTING`].
 ///
 /// # Errors
 ///
-/// Returns `Err(depth)` when the instantiated type exceeds the limit or a cycle is detected.
+/// Returns `Err(depth)` when the instantiated type would exceed the limit or a cycle is
+/// detected among the arguments.
 pub fn check_named_instantiation_depth(
     types: &TypeInterner,
     _def: DefId,

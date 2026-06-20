@@ -1,7 +1,25 @@
 //! Monomorphization: duplicate generic functions and type layouts for explicit instantiation sites.
 //!
-//! After the main check pass, [`monomorphize`] clones generic templates for each collected
-//! [`MonoInst`], validates trait bounds, and patches call-site metadata to specialized callees.
+//! After the main type-check pass, [`monomorphize`] clones generic templates for each collected
+//! [`MonoInst`] and [`TypeMonoInst`], validates trait bounds and nesting depth, re-checks
+//! specialized function bodies, and patches call-site metadata to point at specialized callees.
+//!
+//! # Pipeline
+//!
+//! 1. **Type layouts** — [`monomorphize_types`] substitutes concrete type arguments into struct
+//!    and enum templates, storing results in [`ProgramLayout::specialized_structs`] /
+//!    [`ProgramLayout::specialized_enums`].
+//! 2. **Functions** — [`monomorphize_functions`] allocates mangled [`DefId`]s, re-runs
+//!    [`TypeChecker`] on each specialization, and records resolution patches for call sites.
+//!    Nested type instantiations discovered during re-check are monomorphized in a second pass.
+//! 3. **Patches** — drop fn targets, associated fn sites, method dispatch, and primitive trait
+//!    methods are retargeted to specialized definitions where applicable.
+//!
+//! # Cross-crate generics
+//!
+//! Generic functions defined in path dependencies are not re-lowered in the consumer crate;
+//! [`collect_cross_crate_mono_reqs`] records needed specializations for dependency rebuilds, and
+//! [`apply_mono_worklist`] injects them when reconstructing a dependency library.
 
 use std::collections::HashMap;
 
@@ -24,14 +42,18 @@ use crate::typeck::layout::TraitImplementer;
 use crate::typeck::types::Ty;
 use crate::typeck::{MethodCallSiteMeta, TypedProgram};
 
-/// One explicit generic function instantiation from a call site.
+/// One explicit generic function instantiation collected from a call site.
+///
+/// Produced during type checking when a generic function is invoked with concrete type
+/// arguments (explicit or inferred). [`monomorphize`] uses these records to emit specialized
+/// definitions and retarget [`ResolutionKey`] entries at `call_sites`.
 #[derive(Debug, Clone)]
 pub struct MonoInst {
-    /// Generic function definition.
+    /// Generic function template [`DefId`] being specialized.
     pub base_fn: DefId,
-    /// Concrete type arguments in generic-parameter order.
+    /// Concrete type arguments in generic-parameter declaration order.
     pub args: Vec<TypeId>,
-    /// Name-use ids at call sites to retarget to the specialized function.
+    /// Name-use AST node ids at call sites to retarget to the specialized function.
     pub call_sites: Vec<phx_syntax::AstNodeId>,
     /// Module that owns emitted bytecode for this specialization (usually the call-site crate).
     pub owner_module: u32,
@@ -44,24 +66,36 @@ pub enum TypeMonoKind {
     Struct,
     /// `Name :: <…> enum { … }`
     Enum,
-    /// `type Name<…> = …`
+    /// `type Name<…> = …` (collected but not layout-specialized here).
     Alias,
 }
 
-/// One explicit generic type instantiation from a use site.
+/// One explicit generic type instantiation collected from a use site.
+///
+/// Struct and enum entries produce specialized layouts; alias entries are skipped during
+/// layout monomorphization because their bodies are expanded via substitution elsewhere.
 #[derive(Debug, Clone)]
 pub struct TypeMonoInst {
-    /// Generic struct / enum / alias template definition.
+    /// Generic struct, enum, or type-alias template [`DefId`].
     pub base_def: DefId,
-    /// What kind of template is being specialized.
+    /// Whether the template is a struct, enum, or type alias.
     pub kind: TypeMonoKind,
-    /// Concrete type arguments in generic-parameter order.
+    /// Concrete type arguments in generic-parameter declaration order.
     pub args: Vec<TypeId>,
 }
 
 /// Lowers collected function and type instantiations into specialized defs and layouts.
 ///
-/// Returns a diagnostic bag when any specialization fails (arity mismatch or re-check errors).
+/// Runs type layout monomorphization first, then function specializations (which may enqueue
+/// additional type instantiations), then patches drop, associated fn, method, and primitive
+/// trait call metadata on the resulting [`TypedProgram`].
+///
+/// # Errors
+///
+/// Returns a [`TypeCheckBag`] containing arity mismatches, bound violations, nesting-depth
+/// failures, re-check errors from specialized bodies, and resource limits (interner or def
+/// table full). When the bag has errors, partial specializations may remain in `typed`; the
+/// caller should treat the program as not fully monomorphized.
 #[must_use]
 pub(crate) fn monomorphize(
     typed: &mut TypedProgram,
@@ -254,7 +288,10 @@ fn patch_specialized_drop_fns(typed: &mut TypedProgram) {
     }
 }
 
-/// Resolves the monomorphized `DefId` for `base_fn` instantiated at `args`, if any.
+/// Resolves the monomorphized [`DefId`] for `base_fn` instantiated at `args`, if already emitted.
+///
+/// Compares the expected mangled name from [`mangle::mangle_symbol_for_specialization`] against
+/// specialized definitions recorded in [`TypedProgram::specialized_from`].
 #[must_use]
 pub(crate) fn specialized_fn_for_inst(
     typed: &TypedProgram,
@@ -752,6 +789,12 @@ fn resolved_fn_def_matches(
     true
 }
 
+/// Returns generic parameter [`DefId`]s for a function template, including impl-level params.
+///
+/// Combines impl-block generic parameters (for methods) with the function's own generic
+/// parameter list, then resolves each AST generic param to its [`DefKind::GenericParam`] def.
+/// Returns `Some(empty vec)` for monomorphic functions.
+#[must_use]
 pub(crate) fn generic_param_defs_for_fn_base(
     resolved: &ResolvedProgram,
     base: DefId,
@@ -765,6 +808,10 @@ pub(crate) fn generic_param_defs_for_fn_base(
 }
 
 /// Returns whether `args` satisfy generic bounds on `base_fn`'s declaring impl or function.
+///
+/// Runs [`validate_instantiation_bounds`] into a discard bag. Returns `false` on arity
+/// mismatch or any bound violation; returns `true` when the template cannot be found or has
+/// no generic parameters (treated as vacuously satisfied).
 #[must_use]
 pub(crate) fn fn_instantiation_bounds_hold(
     resolved: &ResolvedProgram,
@@ -838,7 +885,11 @@ fn find_impl_generics_for_fn(resolved: &ResolvedProgram, base: DefId) -> Option<
     None
 }
 
-/// Returns generic parameter defs for a struct, enum, or type alias template.
+/// Returns generic parameter [`DefId`]s for a struct, enum, or type alias template.
+///
+/// Resolves each entry in the template's generic parameter list to a [`DefKind::GenericParam`]
+/// definition in the same module. Returns `None` when the template has no generic parameter
+/// AST or a parameter cannot be resolved.
 #[must_use]
 pub fn generic_param_defs_for_type(resolved: &ResolvedProgram, base: DefId) -> Option<Vec<DefId>> {
     generic_param_defs(
@@ -848,7 +899,11 @@ pub fn generic_param_defs_for_type(resolved: &ResolvedProgram, base: DefId) -> O
     )
 }
 
-/// Returns generic parameters declared on a struct, enum, type alias, or function template.
+/// Returns generic parameter AST nodes declared on a struct, enum, or type alias template.
+///
+/// Locates the template's top-level declaration in `resolved` and clones its generic parameter
+/// list. Returns `None` when `base` is not a struct, enum, or type alias, or the declaration
+/// cannot be found in the module AST.
 #[must_use]
 pub fn generic_params_for_def(
     resolved: &ResolvedProgram,
@@ -951,7 +1006,11 @@ enum AllocSpecializedDefError {
     ProgramTooLarge,
 }
 
-/// Cross-crate generic export requested by a consumer package build.
+/// Cross-crate generic specialization requested by a consumer package build.
+///
+/// When the workspace entry crate instantiates a generic function defined in a path dependency,
+/// the dependency library must export the mangled specialization. These records drive dependency
+/// rebuild worklists.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct CrossCrateMonoReq {
     /// Path-dependency package name (e.g. `math`).
@@ -966,7 +1025,11 @@ pub(crate) struct CrossCrateMonoReq {
     pub mangled_name: String,
 }
 
-/// Collects monomorphization requests for exported generics defined in path dependencies.
+/// Collects monomorphization requests for generic functions defined outside the workspace package.
+///
+/// Scans [`TypedProgram::mono_insts`] and retains instantiations whose template module lives
+/// in a path dependency (logical path not under `workspace_package`). Deduplicates by
+/// `(logical_module, mangled_name)`.
 #[must_use]
 pub(crate) fn collect_cross_crate_mono_reqs(
     typed: &TypedProgram,
@@ -1021,11 +1084,15 @@ pub(crate) fn collect_cross_crate_mono_reqs(
     out
 }
 
-/// Applies an injected monomorphization worklist (e.g. when rebuilding a dependency lib).
+/// Applies an injected monomorphization worklist when rebuilding a dependency library.
+///
+/// Resolves each [`CrossCrateMonoReq`] to a [`MonoInst`] (skipping entries whose mangled export
+/// already exists or whose type spellings cannot be parsed), then runs [`monomorphize`].
 ///
 /// # Errors
 ///
-/// Returns a [`TypeCheckBag`] when specialization fails.
+/// Returns a [`TypeCheckBag`] when any injected specialization fails the same checks as
+/// ordinary monomorphization.
 #[must_use]
 pub(crate) fn apply_mono_worklist(
     typed: &mut TypedProgram,
@@ -1140,7 +1207,10 @@ fn specialized_export_exists(typed: &TypedProgram, mangled_name: &str) -> bool {
         .any(|d| d.kind == DefKind::Fn && typed.resolved.interner.resolves_to(d.name, mangled_name))
 }
 
-/// Returns true when `def_id` is an impl method on a generic type (not a monomorphized specialization).
+/// Returns whether `def_id` is a generic impl method template (not a specialization).
+///
+/// True when `def_id` is an impl method on a generic type with at least one type parameter,
+/// and `def_id` is not itself an entry in [`TypedProgram::specialized_from`].
 #[must_use]
 pub(crate) fn is_generic_impl_method_template(typed: &TypedProgram, def_id: DefId) -> bool {
     if typed.specialized_from.contains_key(&def_id) {
@@ -1152,6 +1222,11 @@ pub(crate) fn is_generic_impl_method_template(typed: &TypedProgram, def_id: DefI
     generic_param_defs_for_type(&typed.resolved, type_def).is_some_and(|params| !params.is_empty())
 }
 
+/// Returns the generic type [`DefId`] for the impl block containing method `fn_def`.
+///
+/// Walks impl declarations in `fn_def`'s module and matches method AST nodes to `fn_def`, then
+/// resolves the impl's `type_name` to a struct or enum definition in the same module.
+#[must_use]
 pub(crate) fn impl_type_def_for_method(typed: &TypedProgram, fn_def: DefId) -> Option<DefId> {
     let base_def = typed.resolved.defs.get(fn_def.index() as usize)?;
     let interner = &typed.resolved.interner;
@@ -1194,7 +1269,11 @@ fn find_type_def_in_module(resolved: &ResolvedProgram, module: u32, name: &str) 
     None
 }
 
-/// Returns true when `def_id` is a generic function template (not a monomorphized specialization).
+/// Returns whether `def_id` is a generic function template (not a monomorphized specialization).
+///
+/// True when `def_id` is a base template with type parameters in its AST, or when other
+/// specializations map back to `def_id` via [`TypedProgram::specialized_from`]. Returns `false`
+/// for specialized function defs.
 #[must_use]
 pub(crate) fn is_generic_fn_template(typed: &TypedProgram, def_id: DefId) -> bool {
     if typed.specialized_from.contains_key(&def_id) {

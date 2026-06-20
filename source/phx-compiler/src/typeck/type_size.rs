@@ -1,16 +1,33 @@
-//! Compile-time byte size of types for `size_of` intrinsic.
+//! Compile-time byte size of types for the `size_of` intrinsic.
 //!
 //! [`type_byte_size`] evaluates aggregate and primitive sizes from [`ProgramLayout`] during
-//! checking so `size_of` calls fold to constants in lowering.
+//! type checking so `size_of` calls can fold to constants in lowering.
+//!
+//! # Supported types (MVP)
+//!
+//! - Primitives via [`super::primitive::primitive_byte_size`] (wide `s128`/`u128` use 8 bytes
+//!   in the MVP VM layout).
+//! - Unit (`0`), references, raw pointers, and function types (`8` bytes each).
+//! - Fixed-size arrays (element size × length) and tuples (sum of element sizes).
+//! - Named struct types resolved through [`ProgramLayout::struct_layout`].
+//!
+//! # Unsupported types
+//!
+//! Returns `None` for slices, `str`, inference variables, error types, and aggregates whose
+//! field sizes cannot be computed (for example unresolved generic layouts).
 
 use super::layout::ProgramLayout;
 use super::primitive::{keyword_to_primitive_kind, primitive_byte_size};
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::{DefId, ResolvedProgram};
 
-/// Returns the in-memory byte size of `ty` for std `size_of` (MVP: primitives and aggregates).
+/// Returns the in-memory byte size of `ty` for std `size_of`.
 ///
-/// Wide integers (`s128`/`u128`) use 8 bytes in the MVP VM.
+/// Sizes follow the MVP VM layout: pointers and function values are 8 bytes; struct field
+/// sizes are summed without explicit alignment padding.
+///
+/// Returns `None` when `ty` has no compile-time size (see module-level list) or when
+/// overflow occurs computing array or tuple sizes.
 #[must_use]
 pub fn type_byte_size(
     types: &TypeInterner,
