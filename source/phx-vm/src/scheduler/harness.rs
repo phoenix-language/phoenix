@@ -282,6 +282,13 @@ mod tests {
         }
     }
 
+    fn park_err(guard: RunningGuard<'_>, reason: ParkReason, label: &str) -> SchedulerError {
+        match guard.park(reason) {
+            Err(err) => err,
+            Ok(()) => panic!("{label}: expected park error"),
+        }
+    }
+
     fn run_next_none(sched: &mut SingleThreadScheduler, label: &str) {
         match sched.run_next() {
             Ok(None) => {}
@@ -357,6 +364,53 @@ mod tests {
         assert_eq!(sched.parked_count(), 0);
         assert_eq!(sched.runnable_count(), 0);
         run_next_none(&mut sched, "run queue drained");
+    }
+
+    #[test]
+    fn park_already_parked_context_returns_invalid_transition() {
+        let mut sched = SingleThreadScheduler::new();
+        let id = sched.spawn(2);
+
+        let guard = run_next_guard(&mut sched, "dequeue for double-park test");
+        park_ok(guard, ParkReason::AwaitIo, "first park");
+        assert_eq!(
+            sched.state_of(id),
+            Some(ContextState::Parked(ParkReason::AwaitIo))
+        );
+        assert_eq!(sched.parked_count(), 1);
+
+        // Simulate a stale running guard: context stayed Parked while the worker
+        // slot still names it as running.
+        {
+            let ctx = sched
+                .context_mut(id)
+                .expect("context must exist for double-park setup");
+            ctx.set_state(ContextState::Parked(ParkReason::AwaitMessage));
+            sched.running = Some(id);
+        }
+        let guard = RunningGuard {
+            scheduler: &mut sched,
+            id,
+        };
+        let err = park_err(
+            guard,
+            ParkReason::AwaitIo,
+            "second park on already-parked context",
+        );
+        assert!(matches!(
+            err,
+            SchedulerError::InvalidTransition {
+                id: cid,
+                state: ContextState::Parked(ParkReason::AwaitMessage),
+                operation: "park",
+            } if cid == id
+        ));
+        assert_eq!(
+            sched.state_of(id),
+            Some(ContextState::Parked(ParkReason::AwaitMessage))
+        );
+        assert_eq!(sched.parked_count(), 1);
+        assert_eq!(sched.runnable_count(), 0);
     }
 
     #[test]
