@@ -51,9 +51,21 @@ fn build_project_spec_inner(
 
 /// Discover, incrementally build (reusing `build/` when fresh), load, and verify.
 pub fn ensure_built_project(name: &str) -> BuiltProject {
+    ensure_built_project_with_options(name, BuildOptions::default())
+}
+
+/// Like [`ensure_built_project`] with explicit build options (profile, force, etc.).
+pub fn ensure_built_project_with_options(name: &str, options: BuildOptions) -> BuiltProject {
     let spec = lookup_project(name);
     let _lock = project_fs_lock(spec.name);
-    build_project_spec_inner(spec, BuildOptions::default(), false)
+    build_project_spec_inner(spec, options, false)
+}
+
+/// Force-build, load, and verify with explicit build options.
+pub fn force_built_project_with_options(name: &str, options: BuildOptions) -> BuiltProject {
+    let spec = lookup_project(name);
+    let _lock = project_fs_lock(spec.name);
+    build_project_spec_inner(spec, options, true)
 }
 
 /// Like [`ensure_built_project`] without acquiring the project lock (caller must hold it).

@@ -143,4 +143,20 @@ impl BuildOptions {
             profile: BuildProfile::Dev,
         }
     }
+
+    /// Returns a copy of these options with the given build profile.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use phx_compiler::{BuildOptions, BuildProfile};
+    ///
+    /// let opts = BuildOptions::force(true).with_profile(BuildProfile::Release);
+    /// assert!(opts.force);
+    /// assert_eq!(opts.profile, BuildProfile::Release);
+    /// ```
+    #[must_use]
+    pub const fn with_profile(self, profile: BuildProfile) -> Self {
+        Self { profile, ..self }
+    }
 }

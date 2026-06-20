@@ -312,7 +312,7 @@ When the M:N runtime ships, debug layers extend — **same protocol**, richer ev
 | `phx run --dump-main` | 4 (dump) | **Shipped** |
 | `phx run --trace-calls` | 4 (trace) | Planned |
 | `phx run --dump-all` | 4 (dump) | Planned |
-| `phx build --release` | 1–2 (strip) | Planned |
+| `phx build --release` | 1–2 (strip) | **Shipped** |
 | `phx debug [--stdio]` | 5 (DAP) | Planned |
 | `phx inspect <file.phx0>` | 2 (static) | Optional — disassemble + section dump for CI |
 
