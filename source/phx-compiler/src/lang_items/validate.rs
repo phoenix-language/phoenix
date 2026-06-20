@@ -1,8 +1,15 @@
 //! Closed registry of valid `(kind, name)` language items.
+//!
+//! v1 accepts only the names listed here. [`super::collect::build_lang_item_registry`]
+//! rejects unknown pairs with [`TypeCheckError::LangItemInvalid`](crate::typeck::TypeCheckError::LangItemInvalid)
+//! and auto-links enum variants when explicit `#[lang_item]` markers are omitted.
 
 use super::LangItemKind;
 
 /// Returns `true` when `name` is a known language item for `kind`.
+///
+/// The closed set covers std VM intrinsics, `Option`/`Result` templates and variants,
+/// and the core trait markers the type checker treats specially.
 #[must_use]
 pub fn is_known_lang_item(kind: LangItemKind, name: &str) -> bool {
     match kind {
@@ -29,6 +36,10 @@ pub fn is_known_lang_item(kind: LangItemKind, name: &str) -> bool {
 }
 
 /// Variant names collected automatically for a marked std enum.
+///
+/// When `Option` or `Result` is registered as an enum language item, sibling variant
+/// definitions in the same module are linked without requiring explicit
+/// `#[lang_item(kind = "variant", …)]` on each ctor.
 #[must_use]
 pub fn auto_variants_for_enum(enum_name: &str) -> &'static [&'static str] {
     match enum_name {

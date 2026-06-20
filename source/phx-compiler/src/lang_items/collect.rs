@@ -1,4 +1,8 @@
 //! Build [`LangItemRegistry`] from resolved source and dependency `.pxi` markers.
+//!
+//! Walks all modules in a [`ResolvedProgram`](crate::resolver::ResolvedProgram), extracts
+//! `#[lang_item]` attributes from std items, merges dependency import metadata, and
+//! auto-links enum variants for marked `Option`/`Result` templates.
 
 use phx_diagnostics::{Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::Interner;
@@ -20,6 +24,18 @@ struct MarkerSite {
 }
 
 /// Builds the language item registry for `resolved`, reporting errors into `bag`.
+///
+/// Source markers under `std::` are validated and deduplicated. Import markers from
+/// dependency `.pxi` files fill gaps when the same `(kind, name)` is not already
+/// defined in the current program. After insertion, variant ctors for registered
+/// `Option`/`Result` enums are auto-linked when not explicitly marked.
+///
+/// Diagnostics are pushed into `bag` and collection continues — the returned registry
+/// contains every successfully registered item even when errors were reported.
+///
+/// # Panics
+///
+/// Never panics on malformed resolved programs.
 #[must_use]
 pub fn build_lang_item_registry(
     resolved: &ResolvedProgram,
@@ -61,6 +77,7 @@ pub fn build_lang_item_registry(
     registry
 }
 
+/// Scans one top-level item for a `#[lang_item]` attribute and registers it in `sites`.
 fn collect_item_marker(
     resolved: &ResolvedProgram,
     interner: &Interner,
@@ -140,6 +157,7 @@ fn collect_item_marker(
     );
 }
 
+/// Links variant ctors for registered `Option`/`Result` enums when not explicitly marked.
 fn collect_auto_variants(
     resolved: &ResolvedProgram,
     interner: &Interner,
@@ -177,6 +195,7 @@ fn collect_auto_variants(
     }
 }
 
+/// Resolves the [`DefId`] for a top-level item carrying a language item marker.
 fn def_id_for_item(resolved: &ResolvedProgram, module: u32, item: &TopLevelItem) -> Option<DefId> {
     let (name, kind) = match &item.decl {
         TopLevelDecl::Function(f) => (f.name.symbol, DefKind::Fn),
@@ -188,6 +207,7 @@ fn def_id_for_item(resolved: &ResolvedProgram, module: u32, item: &TopLevelItem)
     find_def(resolved, &resolved.interner, module, name_str, kind)
 }
 
+/// Linear search for a definition by name and kind within `module`.
 fn find_def(
     resolved: &ResolvedProgram,
     interner: &Interner,
