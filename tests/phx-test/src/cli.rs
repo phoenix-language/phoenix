@@ -291,6 +291,19 @@ impl PhxCli {
         self
     }
 
+    /// `phx build --release --emit-interface-only --project-root <root>` — expect success.
+    pub fn build_release_interface_ok(&self, project_root: &Path) -> &Self {
+        self.run(&[
+            "build",
+            "--release",
+            "--emit-interface-only",
+            "--project-root",
+            &path_to_arg(project_root),
+        ])
+        .assert_success();
+        self
+    }
+
     /// Fresh `check --emit-interface-only` smoke for a project entry file.
     pub fn check_interface_only_project_smoke(&self, name: &str) {
         with_project_fs_lock(name, || {

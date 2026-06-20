@@ -135,6 +135,29 @@ fn build_emit_interface_only() {
 }
 
 #[test]
+fn build_release_emit_interface_only() {
+    with_project_fs_lock("project", || {
+        let cli = shared_cli();
+        let project = cli_project("project");
+        let _ = std::fs::remove_dir_all(project.join("build"));
+        cli.build_release_interface_ok(&project);
+        assert!(project.join("build/manifest.json").is_file());
+        assert!(
+            project
+                .join("build/pxi/cli_project_test/util/math.pxi")
+                .is_file()
+        );
+        assert!(!project_bin_path().is_file());
+        let manifest =
+            std::fs::read_to_string(project.join("build/manifest.json")).expect("read manifest");
+        assert!(
+            manifest.contains(r#""profile": "release""#),
+            "expected release profile in manifest, got:\n{manifest}"
+        );
+    });
+}
+
+#[test]
 fn run_modules_main() {
     let cli = shared_cli();
     let modules = cli_modules_dir();
