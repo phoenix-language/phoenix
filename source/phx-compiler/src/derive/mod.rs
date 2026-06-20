@@ -1,6 +1,31 @@
-//! `#[derive(...)]` expansion before name resolution.
+//! `#[derive(...)]` expansion before name resolution (V0-056).
 //!
-//! Synthesizes trait `impl` items for supported derives on structs and enums.
+//! Runs immediately after parsing and attribute merging, before the resolver walk.
+//! Each `#[derive(Copyable, PartialEq, Debug)]` on a struct or enum is replaced by
+//! synthetic `impl` items appended after the type declaration; the original derive
+//! list on the type is cleared so later passes see ordinary impl blocks only.
+//!
+//! ## Supported traits
+//!
+//! | Trait | Generated impl |
+//! | ----- | -------------- |
+//! | `Copyable` | Marker impl with generic bounds on type parameters used in fields |
+//! | `PartialEq` | `eq(&self, other: &Self) -> bool` — field-wise for structs, tag + payload match for enums |
+//! | `Debug` | `fmt(&self) -> [u8; 32]` — type name bytes, zero-padded (MVP debug formatting) |
+//!
+//! Duplicate derives, unsupported trait names, or a type that already implements the
+//! trait (explicit impl in the same module) produce [`DeriveError`].
+//!
+//! ## Generic bounds
+//!
+//! For `Copyable` and `PartialEq`, any generic type parameter referenced by a field
+//! or variant payload receives a bound to the derived trait (unless already present).
+//! `Debug` does not propagate bounds — its generated method ignores field values.
+//!
+//! ## Pipeline position
+//!
+//! Called from [`crate::modules::loader`] after [`crate::attrs::merge_bracket_derives_into_program`]
+//! merges bracket-style `#[derive(...)]` attributes into [`DeriveDirective`] lists on each type.
 
 use std::collections::HashSet;
 
@@ -21,6 +46,10 @@ use phx_syntax::token::{IntegerSuffix, Keyword};
 use phx_syntax::{InternError, Interner, Program, Symbol, impl_receiver_symbol};
 
 /// Failure while expanding `#[derive(...)]`.
+///
+/// Returned by [`expand_derives`] when a derive list is invalid or conflicts with an
+/// existing impl in the same compilation unit. The span points at the offending trait
+/// name or the type's derive site.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeriveError {
     /// Related source span.
@@ -32,10 +61,15 @@ pub struct DeriveError {
 const SUPPORTED_DERIVES: &[&str] = &["Copyable", "PartialEq", "Debug"];
 
 /// Supported compile-time derive traits (V0-056).
+///
+/// Parsed from interned trait names in `#[derive(...)]` attribute lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeriveTrait {
+    /// Marker trait for bitwise-copyable types; adds bounds on generic parameters in fields.
     Copyable,
+    /// Structural equality; generates `eq` comparing fields or enum tags and payloads.
     PartialEq,
+    /// MVP debug formatting; generates `fmt` returning the type name as a fixed `[u8; 32]`.
     Debug,
 }
 
@@ -60,9 +94,22 @@ impl DeriveTrait {
 
 /// Expands `#[derive(...)]` on structs and enums into synthetic trait impl items.
 ///
+/// Walks [`Program::items`](phx_syntax::Program::items) in order. For each struct or
+/// enum with a non-empty derive list, appends generated impl blocks after the type
+/// and clears the derive list on the type node. Other top-level items pass through
+/// unchanged.
+///
+/// Existing explicit impls in the same program are collected first so duplicate
+/// derive requests are rejected before any AST is synthesized.
+///
 /// # Errors
 ///
-/// Returns [`DeriveError`] for unsupported traits or duplicate impls.
+/// Returns [`DeriveError`] when:
+///
+/// - a trait name is not one of `Copyable`, `PartialEq`, or `Debug`;
+/// - the same trait appears twice in a type's derive list;
+/// - the type already has an explicit impl for that trait in this module;
+/// - the identifier intern table fills while synthesizing AST nodes.
 pub fn expand_derives(program: &mut Program, interner: &mut Interner) -> Result<(), DeriveError> {
     crate::attrs::merge_bracket_derives_into_program(program, interner);
     let existing = collect_existing_impls(&program.items, interner);
@@ -117,12 +164,18 @@ pub fn expand_derives(program: &mut Program, interner: &mut Interner) -> Result<
     Ok(())
 }
 
+/// Struct or enum body shape used when synthesizing `PartialEq` and generic bounds.
 #[derive(Clone, Copy)]
 enum TypeShape<'a> {
+    /// Named-field, tuple, or unit struct body.
     Struct(&'a StructBody),
+    /// Enum variant list.
     Enum(&'a [EnumVariant]),
 }
 
+/// Collects `(type_symbol, trait_symbol)` pairs for explicit impl blocks already in `items`.
+///
+/// Used to reject derives that would duplicate a user-written impl in the same module.
 fn collect_existing_impls(
     items: &[Node<TopLevelItem>],
     interner: &Interner,
@@ -141,6 +194,7 @@ fn collect_existing_impls(
     out
 }
 
+/// Extracts the trait name symbol from an impl's optional trait type node.
 fn trait_symbol(trait_: Option<&Node<Type>>) -> Option<Symbol> {
     match trait_.map(|t| &t.inner) {
         Some(Type::Named { name, .. }) => Some(name.symbol),
@@ -148,6 +202,7 @@ fn trait_symbol(trait_: Option<&Node<Type>>) -> Option<Symbol> {
     }
 }
 
+/// Records a generic type parameter referenced bare (no arguments) inside `ty`.
 fn visit_type_param_refs(ty: &Type, param_syms: &HashSet<Symbol>, required: &mut HashSet<Symbol>) {
     if let Type::Named {
         name,
@@ -159,6 +214,10 @@ fn visit_type_param_refs(ty: &Type, param_syms: &HashSet<Symbol>, required: &mut
     }
 }
 
+/// Generic parameters that must receive a bound for the given derived trait.
+///
+/// Scans struct fields or enum variant payloads for bare uses of a generic parameter
+/// name (e.g. `T` in `field: T`). Empty when the type has no generic parameter list.
 fn required_param_bounds(
     shape: TypeShape<'_>,
     generic_params: Option<&[GenericParam]>,
@@ -203,6 +262,10 @@ fn required_param_bounds(
     required
 }
 
+/// Validates derive directives and builds synthetic impl items for one type.
+///
+/// Checks for unsupported traits, duplicates within the derive list, and conflicts
+/// with `existing` impls or impls already planned in this expansion batch.
 fn expand_type_derives(
     interner: &mut Interner,
     existing: &[(Symbol, Symbol)],
@@ -279,6 +342,7 @@ fn expand_type_derives(
     Ok(impls)
 }
 
+/// Maps a synthesized impl item back to its [`DeriveTrait`] kind, if any.
 fn impl_trait_kind(item: &Node<TopLevelItem>, interner: &Interner) -> Option<DeriveTrait> {
     let TopLevelDecl::Impl { trait_, .. } = &item.inner.decl else {
         return None;
@@ -286,6 +350,11 @@ fn impl_trait_kind(item: &Node<TopLevelItem>, interner: &Interner) -> Option<Der
     trait_symbol(trait_.as_ref()).and_then(|s| DeriveTrait::parse(interner, s))
 }
 
+/// Allocates synthetic AST nodes for a single derive expansion.
+///
+/// Uses a dedicated node-id range starting at `0x4_000_000` so derived nodes do not
+/// collide with parse-time ids. Intern failures are deferred and surfaced by
+/// [`Self::finish`].
 struct AstGen<'a> {
     interner: &'a mut Interner,
     span: Span,
@@ -918,6 +987,9 @@ impl<'a> AstGen<'a> {
     }
 }
 
+/// Left-pads a type name into a fixed 32-byte buffer for MVP `Debug::fmt` output.
+///
+/// Names longer than 32 bytes are truncated; shorter names are zero-filled.
 fn debug_name_bytes(name: &str) -> [u8; 32] {
     let mut out = [0u8; 32];
     for (i, b) in name.bytes().enumerate().take(32) {
