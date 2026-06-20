@@ -10,6 +10,7 @@ use super::instr::{InstrError, Instruction};
 use super::local_layout::{FunctionLocalLayout, LocalLayoutTable};
 use super::module::BytecodeModule;
 use super::opcode::Opcode;
+use super::pc_span::PHX0_HAS_DEBUG;
 use super::section::{SectionError, validate_section_table};
 use super::stack_flow::{StackFlowError, analyze_stack_cfg, return_stack_depth};
 use super::types::TypeKind;
@@ -25,6 +26,27 @@ pub enum VerifyError {
     SectionOutOfBounds,
     /// MVP flags field must be zero.
     NonZeroFlags,
+    /// `PHX0_HAS_DEBUG` set without a PC span section.
+    DebugFlagWithoutSection,
+    /// PC span entry references an unknown function id.
+    UnknownPcSpanFunction {
+        /// Function id from section 5.
+        function_id: u32,
+    },
+    /// PC span entry references an unknown file id.
+    UnknownPcSpanFile {
+        /// File id from section 5.
+        file_id: u32,
+    },
+    /// PC span entry `pc` is past the function body.
+    PcSpanOutOfRange {
+        /// Function id.
+        function_id: u32,
+        /// Recorded pc.
+        pc: u32,
+        /// Function body length.
+        code_len: u32,
+    },
     /// Header major/minor version is not supported.
     UnsupportedVersion {
         /// Major version read from header.
@@ -225,6 +247,23 @@ impl std::fmt::Display for VerifyError {
             Self::BadMagic => write!(f, "invalid magic (expected PHX0)"),
             Self::SectionOutOfBounds => write!(f, "section extends past file end"),
             Self::NonZeroFlags => write!(f, "non-zero header flags"),
+            Self::DebugFlagWithoutSection => {
+                write!(f, "PHX0_HAS_DEBUG set without section 5 PC span map")
+            }
+            Self::UnknownPcSpanFunction { function_id } => {
+                write!(f, "PC span references unknown function id {function_id}")
+            }
+            Self::UnknownPcSpanFile { file_id } => {
+                write!(f, "PC span references unknown file id {file_id}")
+            }
+            Self::PcSpanOutOfRange {
+                function_id,
+                pc,
+                code_len,
+            } => write!(
+                f,
+                "PC span pc {pc} out of range for function {function_id} (code_len {code_len})"
+            ),
             Self::UnsupportedVersion { major, minor } => {
                 write!(f, "unsupported bytecode version {major}.{minor}")
             }
@@ -405,6 +444,7 @@ pub fn verify(module: &BytecodeModule) -> Result<super::VerifiedModule<'_>, Veri
 fn verify_inner(module: &BytecodeModule) -> Result<(), VerifyError> {
     verify_header_and_sections(module)?;
     verify_entry_function(module)?;
+    verify_pc_spans(module)?;
     let fn_arity = function_arity_map(module);
     for func in &module.functions.functions {
         verify_function_body(func, module, &fn_arity)?;
@@ -420,8 +460,11 @@ fn verify_header_and_sections(module: &BytecodeModule) -> Result<(), VerifyError
         HeaderError::BadMagic => VerifyError::BadMagic,
     })?;
 
-    if module.header.flags != 0 {
+    if module.header.flags & !PHX0_HAS_DEBUG != 0 {
         return Err(VerifyError::NonZeroFlags);
+    }
+    if module.header.flags & PHX0_HAS_DEBUG != 0 && module.pc_spans.is_empty() {
+        return Err(VerifyError::DebugFlagWithoutSection);
     }
 
     let (entries, file_len) = module
@@ -448,6 +491,38 @@ fn section_error_to_verify(err: SectionError) -> VerifyError {
             VerifyError::OverlappingSections { first, second }
         }
     }
+}
+
+fn verify_pc_spans(module: &BytecodeModule) -> Result<(), VerifyError> {
+    if module.pc_spans.is_empty() {
+        return Ok(());
+    }
+    let file_count = u32::try_from(module.pc_spans.files.len()).unwrap_or(u32::MAX);
+    for entry in &module.pc_spans.entries {
+        if entry.file_id >= file_count && !(file_count == 0 && entry.file_id == 0) {
+            return Err(VerifyError::UnknownPcSpanFile {
+                file_id: entry.file_id,
+            });
+        }
+        let Some(func) = module
+            .functions
+            .functions
+            .iter()
+            .find(|f| f.function_id == entry.function_id)
+        else {
+            return Err(VerifyError::UnknownPcSpanFunction {
+                function_id: entry.function_id,
+            });
+        };
+        if entry.pc > func.code_len {
+            return Err(VerifyError::PcSpanOutOfRange {
+                function_id: entry.function_id,
+                pc: entry.pc,
+                code_len: func.code_len,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn verify_entry_function(module: &BytecodeModule) -> Result<(), VerifyError> {
@@ -1025,6 +1100,7 @@ mod tests {
             },
             code,
             local_layouts: LocalLayoutTable::default(),
+            pc_spans: Default::default(),
         }
     }
 
@@ -1414,6 +1490,7 @@ mod tests {
                     slots: vec![LocalSlotKind::primitive(PrimitiveKind::S32)],
                 }],
             },
+            pc_spans: Default::default(),
         }
     }
 

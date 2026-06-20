@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use phx_bytecode::{Instruction, Opcode};
+use phx_diagnostics::Span;
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
 use crate::ir::{StackSimError, compute_ir_stack_max};
@@ -23,6 +24,8 @@ pub struct EmittedFunction {
     pub code: Vec<u8>,
     /// Maximum operand stack depth observed during emission.
     pub stack_max: u16,
+    /// Source span at each instruction's start PC (function-local byte offset).
+    pub pc_spans: Vec<(u32, Span)>,
 }
 
 /// Emits one function's CFG to bytecode bytes.
@@ -41,7 +44,7 @@ pub fn emit_function(
     resolved: &ResolvedProgram,
 ) -> Result<EmittedFunction, CodegenError> {
     let block_starts = compute_block_starts(func, pool, def_to_fn, type_remap, resolved)?;
-    let (code, stack_max) = emit_blocks(
+    let (code, stack_max, pc_spans) = emit_blocks(
         func,
         pool,
         def_to_fn,
@@ -50,7 +53,11 @@ pub fn emit_function(
         type_remap,
         resolved,
     )?;
-    Ok(EmittedFunction { code, stack_max })
+    Ok(EmittedFunction {
+        code,
+        stack_max,
+        pc_spans,
+    })
 }
 
 fn map_type_id(global: u32, type_remap: Option<&HashMap<u32, u32>>) -> Result<u32, CodegenError> {
@@ -159,10 +166,12 @@ fn emit_blocks(
     block_starts: &[u32],
     type_remap: Option<&HashMap<u32, u32>>,
     resolved: &ResolvedProgram,
-) -> Result<(Vec<u8>, u16), CodegenError> {
+) -> Result<(Vec<u8>, u16, Vec<(u32, Span)>), CodegenError> {
     let mut out = Vec::new();
+    let mut pc_spans = Vec::new();
     for block in &func.blocks {
         for spanned in &block.insts {
+            let pc = u32::try_from(out.len()).unwrap_or(u32::MAX);
             emit_inst(
                 &mut out,
                 &spanned.inst,
@@ -172,11 +181,12 @@ fn emit_blocks(
                 type_remap,
                 resolved,
             )?;
+            pc_spans.push((pc, spanned.span));
         }
     }
     let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity).map_err(map_stack_sim_error)?;
     let stack_max = u16::try_from(max_stack).unwrap_or(u16::MAX);
-    Ok((out, stack_max))
+    Ok((out, stack_max, pc_spans))
 }
 
 fn map_stack_sim_error(err: StackSimError) -> CodegenError {

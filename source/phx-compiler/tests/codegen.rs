@@ -13,6 +13,32 @@ use phx_compiler::{
 };
 
 #[test]
+fn codegen_emits_pc_span_section_in_dev_builds() {
+    let source = "main :: () => { const n: s32 = 1; };";
+    let unit = compile_source(source, None).expect("compile_source");
+    let ir = lower(&unit.typed).expect("lower");
+    let module = codegen(&ir, &unit.typed).expect("codegen");
+    verify(&module).expect("verify");
+    assert!(
+        !module.pc_spans.entries.is_empty(),
+        "debug codegen should record PC spans"
+    );
+    let bytes = module.encode().expect("encode");
+    let decoded = BytecodeModule::decode(&bytes).expect("decode");
+    assert_eq!(decoded.header.section_count, 6);
+    assert_eq!(
+        decoded.pc_spans.entries.len(),
+        module.pc_spans.entries.len()
+    );
+    assert!(
+        decoded
+            .pc_spans
+            .lookup_exact(0, 0)
+            .is_some_and(|e| e.span_end > e.span_start)
+    );
+}
+
+#[test]
 fn codegen_generic_fn_inline_verifies() {
     let source = "id :: <t> (x: t) => t { x }; main :: () => { const n: s32 = id :: <s32> (42); };";
     let unit = compile_source(source, None).expect("compile_source");

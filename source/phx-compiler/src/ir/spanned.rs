@@ -6,8 +6,8 @@ use super::inst::IrInst;
 
 /// One IR instruction with the source span of the construct that produced it.
 ///
-/// Spans are used for lowering/codegen/validation diagnostics only; they are not serialized
-/// to PHX0 (see `vm-linear.md` section 5).
+/// Spans are used for lowering/codegen/validation diagnostics; dev builds serialize them to
+/// PHX0 section 5 (PC span map — see `debug.md`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpannedInst {
     /// Source span of the expression, statement, or desugared construct.

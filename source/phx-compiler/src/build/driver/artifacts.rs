@@ -155,6 +155,13 @@ pub(super) fn write_interfaces_and_collect_objects(
         }
 
         if !options.emit_interface_only {
+            let rel_source = module
+                .filesystem
+                .strip_prefix(&config.root)
+                .unwrap_or(&module.filesystem)
+                .display()
+                .to_string();
+
             let obj = if skip {
                 let phx0_path = old_manifest
                     .and_then(|old| old.modules.get(&logical))
@@ -174,8 +181,14 @@ pub(super) fn write_interfaces_and_collect_objects(
             } else {
                 let module_ir =
                     lower_module(typed, module.id.index()).map_err(BuildError::Lower)?;
-                let obj = codegen_module(&module_ir, typed, global_fn, module.id == loaded.root)
-                    .map_err(BuildError::Codegen)?;
+                let obj = codegen_module(
+                    &module_ir,
+                    typed,
+                    global_fn,
+                    module.id == loaded.root,
+                    Some(rel_source.as_str()),
+                )
+                .map_err(BuildError::Codegen)?;
                 let bytes = obj.encode().map_err(BuildError::Encode)?;
                 if let Some(parent) = artifacts.phx0.parent() {
                     std::fs::create_dir_all(parent).map_err(|e| io_err_path(parent, &e))?;

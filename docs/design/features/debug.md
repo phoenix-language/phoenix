@@ -135,6 +135,26 @@ Release builds clear these bits.
 
 Payload (versioned; minor format bump when first written):
 
+#### Phase 1 (PHX-070 D1 spike): PC span map
+
+Until the full symbol/name tables land, dev builds may write a **minimal section 5** containing only a sorted `(function_id, pc) → source span` map. This is sufficient for CLI/VM to resolve [`VmError`](../../source/phx-vm/src/error.rs) sites `(function_id, pc)` to UTF-8 source byte ranges (PHX-063 [`Span`](../../source/phx-diagnostics/src/span.rs) values).
+
+Wire layout (little-endian, `sub_version = 1`):
+
+| Field | Size | Meaning |
+|-------|------|---------|
+| `sub_version` | 4 | `1` for phase 1 |
+| `file_count` | 4 | Number of compilation-unit paths |
+| `files[]` | `4 + N` each | `path_len: u32`, UTF-8 path bytes (project-relative) |
+| `entry_count` | 4 | Number of PC span rows |
+| `entries[]` | 20 each | `function_id: u32`, `pc: u32`, `file_id: u32`, `span_start: u32`, `span_end: u32` |
+
+Rows are sorted by `(function_id, pc)` ascending. `pc` is the byte offset of the instruction within the function body (same convention as VM error sites). When `file_count == 0`, rows must use `file_id == 0` (unknown file).
+
+Implementation: [`PcSpanTable`](../../source/phx-bytecode/src/pc_span.rs); codegen records spans in debug builds (`cfg(debug_assertions)`); linker merges tables across modules.
+
+#### Full symbols (planned D1+)
+
 | Field | Purpose |
 |-------|---------|
 | `file_count` | Number of compilation unit paths |
