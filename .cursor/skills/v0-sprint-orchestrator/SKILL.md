@@ -31,10 +31,10 @@ Work top-to-bottom within a priority tier. Skip items already in flight on an op
 
 | ID | Task | Stage | Notes |
 |---|---|---|---|
-| PHX-039 | IR validator (terminator-last, target-in-range, optional depth sim) in debug builds | lower/ir | Catches lowering bugs early |
-| PHX-012 | Move parse-error formatting into `phx-diagnostics` | diagnostics | |
-| PHX-013 | Complete `phx explain` for E3002–E3005, E2033 | diagnostics/cli | |
-| PHX-058 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | cli | |
+| PHX-039 | IR validator (terminator-last, target-in-range, optional depth sim) in debug builds | lower/ir | **Done** — PR #7 |
+| PHX-012 | Move parse-error formatting into `phx-diagnostics` | diagnostics | **Done** — PR #10 |
+| PHX-013 | Complete `phx explain` for E3002–E3005, E2033 | diagnostics/cli | **Done** — PR #8 |
+| PHX-058 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | cli | **Done** — PR #6 |
 | PHX-031 | Split `typeck/check.rs` into `check/{decl,impl,expr,stmt,pattern,intrinsic}.rs` | typeck | Large refactor; one submodule per PR |
 
 ### Tier B — Post-beta foundations
@@ -42,8 +42,8 @@ Work top-to-bottom within a priority tier. Skip items already in flight on an op
 | ID | Task | Stage | Notes |
 |---|---|---|---|
 | PHX-070 | PHX0 section 5 source maps: encode `(function_id, pc) → span` at link; CLI maps runtime errors | codegen/link/cli | Read `docs/design/features/debug.md` first |
-| PHX-061 | PXI round-trip property tests for nested generic types | tests/pxi | ROADMAP M3 infra |
-| PHX-050-adj | `load_project_binary` optional verify-on-load | vm/cli | Defense in depth |
+| PHX-061 | PXI round-trip property tests for nested generic types | tests/pxi | **Done** — PR #9 |
+| PHX-050-adj | `load_project_binary` optional verify-on-load | vm/cli | **Done** — PR #11 |
 
 ### Tier C — Explicitly deferred (do not start)
 
