@@ -1,9 +1,19 @@
 //! Stable entry points for external tools (LSP, SDK, embedders).
 //!
-//! Wraps the `compile` module without duplicating pipeline logic. Internal compiler graphs
-//! ([`crate::unstable::TypedProgram`], [`crate::unstable::ResolvedProgram`],
-//! [`crate::unstable::CompilationUnit`]) live under [`crate::unstable`] and are not part of this
-//! facade.
+//! Wraps the [`compile`](crate::compile) module without duplicating pipeline logic. Returns
+//! opaque success types ([`CheckOutput`], [`CompileOutput`]) so callers are not coupled to
+//! internal side tables ([`crate::unstable::TypedProgram`], [`crate::unstable::ResolvedProgram`],
+//! [`crate::unstable::CompilationUnit`]).
+//!
+//! ## When to use the facade
+//!
+//! - **Type-check only** — [`check_file`] or [`check_file_with_module_path`]; diagnostics via
+//!   [`CompileError::format_with_modules`](crate::CompileError::format_with_modules).
+//! - **Bytecode emission** — [`compile_to_module`] or [`compile_to_module_with_module_path`];
+//!   run [`phx_bytecode::verify`] on [`CompileOutput::bytecode`] before execution.
+//!
+//! For in-repo drivers that need the typed program (lint, `.pxi` export, incremental build), use
+//! [`crate::check_file`] and [`crate::compile_compilation_unit`] instead.
 
 use std::path::Path;
 
@@ -17,13 +27,19 @@ use crate::compile::{
 };
 
 /// Successful end-to-end compile of one executable module.
+///
+/// Produced by [`compile_to_module`] and [`compile_to_module_with_module_path`]. The bytecode is
+/// ready for verification and loading; this crate does not run the VM.
 #[derive(Debug)]
 pub struct CompileOutput {
-    /// Verified-ready bytecode (caller should still run [`phx_bytecode::verify`]).
+    /// PHX0 module image (caller should still run [`phx_bytecode::verify`] before load/run).
     pub bytecode: BytecodeModule,
 }
 
 /// Successful type-check of one module (no codegen).
+///
+/// Produced by [`check_file`] and [`check_file_with_module_path`]. Carries no payload — success
+/// means parse, resolve, and type-check completed with no errors.
 #[derive(Debug)]
 pub struct CheckOutput;
 

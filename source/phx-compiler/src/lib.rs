@@ -1,8 +1,17 @@
 //! Phoenix compiler — resolve, type-check, lower, and codegen to bytecode.
 //!
-//! [`compile_source`] and [`check_file`] run parse → resolve → typeck.
-//! [`compile_to_module`] continues through lowering and codegen.
-//! Verify and VM execution are orchestrated by the `phx` CLI, not this crate.
+//! This crate implements the Phoenix compilation pipeline from source text to verified-ready
+//! [`BytecodeModule`] images. The `phx` CLI wraps these APIs; verify and VM execution live in
+//! `phx-bytecode` and `phx-vm`.
+//!
+//! ## Pipeline overview
+//!
+//! ```text
+//! source / path → parse → cfg + derive → resolve → typeck → [lint] → lower → codegen → PHX0
+//! ```
+//!
+//! - **Check-only:** [`compile_source`], [`check_file`], [`facade::check_file`] — stop after type-check.
+//! - **Full compile:** [`compile_to_module`], [`facade::compile_to_module`], [`build_project`] — emit bytecode and (for projects) link artifacts under `build/`.
 //!
 //! ## API stability tiers
 //!
@@ -10,11 +19,23 @@
 //! [`facade::check_file`], [`facade::compile_to_module`]), [`CompileError`], [`build_project`],
 //! [`ProjectConfig`], [`BytecodeModule`].
 //!
-//! **Tier 2 — driver (CLI / in-repo):** [`compile_source`], [`check_file`], `modules`, `standalone`,
-//! [`DiagnosticContext`]. May evolve; does not expose internal graph layout.
+//! Prefer [`facade::check_file`] / [`facade::compile_to_module`] for LSP, SDK, and other external
+//! tools — they hide [`CompilationUnit`](unstable::CompilationUnit) and internal side tables.
+//!
+//! **Tier 2 — driver (CLI / in-repo):** [`compile_source`], [`check_file`], [`compile_to_module`],
+//! [`DiagnosticContext`], [`modules`], [`standalone`]. May evolve; does not expose internal graph
+//! layout at the crate root.
 //!
 //! **Tier 3 — unstable:** [`unstable`] — [`unstable::ResolvedProgram`], [`unstable::TypedProgram`], IR, and pass
 //! entry points for tests and contributor tooling. Not semver-stable.
+//!
+//! ## Module map
+//!
+//! - [`compile`] (re-exported at root) — single-file and multi-file compile/check drivers
+//! - [`facade`] — stable embedder entry points
+//! - [`build`] — `phx build`, manifest, path-dependency prebuild, link
+//! - [`project`] — `phoenix.toml` discovery and layout
+//! - [`unstable`] — internal graphs and pass hooks for tests
 
 #![allow(clippy::result_large_err)] // `CompileError::TypeCheck` carries full `DiagnosticContext`.
 

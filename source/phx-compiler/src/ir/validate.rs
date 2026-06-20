@@ -1,4 +1,24 @@
 //! IR validation between lowering and codegen.
+//!
+//! Consumes a lowered [`IrModule`](super::IrModule) plus its
+//! [`TypedProgram`](crate::typeck::TypedProgram) and rejects malformed CFGs or stack-discipline
+//! violations before bytecode emission.
+//!
+//! ## Pass invariants
+//!
+//! - **Structural CFG:** every block ends with a terminator or falls through to the next block;
+//!   no instructions follow a terminator; jump targets are in range and loop-exit placeholders are
+//!   patched (see [`crate::lower::LowerCtx::patch_loop_exit_targets`]).
+//! - **Stack discipline:** merge blocks must agree on entry depth — Phoenix IR has no phi nodes,
+//!   so `if`/`match` branches must leave the same operand-stack depth before joining.
+//!
+//! ## Entry points
+//!
+//! - [`validation_enabled`] — whether the driver should run validation (debug/test or `PHX_VALIDATE_IR=1`)
+//! - [`validate_ir`] — whole-module check; aggregates per-function errors into [`IrBag`]
+//! - [`validate_function`] — one function: structure then [`super::stack_effect::analyze_ir_stack_cfg`]
+//!
+//! Call sites gate [`validate_ir`] with [`validation_enabled`]; see [`crate::compile::debug_validate_ir`].
 
 use phx_diagnostics::{IrBag, IrError, IrResult};
 
@@ -11,7 +31,9 @@ const LOOP_EXIT_TARGET_BASE: u32 = 0xF000_0000;
 
 /// Returns whether IR validation should run before codegen.
 ///
-/// Enabled in debug/test builds, or when `PHX_VALIDATE_IR=1` is set (including release builds).
+/// Enabled in debug/test builds (`cfg!(debug_assertions)` or `cfg!(test)`), or when the
+/// environment variable `PHX_VALIDATE_IR` is set to `1` (including release builds). Release
+/// pipelines skip validation by default for compile-time cost; set `PHX_VALIDATE_IR=1` to force it.
 #[must_use]
 pub fn validation_enabled() -> bool {
     cfg!(any(debug_assertions, test))
@@ -22,12 +44,17 @@ pub fn validation_enabled() -> bool {
 
 /// Validates every function in `ir`.
 ///
-/// Runs structural CFG checks and stack-depth simulation at merge blocks.
-/// Call sites gate invocation with [`validation_enabled`].
+/// For each [`IrFunction`](super::IrFunction) in `ir.functions`, runs [`validate_function`].
+/// Structural failures and stack-simulation errors are collected into an [`IrBag`] keyed by the
+/// owning module id from `typed.resolved.defs`.
+///
+/// Call sites gate invocation with [`validation_enabled`]; this function does not check the flag
+/// itself.
 ///
 /// # Errors
 ///
-/// Returns [`IrBag`] when any function fails validation.
+/// Returns [`IrBag`] when any function fails validation. The bag may contain multiple errors across
+/// functions; each entry carries the module id and an [`IrError`] from structure or stack checks.
 pub fn validate_ir(ir: &IrModule, typed: &TypedProgram) -> IrResult<()> {
     let mut bag = IrBag::new();
     for func in &ir.functions {
@@ -41,9 +68,15 @@ pub fn validate_ir(ir: &IrModule, typed: &TypedProgram) -> IrResult<()> {
 
 /// Validates one lowered function's CFG and stack discipline.
 ///
+/// Runs structural checks first (terminators, jump targets, loop-exit placeholders), then
+/// CFG-aware operand-stack simulation via [`super::stack_effect::analyze_ir_stack_cfg`]. The typed
+/// program supplies callee arity for [`IrInst::Call`](super::IrInst::Call) stack effects.
+///
 /// # Errors
 ///
-/// Returns the first [`IrError`] encountered.
+/// Returns the first [`IrError`] encountered — structural violations such as
+/// [`IrError::MissingTerminator`], [`IrError::InvalidJumpTarget`], or stack errors such as
+/// [`IrError::StackUnderflow`] and [`IrError::JoinDepthMismatch`].
 pub fn validate_function(func: &IrFunction, typed: &TypedProgram) -> Result<(), IrError> {
     validate_structure(func)?;
     analyze_ir_stack_cfg(func, typed)
