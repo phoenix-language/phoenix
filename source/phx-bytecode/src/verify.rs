@@ -1083,7 +1083,7 @@ fn fn_sig_param_count(aux: &[u8]) -> u32 {
 }
 
 #[cfg(test)]
-#[allow(clippy::cast_lossless, clippy::expect_used, clippy::unwrap_used)]
+#[allow(clippy::cast_lossless)]
 mod tests {
     use super::*;
     use crate::pc_span::PcSpanTable;
@@ -1092,6 +1092,32 @@ mod tests {
         FunctionTable, Instruction, LocalLayoutTable, Opcode, PrimitiveKind, TypeKind, TypeRecord,
         TypeTable,
     };
+
+    trait TestEncode {
+        fn test_encode(&self) -> Vec<u8>;
+    }
+
+    impl TestEncode for Instruction {
+        fn test_encode(&self) -> Vec<u8> {
+            match self.encode() {
+                Ok(bytes) => bytes,
+                Err(err) => panic!("encode {self:?}: {err:?}"),
+            }
+        }
+    }
+
+    fn verify_ok(module: &BytecodeModule) {
+        if let Err(err) = verify(module) {
+            panic!("verify should succeed: {err}");
+        }
+    }
+
+    fn verify_err(module: &BytecodeModule) -> VerifyError {
+        match verify(module) {
+            Err(err) => err,
+            Ok(_) => panic!("verify should fail"),
+        }
+    }
 
     fn minimal_module(
         code: Vec<u8>,
@@ -1134,16 +1160,14 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code
     }
@@ -1151,13 +1175,13 @@ mod tests {
     #[test]
     fn valid_const_return_passes() {
         let module = minimal_module(const_return_code(), 4, 0, 1);
-        verify(&module).expect("verify");
+        verify_ok(&module);
     }
 
     #[test]
     fn reject_invalid_entry_arity() {
         let module = minimal_module(const_return_code(), 4, 1, 1);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert_eq!(err, VerifyError::InvalidEntryFunction);
     }
 
@@ -1169,19 +1193,17 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::JumpIfTrue,
                 operands: vec![99],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::InvalidJumpTarget { function_id: 0, .. }
@@ -1196,19 +1218,17 @@ mod tests {
                 opcode: Opcode::Jump,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1223,19 +1243,17 @@ mod tests {
                 opcode: Opcode::JumpIfTrue,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1250,19 +1268,17 @@ mod tests {
                 opcode: Opcode::JumpIfFalse,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1277,19 +1293,17 @@ mod tests {
                 opcode: Opcode::Jump,
                 operands: vec![0, 1],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1304,19 +1318,17 @@ mod tests {
                 opcode: Opcode::Call,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 8, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1331,19 +1343,17 @@ mod tests {
                 opcode: Opcode::LoadLocal,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::LocalIndexOutOfRange { slot: 0, .. }
@@ -1353,7 +1363,7 @@ mod tests {
     #[test]
     fn reject_stack_exceeds_max() {
         let module = minimal_module(const_return_code(), 0, 0, 1);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::StackExceedsMax {
@@ -1372,19 +1382,17 @@ mod tests {
                 opcode: Opcode::Add,
                 operands: vec![PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::StackUnderflow { function_id: 0, .. }
@@ -1394,7 +1402,7 @@ mod tests {
     #[test]
     fn reject_return_depth_mismatch() {
         let module = minimal_module(const_return_code(), 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::ReturnDepthMismatch {
@@ -1410,7 +1418,7 @@ mod tests {
     fn reject_const_payload_width_mismatch() {
         let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.constants.entries[0].payload = 1i64.to_le_bytes().to_vec();
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(err, VerifyError::ConstPayloadMismatch { .. }));
     }
 
@@ -1422,19 +1430,17 @@ mod tests {
                 opcode: Opcode::Call,
                 operands: vec![99],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 8, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::InvalidCallTarget { callee: 99, .. }
@@ -1449,19 +1455,17 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Cast,
                 operands: vec![PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1530,32 +1534,28 @@ mod tests {
                 opcode: Opcode::MakeFnPtr,
                 operands: vec![0, 1],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::CallIndirect,
                 operands: vec![1, 10],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = module_with_types(
             code,
@@ -1563,7 +1563,7 @@ mod tests {
                 records: vec![sig_type],
             },
         );
-        verify(&module).expect("verify indirect call");
+        verify_ok(&module);
     }
 
     #[test]
@@ -1579,24 +1579,21 @@ mod tests {
                 opcode: Opcode::MakeFnPtr,
                 operands: vec![0, 1],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::CallIndirect,
                 operands: vec![1, 10],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = module_with_types(
             code,
@@ -1604,7 +1601,7 @@ mod tests {
                 records: vec![sig_type],
             },
         );
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::CallIndirectArityMismatch {
@@ -1622,24 +1619,21 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, PrimitiveKind::Bool.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::JumpIfTrue,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Jump,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let then_off = u32::try_from(code.len()).unwrap_or(0);
         code.extend(
@@ -1647,16 +1641,14 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![1, PrimitiveKind::S32.as_u8() as u32],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Jump,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let merge_off = u32::try_from(code.len()).unwrap_or(0);
         code.extend(
@@ -1664,8 +1656,7 @@ mod tests {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
 
         let patch_operand = |code: &mut Vec<u8>, inst_offset: usize, target: u32| {
@@ -1696,7 +1687,7 @@ mod tests {
                 payload: 1i32.to_le_bytes().to_vec(),
             },
         ];
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(
             matches!(
                 err,
@@ -1719,11 +1710,10 @@ mod tests {
                 opcode: Opcode::Trap,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MalformedInstruction { function_id: 0, .. }
@@ -1738,11 +1728,10 @@ mod tests {
                 opcode: Opcode::Trap,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        verify(&module).expect("trap without operands");
+        verify_ok(&module);
     }
 
     #[test]
@@ -1753,19 +1742,17 @@ mod tests {
                 opcode: Opcode::MakeStr,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = minimal_module(code, 4, 0, 0);
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::ConstTagMismatch {
@@ -1779,7 +1766,7 @@ mod tests {
     fn reject_missing_local_layout_when_required() {
         let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.functions.functions[0].local_count = 1;
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::MissingLocalLayout { function_id: 0 }
@@ -1796,16 +1783,14 @@ mod tests {
                 opcode: Opcode::LoadLocal,
                 operands: vec![0, u32::from(PrimitiveKind::F32.as_u8())],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let mut module = minimal_module(code, 4, 0, 0);
         module.functions.functions[0].local_count = 1;
@@ -1815,7 +1800,7 @@ mod tests {
                 slots: vec![LocalSlotKind::primitive(PrimitiveKind::S32)],
             }],
         };
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert!(matches!(
             err,
             VerifyError::LocalPrimKindMismatch {
@@ -1834,30 +1819,28 @@ mod tests {
                 opcode: Opcode::MakeStr,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let mut module = minimal_module(code, 4, 0, 1);
         module.constants.entries[0] = ConstEntry {
             tag: ConstTag::Bytes,
             payload: b"hi".to_vec(),
         };
-        verify(&module).expect("make str bytes const");
+        verify_ok(&module);
     }
 
     #[test]
     fn reject_unsupported_version_major() {
         let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.header.version_major = 99;
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert_eq!(
             err,
             VerifyError::UnsupportedVersion {
@@ -1871,7 +1854,7 @@ mod tests {
     fn reject_unsupported_version_minor() {
         let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.header.version_minor = crate::VERSION_MINOR + 1;
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert_eq!(
             err,
             VerifyError::UnsupportedVersion {
@@ -1885,7 +1868,7 @@ mod tests {
     fn reject_section_count_mismatch() {
         let mut module = minimal_module(const_return_code(), 4, 0, 1);
         module.header.section_count = 3;
-        let err = verify(&module).unwrap_err();
+        let err = verify_err(&module);
         assert_eq!(
             err,
             VerifyError::SectionCountMismatch {
