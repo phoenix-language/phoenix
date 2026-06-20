@@ -1,7 +1,20 @@
 //! AST traversal for name resolution.
 //!
-//! Implements [`Resolver::resolve_program`] and the recursive walks over types, expressions,
-//! patterns, and top-level items. Pass order:
+//! ## Pass role
+//!
+//! Owned by [`super::Resolver`]. Implements the recursive walks over types, expressions, patterns,
+//! and top-level items that populate [`super::ResolvedProgram`].
+//!
+//! ## Inputs and outputs
+//!
+//! - **Inputs:** parsed [`SourceModule`](super::SourceModule) on [`Resolver::source`], optional
+//!   phase-1 def table, import bindings from dependency `.pxi` files, and flags
+//!   ([`Resolver::collect_only`], [`Resolver::allow_imports`]).
+//! - **Outputs:** [`Def`](super::Def) records, [`ResolutionKey`](super::ResolutionKey) entries,
+//!   closure upvar tables, and [`ResolveError`](phx_diagnostics::ResolveError) diagnostics in
+//!   [`Resolver::bag`].
+//!
+//! Pass order:
 //!
 //! 1. Reject file-level `#import` when [`Resolver::allow_imports`] is false.
 //! 2. Seed scope stack (prelude / import bindings from phase 1).
@@ -11,6 +24,11 @@
 //! 5. **Check** MVP `main` on the entry module when imports are disabled.
 //!
 //! Uses separate value and type namespaces per [`super::scopes::ScopeStack`].
+//!
+//! ## Consumers
+//!
+//! - [`super::Resolver::resolve_program`] — sole entry from the resolver pass
+//! - [`crate::typeck`] — reads [`ResolutionKey`] entries collected during walk
 
 #![allow(
     clippy::match_same_arms,
@@ -49,7 +67,12 @@ impl Resolver<'_> {
     ///   resolved and [`Resolver::check_main`] runs for entry modules without file imports.
     ///
     /// Pushes/pops one module scope around the whole program. Diagnostics accumulate in
-    /// [`Resolver::bag`]; callers test [`DiagnosticBag::has_errors`] after return.
+    /// [`Resolver::bag`]; callers test [`DiagnosticBag::has_errors`](phx_diagnostics::DiagnosticBag::has_errors)
+    /// after return.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed user input.
     pub(crate) fn resolve_program(&mut self) {
         if !self.allow_imports {
             for import in &self.source.program.imports {
@@ -98,12 +121,21 @@ impl Resolver<'_> {
         self.scopes.pop();
     }
 
+    /// Allocates [`DefId`]s and export flags for every top-level item in [`Resolver::source`].
+    ///
+    /// Runs during phase 1 (`collect_only`) or at the start of phase 2 when the def table is
+    /// still empty. Does not walk expression bodies.
     fn collect_top_level_defs(&mut self) {
         for item in &self.source.program.items {
             self.collect_top_level_item(&item.inner, item.span);
         }
     }
 
+    /// Records one top-level declaration in the def table and scope stack.
+    ///
+    /// Handles structs, enums, traits, impl methods, functions (including `main` discovery),
+    /// constants, vars, extern items, and reexport visibility. Stops collecting siblings after the
+    /// first duplicate-definition diagnostic for a given item subtree.
     #[allow(clippy::too_many_lines)]
     fn collect_top_level_item(&mut self, item: &TopLevelItem, span: Span) {
         let exported = item.pub_;
@@ -228,6 +260,9 @@ impl Resolver<'_> {
         }
     }
 
+    /// Registers `extern` function signatures in the value namespace.
+    ///
+    /// Each signature receives a [`DefKind::ExternFn`] def and shares the parent item's attributes.
     fn collect_extern_fns(
         &mut self,
         sigs: &[FunctionSig],
@@ -297,12 +332,20 @@ impl Resolver<'_> {
         }
     }
 
+    /// Walks top-level item bodies after collection or scope seeding.
+    ///
+    /// Resolves types, registers inner bindings, and records identifier resolutions. Does not
+    /// re-allocate module-scope [`DefId`]s.
     fn resolve_top_level_items(&mut self) {
         for item in &self.source.program.items {
             self.resolve_top_level_decl(&item.inner.decl, item.span);
         }
     }
 
+    /// Records a trait impl for duplicate-detection during resolve.
+    ///
+    /// Pushes [`ResolveError::DuplicateTraitImpl`] when the same `(type, trait)` pair is registered
+    /// twice in this module. Inherent impls (`trait_` is `None`) are not tracked.
     fn register_trait_impl(
         &mut self,
         type_name: &TypeName,
@@ -325,6 +368,10 @@ impl Resolver<'_> {
         self.trait_impls.push((key.0, Some(key.1), span));
     }
 
+    /// Resolves one top-level declaration body.
+    ///
+    /// Pushes a scope for generic parameter lists and type members, walks nested types and
+    /// expressions, and dispatches to [`Self::resolve_function`] for functions and impl methods.
     fn resolve_top_level_decl(&mut self, decl: &TopLevelDecl, item_span: Span) {
         match decl {
             TopLevelDecl::Struct { generics, body, .. } => {
@@ -446,6 +493,10 @@ impl Resolver<'_> {
         }
     }
 
+    /// Introduces generic parameters into the def table during phase-1 collection only.
+    ///
+    /// No-op when [`Resolver::collect_only`] is false. Skips params already present in
+    /// [`Resolver::defs`] from a prior module pass.
     fn collect_generic_params(&mut self, generics: &Option<Vec<GenericParam>>) {
         if !self.collect_only {
             return;
@@ -483,6 +534,10 @@ impl Resolver<'_> {
         })
     }
 
+    /// Binds generic parameters in the type namespace for a signature or item body.
+    ///
+    /// Detects duplicate parameter names in the same list, records resolutions on
+    /// [`GenericParam::name`], and resolves trait bounds and default types.
     fn resolve_generics(&mut self, generics: &Option<Vec<GenericParam>>) {
         if let Some(params) = generics {
             let mut seen: HashMap<Symbol, Span> = HashMap::new();
@@ -516,6 +571,10 @@ impl Resolver<'_> {
         }
     }
 
+    /// Resolves a function or impl method body.
+    ///
+    /// When `in_impl` is true, links the body to a prior [`DefKind::ImplMethod`] def and may
+    /// synthesize an implicit `self` parameter binding for methods without a receiver.
     fn resolve_function(&mut self, f: &Function, in_impl: bool) {
         if in_impl {
             if let Some(id) = self.find_impl_method_def(f) {
@@ -610,6 +669,11 @@ impl Resolver<'_> {
         }
     }
 
+    /// Resolves a block-scoped `#import` and merges bindings into the current scope stack.
+    ///
+    /// No-op when import environment hooks on [`Resolver`] are unset (single-file MVP without
+    /// dependency graph). Otherwise delegates to
+    /// [`crate::modules::import_resolve::resolve_import_directive`].
     fn apply_block_import(
         &mut self,
         imp: &phx_syntax::ast::Node<phx_syntax::ast::decl::ImportDirective>,
@@ -725,6 +789,10 @@ impl Resolver<'_> {
         self.resolve_type(&ty.inner, ty.span);
     }
 
+    /// Resolves a type AST node and records named-type resolutions.
+    ///
+    /// `Self` in type position is accepted only while [`Resolver::self_type_depth`] is positive
+    /// (inside trait or impl headers).
     fn resolve_type(&mut self, ty: &Type, span: Span) {
         match ty {
             Type::Primitive(_) => {}
@@ -758,6 +826,7 @@ impl Resolver<'_> {
         }
     }
 
+    /// Looks up a type name and records a resolution or emits [`ResolveError::UnresolvedType`].
     fn resolve_type_name(&mut self, name: &TypeName) {
         if self.is_self_type_name(name) && self.self_type_depth > 0 {
             return;
@@ -811,6 +880,10 @@ impl Resolver<'_> {
         self.resolve_expr(&expr.inner, expr.id, expr.span);
     }
 
+    /// Resolves an expression subtree and records identifier resolutions.
+    ///
+    /// Allocates synthetic [`DefKind::Closure`] defs for lambdas, pushes closure upvar capture
+    /// context, and introduces pattern bindings in `if`/`match` arms via scoped pushes.
     #[allow(clippy::too_many_lines)]
     fn resolve_expr(&mut self, expr: &Expr, node_id: phx_syntax::AstNodeId, span: Span) {
         match expr {
@@ -1014,6 +1087,10 @@ impl Resolver<'_> {
         }
     }
 
+    /// Resolves a value-namespace identifier use.
+    ///
+    /// Emits [`ResolveError::GenericParamInValue`] when a type parameter appears in expression
+    /// position. Otherwise records a resolution or pushes [`ResolveError::UnresolvedIdent`].
     fn resolve_ident(&mut self, ident: &Ident) {
         if let Some(id) = self.scopes.lookup_value(ident.symbol) {
             if self
@@ -1046,6 +1123,7 @@ impl Resolver<'_> {
         );
     }
 
+    /// Records a diagnostic when a generic type parameter is used in value position.
     fn push_generic_param_in_value(&mut self, ident: &Ident) {
         self.bag.push(
             self.current_module,
@@ -1056,6 +1134,10 @@ impl Resolver<'_> {
         );
     }
 
+    /// Resolves a qualified or unqualified path in expression position.
+    ///
+    /// Associated-type paths (`T :: assoc`) treat the second segment as a type parameter when it
+    /// names a generic param; longer paths resolve remaining segments as value or type names.
     fn resolve_path_expr(&mut self, path: &Path, span: Span) {
         if path.segments.is_empty() {
             return;
@@ -1117,6 +1199,9 @@ impl Resolver<'_> {
         }
     }
 
+    /// Resolves the type-parameter head of an associated-type path (`T :: assoc`).
+    ///
+    /// Falls back to [`Self::resolve_ident`] when the segment is not a generic parameter.
     fn resolve_type_param_in_assoc_path(&mut self, ident: &Ident) {
         if let Some(id) = self
             .scopes
@@ -1142,6 +1227,10 @@ impl Resolver<'_> {
     /// [`ResolveError::InvalidMainSignature`] for parameters or non-unit return types, and
     /// [`ResolveError::MainNotInEntry`] when `main` appears in a non-entry module (checked during
     /// collection). No-op when [`Resolver::main_fn`] is already invalid from earlier diagnostics.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed user input.
     pub(crate) fn check_main(&mut self) {
         if self.main_fn.is_none() {
             self.bag.push(
@@ -1199,7 +1288,11 @@ impl Resolver<'_> {
     /// Returns `true` when `symbol` is the interned identifier `main`.
     ///
     /// Used during top-level collection and `main` signature validation; compares via
-    /// [`Interner::resolves_to`], not raw string equality.
+    /// [`Interner::resolves_to`](phx_syntax::Interner::resolves_to), not raw string equality.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed user input.
     pub(crate) fn is_main_name(&self, symbol: Symbol) -> bool {
         self.source.interner.resolves_to(symbol, "main")
     }
@@ -1227,10 +1320,15 @@ impl Resolver<'_> {
     }
 }
 
+/// Returns `true` when `ty` is the unit type (`()`).
 fn type_is_unit(ty: &Type) -> bool {
     matches!(ty, Type::Unit)
 }
 
+/// Structural equality for trait type AST nodes used in duplicate impl detection.
+///
+/// Compares named heads, primitive kinds, unit, and generic argument lists recursively.
+/// Does not perform full type normalization.
 fn trait_types_equal(a: &Type, b: &Type) -> bool {
     match (a, b) {
         (
