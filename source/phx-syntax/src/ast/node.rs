@@ -2,6 +2,17 @@
 //!
 //! Every syntactic construct that needs diagnostics is wrapped in [`Node<T>`] with a [`Span`]
 //! and an [`AstNodeId`] assigned during parse.
+//!
+//! ## Usage
+//!
+//! Type aliases such as [`super::expr::ExprNode`] and [`super::stmt::BlockNode`] are `Node<…>`
+//! over the corresponding payload enum or struct. Identifiers ([`super::Ident`],
+//! [`super::TypeName`]) carry their own span and id without an extra [`Node`] layer.
+//!
+//! ## Invariants
+//!
+//! - **Ids are assigned at parse time** and are stable for the lifetime of the tree.
+//! - **Spans are half-open byte ranges** into the source string passed to [`crate::parse`].
 
 use phx_diagnostics::Span;
 

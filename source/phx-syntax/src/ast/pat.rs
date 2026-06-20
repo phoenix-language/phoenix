@@ -1,6 +1,17 @@
 //! Pattern AST.
 //!
-//! Patterns for `match`, `if const` / `if var`, and bindings (wildcards, literals, struct/tuple, enum ctors).
+//! Patterns for `match`, `if const` / `if var`, and bindings. The main payload is [`Pattern`];
+//! spanned nodes use [`PatternNode`] (`Node<Pattern>`).
+//!
+//! ## Pattern forms
+//!
+//! Wildcards, literals, identifier bindings, struct and tuple variant patterns, and or-patterns.
+//! [`MatchArm`] pairs a pattern with a block or expression body (defined in this module, used from
+//! [`super::expr::Expr::Match`]).
+//!
+//! ## Struct patterns
+//!
+//! [`StructPatternField`] is either a shorthand field binding or `field: subpattern`.
 
 use crate::ast::Node;
 use crate::ast::expr::ExprNode;

@@ -2,6 +2,16 @@
 //!
 //! [`AstNodeId`] keys name-use resolutions and other per-node compiler tables so distinct
 //! nodes are not conflated when spans collide (e.g. after macro expansion or generated code).
+//!
+//! ## Assignment
+//!
+//! The parser allocates ids monotonically while building the tree. Each [`super::Ident`],
+//! [`super::TypeName`], and [`super::Node`] receives a unique id.
+//!
+//! ## Synthetic ids
+//!
+//! [`AstNodeId::synthetic`] and [`AstNodeId::from_raw`] exist for tests and compiler-generated
+//! nodes; the parser does not emit id `0` for real source nodes.
 
 /// Dense id for a syntax tree node or identifier use site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
