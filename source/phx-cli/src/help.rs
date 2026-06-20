@@ -1,10 +1,18 @@
-//! Usage and help text.
+//! Usage and help text for the `phx` CLI.
+//!
+//! Help is written to stderr so stdout remains free for program output on
+//! `phx run`. [`print_usage`] shows top-level commands; [`print_command_help`]
+//! documents flags for a single subcommand. These functions are invoked from
+//! [`crate::run`] when the user runs `phx help` or `phx help <command>`.
 
 use crate::args::SubcommandName;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Prints top-level usage.
+/// Prints top-level usage to stderr.
+///
+/// Lists global flags, available subcommands, and a pointer to per-command help.
+/// Does not exit the process; callers return [`crate::exit::CliExit::Ok`].
 pub fn print_usage() {
     eprintln!(
         "phx {VERSION} — Phoenix compiler\n\
@@ -28,7 +36,10 @@ pub fn print_usage() {
     );
 }
 
-/// Prints help for a specific subcommand.
+/// Prints help for a specific subcommand to stderr.
+///
+/// Documents the subcommand's usage line and supported flags. Unknown subcommand
+/// names are rejected during argument parsing before this function is called.
 pub fn print_command_help(sub: SubcommandName) {
     match sub {
         SubcommandName::Check => eprintln!(
@@ -102,7 +113,7 @@ pub fn print_command_help(sub: SubcommandName) {
     }
 }
 
-/// Prints the package version.
+/// Prints the package version to stderr (`phx <version>`).
 pub fn print_version() {
     eprintln!("phx {VERSION}");
 }

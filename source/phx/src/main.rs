@@ -1,4 +1,10 @@
-//! `phx` command-line driver.
+//! `phx` command-line binary entry point.
+//!
+//! Invokes [`phx_cli::run`] inside [`std::panic::catch_unwind`] so unexpected
+//! panics become a structured internal-compiler-error report instead of a Rust
+//! stack trace on stderr. The default panic hook is temporarily replaced with
+//! a no-op during execution so only [`phx_cli::ice::report_ice`] formats the
+//! failure; the previous hook is restored before exiting with [`CliExit::as_i32`].
 
 #![allow(clippy::print_stderr, clippy::single_match_else)]
 
