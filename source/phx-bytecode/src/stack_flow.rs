@@ -328,7 +328,7 @@ mod tests {
     fn code_offset(len: usize) -> u32 {
         match u32::try_from(len) {
             Ok(offset) => offset,
-            Err(_) => panic!("code offset {len} exceeds u32::MAX"),
+            Err(err) => panic!("code offset {len} exceeds u32::MAX: {err}"),
         }
     }
 
