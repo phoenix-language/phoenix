@@ -1,4 +1,7 @@
 //! Compile-time byte size of types for `size_of` intrinsic.
+//!
+//! [`type_byte_size`] evaluates aggregate and primitive sizes from [`ProgramLayout`] during
+//! checking so `size_of` calls fold to constants in lowering.
 
 use super::layout::ProgramLayout;
 use super::primitive::{keyword_to_primitive_kind, primitive_byte_size};

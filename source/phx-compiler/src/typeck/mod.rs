@@ -7,7 +7,26 @@
     clippy::trivially_copy_pass_by_ref
 )]
 //!
-//! Consumes [`ResolvedProgram`] and produces [`TypedProgram`] with interned types per expression.
+//! Consumes [`ResolvedProgram`] and produces [`TypedProgram`]: interned types per expression,
+//! struct/enum layouts, monomorphization maps, and lowering metadata side tables. The resolved
+//! AST is mostly unchanged; types never live on syntax nodes.
+//!
+//! ## Pipeline position
+//!
+//! Runs after [`crate::resolver::resolve`] and before [`crate::lower::lower`].
+//!
+//! ## Submodule map
+//!
+//! - [`check`] — AST walk; public entry [`type_check`]
+//! - [`types`] / [`lower_ty`] — interned [`Ty`] representation
+//! - [`unify`] / [`infer`] / [`subst`] — equality, call-site inference, generic substitution
+//! - [`mono`] / [`mangle`] / [`bounds`] / [`type_depth`] — explicit instantiation and guardrails
+//! - [`layout`] / [`bindings`] / [`type_size`] — aggregate layouts and local slots for lowering
+//! - [`builtins`] / [`ops`] / [`primitive`] — MVP primitives, operators, and bytecode casts
+//! - [`std_kernel`] / [`intrinsic_kernel`] — `?`, VM intrinsics, and associated lowering sites
+//! - [`trait_defaults`] — inherited trait default method synthesis
+//! - [`display`] — type strings for diagnostics
+//! - [`ownership`] — use-after-move tracking during the check walk
 
 mod bindings;
 mod bounds;

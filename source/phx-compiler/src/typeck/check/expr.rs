@@ -1,4 +1,7 @@
 //! Expression type checking, calls, and postfix operators.
+//!
+//! Assigns [`TypeId`]s to expressions, resolves method and associated fn dispatch, records call-site
+//! metadata for monomorphization and lowering, and checks operand types for operators.
 
 use std::collections::HashMap;
 

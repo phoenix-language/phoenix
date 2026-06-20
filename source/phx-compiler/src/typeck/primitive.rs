@@ -1,4 +1,7 @@
 //! Maps typeck primitives to bytecode cast operands.
+//!
+//! Bridges interned [`Ty`] primitives to [`PrimitiveKind`] and [`LocalSlotKind`] for lowering and
+//! recognizes builtin trait methods on primitives (`eq`, `clone`) for direct opcode emission.
 
 use phx_bytecode::{LocalSlotKind, PrimitiveKind};
 use phx_syntax::Interner;

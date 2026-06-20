@@ -1,4 +1,7 @@
 //! Lower AST [`Type`] nodes to interned [`Ty`].
+//!
+//! [`lower_type`] resolves syntax type names through the definition table built by
+//! [`build_type_def_map`]. Shared by declaration collection and expression checking.
 
 use phx_syntax::ast::Node;
 use phx_syntax::ast::ident::TypeName;

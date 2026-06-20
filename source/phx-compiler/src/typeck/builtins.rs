@@ -1,4 +1,7 @@
 //! Builtin types and Copyable rules.
+//!
+//! Seeds primitive and unit/bool types, resolves std kernel types via [`LangItemRegistry`], and
+//! implements [`is_copyable`] used by move checking and aggregate layout.
 
 use phx_syntax::token::Keyword;
 

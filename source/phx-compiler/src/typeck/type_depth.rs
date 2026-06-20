@@ -1,4 +1,7 @@
 //! Generic type nesting depth for monomorphization guardrails.
+//!
+//! Rejects excessively nested or cyclic generic instantiations before monomorphization expands
+//! templates ([`MAX_GENERIC_TYPE_NESTING`]).
 
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::DefId;

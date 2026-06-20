@@ -1,4 +1,7 @@
 //! VM intrinsics, extern calls, and unsafe fn call sites.
+//!
+//! Recognizes compiler intrinsics and `extern "C"` targets, records [`IndirectCallMeta`] and
+//! [`IntrinsicSite`] entries, and enforces `unsafe` call-site rules.
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::types::Type;

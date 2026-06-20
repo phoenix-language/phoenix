@@ -1,4 +1,7 @@
 //! Per-function local slots and bindings for lowering.
+//!
+//! Records [`LocalSlot`] assignments, loop/`for-in` desugaring plans, and per-function
+//! [`ExprId`] ranges. Lowering walks the same AST order and must consume these layouts exactly.
 
 use phx_diagnostics::Span;
 use phx_syntax::Symbol;

@@ -1,4 +1,7 @@
 //! `?` operator lowering metadata.
+//!
+//! Records [`TrySiteMeta`] per postfix `?` expression so lowering can emit the correct failure
+//! arm (return scrutinee or `From::from` conversion).
 
 use super::bindings::LocalSlot;
 use super::types::TypeId;

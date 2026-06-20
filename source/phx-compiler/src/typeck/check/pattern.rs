@@ -1,4 +1,7 @@
 //! Match arms, patterns, and exhaustiveness.
+//!
+//! Checks pattern/type compatibility, binds locals from patterns, and validates match arm
+//! scrutinee and result type unification.
 
 use std::collections::HashMap;
 

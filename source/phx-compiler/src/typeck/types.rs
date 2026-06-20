@@ -1,4 +1,7 @@
 //! Internal type representation and interning.
+//!
+//! Defines [`Ty`], [`TypeId`], and [`TypeInterner`]. All type-checker state references types
+//! through dense [`TypeId`] indices; [`ExprId`] indexes parallel side tables on [`TypedProgram`].
 
 use phx_syntax::token::Keyword;
 

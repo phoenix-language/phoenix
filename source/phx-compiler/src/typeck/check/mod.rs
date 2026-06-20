@@ -1,5 +1,13 @@
 //! Type-checking driver and AST walk.
 //!
+//! Owns [`TypeChecker`], which walks the resolved AST in two phases: collect top-level types and
+//! signatures, then check function and impl bodies. Fills [`TypeInterner`], per-expression
+//! [`TypeId`] maps, layout tables, and lowering site metadata. Errors accumulate in
+//! [`TypeCheckBag`] without stopping at the first failure.
+//!
+//! On success, [`type_check`] merges inherited trait defaults and runs
+//! [`super::mono::monomorphize`] on explicit generic instantiation sites.
+//!
 //! ## Module map
 //!
 //! - [`ctx`] — constructors, scope, errors, finish
@@ -136,9 +144,15 @@ fn seed_tuple_field_symbols(interner: &mut phx_syntax::Interner) {
 
 /// Runs type checking on `resolved`.
 ///
+/// Public entry for the type-check pass. Seeds tuple field symbols, walks all modules via
+/// [`TypeChecker`], merges synthesized trait default definitions into `resolved`, then
+/// monomorphizes collected generic instantiation sites. The returned [`TypedProgram`] carries
+/// expr types, layouts, and lowering metadata consumed by [`crate::lower::lower`].
+///
 /// # Errors
 ///
-/// Returns [`TypeCheckBag`] when one or more type errors were collected.
+/// Returns [`TypeCheckBag`] when one or more type errors were collected during checking or
+/// monomorphization.
 pub fn type_check(mut resolved: ResolvedProgram) -> Result<super::TypedProgram, TypeCheckBag> {
     seed_tuple_field_symbols(&mut resolved.interner);
     let mut checker = TypeChecker::new(&resolved);

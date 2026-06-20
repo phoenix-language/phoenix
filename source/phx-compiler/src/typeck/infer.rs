@@ -1,4 +1,7 @@
 //! Local call-site type inference for generic instantiations.
+//!
+//! [`InferenceCtx`] introduces fresh type variables at call sites and binds them from argument
+//! and return types before explicit mono args are collected.
 
 use std::collections::HashMap;
 

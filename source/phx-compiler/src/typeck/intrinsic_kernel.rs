@@ -1,4 +1,7 @@
 //! VM intrinsic lowering sites (`alloc_bytes`, `slice_from_raw_parts`, …).
+//!
+//! [`IntrinsicSite`] tags recognized std/compiler intrinsics at call sites for direct bytecode
+//! opcode emission instead of ordinary function calls.
 
 /// Lowering hint for a call to a compiler intrinsic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
