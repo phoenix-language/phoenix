@@ -109,7 +109,7 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
 
 - [ ] **Full borrow checker** — `&T` / `&mut T` exclusivity and lifetimes beyond MVP use-after-move. **Ref:** `ownership.md`, ROADMAP Deferred. **Owner:** compiler. **Gate:** Post-MVP.
 
-- [ ] **M:N scheduler + schedulable I/O** — Prerequisite for std I/O (`File.read`, networking). **Ref:** `mvp.md` shipping order, `runtime-transparency.md`. **Owner:** VM + std. **Gate:** Post-MVP.
+- [ ] **M:N scheduler + schedulable I/O** — Prerequisite for std I/O (`File.read`, networking). **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
 
 - [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
 
