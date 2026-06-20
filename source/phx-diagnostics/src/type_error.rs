@@ -586,7 +586,7 @@ impl std::error::Error for TypeCheckError {}
 /// Result of a type-check pass that may collect multiple errors.
 ///
 /// - **`Ok(T)`** — Type checking succeeded; `T` is typically [`TypedProgram`](phx_compiler::typeck::TypedProgram).
-/// - **`Err([`TypeCheckBag`])`** — One or more type errors were collected. The bag may contain
+/// - **`Err` carrying a [`TypeCheckBag`]** — One or more type errors were collected. The bag may contain
 ///   multiple [`LocatedError`] entries when checking continues after non-fatal failures.
 ///
 /// # Errors
