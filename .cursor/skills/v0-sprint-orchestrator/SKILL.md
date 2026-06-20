@@ -118,12 +118,17 @@ When subagents return:
 - If any failed: log failure; do not push failed work; leave branch for manual review or retry next iteration.
 - Update this skill's mental backlog — mark completed items.
 
+**Early next iteration:** When all subagents for the current iteration have finished (success or failure) and `date +%s` < `END_EPOCH`, **immediately** start §1 again. Do not wait for the 15-minute tick.
+
 ### 5. Schedule next tick
 
 If `date +%s` < `END_EPOCH`:
 
-- Arm next loop tick (40-minute fallback heartbeat unless all agents still running).
-- If agents still running, wait for completion before next spawn (avoid branch conflicts).
+- **Idle + agents done:** Start the next iteration immediately (see §4).
+- **Agents still running:** Do not spawn a new batch. The 15-minute heartbeat will wake you to check again.
+- **On `AGENT_LOOP_TICK_v0sprint`:** If subagents are still in flight → skip spawn, log status, wait for the next tick. If idle → run §1–§3 (new iteration).
+
+Tick interval: **15 minutes** (`sleep 900`). This is a poll when work may still be running, not a mandatory delay between iterations.
 
 ## Subagent spawn template
 
@@ -149,10 +154,19 @@ Stop the sprint loop when:
 
 ## Loop sentinel
 
-The background shell emits:
+The background shell emits every **15 minutes** (or until `END_EPOCH`):
 
 ```
-AGENT_LOOP_TICK_v0sprint {"prompt":"Run v0-sprint-orchestrator iteration","end_epoch":<unix>}
+AGENT_LOOP_TICK_v0sprint {"prompt":"Run v0-sprint-orchestrator iteration","end_epoch":<unix>,"interval_sec":900}
 ```
 
-On wake: read `.cursor/skills/v0-sprint-orchestrator/SKILL.md`, execute iteration workflow, re-arm if before `end_epoch`.
+On wake: read this skill. If subagents from the current iteration are still running, **skip spawning** and wait for the next tick or subagent completion. If idle and before `end_epoch`, run §1–§3. When subagents finish early, start the next iteration immediately without waiting for the tick.
+
+Shell pattern (preserve `END_EPOCH` when restarting mid-sprint):
+
+```bash
+END_EPOCH=<unix>; while [ $(date +%s) -lt $END_EPOCH ]; do
+  sleep 900
+  echo 'AGENT_LOOP_TICK_v0sprint {"prompt":"...","end_epoch":'$END_EPOCH',"interval_sec":900}'
+done
+```
