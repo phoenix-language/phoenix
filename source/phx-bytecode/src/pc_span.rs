@@ -12,7 +12,7 @@
 //!
 //! `sub_version` (4), `file_count` (4), path strings (`path_len` + UTF-8 bytes), `entry_count`
 //! (4), then 20-byte rows (`function_id`, `pc`, `file_id`, `span_start`, `span_end`). Rows must
-//! be sorted by `(function_id, pc)` ascending.
+//! be strictly ordered by `(function_id, pc)` ascending.
 //!
 //! ## In this module
 //!
@@ -237,11 +237,19 @@ impl PcSpanTable {
                 span_end,
             ));
         }
-        if !rows
-            .windows(2)
-            .all(|w| (w[0].function_id, w[0].pc) <= (w[1].function_id, w[1].pc))
-        {
-            return Err(PcSpanError::UnsortedEntries);
+        for pair in rows.windows(2) {
+            let left = pair[0];
+            let right = pair[1];
+            match (left.function_id, left.pc).cmp(&(right.function_id, right.pc)) {
+                std::cmp::Ordering::Greater => return Err(PcSpanError::UnsortedEntries),
+                std::cmp::Ordering::Equal => {
+                    return Err(PcSpanError::OverlappingEntries {
+                        function_id: left.function_id,
+                        pc: left.pc,
+                    });
+                }
+                std::cmp::Ordering::Less => {}
+            }
         }
         Ok(Self {
             files,
@@ -298,6 +306,13 @@ pub enum PcSpanError {
     },
     /// Rows are not sorted by `(function_id, pc)`.
     UnsortedEntries,
+    /// Two rows describe the same `(function_id, pc)` site.
+    OverlappingEntries {
+        /// Function id shared by both rows.
+        function_id: u32,
+        /// PC shared by both rows.
+        pc: u32,
+    },
 }
 
 #[cfg(test)]

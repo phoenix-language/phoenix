@@ -5,8 +5,9 @@ mod support;
 
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-    Instruction, LocalLayoutTable, ModuleError, Opcode, PcSpanTable, PrimitiveKind, SectionError,
-    SectionKind, TypeTable, VerifyError, verify,
+    Instruction, LocalLayoutTable, ModuleError, Opcode, PC_SPAN_SUB_VERSION, PHX0_HAS_DEBUG,
+    PcSpanEntry, PcSpanError, PcSpanTable, PrimitiveKind, SectionEntry, SectionError, SectionKind,
+    TypeTable, VerifyError, verify,
 };
 use phx_vm::run_unverified;
 use support::{
@@ -30,6 +31,64 @@ fn assert_run_returns_err(module: &BytecodeModule) {
 
 fn assert_run_does_not_panic(module: &BytecodeModule) {
     let _ = run_unverified(module);
+}
+
+const HEADER_SIZE: usize = 24;
+const SECTION_ENTRY_SIZE: usize = 12;
+
+fn section_payload_range(bytes: &[u8], kind: SectionKind) -> std::ops::Range<usize> {
+    let section_count = u32::from_le_bytes(
+        bytes[12..16]
+            .try_into()
+            .expect("header section_count bytes"),
+    );
+    let section_count = usize::try_from(section_count).expect("section_count usize");
+    for index in 0..section_count {
+        let start = HEADER_SIZE + index * SECTION_ENTRY_SIZE;
+        let entry = SectionEntry::decode(
+            bytes[start..start + SECTION_ENTRY_SIZE]
+                .try_into()
+                .expect("section entry bytes"),
+        )
+        .expect("decode section entry");
+        if entry.kind == kind {
+            let offset = usize::try_from(entry.offset).expect("section offset usize");
+            let length = usize::try_from(entry.length).expect("section length usize");
+            return offset..offset + length;
+        }
+    }
+    panic!("missing {kind:?} section");
+}
+
+fn section_length_slot(kind: SectionKind, bytes: &[u8]) -> std::ops::Range<usize> {
+    let section_count = u32::from_le_bytes(
+        bytes[12..16]
+            .try_into()
+            .expect("header section_count bytes"),
+    );
+    let section_count = usize::try_from(section_count).expect("section_count usize");
+    for index in 0..section_count {
+        let start = HEADER_SIZE + index * SECTION_ENTRY_SIZE;
+        let entry = SectionEntry::decode(
+            bytes[start..start + SECTION_ENTRY_SIZE]
+                .try_into()
+                .expect("section entry bytes"),
+        )
+        .expect("decode section entry");
+        if entry.kind == kind {
+            return start + 8..start + 12;
+        }
+    }
+    panic!("missing {kind:?} section");
+}
+
+fn debug_module_with_pc_spans() -> BytecodeModule {
+    let mut module = valid_const_return_module();
+    module.pc_spans = PcSpanTable {
+        files: vec!["main.phx".to_owned()],
+        entries: vec![PcSpanEntry::new(0, 0, 0, 4, 9)],
+    };
+    module
 }
 
 #[test]
@@ -334,6 +393,87 @@ fn round_trip_valid_module_passes_verify() {
     let bytes = module.encode().expect("encode");
     let decoded = BytecodeModule::decode(&bytes).expect("decode");
     verify(&decoded).expect("verify round-trip");
+}
+
+#[test]
+fn stripped_module_without_debug_flag_verifies() {
+    let module = valid_const_return_module();
+    assert_eq!(module.header.flags & PHX0_HAS_DEBUG, 0);
+    assert!(module.pc_spans.is_empty());
+
+    let bytes = module.encode().expect("encode stripped module");
+    let decoded = BytecodeModule::decode(&bytes).expect("decode stripped module");
+
+    assert_eq!(decoded.header.flags & PHX0_HAS_DEBUG, 0);
+    assert!(decoded.pc_spans.is_empty());
+    verify(&decoded).expect("verify stripped module");
+}
+
+#[test]
+fn mutate_section5_truncated_payload_rejected_at_decode() {
+    let module = debug_module_with_pc_spans();
+    let mut bytes = module.encode().expect("encode");
+    let symbols_range = section_payload_range(&bytes, SectionKind::Symbols);
+    let symbols_len = symbols_range.end - symbols_range.start;
+    let new_len = u32::try_from(symbols_len.saturating_sub(4)).expect("shortened symbols length");
+    let length_slot = section_length_slot(SectionKind::Symbols, &bytes);
+    bytes[length_slot].copy_from_slice(&new_len.to_le_bytes());
+
+    let err = BytecodeModule::decode(&bytes).expect_err("truncated section 5");
+    assert!(matches!(err, ModuleError::PcSpans(PcSpanError::Truncated)));
+}
+
+#[test]
+fn mutate_section5_bad_sub_version_rejected_at_decode() {
+    let module = debug_module_with_pc_spans();
+    let mut bytes = module.encode().expect("encode");
+    let symbols_range = section_payload_range(&bytes, SectionKind::Symbols);
+    bytes[symbols_range.start..symbols_range.start + 4]
+        .copy_from_slice(&(PC_SPAN_SUB_VERSION + 1).to_le_bytes());
+
+    let err = BytecodeModule::decode(&bytes).expect_err("bad section 5 sub-version");
+    assert!(matches!(
+        err,
+        ModuleError::PcSpans(PcSpanError::UnsupportedSubVersion { found })
+            if found == PC_SPAN_SUB_VERSION + 1
+    ));
+}
+
+#[test]
+fn mutate_section5_overlapping_entries_rejected_at_decode() {
+    let module = debug_module_with_pc_spans();
+    let mut bytes = module.encode().expect("encode");
+    let symbols_range = section_payload_range(&bytes, SectionKind::Symbols);
+    let original = module.pc_spans.encode();
+
+    let duplicate_entry = PcSpanEntry::new(0, 0, 0, 12, 15);
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&PC_SPAN_SUB_VERSION.to_le_bytes());
+    payload.extend_from_slice(&1u32.to_le_bytes());
+    payload.extend_from_slice(&8u32.to_le_bytes());
+    payload.extend_from_slice(b"main.phx");
+    payload.extend_from_slice(&2u32.to_le_bytes());
+    payload.extend_from_slice(&original[24..44]);
+    payload.extend_from_slice(&duplicate_entry.function_id.to_le_bytes());
+    payload.extend_from_slice(&duplicate_entry.pc.to_le_bytes());
+    payload.extend_from_slice(&duplicate_entry.file_id.to_le_bytes());
+    payload.extend_from_slice(&duplicate_entry.span_start.to_le_bytes());
+    payload.extend_from_slice(&duplicate_entry.span_end.to_le_bytes());
+    assert_eq!(payload.len(), original.len() + 20);
+
+    bytes.splice(symbols_range, payload);
+    let length_slot = section_length_slot(SectionKind::Symbols, &bytes);
+    let new_len = u32::try_from(original.len() + 20).expect("expanded symbols length");
+    bytes[length_slot].copy_from_slice(&new_len.to_le_bytes());
+
+    let err = BytecodeModule::decode(&bytes).expect_err("overlapping section 5 rows");
+    assert!(matches!(
+        err,
+        ModuleError::PcSpans(PcSpanError::OverlappingEntries {
+            function_id: 0,
+            pc: 0
+        })
+    ));
 }
 
 #[test]
