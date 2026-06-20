@@ -4,31 +4,45 @@
 //!
 //! Describes which package roots participate in one compile: the workspace crate and its path
 //! dependencies. [`ProgramLoadContext`] is built from [`ProjectConfig`] or standalone CLI flags
-//! and passed to [`super::load_program_with_context`].
+//! and passed to [`super::load_program_with_context`] so the loader knows where to resolve each
+//! logical path's first segment (`pkg::a::b` → package `pkg`).
 //!
 //! ## Entry points
 //!
 //! - [`ProgramLoadContext::from_config`] — `phoenix.toml` workspace + declared deps
 //! - [`ProgramLoadContext::from_standalone`] — ad-hoc `--module-src` with optional path deps
 //! - [`ProgramLoadContext::package_for_logical`] — resolve first path segment to a package root
+//!
+//! Path dependency validation (lib package type, name/key match) runs in [`Self::from_standalone`];
+//! [`Self::from_config`] loads dependency configs best-effort and does not fail the whole context
+//! when a declared dep directory is missing.
 
 use std::path::PathBuf;
 
 use crate::project::{PackageType, ProjectConfig, ProjectError};
 
 /// One package root participating in a load.
+///
+/// Maps a Phoenix package name to its on-disk `module_src` directory and package kind (`bin` or
+/// `lib`). The loader uses this to canonicalize `#import` paths and locate `.phx` files under each
+/// dependency tree.
 #[derive(Debug, Clone)]
 pub struct PackageRoot {
-    /// `project.name`
+    /// Package name from `project.name` in `phoenix.toml`, or inferred from the directory name for
+    /// standalone loads.
     pub name: String,
-    /// Absolute `module_src` directory.
+    /// Absolute path to the directory containing module sources (`module_src` from config, or the
+    /// canonicalized `--module-src` root for standalone workspace packages).
     pub module_src: PathBuf,
-    /// `bin` or `lib`.
+    /// Whether this package is a binary entry (`bin`) or library (`lib`).
     pub package_type: PackageType,
 }
 
 impl PackageRoot {
-    /// Builds from a loaded [`ProjectConfig`].
+    /// Builds a package root from a loaded [`ProjectConfig`].
+    ///
+    /// Uses [`ProjectConfig::module_root`] for `module_src` and copies `name` and
+    /// `package_type` from the config.
     #[must_use]
     pub fn from_config(config: &ProjectConfig) -> Self {
         Self {
@@ -40,18 +54,27 @@ impl PackageRoot {
 }
 
 /// Workspace package plus path dependencies for one compile load.
+///
+/// Bundles every package whose modules may appear in a single program graph. The workspace is the
+/// package being compiled; dependencies are path-linked crates listed in `phoenix.toml` or passed
+/// on the CLI. [`Self::prelude`] controls whether the std prelude is injected during resolve.
 #[derive(Debug, Clone)]
 pub struct ProgramLoadContext {
-    /// Package being compiled.
+    /// Primary package being compiled (entry module lives under this root).
     pub workspace: PackageRoot,
-    /// Path dependencies (`project.name` order).
+    /// Path dependencies, in declaration order from `project.dependencies`.
     pub dependencies: Vec<PackageRoot>,
-    /// When true (default), inject std prelude bindings into each module.
+    /// When `true`, inject std prelude bindings into each module during resolve. Defaults to
+    /// `project.prelude && has_std` for config loads; standalone loads set this to `false`.
     pub prelude: bool,
 }
 
 impl ProgramLoadContext {
-    /// Builds load context from project config (does not validate deps).
+    /// Builds load context from a project config.
+    ///
+    /// Loads each declared path dependency when its directory contains a valid `phoenix.toml`;
+    /// missing or unreadable deps are skipped silently. Prelude is enabled when
+    /// `config.prelude` is set and std is available (`bundle_std` or a `std` dependency entry).
     #[must_use]
     pub fn from_config(config: &ProjectConfig) -> Self {
         let mut dependencies = Vec::new();
@@ -70,13 +93,19 @@ impl ProgramLoadContext {
         }
     }
 
-    /// Dependency package names.
+    /// Returns the names of all path-dependency packages.
+    ///
+    /// Order matches [`Self::dependencies`]; used when canonicalizing cross-package import paths.
     #[must_use]
     pub fn dep_names(&self) -> Vec<&str> {
         self.dependencies.iter().map(|d| d.name.as_str()).collect()
     }
 
-    /// Finds which package owns a canonical logical path (first segment).
+    /// Finds which package owns a canonical logical path.
+    ///
+    /// Uses the first `::` segment of `logical` (e.g. `my_lib::foo` → package `my_lib`). Returns
+    /// the workspace root when the segment matches [`Self::workspace`], otherwise the matching
+    /// dependency root, or `None` when no package name matches.
     #[must_use]
     pub fn package_for_logical(&self, logical: &str) -> Option<&PackageRoot> {
         let first = logical.split("::").next()?;
@@ -88,9 +117,14 @@ impl ProgramLoadContext {
 
     /// Builds load context for a standalone CLI invocation (no `phoenix.toml`).
     ///
+    /// Canonicalizes `module_root` for the workspace package. Each path dependency must either
+    /// load as a `lib` package from `phoenix.toml` or expose a `lib.phx` at the dependency root.
+    ///
     /// # Errors
     ///
-    /// Returns [`ProjectError`] when a path dependency cannot be loaded as a library package.
+    /// Returns [`ProjectError::Invalid`] when a dependency is not a library package, when the
+    /// dependency key does not match `project.name` in its config, or when neither `phoenix.toml`
+    /// nor `lib.phx` exists at the dependency path.
     pub fn from_standalone(
         module_root: &std::path::Path,
         package_name: Option<String>,
