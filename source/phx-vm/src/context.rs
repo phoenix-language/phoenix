@@ -1,7 +1,27 @@
 //! Per-context execution state and shared VM runtime resources.
 //!
-//! MVP runs one [`ExecutionContext`] on one [`VmRuntime`] per `run()` call.
-//! Post-MVP the scheduler owns a pool of contexts; see `docs/design/features/vm-linear.md`.
+//! The interpreter splits **schedulable context** ([`ExecutionContext`]: operand stack and call
+//! frames) from **run-wide resources** ([`VmRuntime`]: linear heap, aggregate arena, allocation
+//! ledger). [`Machine`] combines both for foreign stubs and integration tests.
+//!
+//! MVP runs one [`ExecutionContext`] on one [`VmRuntime`] per [`crate::run`] call. Post-MVP the
+//! scheduler owns a pool of contexts sharing runtime services; see
+//! `docs/design/features/vm-linear.md`.
+//!
+//! ## Layout
+//!
+//! | Type | Owns |
+//! | --- | --- |
+//! | [`ExecutionContext`] | Evaluation stack and call stack ([`crate::frame::Frame`] chain) |
+//! | [`VmRuntime`] | Aggregate arena, byte heap, live-allocation ledger, heap cap |
+//! | [`Machine`] | Facade exposing `ctx` + `runtime` to embedders and test harnesses |
+//!
+//! ## Heap ledger
+//!
+//! [`VmRuntime::alloc_bytes`] appends zeroed bytes and registers `(ptr, size)` in
+//! [`VmRuntime::live_heap_blocks`]. [`VmRuntime::free_bytes`] removes the entry and zero-fills the
+//! range. When [`VmRuntime::heap_check_enabled`] is true, pointer loads/stores validate against
+//! live blocks via [`VmRuntime::validate_live_heap_access`].
 
 use std::collections::BTreeMap;
 
@@ -16,17 +36,27 @@ use crate::frame::{Aggregate, Frame, Value};
 /// Default byte cap for the MVP VM linear heap (`64` MiB).
 pub const DEFAULT_HEAP_CAP_BYTES: usize = 64 * 1024 * 1024;
 
-/// Per schedulable unit: operand stack + call stack (MVP: one per `run()`).
+/// Per schedulable unit: operand stack and call stack.
+///
+/// Holds transient evaluation state for one logical thread of execution. The innermost
+/// [`Frame`](crate::frame::Frame) in [`Self::frames`] is the active function; [`Self::stack`]
+/// holds pending operands for the current instruction stream.
+///
+/// MVP: one context per [`crate::run`] invocation.
 #[derive(Debug, Default)]
 pub struct ExecutionContext {
-    /// Evaluation stack.
+    /// Evaluation stack (operands for the current frame).
     pub stack: Vec<Value>,
-    /// Innermost frame is the current function.
+    /// Call stack; the last element is the innermost (currently executing) frame.
     pub frames: Vec<Frame>,
 }
 
 impl ExecutionContext {
-    /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
+    /// Pushes a new frame with `local_count` zero-initialized locals.
+    ///
+    /// When `layouts` contains an entry for `function_id`, each slot is initialized from
+    /// [`phx_bytecode::LocalLayoutTable`] metadata (aggregate handles, fn pointers, or zeroed
+    /// primitives). Missing layout entries default remaining slots to zeroed `S32`.
     pub fn push_frame(&mut self, function_id: u32, local_count: u16, layouts: &LocalLayoutTable) {
         let n = usize::from(local_count);
         let mut locals = Vec::with_capacity(n);
@@ -53,22 +83,26 @@ impl ExecutionContext {
         });
     }
 
-    /// Pops the current frame.
+    /// Pops and returns the innermost frame, or `None` when the call stack is empty.
     pub fn pop_frame(&mut self) -> Option<Frame> {
         self.frames.pop()
     }
 }
 
-/// Shared resources for one VM run (MVP: owned alongside a single context).
+/// Shared resources for one VM run.
+///
+/// Owns memory that outlives individual frames: the aggregate arena, the linear byte heap, and
+/// the allocation ledger used for use-after-free detection. Dropped when the enclosing
+/// [`Machine`] or interpreter run completes.
 #[derive(Debug)]
 pub struct VmRuntime {
     /// MVP arena: all aggregates; reclaimed when the runtime is dropped.
     pub aggregates: Vec<Aggregate>,
-    /// Byte heap for `Alloc` / pointer loads (MVP; not GC).
+    /// Byte heap for `Alloc` / pointer loads (MVP linear allocator; not GC).
     pub heap: Vec<u8>,
-    /// Live `(ptr, size)` blocks registered by `Alloc` and removed by `Free`.
+    /// Live `(ptr, size)` blocks registered by [`Self::alloc_bytes`] and removed by [`Self::free_bytes`].
     pub live_heap_blocks: BTreeMap<u64, u32>,
-    /// Maximum `heap.len()` after any successful `alloc_bytes`.
+    /// Maximum `heap.len()` after any successful [`Self::alloc_bytes`].
     pub heap_cap: usize,
     /// When true, heap loads/stores validate against [`Self::live_heap_blocks`].
     pub heap_check_enabled: bool,
@@ -132,25 +166,27 @@ impl VmRuntime {
         Err(VmErrorKind::UseAfterFree)
     }
 
-    /// Appends an aggregate and returns its handle.
+    /// Appends an aggregate to the arena and returns its handle as [`Value::Agg`].
     pub fn push_aggregate(&mut self, agg: Aggregate) -> Value {
         let index = u32::try_from(self.aggregates.len()).unwrap_or(u32::MAX);
         self.aggregates.push(agg);
         Value::Agg(index)
     }
 
-    /// Borrows an aggregate by handle.
+    /// Borrows an aggregate by handle, or `None` when the index is out of range.
     #[must_use]
     pub fn aggregate(&self, handle: u32) -> Option<&Aggregate> {
         self.aggregates.get(handle as usize)
     }
 
-    /// Mutably borrows an aggregate by handle.
+    /// Mutably borrows an aggregate by handle, or `None` when the index is out of range.
     pub fn aggregate_mut(&mut self, handle: u32) -> Option<&mut Aggregate> {
         self.aggregates.get_mut(handle as usize)
     }
 
     /// Allocates `size` zeroed bytes on the heap; returns the start offset.
+    ///
+    /// Registers the block in [`Self::live_heap_blocks`] when `size` fits in `u32`.
     ///
     /// # Errors
     ///
@@ -177,6 +213,9 @@ impl VmRuntime {
     }
 
     /// Frees a heap block previously returned by [`Self::alloc_bytes`].
+    ///
+    /// Removes the ledger entry and zero-fills the byte range. Tagged pointers (local, aggregate,
+    /// const-pool, fn) are rejected.
     ///
     /// # Errors
     ///
@@ -209,7 +248,8 @@ impl VmRuntime {
 /// Facade combining one [`ExecutionContext`] and one [`VmRuntime`] for MVP execution.
 ///
 /// Foreign stubs and integration tests use this type; the interpreter accesses
-/// [`Self::ctx`] and [`Self::runtime`] directly.
+/// [`Self::ctx`] and [`Self::runtime`] directly. Convenience methods delegate heap and aggregate
+/// operations to [`Self::runtime`].
 #[derive(Debug, Default)]
 pub struct Machine {
     /// Per-context stack and call frames.
@@ -237,17 +277,17 @@ impl Machine {
         }
     }
 
-    /// Operand stack (convenience for foreign stubs).
+    /// Mutable reference to the operand stack (convenience for foreign stubs).
     pub fn stack(&mut self) -> &mut Vec<Value> {
         &mut self.ctx.stack
     }
 
-    /// Pushes a new frame with `local_count` zero-initialized locals per layout metadata.
+    /// Pushes a new frame; see [`ExecutionContext::push_frame`].
     pub fn push_frame(&mut self, function_id: u32, local_count: u16, layouts: &LocalLayoutTable) {
         self.ctx.push_frame(function_id, local_count, layouts);
     }
 
-    /// Pops the current frame.
+    /// Pops the current frame; see [`ExecutionContext::pop_frame`].
     pub fn pop_frame(&mut self) -> Option<Frame> {
         self.ctx.pop_frame()
     }
@@ -261,23 +301,23 @@ impl Machine {
         self.runtime.validate_live_heap_access(addr, len)
     }
 
-    /// Appends an aggregate and returns its handle.
+    /// Appends an aggregate and returns its handle; see [`VmRuntime::push_aggregate`].
     pub fn push_aggregate(&mut self, agg: Aggregate) -> Value {
         self.runtime.push_aggregate(agg)
     }
 
-    /// Borrows an aggregate by handle.
+    /// Borrows an aggregate by handle; see [`VmRuntime::aggregate`].
     #[must_use]
     pub fn aggregate(&self, handle: u32) -> Option<&Aggregate> {
         self.runtime.aggregate(handle)
     }
 
-    /// Mutably borrows an aggregate by handle.
+    /// Mutably borrows an aggregate by handle; see [`VmRuntime::aggregate_mut`].
     pub fn aggregate_mut(&mut self, handle: u32) -> Option<&mut Aggregate> {
         self.runtime.aggregate_mut(handle)
     }
 
-    /// Allocates `size` zeroed bytes on the heap; returns the start offset.
+    /// Allocates `size` zeroed bytes on the heap; see [`VmRuntime::alloc_bytes`].
     ///
     /// # Errors
     ///
@@ -286,13 +326,13 @@ impl Machine {
         self.runtime.alloc_bytes(size)
     }
 
-    /// Returns the number of live heap blocks tracked by the allocation ledger.
+    /// Returns the number of live heap blocks; see [`VmRuntime::live_heap_block_count`].
     #[must_use]
     pub fn live_heap_block_count(&self) -> usize {
         self.runtime.live_heap_block_count()
     }
 
-    /// Frees a heap block previously returned by [`Self::alloc_bytes`].
+    /// Frees a heap block; see [`VmRuntime::free_bytes`].
     ///
     /// # Errors
     ///
