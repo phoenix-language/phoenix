@@ -1,4 +1,23 @@
-//! Hydrate typeck types from `.pxi` v2 structured exports.
+//! Lower v2 [`PxiType`] trees into the type checker on import.
+//!
+//! ## Pass role
+//!
+//! When a dependent module loads a fresh dependency `.pxi`, the resolver has already bound
+//! imported symbols to [`DefId`] values. This module converts each export's structured
+//! `type` field into interned [`TypeId`] values so the importer can seed
+//! [`TypedProgram::value_types`](crate::typeck::TypedProgram::value_types) without
+//! re-parsing the dependency body.
+//!
+//! ## Named paths
+//!
+//! [`PxiType::Named`] paths (`logical_module::TypeName`) are resolved through
+//! [`build_named_def_paths`] and [`PxiImportCtx::named_defs`]. Unresolved names lower to
+//! [`Ty::Error`] rather than aborting the import pass.
+//!
+//! ## Cycles
+//!
+//! Recursive type trees (for example nested generics) are lowered with a pointer cache so
+//! shared subtrees and self-referential shapes intern once.
 
 use std::collections::HashMap;
 
@@ -10,18 +29,21 @@ use crate::typeck::{Ty, TypeId, TypeInterner};
 
 use super::type_ast::{PxiField, PxiType};
 
-/// Context for resolving `named` paths in imported `.pxi` types.
+/// Context for lowering imported [`PxiType`] values into the importer's type arena.
 pub struct PxiImportCtx<'a> {
-    /// Type interner to fill.
+    /// Type interner that receives lowered [`Ty`] nodes.
     pub types: &'a mut TypeInterner,
-    /// Symbol interner (reserved for future name resolution in paths).
+    /// Symbol interner (reserved for future path resolution helpers).
     #[allow(dead_code)]
     pub interner: &'a Interner,
-    /// `logical_module::TypeName` → definition id for types already bound in this crate.
+    /// `logical_module::TypeName` → [`DefId`] for type definitions already bound in this crate.
     pub named_defs: &'a HashMap<String, DefId>,
 }
 
-/// Lowers a [`PxiType`] to an interned [`TypeId`].
+/// Lowers a [`PxiType`] tree to an interned [`TypeId`].
+///
+/// Unknown [`PxiType::Named`] paths become [`Ty::Error`]. Struct and enum shapes that appear
+/// only as inline trees (not via `Named`) are tuple-expanded per Phoenix layout rules.
 #[must_use]
 pub fn pxi_type_to_ty(ctx: &mut PxiImportCtx<'_>, pxi: &PxiType) -> TypeId {
     let mut cache: HashMap<*const PxiType, TypeId> = HashMap::new();
@@ -144,7 +166,10 @@ fn parse_keyword(name: &str) -> Option<Keyword> {
     })
 }
 
-/// Builds `logical_module::Name` → [`DefId`] for type definitions in `resolved`.
+/// Builds `logical_module::Name` → [`DefId`] for aggregate and alias definitions.
+///
+/// Includes structs, enums, type aliases, and traits from `resolved` so imported
+/// [`PxiType::Named`] paths can be wired to local [`DefId`] values during hydration.
 #[must_use]
 pub fn build_named_def_paths(
     resolved: &crate::resolver::ResolvedProgram,
@@ -170,7 +195,10 @@ pub fn build_named_def_paths(
     map
 }
 
-/// Seeds `value_types` from imported `.pxi` types for function/value exports.
+/// Seeds `value_types` for one imported export from its structured `.pxi` type.
+///
+/// Struct and enum exports store the lowered aggregate type directly. Type aliases unwrap
+/// the alias target; all other defs store the lowered export type as-is.
 pub fn seed_value_type(
     ctx: &mut PxiImportCtx<'_>,
     def_id: DefId,
