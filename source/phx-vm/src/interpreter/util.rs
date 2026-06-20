@@ -1,4 +1,8 @@
-//! Shared interpreter helpers.
+//! Shared stack and operand helpers for opcode handlers.
+//!
+//! [`operand_prim_kind`] decodes wire-type operands on [`Instruction`](phx_bytecode::Instruction).
+//! [`pop_scalar`] enforces scalar-vs-aggregate stack expectations. [`scalar_to_usize`] converts
+//! integer scalars for aggregate indexing in [`super::aggregates`].
 
 use phx_bytecode::{Instruction, PrimitiveKind, ScalarValue};
 

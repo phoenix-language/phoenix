@@ -1,4 +1,13 @@
-//! Control-flow opcodes: calls, returns, and branches.
+//! Control-flow opcodes: branches, calls, returns, and stack discard.
+//!
+//! Updates the active [`crate::frame::Frame`] program counter for unconditional and conditional
+//! jumps. [`exec_call`] and [`call_phoenix_with_args`] allocate a callee frame, bind arguments
+//! from the stack (first parameter at the lower stack position), and leave execution at PC 0.
+//! [`exec_return`] pops the current frame; when the call stack empties it yields
+//! [`ReturnCapture`] for the integration test harness.
+//!
+//! Unit-returning callees push an empty tuple aggregate when the return stack is empty so
+//! callers always receive one stack cell per [`phx_bytecode::Opcode::Call`].
 
 use phx_bytecode::{BytecodeModule, FunctionRecord, Instruction};
 

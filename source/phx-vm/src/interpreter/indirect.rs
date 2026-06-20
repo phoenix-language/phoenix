@@ -1,4 +1,9 @@
-//! Function pointer materialization and indirect call opcodes.
+//! Function-pointer materialization and indirect call dispatch.
+//!
+//! [`exec_make_fn_ptr`] wraps a Phoenix function id or foreign stub id in a tagged pointer via
+//! [`fn_ptr_from_id`](phx_bytecode::fn_ptr_from_id). [`exec_call_indirect`] pops arguments and
+//! the pointer, then dispatches to [`super::control::call_phoenix_with_args`] or
+//! [`crate::foreign::dispatch_foreign`] according to the decoded target kind.
 
 use phx_bytecode::{
     BytecodeModule, Instruction, ScalarValue, decode_fn_ptr, fn_ptr_from_id, is_fn_ptr,
