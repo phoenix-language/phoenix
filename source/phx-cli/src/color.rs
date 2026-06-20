@@ -1,4 +1,34 @@
 //! ANSI styling for CLI output.
+//!
+//! This module runs **alongside** the parse → workflow → exit pipeline: global
+//! `--color` from [`crate::args::CliOptions`] is resolved here and applied when
+//! rendering diagnostics, progress lines, and success messages to stderr.
+//!
+//! ```text
+//! CliOptions.color
+//!       │
+//!       ▼
+//! ColorChoice::should_color ──► AnsiStyle ──► DiagnosticStyle
+//!       │                              │
+//!       │                              ├──► crate::report::Reporter
+//!       │                              └──► crate::commands (progress / success)
+//! ```
+//!
+//! [`ColorChoice::Auto`] respects the [`NO_COLOR`](https://no-color.org/)
+//! environment variable and whether stderr is a terminal. [`AnsiStyle`]
+//! implements [`DiagnosticStyle`] from `phx-diagnostics` so compile errors,
+//! notes, and help labels share one styling path across subcommands.
+//!
+//! ## Public types
+//!
+//! - [`ColorChoice`] — `auto`, `always`, or `never` color policy.
+//! - [`AnsiStyle`] — ANSI-aware [`DiagnosticStyle`] implementation.
+//!
+//! ## Entry points
+//!
+//! - [`ColorChoice::parse`] — parse `--color` flag values.
+//! - [`ColorChoice::should_color`] — resolve whether to emit escape codes.
+//! - [`diagnostic_style`] — construct an [`AnsiStyle`] from a [`ColorChoice`].
 
 use std::io::{IsTerminal, stderr};
 use std::path::Path;
@@ -6,7 +36,11 @@ use std::time::Duration;
 
 use phx_diagnostics::DiagnosticStyle;
 
-/// When to emit ANSI escape codes.
+/// When to emit ANSI escape codes on stderr.
+///
+/// Parsed from `--color auto|always|never` via [`ColorChoice::parse`] and stored
+/// in [`crate::args::CliOptions`]. Passed to [`diagnostic_style`] in every
+/// command handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorChoice {
     /// Use color when stderr is a terminal and `NO_COLOR` is unset.
@@ -35,7 +69,9 @@ impl ColorChoice {
         }
     }
 
-    /// Resolves whether colors should be enabled.
+    /// Resolves whether colors should be enabled for this invocation.
+    ///
+    /// `Auto` enables color when `NO_COLOR` is unset and stderr is a terminal.
     #[must_use]
     pub fn should_color(self) -> bool {
         match self {
@@ -46,14 +82,19 @@ impl ColorChoice {
     }
 }
 
-/// ANSI-colored diagnostic output.
+/// ANSI-colored diagnostic and progress output.
+///
+/// Implements [`DiagnosticStyle`] for compile diagnostics and provides
+/// cargo-style progress helpers ([`AnsiStyle::checking_module`],
+/// [`AnsiStyle::finished_checking`]). Construct via [`diagnostic_style`] or
+/// [`AnsiStyle::new`].
 #[derive(Debug)]
 pub struct AnsiStyle {
     enabled: bool,
 }
 
 impl AnsiStyle {
-    /// Creates a style from a [`ColorChoice`].
+    /// Creates a style from a [`ColorChoice`], resolving terminal detection.
     #[must_use]
     pub fn new(choice: ColorChoice) -> Self {
         Self {
@@ -139,6 +180,8 @@ impl AnsiStyle {
 }
 
 /// Returns the active diagnostic style for a color choice.
+///
+/// Convenience used by command handlers to build a [`crate::report::Reporter`].
 #[must_use]
 pub fn diagnostic_style(choice: ColorChoice) -> AnsiStyle {
     AnsiStyle::new(choice)

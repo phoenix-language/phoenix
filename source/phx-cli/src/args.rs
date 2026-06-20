@@ -1,4 +1,40 @@
 //! Argument parsing for the `phx` CLI.
+//!
+//! This module is the **first stage** of the CLI pipeline: it turns `argv` into
+//! structured data before any compiler or VM work runs.
+//!
+//! ```text
+//! std::env::args()
+//!       │
+//!       ▼
+//! parse_env_args / parse_args ──► (CliOptions, Command)
+//!       │                              │
+//!       │ ParseError                   ├──► workflow (project vs standalone)
+//!       ▼                              └──► commands (check, build, run, …)
+//! handle_parse_error ──► CliExit::Usage
+//! ```
+//!
+//! [`CliOptions`] holds global flags (`--color`, `--verbose`) shared by every
+//! subcommand. [`Command`] is the parsed subcommand and its per-command flags.
+//! Parse failures are collected in [`ParseError`] and surfaced through
+//! [`handle_parse_error`], which prints to stderr and returns
+//! [`crate::exit::CliExit::Usage`].
+//!
+//! ## Public types
+//!
+//! - [`CliOptions`] — global flags parsed before the subcommand name.
+//! - [`Command`] — parsed subcommand variant (`check`, `build`, `compile`, `run`, …).
+//! - [`FileCommandArgs`], [`ProjectCommandArgs`], [`CompileCommandArgs`],
+//!   [`RunCommandArgs`] — flag bundles attached to each subcommand.
+//! - [`SubcommandName`] — subcommand identifier for targeted `phx help <cmd>`.
+//! - [`ParseError`] — user-facing parse failure message.
+//!
+//! ## Entry points
+//!
+//! - [`parse_env_args`] — parse `std::env::args()` (skips the program name).
+//! - [`parse_args`] — parse an arbitrary argument iterator (tests and embedders).
+//! - [`effective_lint_deny`] — merge CLI `--deny` with project `[lint] deny`.
+//! - [`handle_parse_error`] — print error, optionally show usage, return exit code.
 
 use std::env;
 use std::path::PathBuf;
@@ -8,7 +44,10 @@ use phx_diagnostics::LintDenyConfig;
 use crate::color::ColorChoice;
 use crate::exit::CliExit;
 
-/// Global CLI options parsed before the subcommand.
+/// Global CLI options parsed before the subcommand name.
+///
+/// Consumed by [`crate::run_with`] and every handler in [`crate::commands`].
+/// Defaults to auto color and non-verbose output; see [`Default`].
 #[derive(Debug, Clone)]
 pub struct CliOptions {
     /// Color output preference.
@@ -26,7 +65,11 @@ impl Default for CliOptions {
     }
 }
 
-/// Parsed subcommand.
+/// Parsed subcommand and its arguments.
+///
+/// Produced by [`parse_args`] / [`parse_env_args`] and dispatched in
+/// [`crate::run_with`]. Help and version variants short-circuit before
+/// workflow resolution or compiler invocation.
 #[derive(Debug, Clone)]
 pub enum Command {
     /// Print usage.
@@ -45,7 +88,10 @@ pub enum Command {
     Run(RunCommandArgs),
 }
 
-/// Subcommand names for targeted help.
+/// Subcommand names for targeted `phx help <command>` output.
+///
+/// Parsed from the first positional argument after `help` or from
+/// `<command> --help` invocations. See [`crate::help::print_command_help`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubcommandName {
     /// `phx check`
@@ -73,7 +119,13 @@ impl SubcommandName {
     }
 }
 
-/// Shared flags for file-based commands.
+/// Shared flags for file-based commands (`check`, `compile`, and the file
+/// portion of `run`).
+///
+/// When no `phoenix.toml` is discovered, these fields configure standalone
+/// compilation: entry file, module root, path dependencies, and lint policy.
+/// In project mode, [`crate::workflow::resolve_check_mode`] validates the entry
+/// file against the project module root.
 #[derive(Debug, Clone, Default)]
 pub struct FileCommandArgs {
     /// Entry `.phx` file.
@@ -90,7 +142,10 @@ pub struct FileCommandArgs {
     pub lint_deny: Option<LintDenyConfig>,
 }
 
-/// `phx build` arguments.
+/// Arguments for `phx build`.
+///
+/// Requires a discoverable `phoenix.toml`. Optional entry override and
+/// `--project-root` are passed to [`crate::workflow::resolve_build_project`].
 #[derive(Debug, Clone, Default)]
 pub struct ProjectCommandArgs {
     /// Optional entry override.
@@ -105,7 +160,10 @@ pub struct ProjectCommandArgs {
     pub lint_deny: Option<LintDenyConfig>,
 }
 
-/// `phx compile` arguments.
+/// Arguments for `phx compile`.
+///
+/// Wraps [`FileCommandArgs`] plus a required `-o` output path. Standalone only;
+/// project directories must use `phx build` instead.
 #[derive(Debug, Clone)]
 pub struct CompileCommandArgs {
     /// Shared file flags.
@@ -114,7 +172,11 @@ pub struct CompileCommandArgs {
     pub output: Option<PathBuf>,
 }
 
-/// `phx run` arguments.
+/// Arguments for `phx run`.
+///
+/// Combines file-based flags with project-mode options (`--build`, `--no-build`)
+/// and VM debug overrides (`--dump-main`, `--heap-cap`). Workflow resolution in
+/// [`crate::workflow::resolve_run_mode`] decides project vs standalone mode.
 #[derive(Debug, Clone, Default)]
 pub struct RunCommandArgs {
     /// Shared file flags.
@@ -132,6 +194,11 @@ pub struct RunCommandArgs {
 }
 
 /// Argument parse failure with a user-facing message.
+///
+/// Returned by [`parse_args`] and [`parse_env_args`] when flags or positional
+/// arguments are missing, unknown, or mutually inconsistent. The message is
+/// printed verbatim by [`handle_parse_error`]; it must not contain internal
+/// compiler details.
 #[derive(Debug, Clone)]
 pub struct ParseError {
     /// Error text shown to the user.
@@ -146,11 +213,18 @@ impl ParseError {
     }
 }
 
-/// Parses `std::env::args()` into global options and a subcommand.
+/// Parses an argument iterator into global options and a subcommand.
+///
+/// Accepts arguments **without** the program name (same slice as
+/// `env::args().skip(1)`). Global flags (`--color`, `--verbose`, `--help`,
+/// `--version`) are consumed before the subcommand name; remaining tokens are
+/// parsed per subcommand.
 ///
 /// # Errors
 ///
-/// Returns [`ParseError`] on invalid flags or missing required arguments.
+/// Returns [`ParseError`] on unknown flags, missing required values, unknown
+/// subcommands, or extra positional arguments after the subcommand is fully
+/// parsed.
 pub fn parse_args(args: impl Iterator<Item = String>) -> Result<(CliOptions, Command), ParseError> {
     let mut iter = args.peekable();
     let mut opts = CliOptions::default();
@@ -421,7 +495,11 @@ fn parse_deny_flag(value: Option<&str>) -> Result<LintDenyConfig, ParseError> {
     LintDenyConfig::parse_cli(value).map_err(ParseError::new)
 }
 
-/// Merges CLI `--deny` with project `[lint] deny` (CLI wins when set).
+/// Merges CLI `--deny` with project `[lint] deny`.
+///
+/// When the user passes `--deny` on the command line, that policy replaces the
+/// project default from `phoenix.toml`. When `--deny` is omitted, the project
+/// configuration is used unchanged.
 #[must_use]
 pub fn effective_lint_deny(
     cli: Option<&LintDenyConfig>,
@@ -433,7 +511,9 @@ pub fn effective_lint_deny(
     }
 }
 
-/// Parses process arguments (skips the program name).
+/// Parses process arguments from [`std::env::args`], skipping the program name.
+///
+/// Convenience wrapper around [`parse_args`] used by [`crate::run`].
 ///
 /// # Errors
 ///
@@ -443,6 +523,10 @@ pub fn parse_env_args() -> Result<(CliOptions, Command), ParseError> {
 }
 
 /// Maps a parse error to an exit code after printing help when appropriate.
+///
+/// Writes `error: {message}` to stderr. When `print_help` is true, also prints
+/// a blank line and top-level usage via [`crate::help::print_usage`]. Always
+/// returns [`CliExit::Usage`].
 pub fn handle_parse_error(err: ParseError, print_help: bool) -> CliExit {
     eprintln!("error: {}", err.message);
     if print_help {

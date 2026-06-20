@@ -1,4 +1,42 @@
 //! Project vs standalone workflow resolution.
+//!
+//! This module is the **second stage** of the CLI pipeline: after
+//! [`crate::args`] produces a parsed subcommand, these functions decide whether
+//! the invocation runs in **project mode** (a `phoenix.toml` is discovered) or
+//! **standalone mode** (a single entry file with explicit module flags).
+//!
+//! ```text
+//! (CliOptions, Command)
+//!       │
+//!       ▼
+//! resolve_check_mode / resolve_run_mode / resolve_build_project
+//!       │
+//!       ├──► CompileMode::Project { config }
+//!       └──► CompileMode::Standalone { options }
+//!       │
+//!       ▼
+//! crate::commands (compiler / VM)
+//!       │
+//!       ▼
+//! crate::exit::CliExit
+//! ```
+//!
+//! Project discovery honors an explicit `--project-root` when provided;
+//! otherwise it walks upward from the entry file or current directory.
+//! Violations (file outside module root, standalone file in a project tree)
+//! become [`WorkflowError`] and map to [`crate::exit::CliExit::Usage`] in
+//! command handlers.
+//!
+//! ## Public types
+//!
+//! - [`CompileMode`] — project or standalone compile configuration.
+//! - [`WorkflowError`] — project load failure or user-facing rule violation.
+//!
+//! ## Entry points
+//!
+//! - [`resolve_check_mode`] — for `phx check <file>`.
+//! - [`resolve_run_mode`] — for `phx run` (optional file in project mode).
+//! - [`resolve_build_project`] — for `phx build`.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -9,22 +47,31 @@ use phx_compiler::{
 
 use crate::args::FileCommandArgs;
 
-/// How `check` / `run` should invoke the compiler.
+/// How `check`, `compile`, and `run` should invoke the compiler.
+///
+/// Project mode loads a shared [`ProjectConfig`] from `phoenix.toml`.
+/// Standalone mode builds a [`StandaloneOptions`] from CLI file flags when no
+/// project manifest is found.
 #[derive(Debug)]
 pub enum CompileMode {
     /// Full project workflow (`phoenix.toml` discovered).
     Project {
-        /// Loaded project configuration.
+        /// Loaded project configuration shared across the build graph.
         config: Arc<ProjectConfig>,
     },
     /// Single entry file without a project manifest.
     Standalone {
-        /// Standalone compile options.
+        /// Standalone compile options derived from [`FileCommandArgs`].
         options: StandaloneOptions,
     },
 }
 
 /// Workflow resolution failure.
+///
+/// Either a project configuration error from `phx-compiler` or a CLI rule
+/// violation (wrong entry file, file outside module root). Displayed to the
+/// user via [`crate::report::Reporter::usage_error`] or
+/// [`crate::report::Reporter::project_error`].
 #[derive(Debug)]
 pub enum WorkflowError {
     /// Project configuration error.
@@ -44,9 +91,15 @@ impl std::fmt::Display for WorkflowError {
 
 /// Resolves compile mode for `phx check <file>`.
 ///
+/// When `phoenix.toml` is found, validates that `file` lies under the project
+/// module root and returns [`CompileMode::Project`]. Otherwise builds standalone
+/// options from `file_args` (module root defaults to the entry file's parent).
+///
 /// # Errors
 ///
-/// Returns [`WorkflowError`] when project rules are violated.
+/// Returns [`WorkflowError::Project`] when the manifest exists but fails to load.
+/// Returns [`WorkflowError::Message`] when the entry file is outside the project
+/// module root.
 pub fn resolve_check_mode(
     file: &Path,
     file_args: &FileCommandArgs,
@@ -64,9 +117,16 @@ pub fn resolve_check_mode(
 
 /// Resolves compile mode for `phx run`.
 ///
+/// In a project directory, `file` may be omitted (runs the default entry) or
+/// must match the default entry exactly — arbitrary standalone files are
+/// rejected. Outside a project, `file` is required and standalone options are
+/// built from `file_args`.
+///
 /// # Errors
 ///
-/// Returns [`WorkflowError`] when project rules are violated or a file is required.
+/// Returns [`WorkflowError::Project`] when the manifest exists but fails to load.
+/// Returns [`WorkflowError::Message`] when a non-default file is passed inside
+/// a project tree, or when no file is given and no project is found.
 pub fn resolve_run_mode(
     file: Option<&Path>,
     file_args: &FileCommandArgs,
@@ -101,9 +161,12 @@ pub fn resolve_run_mode(
 
 /// Resolves a project for `phx build`.
 ///
+/// Locates `phoenix.toml` from `anchor` or an explicit `project_root`. Unlike
+/// check/run, build always requires a project — there is no standalone path.
+///
 /// # Errors
 ///
-/// Returns [`WorkflowError`] when no project is found.
+/// Returns [`WorkflowError::Project`] when no manifest is found or loading fails.
 pub fn resolve_build_project(
     anchor: &Path,
     project_root: Option<&Path>,
