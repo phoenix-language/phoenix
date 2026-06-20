@@ -77,6 +77,43 @@ Layout :: struct {
 
 ---
 
+## Memory alignment and padding (deferred)
+
+Language v0 does **not** apply C-style struct padding or platform alignment rules. This is intentional: the MVP VM uses width-faithful scalars, aggregate arena handles, and a **packed** default layout (field byte sizes are summed without inter-field padding). `Layout.align` is recorded in std for API uniformity but is not enforced by the heap yet.
+
+**Do not** silently add padding to the default struct layout — that would change `size_of`, break the current compiler/VM contract, and still would not match C without an explicit `repr` and target ABI metadata.
+
+### When alignment becomes necessary
+
+| Need | Why padding / align matters |
+|------|-----------------------------|
+| **`repr(C)` / C struct interop** | C ABIs require specific field offsets and alignment |
+| **Raw memory views** | `*T` load/store assuming a contiguous byte layout |
+| **Atomics / SIMD** | Often require aligned addresses |
+| **Native codegen or mmap** | Platform ABIs and file formats assume alignment |
+| **Honest `Layout.align`** | Heap must return blocks aligned to the requested boundary |
+
+### Practical sequencing
+
+Implement alignment as **scoped features**, not a global layout change:
+
+| Phase | Scope | Action |
+|-------|--------|--------|
+| **Now (Language v0)** | Docs + compiler | Keep packed default. Document that `size_of` is packed; std passes `align: 1u` to VM-backed allocators. No compiler or VM behavior change. |
+| **Before C struct FFI** | Compiler + tests | Add opt-in **`repr(C)`** (or equivalent) with platform alignment rules; layout pass computes offsets and padding; golden tests against known C struct sizes. See [ffi.md](ffi.md). |
+| **With allocator hardening** | VM + std | Teach `ALLOC` / the heap ledger to honor **`Layout.align`** when `align > 1` (start with power-of-two alignments). Update `VmHeapAllocator` and collection growth paths to request correct alignment for `repr(C)` buffers. |
+| **Later (optional)** | Language | **`repr(align(N))`**, **`repr(packed)`**, or explicit **`repr(Phoenix)`** naming the current default; target ABI metadata for platform-specific `c_int` width ([ffi.md](ffi.md)). |
+
+### Target end state
+
+- **Default (`repr(Phoenix)`):** packed, VM-oriented layout — good for Language v0 and in-VM aggregates.
+- **Opt-in `repr(C)`:** aligned layout for types and values that cross the FFI or raw-memory boundary.
+- **`Layout`:** both `size` and `align` are meaningful at allocation sites; dealloc must use the same pair.
+
+**Related:** [ffi.md](ffi.md) (C ABI phase B), [vm-linear.md](vm-linear.md) (`ALLOC` / `FREE`), [type-system.md](type-system.md) (struct definitions, `size_of`).
+
+---
+
 ## `Allocator` trait
 
 Defined in `std::core::memory::allocator`:

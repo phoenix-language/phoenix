@@ -66,6 +66,8 @@ C scalar names are **std type aliases**, not compiler builtins. Opt-in via `#imp
 
 v0 uses **fixed-width** mappings for portable tests; platform-specific `c_int` width is deferred until target ABI metadata exists.
 
+**C struct layout:** Passing Phoenix structs to C by value or as raw memory blobs is **not** in Phase A. When struct FFI ships, it depends on opt-in **`repr(C)`** and aligned layout — see [allocator.md — Memory alignment and padding (deferred)](allocator.md#memory-alignment-and-padding-deferred).
+
 ---
 
 ## Function pointers at the boundary
@@ -100,7 +102,8 @@ Foreign stubs use `MakeFnPtr` / `CallIndirect` with `target_kind = foreign`.
 
 | Phase | Scope | Callable model |
 |---|---|---|
-| **A — VM-hosted `extern "C"`** | Import C symbols; VM stubs / future dynamic link | Fn pointer types + `CallIndirect`; calls require `unsafe` |
+| **A — VM-hosted `extern "C"`** | Import C symbols; VM stubs / future dynamic link | Fn pointer types + `CallIndirect`; calls require `unsafe`; scalars only at boundary |
+| **A′ — C struct layout** | `repr(C)` structs; aligned offsets; `Layout.align` in heap | Opt-in repr; platform ABI tests; see [allocator.md](allocator.md#memory-alignment-and-padding-deferred) |
 | **B — Native export** | Phoenix functions callable from C | Monomorphized exports only |
 
 ---
