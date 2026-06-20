@@ -1,4 +1,22 @@
-//! Lower statements and blocks to IR control flow.
+//! Statement and block lowering: bindings, control flow, and function tails.
+//!
+//! Walks [`Block`](phx_syntax::ast::stmt::Block) items and [`Stmt`](phx_syntax::ast::stmt::Stmt)
+//! nodes, emitting CFG edges and expression instructions through [`LowerCtx`](crate::lower::ctx::LowerCtx).
+//! Expression operands delegate to [`super::expr`]; scope exit and loop `break`/`return` paths call
+//! [`super::drop_glue::emit_scope_drops`] so drop order matches typeck binding depth.
+//!
+//! ## Invariants
+//!
+//! - **Scope depth:** each block calls [`LowerCtx::enter_scope`] / [`LowerCtx::exit_scope`]; locals
+//!   bind at the current depth and drop when a scope closes or when control exits early (`return`,
+//!   `break`, for-in exhaustion).
+//! - **Loop labels:** `while`, `loop`, and `for-in` push [`LoopLabels`](crate::lower::ctx::LoopLabels)
+//!   and record the body scope in [`LowerCtx::loop_body_scope_depths`] so `break` drops only bindings
+//!   created inside the loop body, not outer locals.
+//! - **Fall-through:** loop bodies append an unconditional [`IrInst::Jump`] back to the header when
+//!   the tail block does not already end in `break`, `continue`, or `return`.
+//! - **For-in:** iterator protocol is desugared using [`ForInPlan`](crate::typeck::ForInPlan) from
+//!   typeck layout; the binding pattern is synthesized as `Some(binding)` for [`emit_arm_condition`].
 
 use phx_diagnostics::Span;
 use phx_syntax::ast::ident::{Ident, TypeName};
@@ -16,7 +34,11 @@ use crate::lower::expr::{
 };
 use crate::typeck::{ForInPlan, TypeId};
 
-/// Lowers `block` for its trailing value (expression body or last item).
+/// Lowers every item in `block`, leaving the last expression's value on the stack when present.
+///
+/// Opens a scope for the block, dispatches [`BlockItem::Stmt`] through [`lower_block_stmt`],
+/// evaluates trailing [`BlockItem::Expr`] nodes, and ignores imports (already resolved). Closes the
+/// scope on exit, which emits drop glue for bindings introduced in the block.
 pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
     ctx.enter_scope();
     for item in &block.items {
@@ -29,6 +51,11 @@ pub fn lower_block_value(ctx: &mut LowerCtx<'_>, block: &Block) {
     ctx.exit_scope();
 }
 
+/// Dispatches one statement to the appropriate lowering helper.
+///
+/// Sets the diagnostic site to `stmt.span` before emission. Local bindings lower their initializer
+/// then [`IrInst::StoreLocal`] when layout metadata exists; `for-in` consumes the next
+/// [`ForInPlan`](crate::typeck::ForInPlan) in layout order.
 fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &StmtNode) {
     ctx.set_site(stmt.span);
     match &stmt.inner {
@@ -70,7 +97,11 @@ fn lower_block_stmt(ctx: &mut LowerCtx<'_>, stmt: &StmtNode) {
     }
 }
 
-/// `while (cond) { body }` — header tests `cond`, body jumps back to header.
+/// Lowers `while (cond) { body }`.
+///
+/// CFG shape: jump to header → [`IrInst::JumpIf`] on `cond` → body block → jump to header → exit
+/// block after the loop. Registers loop labels so `break`/`continue` target the exit placeholder
+/// and header respectively.
 fn lower_while(
     ctx: &mut LowerCtx<'_>,
     stmt_span: Span,
@@ -110,7 +141,10 @@ fn lower_while(
     ctx.set_current(exit);
 }
 
-/// `loop { body }` — body repeats until `break` (or `return`).
+/// Lowers `loop { body }`.
+///
+/// Same loop-label machinery as [`lower_while`], but the header has no condition: every iteration
+/// enters the body block directly until `break`, `return`, or another terminating branch.
 fn lower_loop(ctx: &mut LowerCtx<'_>, stmt_span: Span, body: &Block) {
     ctx.set_site(stmt_span);
     let header = ctx.fresh_block();
@@ -137,6 +171,11 @@ fn lower_loop(ctx: &mut LowerCtx<'_>, stmt_span: Span, body: &Block) {
     ctx.set_current(exit);
 }
 
+/// Lowers `break` or `break expr`.
+///
+/// Evaluates an optional value expression, drops loop-body bindings via
+/// [`emit_scope_drops`](crate::lower::drop_glue::emit_scope_drops), then jumps to the innermost
+/// loop's exit placeholder. No-op when not inside a loop (typeck rejects this in user code).
 fn lower_break(ctx: &mut LowerCtx<'_>, stmt_span: Span, expr: Option<&phx_syntax::ast::ExprNode>) {
     ctx.set_site(stmt_span);
     if let Some(e) = expr {
@@ -150,7 +189,11 @@ fn lower_break(ctx: &mut LowerCtx<'_>, stmt_span: Span, expr: Option<&phx_syntax
     }
 }
 
-/// Lowers `for binding in iter { body }` via iterator protocol desugaring.
+/// Lowers `for binding in iter { body }` using the iterator protocol plan from typeck.
+///
+/// Desugars to: call `IntoIterator`, loop calling `next`, match on `Option` with a synthetic
+/// `Some(binding)` pattern, run `body` on `Some`, and jump to exit on `None`. The iterator state
+/// lives in `plan.iter_temp_slot`; drop glue runs on the `None` arm before exiting the loop.
 fn lower_for_in(
     ctx: &mut LowerCtx<'_>,
     plan: &ForInPlan,
@@ -235,6 +278,10 @@ fn lower_for_in(
     ctx.exit_scope();
 }
 
+/// Builds a synthetic `Some(binding)` pattern for for-in `next` dispatch.
+///
+/// Uses `some_variant` from the typed `Option` enum and a dummy AST node id — only the shape is
+/// needed for [`emit_arm_condition`] and [`bind_match_pattern`].
 fn some_binding_pattern(
     binding: phx_syntax::Symbol,
     some_variant: phx_syntax::Symbol,
@@ -263,6 +310,7 @@ fn some_binding_pattern(
     )
 }
 
+/// Lowers `continue` by jumping to the innermost loop's continue target (header or condition).
 fn lower_continue(ctx: &mut LowerCtx<'_>) {
     if let Some(labels) = ctx.innermost_loop() {
         ctx.emit_here(IrInst::Jump {
@@ -271,6 +319,10 @@ fn lower_continue(ctx: &mut LowerCtx<'_>) {
     }
 }
 
+/// Lowers `return` or `return expr`.
+///
+/// Drops all bindings from the current scope depth down to the function root (`to_depth` 0), then
+/// emits [`IrInst::Return`] with the function return type or unit when the expression is omitted.
 fn lower_return(ctx: &mut LowerCtx<'_>, stmt_span: Span, expr: Option<&phx_syntax::ast::ExprNode>) {
     ctx.set_site(stmt_span);
     emit_scope_drops(ctx, ctx.scope_depth, 0);
@@ -286,7 +338,11 @@ fn lower_return(ctx: &mut LowerCtx<'_>, stmt_span: Span, expr: Option<&phx_synta
     }
 }
 
-/// Emits [`IrInst::Return`] after the function body when the tail block does not already return.
+/// Appends a fall-through [`IrInst::Return`] when the function tail block lacks one.
+///
+/// Called by [`super::func::lower_one_function`] after the body block is lowered. Skips emission
+/// when [`block_ends_with_return`] is true (e.g. every path ends in `return`). Otherwise drops
+/// function-root bindings and returns with `return_type`.
 pub fn lower_function_return(
     ctx: &mut LowerCtx<'_>,
     body: &phx_syntax::ast::BlockNode,
@@ -300,6 +356,7 @@ pub fn lower_function_return(
     ctx.emit_here(IrInst::Return { ty: return_type });
 }
 
+/// True when `block`'s last instruction is [`IrInst::Return`].
 fn block_ends_with_return(ctx: &LowerCtx<'_>, block: u32) -> bool {
     let idx = usize::try_from(block).ok();
     let Some(b) = idx.and_then(|i| ctx.blocks.get(i)) else {

@@ -1,4 +1,19 @@
-//! Lower function definitions to [`IrFunction`](crate::ir::IrFunction).
+//! Function-body lowering: one [`IrFunction`](crate::ir::IrFunction) per typed layout.
+//!
+//! Iterates [`TypedProgram::functions`](crate::typeck::TypedProgram::functions), skips generic
+//! templates and VM intrinsics, and drives each remaining body through [`LowerCtx`](crate::lower::ctx::LowerCtx).
+//! Block statements use [`super::stmt::lower_block_value`]; the tail return is finalized by
+//! [`super::stmt::lower_function_return`].
+//!
+//! ## Invariants
+//!
+//! - **Generic templates:** empty expression-range templates are omitted here; monomorphized copies
+//!   carry real bodies (see [`is_generic_template`] and [`is_deferred_impl_method_template`]).
+//! - **Specialized clones:** resolution keys for specialized functions may point at the template
+//!   module; [`lower_one_function`] uses [`TypedProgram::specialized_from`] to pick the correct
+//!   module for diagnostics.
+//! - **Completion:** each successful lowering runs [`LowerCtx::finish_expr_cursor`] and patches
+//!   loop exit placeholders before returning the [`IrFunction`].
 
 use crate::ir::{IrConst, IrFunction, IrFunctionId};
 use crate::lower::ctx::LowerCtx;
@@ -10,7 +25,11 @@ use crate::typeck::{
 };
 use phx_diagnostics::{LowerBag, LowerError};
 
-/// Lowers all functions in `typed`.
+/// Lowers every non-template, non-intrinsic function in `typed` to IR.
+///
+/// Appends each [`IrFunction`] in layout order with dense [`IrFunctionId`] indices. Accumulates
+/// lowering errors in `bag`; on any error the partial `functions` vector is discarded and the
+/// taken bag is returned.
 ///
 /// # Errors
 ///
@@ -40,7 +59,12 @@ pub fn lower_functions(
     }
 }
 
-/// Lowers a single function layout to IR.
+/// Lowers a single [`FunctionLayout`](crate::typeck::FunctionLayout) to an [`IrFunction`].
+///
+/// Builds a fresh [`LowerCtx`], optionally skips the AST body for deferred generic impl templates,
+/// lowers statements, appends a fall-through return, verifies the expression cursor, and patches
+/// loop exit targets. Returns `None` when lowering recorded errors in `bag` or when the function
+/// index exceeds representable limits.
 pub(crate) fn lower_one_function(
     typed: &TypedProgram,
     layout: &FunctionLayout,
@@ -102,7 +126,10 @@ pub(crate) fn lower_one_function(
     })
 }
 
-/// Returns true when `layout` is a generic impl method template whose body was not type-checked.
+/// True when `layout` is a generic impl method template whose body was not type-checked.
+///
+/// Such layouts have an empty expression range (`expr_start >= expr_end`) and are not yet
+/// specialized; lowering skips the AST body until a monomorphized copy exists.
 fn is_deferred_impl_method_template(typed: &TypedProgram, layout: &FunctionLayout) -> bool {
     if layout.expr_start < layout.expr_end {
         return false;
@@ -116,7 +143,7 @@ fn is_deferred_impl_method_template(typed: &TypedProgram, layout: &FunctionLayou
     def.kind == DefKind::ImplMethod
 }
 
-/// Returns true when `def` is a generic template replaced by monomorphization.
+/// True when `def` is a generic function or impl-method template replaced by monomorphization.
 fn is_generic_template(typed: &TypedProgram, def: DefId) -> bool {
     is_generic_fn_template(typed, def) || is_generic_impl_method_template(typed, def)
 }
