@@ -1,9 +1,48 @@
 //! `build/manifest.json` — incremental rebuild metadata (M2).
 //!
-//! Records per-module source digests, `.pxi` hashes, and artifact paths so the build
-//! driver can skip unchanged modules. [`BuildManifest::read`] / [`BuildManifest::write`]
-//! round-trip the JSON format; [`module_is_up_to_date`] compares live hashes against a
-//! stored record including dependency `.pxi` edges.
+//! Persists per-module source digests, `.pxi` interface hashes, and artifact paths under
+//! the workspace `build/` directory. The build driver reads the previous manifest at the
+//! start of a build and writes an updated copy after artifact emission so unchanged modules
+//! can be skipped on the next run.
+//!
+//! ## Pipeline position
+//!
+//! Written by [`super::driver::artifacts::write_interfaces_and_manifest`] and
+//! [`super::driver::artifacts::write_interfaces_and_collect_objects`]; read at the start of
+//! [`super::driver::package::build_project`]. Freshness checks in
+//! [`super::driver::incremental`] compare live digests against stored records via
+//! [`module_is_up_to_date`].
+//!
+//! ## On-disk format
+//!
+//! JSON object with top-level `entry`, `bin_path`, and a `modules` map keyed by logical
+//! module path. Each module entry holds `source`, `source_hash`, `pxi_hash`, `phx0_path`,
+//! and `pxi_path` strings (paths stored relative to `build_root` when possible — see
+//! [`store_path_relative_to`]).
+//!
+//! Parsing is intentionally lenient: [`BuildManifest::read`] uses a lightweight extractor
+//! rather than a strict JSON deserializer, so partially malformed files may yield missing
+//! fields rather than a hard error.
+//!
+//! ## Freshness model
+//!
+//! A module is **up to date** when:
+//!
+//! 1. A [`ManifestModule`] exists for its logical path.
+//! 2. Live source digest matches `source_hash`.
+//! 3. Every imported dependency's live `.pxi` digest matches the recorded `pxi_hash`.
+//! 4. Both `.phx0` and `.pxi` artifact paths resolve to existing files under `build_root`.
+//!
+//! ## Public API
+//!
+//! | Item | Role |
+//! | --- | --- |
+//! | [`ManifestModule`] | Per-module record stored in the manifest |
+//! | [`BuildManifest`] | Parsed manifest; [`BuildManifest::read`] / [`BuildManifest::write`] |
+//! | [`module_is_up_to_date`] | Incremental skip predicate for one workspace module |
+//! | [`store_path_relative_to`] | Normalize artifact paths before writing |
+//! | [`resolve_manifest_path`] | Resolve stored paths when reading artifacts |
+//! | [`record_pxi_hash`] | Digest a `.pxi` file for dependency edges |
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -11,46 +50,67 @@ use std::path::{Path, PathBuf};
 
 use crate::pxi::digest_bytes;
 
-/// Per-module record in the build manifest.
+/// Per-module record in `build/manifest.json`.
+///
+/// One entry per compiled workspace module. Paths (`source`, `phx0_path`, `pxi_path`) are
+/// stored as project- or build-root-relative strings when [`store_path_relative_to`] was
+/// used at write time; hashes are hex digests from [`crate::pxi::digest_file`] /
+/// [`record_pxi_hash`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManifestModule {
-    /// Logical module path.
+    /// Logical module path (map key in the manifest), e.g. `std::core::option`.
     pub logical_path: String,
-    /// Project-relative source path.
+    /// Project-relative path to the `.phx` source file.
     pub source: String,
-    /// Digest of source bytes.
+    /// Hex digest of source file bytes at last successful compile.
     pub source_hash: String,
-    /// Digest of `.pxi` file.
+    /// Hex digest of the emitted `.pxi` interface file.
     pub pxi_hash: String,
-    /// Path to `.phx0` object file.
+    /// Stored path to the per-module `.phx0` object file.
     pub phx0_path: String,
-    /// Path to `.pxi` interface file.
+    /// Stored path to the per-module `.pxi` interface file.
     pub pxi_path: String,
 }
 
-/// Parsed build manifest.
+/// Parsed `build/manifest.json` for a workspace package.
+///
+/// Holds the crate entry logical path, linked binary location, and all per-module records
+/// from the last successful build. An empty [`BuildManifest::default`] is used on first
+/// build when no manifest file exists yet.
 #[derive(Debug, Clone, Default)]
 pub struct BuildManifest {
-    /// Entry logical module path.
+    /// Logical module path of the package entry point (matches `phoenix.toml` `[[bin]]`).
     pub entry: String,
-    /// Linked binary path.
+    /// Stored path to the linked output binary (`.phx0` or final artifact).
     pub bin_path: String,
-    /// Per-module records keyed by logical path.
+    /// Per-module records keyed by logical path (`ManifestModule::logical_path`).
     pub modules: HashMap<String, ManifestModule>,
 }
 
 impl BuildManifest {
-    /// Reads `path` if it exists.
+    /// Loads a manifest from `path` when the file exists and is readable.
+    ///
+    /// Returns `None` when `path` is missing or cannot be read (including permission
+    /// errors). Malformed JSON is parsed leniently: missing keys become empty strings and
+    /// unknown module fields are ignored rather than failing the load.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed manifest content.
     pub fn read(path: &Path) -> Option<Self> {
         let text = std::fs::read_to_string(path).ok()?;
         Some(parse_manifest(&text))
     }
 
-    /// Writes manifest JSON to `path`.
+    /// Serializes this manifest to JSON and writes it to `path`.
+    ///
+    /// Creates parent directories when needed. Module keys are emitted in arbitrary
+    /// `HashMap` iteration order; round-tripping through [`BuildManifest::read`] preserves
+    /// all fields but not key ordering.
     ///
     /// # Errors
     ///
-    /// I/O errors.
+    /// Returns [`std::io::Error`] when parent directory creation or the file write fails.
     pub fn write(&self, path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -185,14 +245,26 @@ fn extract_module_keys(text: &str) -> Vec<(String, ())> {
     out
 }
 
-/// Stores `path` relative to `build_root` when possible.
+/// Stores `path` relative to `build_root` when it is under that prefix.
+///
+/// Used when writing manifest artifact paths so manifests remain valid when the project
+/// directory moves. If `path` is not prefixed by `build_root`, returns
+/// [`Path::display`] of `path` unchanged (typically an absolute path).
 #[must_use]
 pub fn store_path_relative_to(build_root: &Path, path: &Path) -> String {
     path.strip_prefix(build_root)
         .map_or_else(|_| path.display().to_string(), |p| p.display().to_string())
 }
 
-/// Resolves a manifest artifact path against `build_root`.
+/// Resolves a path string stored in the manifest to a filesystem location.
+///
+/// Resolution order:
+///
+/// 1. If `stored` is absolute, return it as-is.
+/// 2. Otherwise join `build_root` with `stored`; if that file exists, return it.
+/// 3. Otherwise if `stored` exists relative to the process current directory, return that.
+/// 4. Otherwise return `build_root.join(stored)` even when the file is missing (callers
+///    such as [`module_is_up_to_date`] use [`Path::is_file`] to detect staleness).
 #[must_use]
 pub fn resolve_manifest_path(build_root: &Path, stored: &str) -> PathBuf {
     let p = Path::new(stored);
@@ -209,7 +281,18 @@ pub fn resolve_manifest_path(build_root: &Path, stored: &str) -> PathBuf {
     from_build
 }
 
-/// Returns true when module `logical` does not need recompilation.
+/// Returns `true` when module `logical` can be skipped for incremental rebuild.
+///
+/// Compares `source_hash` and each `(dep_logical, dep_pxi_hash)` pair against the last
+/// successful build recorded in `manifest`. Also verifies artifact files still exist on disk.
+///
+/// Returns `false` on the first failed check. Used by
+/// [`super::driver::incremental::workspace_stale_modules`] and per-module skip logic in
+/// [`super::driver::artifacts`].
+///
+/// # Panics
+///
+/// Never panics.
 pub fn module_is_up_to_date(
     manifest: &BuildManifest,
     build_root: &Path,
@@ -235,7 +318,14 @@ pub fn module_is_up_to_date(
         && resolve_manifest_path(build_root, &rec.pxi_path).is_file()
 }
 
-/// Hash of manifest module record for dependency edges.
+/// Returns the hex digest of a `.pxi` file for manifest dependency edges.
+///
+/// Reads the full file and passes bytes to [`crate::pxi::digest_bytes`]. When the file
+/// cannot be read, returns an empty string (callers treat that as stale / not up to date).
+///
+/// # Panics
+///
+/// Never panics on missing or unreadable `pxi_path`.
 #[must_use]
 pub fn record_pxi_hash(pxi_path: &Path) -> String {
     std::fs::read(pxi_path)
