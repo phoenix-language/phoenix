@@ -4,6 +4,32 @@
 //! [`load_project_binary`], and [`load_project_binary_with_options`], plus internal
 //! `build_package` / `build_dependency` helpers that implement incremental rebuild,
 //! cross-crate monomorphization reconciliation, and link.
+//!
+//! ## Pipeline position
+//!
+//! ```text
+//! ProjectConfig → build_dependency* → build_package → BuildResult
+//!                      │                    │
+//!                      │                    ├─ load + resolve + type_check
+//!                      │                    ├─ incremental skip (manifest)
+//!                      │                    ├─ lower + codegen + write artifacts
+//!                      │                    └─ link → bin/lib PHX0
+//!                      └─ deps under build/deps/{name}/
+//! ```
+//!
+//! ## Incremental model
+//!
+//! [`super::incremental`] compares live source and `.pxi` digests against
+//! [`super::super::manifest::BuildManifest`]. When all workspace modules are fresh and the
+//! linked output exists, [`build_package`] returns without re-type-checking.
+//!
+//! ## Public API
+//!
+//! | Function | Use case |
+//! |----------|----------|
+//! | [`build_project`] | Full `phx build` — deps, compile, link |
+//! | [`emit_interfaces_from_compiled`] | `phx check --emit-interface-only` |
+//! | [`load_project_binary`] / [`load_project_binary_with_options`] | `phx run` loads linked image |
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
