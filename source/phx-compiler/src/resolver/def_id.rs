@@ -1,13 +1,19 @@
-//! Definition identifiers and kinds for resolved names.
+//! Definition identifiers and kinds produced by name resolution.
 //!
-//! [`DefId`] indexes [`super::ResolvedProgram::defs`]; [`DefKind`] classifies what was defined.
+//! Each binding introduced during resolve receives a dense [`DefId`] into
+//! [`super::ResolvedProgram::defs`]. [`DefKind`] classifies the syntactic role; [`Def`] stores the
+//! interned name, defining span, owning module, export flag, and lexical scope depth.
 
 use phx_diagnostics::Span;
 use phx_syntax::Symbol;
 
-/// Dense index into [`crate::resolver::ResolvedProgram::defs`].
+/// Dense index into [`super::ResolvedProgram::defs`].
 ///
-/// Not a stable ABI for external tools; layout may change with the compiler.
+/// Ids are allocated sequentially during resolve and index both local definitions and imported
+/// symbols wired in from dependency `.pxi` files in multi-module builds. Used as keys in
+/// [`super::ResolvedProgram::resolutions`] and [`super::ResolvedProgram::closures`].
+///
+/// Not a stable ABI across compiler versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DefId(u32);
 
@@ -16,7 +22,10 @@ pub struct DefId(u32);
 pub(crate) struct DefIdOverflow;
 
 impl DefId {
-    /// Creates a definition id from a raw index (tests only).
+    /// Constructs a [`DefId`] from a raw table index.
+    ///
+    /// Intended for tests and in-tree tooling that already hold a def-table index. Production code
+    /// should use ids from resolve output rather than fabricating them.
     #[must_use]
     pub const fn from_raw(index: u32) -> Self {
         Self(index)
@@ -31,7 +40,7 @@ impl DefId {
         u32::try_from(index).map(Self).map_err(|_| DefIdOverflow)
     }
 
-    /// Returns the raw index.
+    /// Returns the dense index into [`super::ResolvedProgram::defs`].
     #[must_use]
     pub const fn index(self) -> u32 {
         self.0
@@ -59,7 +68,11 @@ mod tests {
     }
 }
 
-/// What a definition represents in the source program.
+/// Syntactic category of a named definition in the resolve table.
+///
+/// Value-namespace kinds participate in expression lookup; type-namespace kinds participate in type
+/// lookup. Some variants ([`Self::ImplMethod`], [`Self::Closure`]) exist only as def records and are
+/// not registered as module-scope bindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DefKind {
@@ -99,25 +112,32 @@ pub enum DefKind {
     TraitAssocType,
 }
 
-/// One named definition in the compilation unit.
+/// One named binding recorded during name resolution.
+///
+/// Resolve the printable name via [`Self::name`] through the program
+/// [`Interner`](phx_syntax::Interner). [`Self::scope_depth`] is the lexical nesting depth at
+/// introduction and is used to detect closure upvars (captured defs have shallower depth).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Def {
-    /// Classification of this definition.
+    /// Syntactic role of this binding ([`DefKind`]).
     pub kind: DefKind,
-    /// Interned name.
+    /// Interned identifier for this definition.
     pub name: Symbol,
-    /// Span of the defining name.
+    /// Source span of the defining name token.
     pub span: Span,
-    /// Owning module (program-wide id).
+    /// Owning module id (matches [`super::ResolutionKey::module`]).
     pub module: u32,
-    /// `true` when the item is exported (`pub` on the top-level item).
+    /// `true` when the top-level item is exported (`pub`).
     pub exported: bool,
-    /// Lexical scope depth when this binding was introduced.
+    /// Lexical scope depth when the binding was introduced (0 = module scope).
     pub scope_depth: u32,
 }
 
 impl DefKind {
-    /// Returns true when this definition owns an executable function body.
+    /// Returns `true` when this definition has an executable body for lowering.
+    ///
+    /// Matches [`Self::Fn`] and [`Self::ImplMethod`] only; extern signatures and trait method stubs
+    /// without bodies are excluded.
     #[must_use]
     pub const fn is_function_body(self) -> bool {
         matches!(self, DefKind::Fn | DefKind::ImplMethod)
@@ -125,7 +145,7 @@ impl DefKind {
 }
 
 impl Def {
-    /// Creates a definition record.
+    /// Builds a definition record for tests and manual table construction.
     #[must_use]
     pub const fn new(
         kind: DefKind,
