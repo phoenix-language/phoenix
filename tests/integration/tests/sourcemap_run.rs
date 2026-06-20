@@ -10,7 +10,10 @@ use phx_compiler::{
     compile_source,
     unstable::{codegen, lower},
 };
-use phx_test::{ensure_built_project, require_cli_project, shared_cli};
+use phx_test::{
+    ensure_built_project, force_build_project_unlocked, require_cli_project, shared_cli,
+    with_project_fs_lock,
+};
 use phx_vm::{VmErrorKind, run};
 
 #[test]
@@ -119,12 +122,14 @@ fn heap_uaf_runtime_error_maps_to_source_span() {
 
 #[test]
 fn heap_uaf_cli_shows_source_span_on_stderr() {
-    ensure_built_project("heap_uaf");
-    let project = require_cli_project("heap_uaf");
-    let out = shared_cli().run_project_fails(&project);
-    out.assert_contains("runtime error:");
-    out.assert_contains("use after free");
-    out.assert_contains("src/main.phx:");
+    with_project_fs_lock("heap_uaf", || {
+        let project = require_cli_project("heap_uaf");
+        force_build_project_unlocked("heap_uaf");
+        let out = shared_cli().run_no_build_project_fails(&project);
+        out.assert_contains("runtime error:");
+        out.assert_contains("use after free");
+        out.assert_contains("src/main.phx:");
+    });
 }
 
 #[test]

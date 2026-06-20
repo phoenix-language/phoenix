@@ -357,6 +357,21 @@ impl PhxCli {
             .tap_failure()
     }
 
+    /// `phx run --no-build --project-root <root>` — expect failure.
+    ///
+    /// Use after a force-build under [`crate::with_project_fs_lock`] so the CLI
+    /// does not race parallel integration tests on the same sandbox project.
+    pub fn run_no_build_project_fails(&self, project_root: &Path) -> PhxOutput {
+        assert_fixture_exists(project_root);
+        self.run(&[
+            "run",
+            "--no-build",
+            "--project-root",
+            &path_to_arg(project_root),
+        ])
+        .tap_failure()
+    }
+
     /// `phx run --no-build --project-root <root> <entry>` — expect success.
     pub fn run_no_build_entry_ok(&self, project_root: &Path, entry: &Path) -> &Self {
         self.run(&[
