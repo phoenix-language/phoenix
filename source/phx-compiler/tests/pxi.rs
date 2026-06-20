@@ -1,7 +1,9 @@
 //! PHX-040: malformed `.pxi` input must return `Err` without panic.
-#![allow(clippy::unwrap_used)]
+
+mod support;
 
 use phx_compiler::PxiFile;
+use support::test_err;
 
 /// Expected `.pxi` parse failure (matches [`phx_compiler::pxi::PxiError`] display).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +93,7 @@ fn malformed_pxi_inputs_return_err_without_panic() {
     ];
 
     for (input, expected) in cases {
-        let err = PxiFile::parse(input).unwrap_err();
+        let err = test_err(PxiFile::parse(input), "parse pxi");
         expected.assert_matches(&err);
     }
 }

@@ -1,5 +1,6 @@
 //! PHX0 linker: global `function_id` stability and `Call` operands after merge.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod support;
 
 use phx_bytecode::ENTRY_NONE;
 use phx_bytecode::{
@@ -8,6 +9,7 @@ use phx_bytecode::{
     TypeTable, verify,
 };
 use phx_compiler::{LinkInput, link_modules};
+use support::{test_encode, test_ok, test_some};
 
 fn module_with_fn(fn_id: u32, code: Vec<u8>, stack_max: u16) -> BytecodeModule {
     module_with_tables(
@@ -51,32 +53,26 @@ fn module_with_tables(
 }
 
 fn return_only() -> Vec<u8> {
-    Instruction {
+    test_encode(&Instruction {
         opcode: Opcode::Return,
         operands: vec![],
-    }
-    .encode()
-    .expect("encode")
+    })
 }
 
 fn pop_then_return() -> Vec<u8> {
-    let mut code = Instruction {
+    let mut code = test_encode(&Instruction {
         opcode: Opcode::Pop,
         operands: vec![],
-    }
-    .encode()
-    .expect("encode");
+    });
     code.extend(return_only());
     code
 }
 
 fn call_then_return(callee: u32) -> Vec<u8> {
-    let mut code = Instruction {
+    let mut code = test_encode(&Instruction {
         opcode: Opcode::Call,
         operands: vec![callee],
-    }
-    .encode()
-    .expect("encode");
+    });
     code.extend(pop_then_return());
     code
 }
@@ -86,20 +82,22 @@ fn link_preserves_call_function_id_operands() {
     let object_a = module_with_fn(0, return_only(), 0);
     let object_b = module_with_fn(1, call_then_return(0), 1);
 
-    let linked = link_modules(
-        &[
-            LinkInput {
-                logical_path: "a::callee".to_owned(),
-                module: object_a,
-            },
-            LinkInput {
-                logical_path: "b::caller".to_owned(),
-                module: object_b,
-            },
-        ],
-        1,
-    )
-    .expect("link");
+    let linked = test_ok(
+        link_modules(
+            &[
+                LinkInput {
+                    logical_path: "a::callee".to_owned(),
+                    module: object_a,
+                },
+                LinkInput {
+                    logical_path: "b::caller".to_owned(),
+                    module: object_b,
+                },
+            ],
+            1,
+        ),
+        "link",
+    );
 
     let ids: Vec<_> = linked
         .functions
@@ -126,7 +124,7 @@ fn link_preserves_call_function_id_operands() {
         "Call operand should still target global function id 0 after link"
     );
 
-    verify(&linked).expect("linked module verifies");
+    test_ok(verify(&linked), "linked module verifies");
 }
 
 fn struct_type_record() -> TypeRecord {
@@ -147,60 +145,55 @@ fn enum_type_record() -> TypeRecord {
 
 fn inst_at(code: &[u8], offset: u32) -> Instruction {
     let start = usize::try_from(offset).unwrap_or(0);
-    let (inst, _) = Instruction::decode_at(code, start).expect("decode instruction");
+    let (inst, _) = test_ok(Instruction::decode_at(code, start), "decode instruction");
     inst
+}
+
+fn link_two(inputs: &[LinkInput], entry: u32) -> BytecodeModule {
+    test_ok(link_modules(inputs, entry), "link")
+}
+
+fn function_by_id(linked: &BytecodeModule, id: u32) -> &FunctionRecord {
+    test_some(
+        linked
+            .functions
+            .functions
+            .iter()
+            .find(|f| f.function_id == id),
+        &format!("fn {id}"),
+    )
 }
 
 #[test]
 #[allow(clippy::too_many_lines)]
 fn link_rebases_get_field_and_match_tag_type_operands() {
     let s32_kind = u32::from(PrimitiveKind::S32 as u8);
-    let mut code_a = Instruction {
+    let mut code_a = test_encode(&Instruction {
         opcode: Opcode::Const,
         operands: vec![0, s32_kind],
-    }
-    .encode()
-    .expect("encode");
-    code_a.extend(
-        Instruction {
-            opcode: Opcode::MakeStruct,
-            operands: vec![0, 1],
-        }
-        .encode()
-        .expect("encode"),
-    );
-    code_a.extend(
-        Instruction {
-            opcode: Opcode::GetField,
-            operands: vec![0, 0],
-        }
-        .encode()
-        .expect("encode"),
-    );
+    });
+    code_a.extend(test_encode(&Instruction {
+        opcode: Opcode::MakeStruct,
+        operands: vec![0, 1],
+    }));
+    code_a.extend(test_encode(&Instruction {
+        opcode: Opcode::GetField,
+        operands: vec![0, 0],
+    }));
     code_a.extend(pop_then_return());
 
-    let mut code_b = Instruction {
+    let mut code_b = test_encode(&Instruction {
         opcode: Opcode::Const,
         operands: vec![0, s32_kind],
-    }
-    .encode()
-    .expect("encode");
-    code_b.extend(
-        Instruction {
-            opcode: Opcode::MakeEnum,
-            operands: vec![0, 0, 1],
-        }
-        .encode()
-        .expect("encode"),
-    );
-    code_b.extend(
-        Instruction {
-            opcode: Opcode::MatchTag,
-            operands: vec![0, 0],
-        }
-        .encode()
-        .expect("encode"),
-    );
+    });
+    code_b.extend(test_encode(&Instruction {
+        opcode: Opcode::MakeEnum,
+        operands: vec![0, 0, 1],
+    }));
+    code_b.extend(test_encode(&Instruction {
+        opcode: Opcode::MatchTag,
+        operands: vec![0, 0],
+    }));
     code_b.extend(pop_then_return());
 
     let pool = ConstPool {
@@ -229,7 +222,7 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
         },
     );
 
-    let linked = link_modules(
+    let linked = link_two(
         &[
             LinkInput {
                 logical_path: "a::struct_mod".to_owned(),
@@ -241,68 +234,38 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
             },
         ],
         1,
-    )
-    .expect("link");
+    );
 
-    let fn_a = linked
-        .functions
-        .functions
-        .iter()
-        .find(|f| f.function_id == 0)
-        .expect("fn 0");
-    let fn_b = linked
-        .functions
-        .functions
-        .iter()
-        .find(|f| f.function_id == 1)
-        .expect("fn 1");
+    let fn_a = function_by_id(&linked, 0);
+    let fn_b = function_by_id(&linked, 1);
 
+    let const_len = test_encode(&Instruction {
+        opcode: Opcode::Const,
+        operands: vec![0, s32_kind],
+    })
+    .len();
+    let struct_len = test_encode(&Instruction {
+        opcode: Opcode::MakeStruct,
+        operands: vec![0, 1],
+    })
+    .len();
     let get_field_inst = inst_at(
         &linked.code,
-        fn_a.code_offset.saturating_add(
-            u32::try_from(
-                Instruction {
-                    opcode: Opcode::Const,
-                    operands: vec![0, s32_kind],
-                }
-                .encode()
-                .expect("encode")
-                .len()
-                    + Instruction {
-                        opcode: Opcode::MakeStruct,
-                        operands: vec![0, 1],
-                    }
-                    .encode()
-                    .expect("encode")
-                    .len(),
-            )
-            .unwrap_or(0),
-        ),
+        fn_a.code_offset
+            .saturating_add(u32::try_from(const_len + struct_len).unwrap_or(0)),
     );
     assert_eq!(get_field_inst.opcode, Opcode::GetField);
     assert_eq!(get_field_inst.operands.first(), Some(&0));
 
+    let enum_len = test_encode(&Instruction {
+        opcode: Opcode::MakeEnum,
+        operands: vec![0, 0, 1],
+    })
+    .len();
     let match_tag_inst = inst_at(
         &linked.code,
-        fn_b.code_offset.saturating_add(
-            u32::try_from(
-                Instruction {
-                    opcode: Opcode::Const,
-                    operands: vec![0, s32_kind],
-                }
-                .encode()
-                .expect("encode")
-                .len()
-                    + Instruction {
-                        opcode: Opcode::MakeEnum,
-                        operands: vec![0, 0, 1],
-                    }
-                    .encode()
-                    .expect("encode")
-                    .len(),
-            )
-            .unwrap_or(0),
-        ),
+        fn_b.code_offset
+            .saturating_add(u32::try_from(const_len + enum_len).unwrap_or(0)),
     );
     assert_eq!(match_tag_inst.opcode, Opcode::MatchTag);
     assert_eq!(
@@ -311,17 +274,15 @@ fn link_rebases_get_field_and_match_tag_type_operands() {
         "second module's local type id 0 should rebase to 1"
     );
 
-    verify(&linked).expect("linked module verifies");
+    test_ok(verify(&linked), "linked module verifies");
 }
 
 #[test]
 fn link_rebases_make_str_const_operand() {
-    let make_str = Instruction {
+    let make_str = test_encode(&Instruction {
         opcode: Opcode::MakeStr,
         operands: vec![0],
-    }
-    .encode()
-    .expect("encode");
+    });
     let mut code_b = make_str;
     code_b.extend(pop_then_return());
 
@@ -344,7 +305,7 @@ fn link_rebases_make_str_const_operand() {
 
     let object_b = module_with_tables(1, code_b, 1, pool_b, TypeTable::default());
 
-    let linked = link_modules(
+    let linked = link_two(
         &[
             LinkInput {
                 logical_path: "a::strings".to_owned(),
@@ -356,15 +317,9 @@ fn link_rebases_make_str_const_operand() {
             },
         ],
         1,
-    )
-    .expect("link");
+    );
 
-    let fn_b = linked
-        .functions
-        .functions
-        .iter()
-        .find(|f| f.function_id == 1)
-        .expect("fn 1");
+    let fn_b = function_by_id(&linked, 1);
     let make_str_inst = inst_at(&linked.code, fn_b.code_offset);
     assert_eq!(make_str_inst.opcode, Opcode::MakeStr);
     assert_eq!(
@@ -373,7 +328,7 @@ fn link_rebases_make_str_const_operand() {
         "second module's local const index 0 should rebase to 1"
     );
 
-    verify(&linked).expect("linked module verifies");
+    test_ok(verify(&linked), "linked module verifies");
 }
 
 #[test]
@@ -396,12 +351,10 @@ fn link_preserves_return_type_id_sentinels() {
         1,
         {
             let s32_kind = u32::from(PrimitiveKind::S32 as u8);
-            let mut code = Instruction {
+            let mut code = test_encode(&Instruction {
                 opcode: Opcode::Const,
                 operands: vec![0, s32_kind],
-            }
-            .encode()
-            .expect("encode");
+            });
             code.extend(return_only());
             code
         },
@@ -416,7 +369,7 @@ fn link_preserves_return_type_id_sentinels() {
     );
     object_b.functions.functions[0].return_type_id = 1;
 
-    let linked = link_modules(
+    let linked = link_two(
         &[
             LinkInput {
                 logical_path: "a::unit_type".to_owned(),
@@ -428,18 +381,12 @@ fn link_preserves_return_type_id_sentinels() {
             },
         ],
         1,
-    )
-    .expect("link");
+    );
 
-    let fn_b = linked
-        .functions
-        .functions
-        .iter()
-        .find(|f| f.function_id == 1)
-        .expect("fn 1");
+    let fn_b = function_by_id(&linked, 1);
     assert_eq!(
         fn_b.return_type_id, 1,
         "sentinel return_type_id 1 must not pick up prior module type_base"
     );
-    verify(&linked).expect("linked module verifies");
+    test_ok(verify(&linked), "linked module verifies");
 }

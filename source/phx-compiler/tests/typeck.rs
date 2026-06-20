@@ -1,5 +1,4 @@
 //! Integration tests for the type-checking pass.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod support;
 
@@ -8,16 +7,17 @@ use phx_compiler::{
     unstable::{DefKind, TypedProgram},
 };
 use phx_diagnostics::{TypeCheckBag, TypeCheckError};
-use support::{compile_ok, expect_typeck_err};
+use support::{
+    compile_ok, expect_typeck_err, test_err, test_find, test_ok, test_rfind, test_some,
+    u32_from_usize,
+};
 
 fn typeck_err(source: &str) -> TypeCheckBag {
     expect_typeck_err(source)
 }
 
 fn typed_program(source: &str) -> TypedProgram {
-    compile_source(source, None)
-        .unwrap_or_else(|e| panic!("expected compile ok: {e}"))
-        .typed
+    test_ok(compile_source(source, None), "expected compile ok").typed
 }
 
 fn fn_def_names(typed: &TypedProgram) -> Vec<String> {
@@ -87,16 +87,18 @@ fn break_outside_loop() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
-        .expect("LoopControlOutsideLoop");
+        .find(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }));
+    let err = test_some(err, "LoopControlOutsideLoop");
     if let TypeCheckError::LoopControlOutsideLoop { keyword, span } = &err.error {
         assert_eq!(*keyword, "break");
         assert!(
             span.end > span.start,
             "expected non-zero break keyword span"
         );
-        let keyword_start =
-            u32::try_from(source.find("break").expect("break in source")).expect("offset fits u32");
+        let keyword_start = u32_from_usize(
+            test_find(source, "break", "break in source"),
+            "offset fits u32",
+        );
         assert_eq!(span.start, keyword_start);
     }
 }
@@ -108,16 +110,18 @@ fn continue_outside_loop() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }))
-        .expect("LoopControlOutsideLoop");
+        .find(|e| matches!(&e.error, TypeCheckError::LoopControlOutsideLoop { .. }));
+    let err = test_some(err, "LoopControlOutsideLoop");
     if let TypeCheckError::LoopControlOutsideLoop { keyword, span } = &err.error {
         assert_eq!(*keyword, "continue");
         assert!(
             span.end > span.start,
             "expected non-zero continue keyword span"
         );
-        let keyword_start = u32::try_from(source.find("continue").expect("continue in source"))
-            .expect("offset fits u32");
+        let keyword_start = u32_from_usize(
+            test_find(source, "continue", "continue in source"),
+            "offset fits u32",
+        );
         assert_eq!(span.start, keyword_start);
     }
 }
@@ -151,7 +155,10 @@ fn question_mark_invalid_operand_without_result_context() {
 #[test]
 fn discarded_std_result_is_type_error() {
     let path = support::project_main_path("lint_std_result_discard");
-    let err = phx_compiler::check_file(&path).expect_err("expected type-check failure");
+    let err = test_err(
+        phx_compiler::check_file(&path),
+        "expected type-check failure",
+    );
     let bag = match err {
         CompileError::TypeCheck { bag, .. } => bag,
         other => panic!("expected type-check error, got {other}"),
@@ -171,8 +178,8 @@ fn use_after_move_error() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -194,8 +201,8 @@ fn use_after_move_fn_arg() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -212,8 +219,8 @@ fn overlapping_mut_borrow_rejected() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }))
-        .expect("overlapping mut borrow");
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "overlapping mut borrow");
     if let TypeCheckError::OverlappingMutBorrow {
         name,
         prior_span,
@@ -221,14 +228,11 @@ fn overlapping_mut_borrow_rejected() {
     } = &err.error
     {
         assert_eq!(name, "x");
-        let first = source.find("&mut x").expect("first &mut x");
-        let second = source.rfind("&mut x").expect("second &mut x");
+        let first = test_find(source, "&mut x", "first &mut x");
+        let second = test_rfind(source, "&mut x", "second &mut x");
         assert!(second > first, "expected two distinct borrow sites");
-        assert_eq!(
-            prior_span.start,
-            u32::try_from(first).expect("offset fits u32")
-        );
-        assert_eq!(span.start, u32::try_from(second).expect("offset fits u32"));
+        assert_eq!(prior_span.start, u32_from_usize(first, "offset fits u32"));
+        assert_eq!(span.start, u32_from_usize(second, "offset fits u32"));
     }
     let interner = phx_syntax::Interner::new();
     let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
@@ -296,17 +300,17 @@ fn shared_mut_borrow_conflict_cases() {
                 case.name
             );
             if case.new_borrow_is_mut {
-                let shared = case.source.find("&x").expect("shared &x");
-                let mut_b = case.source.rfind("&mut x").expect("&mut x");
+                let shared = test_find(case.source, "&x", "shared &x");
+                let mut_b = test_rfind(case.source, "&mut x", "&mut x");
                 assert!(mut_b > shared);
-                assert_eq!(prior_span.start, u32::try_from(shared).unwrap());
-                assert_eq!(span.start, u32::try_from(mut_b).unwrap());
+                assert_eq!(prior_span.start, u32_from_usize(shared, "offset"));
+                assert_eq!(span.start, u32_from_usize(mut_b, "offset"));
             } else {
-                let mut_a = case.source.find("&mut x").expect("&mut x");
-                let shared = case.source.rfind("&x").expect("shared &x");
+                let mut_a = test_find(case.source, "&mut x", "&mut x");
+                let shared = test_rfind(case.source, "&x", "shared &x");
                 assert!(shared > mut_a);
-                assert_eq!(prior_span.start, u32::try_from(mut_a).unwrap());
-                assert_eq!(span.start, u32::try_from(shared).unwrap());
+                assert_eq!(prior_span.start, u32_from_usize(mut_a, "offset"));
+                assert_eq!(span.start, u32_from_usize(shared, "offset"));
             }
         }
         let interner = phx_syntax::Interner::new();
@@ -348,8 +352,8 @@ fn if_move_then_use_after_if_errors() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -362,8 +366,8 @@ fn match_move_then_use_after_match_errors() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -383,8 +387,8 @@ fn loop_use_then_move_in_body_errors() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -397,8 +401,8 @@ fn while_use_then_move_in_body_errors() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -411,8 +415,8 @@ fn loop_move_then_use_after_loop_errors() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -458,8 +462,8 @@ fn field_read_after_whole_move_errors() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }))
-        .expect("use-after-move");
+        .find(|e| matches!(&e.error, TypeCheckError::UseAfterMove { .. }));
+    let err = test_some(err, "use-after-move");
     if let TypeCheckError::UseAfterMove { name, .. } = &err.error {
         assert_eq!(name, "p");
     }
@@ -634,17 +638,11 @@ fn main_layout_slot_count() {
     let typed = typed(
         "add :: (a: s32, b: s32) => s32 { a + b }; main :: () => { const base: s32 = 10; const step: s32 = 2; const sum: s32 = add(base, step); };",
     );
-    let main_layout = typed
-        .functions
-        .iter()
-        .find(|f| typed.entry == Some(f.def))
-        .expect("main layout");
+    let main_layout = typed.functions.iter().find(|f| typed.entry == Some(f.def));
+    let main_layout = test_some(main_layout, "main layout");
     assert_eq!(main_layout.local_count(), 3);
-    let add_layout = typed
-        .functions
-        .iter()
-        .find(|f| Some(f.def) != typed.entry)
-        .expect("add layout");
+    let add_layout = typed.functions.iter().find(|f| Some(f.def) != typed.entry);
+    let add_layout = test_some(add_layout, "add layout");
     assert_eq!(add_layout.local_count(), 2);
 }
 
@@ -759,8 +757,8 @@ fn enum_match_non_exhaustive() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }))
-        .expect("non-exhaustive match");
+        .find(|e| matches!(&e.error, TypeCheckError::NonExhaustiveMatch { .. }));
+    let err = test_some(err, "non-exhaustive match");
     if let TypeCheckError::NonExhaustiveMatch { missing, .. } = &err.error {
         assert!(missing.iter().any(|n| n == "None"));
     }
@@ -1070,11 +1068,13 @@ fn typeck_derive_partialeq_ok() {
 
 #[test]
 fn typeck_derive_unsupported_trait() {
-    let err = compile_source(
-        "#[derive(Clone)] Point :: struct { x: s32 }; main :: () => { };",
-        None,
-    )
-    .expect_err("clone derive");
+    let err = test_err(
+        compile_source(
+            "#[derive(Clone)] Point :: struct { x: s32 }; main :: () => { };",
+            None,
+        ),
+        "clone derive",
+    );
     let CompileError::Resolve { bag, .. } = err else {
         panic!("expected resolve error for unsupported derive");
     };
@@ -1209,45 +1209,34 @@ fn generic_call_ast_has_args() {
     let sf = phx_syntax::parse(source);
     assert!(!sf.has_errors(), "parse: {:?}", sf.errors);
     let sf = sf.value;
-    let main = sf
-        .program
-        .items
-        .iter()
-        .find_map(|item| {
-            if let phx_syntax::ast::decl::TopLevelDecl::Function(f) = &item.inner.decl
-                && sf.interner.resolves_to(f.name.symbol, "main")
-            {
-                return Some(f);
-            }
-            None
-        })
-        .expect("main");
-    let init = main
-        .body
-        .inner
-        .items
-        .iter()
-        .find_map(|item| {
-            if let phx_syntax::ast::stmt::BlockItem::Stmt(stmt) = item
-                && let phx_syntax::ast::stmt::Stmt::Const { init, .. } = &stmt.inner
-            {
-                return Some(init);
-            }
-            None
-        })
-        .expect("const init");
+    let main = sf.program.items.iter().find_map(|item| {
+        if let phx_syntax::ast::decl::TopLevelDecl::Function(f) = &item.inner.decl
+            && sf.interner.resolves_to(f.name.symbol, "main")
+        {
+            return Some(f);
+        }
+        None
+    });
+    let main = test_some(main, "main");
+    let init = main.body.inner.items.iter().find_map(|item| {
+        if let phx_syntax::ast::stmt::BlockItem::Stmt(stmt) = item
+            && let phx_syntax::ast::stmt::Stmt::Const { init, .. } = &stmt.inner
+        {
+            return Some(init);
+        }
+        None
+    });
+    let init = test_some(init, "const init");
     match &init.inner {
         phx_syntax::ast::expr::Expr::Postfix { ops, .. } => {
-            let call = ops
-                .iter()
-                .find_map(|op| {
-                    if let phx_syntax::ast::expr::PostfixOp::Call { args, .. } = op {
-                        Some(args.len())
-                    } else {
-                        None
-                    }
-                })
-                .expect("call op");
+            let call = ops.iter().find_map(|op| {
+                if let phx_syntax::ast::expr::PostfixOp::Call { args, .. } = op {
+                    Some(args.len())
+                } else {
+                    None
+                }
+            });
+            let call = test_some(call, "call op");
             assert_eq!(call, 1, "expected one call argument in AST");
         }
         other => panic!("expected Postfix call init, got {other:?}"),
@@ -1416,8 +1405,8 @@ main :: () => { const x: s32 = 1; const _ = x; };
     let main_layout = typed
         .functions
         .iter()
-        .find(|layout| typed.entry == Some(layout.def))
-        .expect("main layout");
+        .find(|layout| typed.entry == Some(layout.def));
+    let main_layout = test_some(main_layout, "main layout");
     assert!(
         main_layout.expr_start < main_layout.expr_end,
         "main should type-check its body expressions"
@@ -1595,7 +1584,7 @@ fn generic_fn_mangles_def_name() {
         is_generic_template(&typed, "id"),
         "expected id template to be replaced by monomorphization"
     );
-    let template_id = fn_def_id(&typed, "id").expect("id template def");
+    let template_id = test_some(fn_def_id(&typed, "id"), "id template def");
     assert!(
         !typed.functions.iter().any(|f| f.def == template_id),
         "generic template should not appear in lowered function layouts"
@@ -1976,13 +1965,13 @@ Wrapper :: struct {};
 Wrapper :: impl :: Drop { drop :: (self) => () {}; };
 main :: () => { { const w = Wrapper {}; } };
 ";
-    let unit = compile_source(source, None).expect("compile drop program");
+    let unit = test_ok(compile_source(source, None), "compile drop program");
     let main_layout = unit
         .typed
         .functions
         .iter()
-        .find(|f| Some(f.def) == unit.typed.entry)
-        .expect("main layout");
+        .find(|f| Some(f.def) == unit.typed.entry);
+    let main_layout = test_some(main_layout, "main layout");
     assert_eq!(
         main_layout.drop_events.len(),
         1,
@@ -2081,9 +2070,9 @@ fn missing_fn_def_emits_internal_error_instead_of_def_zero() {
     let source = "main :: () => { };";
     let file = phx_syntax::parse(source);
     assert!(!file.has_errors(), "parse: {:?}", file.errors_bag());
-    let mut resolved = resolve(&file.value).expect("resolve");
+    let mut resolved = test_ok(resolve(&file.value), "resolve");
     resolved.defs.retain(|d| d.kind != DefKind::Fn);
-    let bag = type_check(resolved).expect_err("expected typeck failure");
+    let bag = test_err(type_check(resolved), "expected typeck failure");
     assert!(
         bag.errors().iter().any(|e| {
             matches!(
@@ -2125,12 +2114,13 @@ fn generic_nesting_within_limit_ok() {
 fn generic_nesting_depth_sixty_five_errors() {
     let val = nested_generic_value(65);
     let source = format!("Nest :: <t> struct {{ v: t }}; main :: () => {{ const _x = {val}; }};");
-    let bag = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
-        .spawn(move || typeck_err(&source))
-        .expect("spawn nesting depth test thread")
-        .join()
-        .expect("join nesting depth test thread");
+    let handle = test_ok(
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || typeck_err(&source)),
+        "spawn nesting depth test thread",
+    );
+    let bag = test_ok(handle.join(), "join nesting depth test thread");
     assert!(
         bag.errors().iter().any(|e| {
             matches!(

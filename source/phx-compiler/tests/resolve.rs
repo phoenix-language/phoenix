@@ -1,19 +1,21 @@
 //! Integration tests for [`phx_compiler::compile_source`] (parse + resolve).
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod support;
 
 use phx_compiler::{CompileError, compile_source_with_module_root, unstable::CompilationUnit};
 use phx_diagnostics::ResolveError;
 use support::{
-    compile_ok, expect_resolve_err, module_entry_source, modules_fixture_root_and_entry,
+    compile_ok, expect_resolve_err, module_entry_source, modules_fixture_root_and_entry, test_ok,
+    test_some,
 };
 
 fn compile_named_module_tree(tree_name: &str) -> CompilationUnit {
     let (root, entry) = modules_fixture_root_and_entry(tree_name);
     let (_, source) = module_entry_source(tree_name);
-    compile_source_with_module_root(source, &entry, &root)
-        .unwrap_or_else(|e| panic!("expected ok compiling {tree_name}: {e}"))
+    test_ok(
+        compile_source_with_module_root(source, &entry, &root),
+        &format!("compile {tree_name}"),
+    )
 }
 
 fn resolve_err(source: &str) -> phx_diagnostics::DiagnosticBag {
@@ -60,8 +62,8 @@ fn unresolved_ident() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, ResolveError::UnresolvedIdent { .. }))
-        .expect("UnresolvedIdent");
+        .find(|e| matches!(&e.error, ResolveError::UnresolvedIdent { .. }));
+    let err = test_some(err, "UnresolvedIdent");
     assert!(
         err.error.span().is_some_and(|s| s.start > 0),
         "expected non-zero span for unresolved ident"
@@ -78,8 +80,8 @@ fn duplicate_definition_has_span() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, ResolveError::DuplicateDefinition { .. }))
-        .expect("DuplicateDefinition");
+        .find(|e| matches!(&e.error, ResolveError::DuplicateDefinition { .. }));
+    let err = test_some(err, "DuplicateDefinition");
     assert!(
         err.error.span().is_some_and(|s| s.start > 0),
         "expected non-zero span for duplicate definition"
@@ -175,8 +177,8 @@ fn import_not_supported() {
     let err = bag
         .errors()
         .iter()
-        .find(|e| matches!(&e.error, ResolveError::ImportNotSupported { .. }))
-        .expect("ImportNotSupported");
+        .find(|e| matches!(&e.error, ResolveError::ImportNotSupported { .. }));
+    let err = test_some(err, "ImportNotSupported");
     assert!(
         err.error.to_string().contains("module root"),
         "expected module-root hint, got: {}",
@@ -295,8 +297,8 @@ fn lambda_closure_records_upvar() {
     let sf = parse(src);
     assert!(!sf.has_errors(), "parse: {:?}", sf.errors);
     let sf = sf.value;
-    let resolved = resolve(&sf).expect("resolve");
+    let resolved = test_ok(resolve(&sf), "resolve");
     assert!(!resolved.closures.is_empty(), "expected closure metadata");
-    let info = resolved.closures.values().next().expect("closure info");
+    let info = test_some(resolved.closures.values().next(), "closure info");
     assert!(!info.upvars.is_empty(), "expected captured outer binding");
 }

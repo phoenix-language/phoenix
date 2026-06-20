@@ -1,8 +1,10 @@
 //! Unit tests for `#[cfg(...)]` stripping.
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+
+mod support;
 
 use phx_compiler::{CompileCfg, strip_cfg};
 use phx_syntax::parse;
+use support::test_ok;
 
 #[test]
 fn strip_cfg_removes_false_predicates() {
@@ -24,7 +26,7 @@ main :: () => { };
         target_arch: "x86_64".to_string(),
         debug_assertions: true,
     };
-    strip_cfg(&mut file.program, &cfg, &file.interner).expect("strip");
+    test_ok(strip_cfg(&mut file.program, &cfg, &file.interner), "strip");
     let names: Vec<_> = file
         .program
         .items
@@ -58,7 +60,7 @@ main :: () => { };
         target_arch: "x86_64".to_string(),
         debug_assertions: false,
     };
-    strip_cfg(&mut file.program, &cfg, &file.interner).expect("strip");
+    test_ok(strip_cfg(&mut file.program, &cfg, &file.interner), "strip");
     let names: Vec<_> = file
         .program
         .items

@@ -1,5 +1,4 @@
 //! Lowering integration tests.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod support;
 
@@ -9,15 +8,33 @@ use phx_compiler::{
     compile_source,
     unstable::{IrBinOp, IrInst, lower},
 };
+use support::{test_ok, test_some};
+
+fn compile_sample() -> phx_compiler::unstable::CompilationUnit {
+    let source = support::single_source("sample.phx");
+    test_ok(
+        compile_source(source, Some(Path::new("sample.phx"))),
+        "compile sample.phx",
+    )
+}
+
+fn lower_unit(unit: &phx_compiler::unstable::CompilationUnit) -> phx_compiler::unstable::IrModule {
+    test_ok(lower(&unit.typed), "lower")
+}
+
+fn main_fn(ir: &phx_compiler::unstable::IrModule) -> &phx_compiler::unstable::IrFunction {
+    test_some(
+        ir.functions.iter().find(|f| Some(f.def) == ir.entry),
+        "main",
+    )
+}
 
 #[test]
 fn lower_sample_produces_ir() {
-    let source = support::single_source("sample.phx");
-    let unit = compile_source(source, Some(Path::new("sample.phx")))
-        .unwrap_or_else(|e| panic!("compile sample.phx: {e}"));
+    let unit = compile_sample();
     assert!(!unit.typed.functions.is_empty());
 
-    let ir = lower(&unit.typed).expect("lower");
+    let ir = lower_unit(&unit);
     assert_eq!(ir.functions.len(), 2, "add and main");
     assert!(ir.entry.is_some());
 
@@ -70,10 +87,8 @@ fn lower_sample_produces_ir() {
 
 #[test]
 fn lower_sample_ir_instructions_have_source_spans() {
-    let source = support::single_source("sample.phx");
-    let unit = compile_source(source, Some(Path::new("sample.phx")))
-        .unwrap_or_else(|e| panic!("compile sample.phx: {e}"));
-    let ir = lower(&unit.typed).expect("lower");
+    let unit = compile_sample();
+    let ir = lower_unit(&unit);
     for f in &ir.functions {
         for block in &f.blocks {
             for spanned in &block.insts {
@@ -91,9 +106,11 @@ fn lower_sample_ir_instructions_have_source_spans() {
 #[test]
 fn lower_control_flow_emits_loops() {
     let source = support::single_source("control_flow.phx");
-    let unit = compile_source(source, Some(Path::new("control_flow.phx")))
-        .unwrap_or_else(|e| panic!("compile control_flow.phx: {e}"));
-    let ir = lower(&unit.typed).expect("lower");
+    let unit = test_ok(
+        compile_source(source, Some(Path::new("control_flow.phx"))),
+        "compile control_flow.phx",
+    );
+    let ir = lower_unit(&unit);
 
     let mut jump_count = 0u32;
     let mut jump_if_count = 0u32;
@@ -117,13 +134,9 @@ fn lower_control_flow_emits_loops() {
 fn loop_back_edge_on_body_tail_not_header() {
     let source =
         "main :: () => { var i: s32 = 0; loop { i = i + 1; if 3 > (i) { continue; } break; }; };";
-    let unit = compile_source(source, None).unwrap();
-    let ir = lower(&unit.typed).expect("lower");
-    let main = ir
-        .functions
-        .iter()
-        .find(|f| Some(f.def) == ir.entry)
-        .expect("main");
+    let unit = test_ok(compile_source(source, None), "compile loop program");
+    let ir = lower_unit(&unit);
+    let main = main_fn(&ir);
     let header = &main.blocks[1];
     assert!(
         !header
@@ -132,10 +145,8 @@ fn loop_back_edge_on_body_tail_not_header() {
             .any(|s| matches!(&s.inst, IrInst::Jump { target: 1 })),
         "loop header must not contain the back-edge jump"
     );
-    let tail = main
-        .blocks
-        .iter()
-        .find(|b| {
+    let tail = test_some(
+        main.blocks.iter().find(|b| {
             b.insts
                 .iter()
                 .any(|s| matches!(&s.inst, IrInst::Jump { target: 1 }))
@@ -143,8 +154,9 @@ fn loop_back_edge_on_body_tail_not_header() {
                     .insts
                     .iter()
                     .any(|s| matches!(&s.inst, IrInst::JumpIf { .. }))
-        })
-        .expect("body tail merge block should jump back to header");
+        }),
+        "body tail merge block should jump back to header",
+    );
     assert!(
         tail.insts
             .last()
@@ -156,13 +168,9 @@ fn loop_back_edge_on_body_tail_not_header() {
 #[test]
 fn explicit_return_emits_single_return() {
     let source = "main :: () => { return; };";
-    let unit = compile_source(source, None).unwrap();
-    let ir = lower(&unit.typed).expect("lower");
-    let main = ir
-        .functions
-        .iter()
-        .find(|f| Some(f.def) == ir.entry)
-        .expect("main");
+    let unit = test_ok(compile_source(source, None), "compile return program");
+    let ir = lower_unit(&unit);
+    let main = main_fn(&ir);
     let return_count: u32 = main
         .blocks
         .iter()
@@ -180,13 +188,9 @@ fn explicit_return_emits_single_return() {
 #[test]
 fn const_fold_byte_array_as_str_emits_make_str_not_make_array() {
     let source = "main :: () => { const arr = b\"hi\"; const s: str = arr as str; const _ = s; };";
-    let unit = compile_source(source, None).unwrap();
-    let ir = lower(&unit.typed).expect("lower");
-    let main = ir
-        .functions
-        .iter()
-        .find(|f| Some(f.def) == ir.entry)
-        .expect("main");
+    let unit = test_ok(compile_source(source, None), "compile byte array program");
+    let ir = lower_unit(&unit);
+    let main = main_fn(&ir);
     let make_str = main
         .blocks
         .iter()
@@ -208,9 +212,8 @@ fn const_fold_byte_array_as_str_emits_make_str_not_make_array() {
 #[test]
 fn lower_generic_fn_emits_call() {
     let path = support::single_file_path("generic_fn.phx");
-    let unit = phx_compiler::check_file(&path)
-        .unwrap_or_else(|e| panic!("check_file generic_fn.phx: {e}"));
-    let ir = lower(&unit.typed).expect("lower");
+    let unit = test_ok(phx_compiler::check_file(&path), "check_file generic_fn.phx");
+    let ir = lower_unit(&unit);
     assert!(
         ir.functions
             .iter()
@@ -224,9 +227,11 @@ fn lower_generic_fn_emits_call() {
 #[test]
 fn lower_generic_struct_emits_make_struct() {
     let source = support::single_source("generic_struct.phx");
-    let unit = compile_source(source, Some(Path::new("generic_struct.phx")))
-        .unwrap_or_else(|e| panic!("compile generic_struct.phx: {e}"));
-    let ir = lower(&unit.typed).expect("lower");
+    let unit = test_ok(
+        compile_source(source, Some(Path::new("generic_struct.phx"))),
+        "compile generic_struct.phx",
+    );
+    let ir = lower_unit(&unit);
     assert!(
         ir.functions
             .iter()
@@ -240,8 +245,8 @@ fn lower_generic_struct_emits_make_struct() {
 #[test]
 fn lower_dual_generic_fn_instantiation_emits_three_functions() {
     let source = "id :: <t> (x: t) => t { x }; main :: () => { const a: s32 = id :: <s32> (1); const b: bool = id :: <bool> (true); const _ = a; };";
-    let unit = compile_source(source, None).expect("compile dual generic fn");
-    let ir = lower(&unit.typed).expect("lower");
+    let unit = test_ok(compile_source(source, None), "compile dual generic fn");
+    let ir = lower_unit(&unit);
     assert_eq!(
         ir.functions.len(),
         3,
@@ -263,16 +268,13 @@ fn lower_dual_generic_fn_instantiation_emits_three_functions() {
 #[test]
 fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
     let source = "Opt :: <t> enum { None, Some(t), }; main :: () => { const x = Some :: <s32> (1); const n: s32 = match x { None => 0; Some(v) => v; }; const _ = n; };";
-    let unit = compile_source(source, None).expect("compile generic enum match");
+    let unit = test_ok(compile_source(source, None), "compile generic enum match");
     let typed = &unit.typed;
-    let expected_type_id = typed
-        .layout
-        .specialized_type_ids
-        .values()
-        .next()
-        .copied()
-        .expect("monomorphized enum type_id");
-    let ir = lower(typed).expect("lower");
+    let expected_type_id = test_some(
+        typed.layout.specialized_type_ids.values().next().copied(),
+        "monomorphized enum type_id",
+    );
+    let ir = test_ok(lower(typed), "lower");
     assert!(
         ir.functions.iter().any(|f| {
             f.blocks.iter().any(|b| {
@@ -295,16 +297,13 @@ fn lower_generic_enum_match_emits_match_tag_with_specialized_type_id() {
 #[test]
 fn lower_two_param_enum_match_emits_match_tag_with_specialized_type_id() {
     let source = "Cfg :: struct { n: s32 }; AppE :: struct { c: s32 }; Pair :: <a, b> enum { Ok(a), Err(b), }; main :: () => { const r = Ok :: <Cfg, AppE> (Cfg { n: 1 }); const v: s32 = match r { Ok(c) => c.n; Err(e) => e.c; }; const _ = v; };";
-    let unit = compile_source(source, None).expect("compile two-param enum match");
+    let unit = test_ok(compile_source(source, None), "compile two-param enum match");
     let typed = &unit.typed;
-    let expected_type_id = typed
-        .layout
-        .specialized_type_ids
-        .values()
-        .next()
-        .copied()
-        .expect("monomorphized enum type_id");
-    let ir = lower(typed).expect("lower");
+    let expected_type_id = test_some(
+        typed.layout.specialized_type_ids.values().next().copied(),
+        "monomorphized enum type_id",
+    );
+    let ir = test_ok(lower(typed), "lower");
     assert!(
         ir.functions.iter().any(|f| {
             f.blocks.iter().any(|b| {
@@ -327,8 +326,8 @@ fn lower_two_param_enum_match_emits_match_tag_with_specialized_type_id() {
 #[test]
 fn lower_fn_pointer_emits_make_fn_ptr_and_call_indirect() {
     let source = "double :: (x: s32) => s32 { x + x }; apply :: (f: :: (s32) => s32, x: s32) => s32 { f(x) }; main :: () => { const n: s32 = apply(double, 3); const _ = n; };";
-    let unit = compile_source(source, None).expect("compile fn pointer program");
-    let ir = lower(&unit.typed).expect("lower");
+    let unit = test_ok(compile_source(source, None), "compile fn pointer program");
+    let ir = lower_unit(&unit);
     let has_make = ir.functions.iter().any(|f| {
         f.blocks.iter().any(|b| {
             b.insts
@@ -355,13 +354,9 @@ Wrapper :: struct {};
 Wrapper :: impl :: Drop { drop :: (self) => () {}; };
 main :: () => { { const w = Wrapper {}; } };
 ";
-    let unit = compile_source(source, None).expect("compile");
-    let ir = lower(&unit.typed).expect("lower");
-    let main = ir
-        .functions
-        .iter()
-        .find(|f| Some(f.def) == ir.entry)
-        .expect("main");
+    let unit = test_ok(compile_source(source, None), "compile");
+    let ir = lower_unit(&unit);
+    let main = main_fn(&ir);
     let has_drop = main.blocks.iter().any(|b| {
         b.insts
             .iter()
@@ -373,14 +368,9 @@ main :: () => { { const w = Wrapper {}; } };
 #[test]
 fn lower_for_in_emits_iterator_protocol() {
     let path = support::embedded_project_main("std_iter");
-    let unit =
-        phx_compiler::check_file(&path).unwrap_or_else(|e| panic!("check_file std_iter: {e}"));
-    let ir = lower(&unit.typed).expect("lower");
-    let main = ir
-        .functions
-        .iter()
-        .find(|f| Some(f.def) == ir.entry)
-        .expect("main");
+    let unit = test_ok(phx_compiler::check_file(&path), "check_file std_iter");
+    let ir = lower_unit(&unit);
+    let main = main_fn(&ir);
     let insts: Vec<_> = main.blocks.iter().flat_map(|b| &b.insts).collect();
     assert!(
         insts.iter().any(|s| matches!(&s.inst, IrInst::Call { .. })),
