@@ -134,6 +134,34 @@ pub fn format_parse_bag_styled(
     join_diagnostics(style, &parts)
 }
 
+/// Joins human-readable parse messages (no carets or error codes).
+#[must_use]
+pub fn format_parse_bag_messages(bag: &ParseBag) -> String {
+    let parts: Vec<String> = bag.errors().iter().map(parse_message).collect();
+    parts.join("\n---\n")
+}
+
+/// Prepends formatted parse diagnostics before a later-stage bag when parse recovered with errors.
+#[must_use]
+pub fn prepend_parse_bag_styled(
+    prior_parse: Option<&ParseBag>,
+    stage: &str,
+    source: Option<&str>,
+    ctx: SpanContext<'_>,
+    style: &dyn crate::render::DiagnosticStyle,
+) -> String {
+    match prior_parse {
+        Some(bag) => join_diagnostics(
+            style,
+            &[
+                format_parse_bag_styled(bag, source, ctx, style),
+                stage.to_owned(),
+            ],
+        ),
+        None => stage.to_owned(),
+    }
+}
+
 /// Human-readable message for a resolve error (no caret).
 #[must_use]
 pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
@@ -548,6 +576,7 @@ mod tests {
     use super::*;
     use crate::ExpectedToken;
     use crate::LexError;
+    use crate::ParseBag;
     use crate::ResolveError;
     use std::borrow::Cow;
 
@@ -652,5 +681,21 @@ mod tests {
         let from_lex = format_lex_error(src, &LexError::UnterminatedString { start: 18 });
         assert_eq!(from_parse, from_lex);
         assert!(!from_parse.contains("lex error:"));
+    }
+
+    #[test]
+    fn parse_bag_messages_without_lex_prefix() {
+        let bag = ParseBag::from_errors(vec![
+            ParseError::Lex(LexError::UnterminatedString { start: 0 }),
+            ParseError::UnexpectedEof {
+                expected: ExpectedToken::Punct("}"),
+                span: Span::new(10, 10),
+            },
+        ]);
+        let messages = format_parse_bag_messages(&bag);
+        assert!(!messages.contains("lex error:"));
+        assert!(messages.contains("unterminated byte string"));
+        assert!(messages.contains("expected }, found end of file"));
+        assert!(messages.contains("\n---\n"));
     }
 }
