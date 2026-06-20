@@ -37,7 +37,6 @@ mod func;
 mod inst;
 mod spanned;
 mod stack_effect;
-#[cfg(any(debug_assertions, test))]
 mod validate;
 
 #[allow(unused_imports)]
