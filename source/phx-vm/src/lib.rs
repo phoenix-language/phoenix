@@ -36,8 +36,8 @@
 //! ## Re-exports
 //!
 //! - **Execution** — [`ExecutionContext`], [`Machine`], [`VmRuntime`], [`DEFAULT_HEAP_CAP_BYTES`]
-//! - **Scheduler (PHX-sched-0)** — [`SingleThreadScheduler`], [`RunnableContext`], [`RunQueue`],
-//!   [`ParkReason`], [`ContextState`]
+//! - **Scheduler (PHX-sched-0/2)** — [`SingleThreadScheduler`], [`RunnableContext`], [`RunQueue`],
+//!   [`ParkReason`], [`ContextState`], [`IoWaitRegistry`], [`IoHandle`]
 //! - **Values** — [`Value`], [`Aggregate`]
 //! - **Foreign stubs (Phase A)** — [`ForeignRegistry`], [`register_foreign_stub`],
 //!   [`register_builtin_foreign_stubs`], [`PHOENIX_WRITE_STDOUT`]
@@ -70,8 +70,8 @@ pub use interpreter::{
 };
 pub use phx_bytecode::{BytecodeModule, VerifiedModule};
 pub use scheduler::{
-    ContextId, ContextState, ParkReason, RunQueue, RunnableContext, RunningGuard, SchedulerError,
-    SingleThreadScheduler, StepOutcome,
+    ContextId, ContextState, IoHandle, IoWaitError, IoWaitRegistry, ParkReason, RunQueue,
+    RunnableContext, RunningGuard, SchedulerError, SingleThreadScheduler, StepOutcome,
 };
 
 /// Runs a verified `module` from its entry function until `main` returns.
