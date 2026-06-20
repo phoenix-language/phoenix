@@ -1,9 +1,33 @@
 //! `phoenix.toml` parsing and project schema validation (M2).
 //!
-//! Loads the minimal TOML subset Phoenix supports today: `[project]`, `[build]`, `[vm]`,
-//! `[lint]`, and `[dependencies]` with `path = ...` entries. After parse,
-//! [`ProjectConfig::validate`] checks `module_src`, required entry files (`main.phx` or
-//! `lib.phx`), and that dependency keys match depended [`ProjectConfig::name`] values.
+//! Loads the minimal TOML subset Phoenix supports today, optionally injects the bundled
+//! [`std`](super::stdlib) library, and validates filesystem layout before
+//! [`crate::build`] runs.
+//!
+//! ## Supported TOML sections
+//!
+//! | Section | Keys | Notes |
+//! | --- | --- | --- |
+//! | `[project]` | `name`, `type`, `module_src`, `version`, `description`, `edition`, `module_roots`, `bundle_std`, `prelude` | `name` and `type` are required |
+//! | `[build]` | `dir` | Defaults to `build` |
+//! | `[vm]` | `heap_cap` | Integer or suffix (`"64mb"`); applied at `phx run` |
+//! | `[lint]` | `deny` | Lint kinds that fail `phx check` / `phx build` |
+//! | `[dependencies.{name}]` | `path` | Inline `{ path = "..." }` also accepted |
+//!
+//! Unknown keys and sections are ignored. Comments (`#`) and blank lines are stripped per line.
+//!
+//! ## Load and validation flow
+//!
+//! ```text
+//! read phoenix.toml → parse_toml → apply_bundled_std (optional) → validate → ProjectConfig
+//! ```
+//!
+//! [`ProjectConfig::validate`] runs after parse (and after std injection for [`ProjectConfig::load`]):
+//!
+//! - `module_src` must exist as a directory under [`ProjectConfig::root`].
+//! - [`ProjectConfig::default_entry_file`] must exist (`main.phx` for `bin`, `lib.phx` for `lib`).
+//! - Each `[dependencies]` entry must point at a directory with a valid `phoenix.toml` whose
+//!   `project.name` matches the dependency key and `project.type` is `lib`.
 //!
 //! ## Bundled std
 //!
@@ -13,9 +37,11 @@
 //!
 //! ## Entry points
 //!
-//! - [`ProjectConfig::load`] — primary CLI/embedder loader
+//! - [`ProjectConfig::load`] — primary CLI/embedder loader (parse + std + validate)
+//! - [`ProjectConfig::load_without_bundled_std`] — same without std injection
 //! - [`ProjectConfig::module_root`] / [`ProjectConfig::build_root`] — absolute path helpers
 //! - [`ProjectConfig::default_entry_file`] — `main.phx` or `lib.phx` under `module_src`
+//! - [`ProjectConfig::output_name`] — linked artifact stem (`project.name`)
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -26,65 +52,92 @@ use crate::byte_size;
 
 /// Package kind from `[project] type`.
 ///
-/// Controls the required entry file and linked output directory (`build/bin/` vs `build/lib/`).
+/// Controls the required entry file, link output directory ([`BuildLayout`](super::BuildLayout)),
+/// and type-check rules for the crate root (`main` function required vs forbidden).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageType {
-    /// Executable; requires `main.phx` and a `main` function.
+    /// Executable crate (`type = "bin"`).
+    ///
+    /// Requires `main.phx` at [`ProjectConfig::default_entry_file`] with a `main` entry point.
+    /// Linked output is written under `build/bin/{name}.phx0`.
     Bin,
-    /// Library; requires `lib.phx`; a `main` function is forbidden.
+    /// Library crate (`type = "lib"`).
+    ///
+    /// Requires `lib.phx` at [`ProjectConfig::default_entry_file`]; a `main` function is
+    /// forbidden. Linked output is written under `build/lib/{name}.phx0`. Path dependencies
+    /// must use this variant ([`ProjectConfig::validate`] rejects `bin` deps).
     Lib,
 }
 
-/// Path dependency entry.
+/// Path dependency entry from `[dependencies.{name}]`.
+///
+/// Parsed from either `name = { path = "relative/or/absolute" }` or a
+/// `[dependencies.name]` subsection with `path = "..."`. The path is stored relative to
+/// [`ProjectConfig::root`] when possible; resolution uses `root.join(path)` at build time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathDependency {
-    /// Filesystem path (relative to project root).
+    /// Filesystem path to the dependency project root (contains `phoenix.toml`).
     pub path: PathBuf,
 }
 
 /// Parsed `phoenix.toml` project configuration.
 ///
-/// Produced by [`ProjectConfig::load`] after parse, optional bundled-std injection, and
-/// [`ProjectConfig::validate`]. Immutable for the duration of a build; path fields are
-/// relative to [`Self::root`] unless documented otherwise.
+/// Produced by [`ProjectConfig::load`] or [`ProjectConfig::load_without_bundled_std`] after
+/// parse, optional bundled-std injection, and [`ProjectConfig::validate`]. Immutable for the
+/// duration of a build; path fields are relative to [`Self::root`] unless documented otherwise.
+///
+/// Consumed by [`crate::build::build_project`], [`crate::modules::ProgramLoadContext`], and
+/// [`BuildLayout`](super::BuildLayout) to locate sources and write artifacts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectConfig {
-    /// Project root directory (contains `phoenix.toml`).
+    /// Project root directory (directory containing `phoenix.toml`).
     pub root: PathBuf,
-    /// `[project] name` — package name and namespace root.
+    /// `[project] name` — package name, logical module namespace root, and linked output stem.
     pub name: String,
-    /// `[project] version`
+    /// `[project] version` — metadata only in MVP (not enforced at link time).
     pub version: String,
-    /// `[project] description`
+    /// `[project] description` — metadata only in MVP.
     pub description: String,
-    /// `[project] edition` (reserved; not enforced in MVP).
+    /// `[project] edition` — reserved for future edition gating; not enforced in MVP.
     pub edition: String,
-    /// `[project] module_roots` (reserved; MVP uses `module_src` only).
+    /// `[project] module_roots` — reserved; MVP uses [`Self::module_src`] only.
     pub module_roots: Vec<PathBuf>,
-    /// `[project] type`
+    /// `[project] type` — [`PackageType::Bin`] or [`PackageType::Lib`].
     pub package_type: PackageType,
-    /// `[project] module_src` — source root for modules.
+    /// `[project] module_src` — relative path to Phoenix source root (default `src`).
     pub module_src: PathBuf,
-    /// `[build] dir`
+    /// `[build] dir` — relative path to build output root (default `build`).
     pub build_dir: PathBuf,
-    /// `[dependencies]` keyed by package name (must match depended `project.name`).
+    /// `[dependencies]` keyed by package name; each key must match the depended crate's `name`.
     pub dependencies: HashMap<String, PathDependency>,
-    /// When true (default), link the compiler-bundled `std` package unless declared in dependencies.
+    /// When `true` (default), [`super::stdlib::apply_bundled_std`] adds a `std` path dep unless already declared.
     pub bundle_std: bool,
-    /// When true (default), inject std prelude bindings when std is linked.
+    /// When `true` (default), inject std prelude bindings when the `std` package is linked.
     pub prelude: bool,
-    /// `[vm] heap_cap` — VM linear heap byte cap for `phx run` (unset → 64 MiB default at run).
+    /// `[vm] heap_cap` — VM linear heap byte cap for `phx run`; `None` → 64 MiB default at run.
     pub vm_heap_cap_bytes: Option<usize>,
-    /// `[lint] deny` — lint warnings that fail `phx check` / `phx build` (CLI `--deny` overrides).
+    /// `[lint] deny` — lint warnings promoted to errors during `phx check` / `phx build` (CLI `--deny` overrides).
     pub lint_deny: LintDenyConfig,
 }
 
 impl ProjectConfig {
     /// Loads `phoenix.toml` from `root`.
     ///
+    /// Reads `root/phoenix.toml`, parses the supported TOML subset, injects the bundled
+    /// `std` dependency when [`Self::bundle_std`] applies, then runs [`Self::validate`].
+    /// This is the loader used by [`super::discover::discover_project`] and
+    /// [`crate::build::build_project`].
+    ///
     /// # Errors
     ///
-    /// Returns [`ProjectError`] when the file is missing or invalid.
+    /// Returns [`ProjectError::Io`] when `phoenix.toml` cannot be read.
+    /// Returns [`ProjectError::Invalid`] for parse failures (missing `name`/`type`, bad
+    /// booleans, invalid `vm.heap_cap` or `lint.deny`), std resolution failures from
+    /// [`super::stdlib::apply_bundled_std`], or [`Self::validate`] violations.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on user-supplied paths or malformed TOML.
     pub fn load(root: &Path) -> Result<Self, ProjectError> {
         let path = root.join("phoenix.toml");
         let text = std::fs::read_to_string(&path).map_err(|e| ProjectError::Io {
@@ -99,11 +152,18 @@ impl ProjectConfig {
 
     /// Loads `phoenix.toml` without injecting the bundled `std` dependency.
     ///
-    /// Used when validating the std package root to avoid recursive bundling.
+    /// Same as [`Self::load`] except [`super::stdlib::apply_bundled_std`] is skipped.
+    /// Used when validating the `std` package root ([`Self::name`] == `"std"`) to avoid
+    /// recursive bundling, and by tests that declare dependencies explicitly.
     ///
     /// # Errors
     ///
-    /// Returns [`ProjectError`] when the file is missing or invalid.
+    /// Returns [`ProjectError::Io`] when `phoenix.toml` cannot be read.
+    /// Returns [`ProjectError::Invalid`] for parse or [`Self::validate`] failures.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on user-supplied paths or malformed TOML.
     pub fn load_without_bundled_std(root: &Path) -> Result<Self, ProjectError> {
         let path = root.join("phoenix.toml");
         let text = std::fs::read_to_string(&path).map_err(|e| ProjectError::Io {
@@ -115,19 +175,23 @@ impl ProjectConfig {
         Ok(cfg)
     }
 
-    /// Absolute path to the module source root.
+    /// Absolute path to the module source root (`root` + [`Self::module_src`]).
     #[must_use]
     pub fn module_root(&self) -> PathBuf {
         self.root.join(&self.module_src)
     }
 
-    /// Absolute path to the build directory.
+    /// Absolute path to the build directory (`root` + [`Self::build_dir`]).
     #[must_use]
     pub fn build_root(&self) -> PathBuf {
         self.root.join(&self.build_dir)
     }
 
-    /// Default entry source file for this package (`main.phx` or `lib.phx`).
+    /// Default entry source file for this package.
+    ///
+    /// Returns `module_root/main.phx` for [`PackageType::Bin`] or `module_root/lib.phx`
+    /// for [`PackageType::Lib`]. The CLI uses this when no explicit entry path is given;
+    /// [`Self::validate`] requires the file to exist.
     #[must_use]
     pub fn default_entry_file(&self) -> PathBuf {
         match self.package_type {
@@ -136,17 +200,32 @@ impl ProjectConfig {
         }
     }
 
-    /// Linked artifact file name stem (`project.name`).
+    /// Linked artifact file name stem (`[project] name`).
+    ///
+    /// The build driver writes `build/bin/{output_name}.phx0` or
+    /// `build/lib/{output_name}.phx0` depending on [`Self::package_type`].
     #[must_use]
     pub fn output_name(&self) -> &str {
         &self.name
     }
 
-    /// Validates paths, required root files, and dependency keys.
+    /// Validates filesystem layout, entry files, and path dependencies.
+    ///
+    /// Checks run in order: `module_src` directory exists, default entry file exists,
+    /// then each dependency's `phoenix.toml` is loaded recursively (via [`Self::load`]) and
+    /// checked for `type = lib` and a matching `project.name`.
     ///
     /// # Errors
     ///
-    /// Returns [`ProjectError::Invalid`] on schema violations.
+    /// Returns [`ProjectError::Invalid`] when `module_src` is missing, the required
+    /// `main.phx`/`lib.phx` is absent, a dependency path has no `phoenix.toml`, a
+    /// dependency is not `lib`, or a dependency key does not match `project.name`.
+    /// Propagates [`ProjectError::Io`] and nested [`ProjectError::Invalid`] from
+    /// dependency [`Self::load`] calls.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on user-supplied configuration.
     pub fn validate(&self) -> Result<(), ProjectError> {
         let module_root = self.module_root();
         if !module_root.is_dir() {
@@ -200,26 +279,27 @@ impl ProjectConfig {
     }
 }
 
-/// Project configuration errors.
+/// Project configuration errors from discovery, load, and validation.
 ///
-/// Surfaces missing markers, I/O failures, and schema violations from load/validate.
+/// Surfaced by [`ProjectConfig::load`], [`super::discover::discover_project`], and
+/// [`crate::build::BuildError::Project`] when project metadata is missing or invalid.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectError {
-    /// `phoenix.toml` not found (walk exhausted).
+    /// `phoenix.toml` not found after walking parent directories.
     NotFound {
-        /// Directory searched from.
+        /// Starting path passed to [`super::discover::discover_project`].
         from: PathBuf,
     },
-    /// I/O failure.
+    /// Filesystem read failure (missing `phoenix.toml` at an explicit root, permission denied, etc.).
     Io {
-        /// Path involved.
+        /// Path involved in the I/O operation.
         path: String,
-        /// OS message.
+        /// OS error message.
         message: String,
     },
-    /// Parse or schema error.
+    /// Parse failure, schema violation, or validation rule breach.
     Invalid {
-        /// Human-readable reason.
+        /// Human-readable reason (included in [`std::fmt::Display`] output).
         message: String,
     },
 }
