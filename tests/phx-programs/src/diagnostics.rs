@@ -427,6 +427,24 @@ pub const DIAG_IF_BRANCH_UNTAKEN_NO_MOVE: DiagnosticCase = DiagnosticCase {
    = help: use `p` only before it is moved, or bind a new value after the move",
 };
 
+const DIAG_INVALID_CAST_SOURCE: &str = r"// Should fail type-check: numeric literal cannot cast to bool in MVP.
+main :: () => {
+    const _ = 1 as bool;
+};
+";
+
+pub const DIAG_INVALID_CAST: DiagnosticCase = DiagnosticCase {
+    name: r"invalid_cast",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_INVALID_CAST_SOURCE),
+    expected: r"error[E2014]: invalid cast from `S32` to `Bool`
+  --> tests/integration/diagnostics/invalid_cast.phx:3:15
+  |
+3 |     const _ = 1 as bool;
+  |               ^^^^^^^^^
+   = help: explicit casts between `S32` and `Bool` are not allowed in MVP; use a supported cast target (numeric primitives, array→slice, str→[u8])",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -448,4 +466,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_LOOP_MOVE_USE_AFTER_LOOP,
     DIAG_IF_BRANCH_SIBLING_NO_FALSE_UAM,
     DIAG_IF_BRANCH_UNTAKEN_NO_MOVE,
+    DIAG_INVALID_CAST,
 ];
