@@ -1,4 +1,16 @@
 //! Cargo-style diagnostic rendering with optional styling.
+//!
+//! ## Entry points
+//!
+//! - [`render_diagnostic`] — one error: header, `--> path:line:col`, source snippet with caret.
+//! - [`render_diagnostic_enriched`] — primary diagnostic plus [`DiagnosticAncillary`] notes and help.
+//! - [`render_diagnostic_with_note`] — convenience wrapper for a single secondary span (move site, etc.).
+//! - [`render_lint`] / [`format_lints_styled`] — warnings with the same snippet layout.
+//! - [`join_diagnostics`] — blank-line join and optional abort footer for multi-error output.
+//! - [`explain_code`] — static explanation table backing `phx explain E####`.
+//!
+//! Pass [`PlainStyle`] for golden tests and `--color never`; implement [`DiagnosticStyle`] for
+//! colored terminal output in the CLI.
 
 use std::path::Path;
 
@@ -6,7 +18,11 @@ use crate::DiagnosticCode;
 use crate::Span;
 use crate::lint::{Lint, LintBag};
 
-/// Formats a filesystem path for user-facing diagnostics (relative to cwd when possible).
+/// Formats a filesystem path for user-facing diagnostics.
+///
+/// Returns `"<entry>"` for empty paths and the package entry sentinel. Otherwise prefers a path
+/// relative to the process current directory (walking up to a common ancestor when needed), with
+/// backslashes normalized to forward slashes.
 #[must_use]
 pub fn diagnostic_display_path(path: impl AsRef<Path>) -> String {
     let path = path.as_ref();
@@ -56,7 +72,11 @@ fn location_path(path: &str) -> String {
     diagnostic_display_path(Path::new(path))
 }
 
-/// Colors and emphasis for diagnostic output.
+/// Colors and emphasis hooks for diagnostic output.
+///
+/// The CLI provides a colored implementation; [`PlainStyle`] is used for golden tests and
+/// `--color never`. All methods return fully formatted lines (including newlines where shown
+/// in the trait docs).
 pub trait DiagnosticStyle: Send + Sync + std::fmt::Debug {
     /// Prefix for an error header, e.g. `error[E2001]: message`.
     fn error_header(&self, code: DiagnosticCode, message: &str) -> String;
@@ -80,7 +100,9 @@ pub trait DiagnosticStyle: Send + Sync + std::fmt::Debug {
     fn success(&self, message: &str) -> String;
 }
 
-/// Unstyled output for golden tests and `--color never`.
+/// Unstyled [`DiagnosticStyle`] for golden tests and `--color never`.
+///
+/// Headers use `error[E####]: message`; location lines use `  --> path:line:col`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlainStyle;
 
@@ -125,6 +147,9 @@ pub struct SpanContext<'a> {
 }
 
 /// Renders a primary diagnostic with source snippet.
+///
+/// Output order: styled error header, location line, then a three-line gutter snippet with caret.
+/// Columns count Unicode scalar values; caret width uses byte length (capped at 40).
 #[must_use]
 pub fn render_diagnostic(
     style: &dyn DiagnosticStyle,
@@ -162,7 +187,10 @@ pub struct AncillaryNote<'a> {
     pub span: Option<Span>,
 }
 
-/// Renders primary diagnostic plus optional notes and help suggestions.
+/// Renders a primary diagnostic plus optional notes and help suggestions.
+///
+/// Notes with a span on a different line than the primary error get their own location line and
+/// snippet; inline notes reuse the primary snippet. Help lines have no spans.
 #[must_use]
 pub fn render_diagnostic_enriched(
     style: &dyn DiagnosticStyle,
@@ -197,7 +225,10 @@ pub fn render_diagnostic_enriched(
     out
 }
 
-/// Renders primary + one secondary note span (move site, duplicate def, etc.).
+/// Renders a primary diagnostic and one secondary note span.
+///
+/// Convenience wrapper around [`render_diagnostic_enriched`] for the common case of a related
+/// span (move site, duplicate definition, etc.).
 #[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn render_diagnostic_with_note(
@@ -251,7 +282,10 @@ pub fn render_lint(
     out
 }
 
-/// Formats all lints using per-module `(id, source, display_path)` rows.
+/// Formats all lints in a [`LintBag`] using per-module source rows.
+///
+/// `modules` is `(module_id, source_text, display_path)`; lints whose module id is missing fall
+/// back to a header-only warning line without a snippet.
 #[must_use]
 pub fn format_lints_styled(
     lints: &LintBag,
@@ -277,7 +311,10 @@ pub fn format_lints_styled(
     parts.join("\n\n")
 }
 
-/// Joins multiple rendered diagnostics with blank lines and an optional footer.
+/// Joins rendered diagnostics with blank lines and an optional abort footer.
+///
+/// Returns an empty string when `parts` is empty. When more than one part is present, appends
+/// [`DiagnosticStyle::abort_footer`].
 #[must_use]
 pub fn join_diagnostics(style: &dyn DiagnosticStyle, parts: &[String]) -> String {
     if parts.is_empty() {
@@ -327,7 +364,11 @@ pub fn line_col(source: &str, byte: u32) -> (u32, u32) {
     (line, col)
 }
 
-/// Short explanation for `phx explain E####`.
+/// Returns a short explanation for `phx explain E####` / `W####`.
+///
+/// This is the canonical explain registry for all compiler diagnostic codes. When adding a new
+/// [`DiagnosticCode`], add a match arm here and a drift test in the owning pass (type-check codes
+/// are also checked against [`TypeCheckError`](crate::TypeCheckError) via `type_error_registry`).
 #[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn explain_code(code: &str) -> Option<&'static str> {
