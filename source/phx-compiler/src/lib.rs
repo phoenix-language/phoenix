@@ -43,8 +43,8 @@ mod unit;
 pub mod unstable;
 
 pub use build::{
-    BuildError, BuildOptions, BuildResult, build_project, emit_interfaces_from_compiled,
-    load_project_binary,
+    BuildError, BuildOptions, BuildResult, LoadOptions, build_project,
+    emit_interfaces_from_compiled, load_project_binary, load_project_binary_with_options,
 };
 pub use byte_size::{ByteSizeError, parse_byte_size};
 pub use cfg::{CompileCfg, strip_cfg};

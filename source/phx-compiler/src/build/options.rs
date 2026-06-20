@@ -1,4 +1,11 @@
-//! Options for [`super::driver::build_project`].
+//! Options for [`super::driver::build_project`] and [`super::driver::load_project_binary`].
+
+/// Controls optional bytecode verification when loading a linked binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LoadOptions {
+    /// When `true`, run the bytecode verifier after decode (defense in depth at load).
+    pub verify_on_load: bool,
+}
 
 /// Controls incremental and interface-only project builds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

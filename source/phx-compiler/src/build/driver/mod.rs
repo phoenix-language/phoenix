@@ -30,4 +30,7 @@ pub struct BuildResult {
     pub lint_context: Option<DiagnosticContext>,
 }
 
-pub use package::{build_project, emit_interfaces_from_compiled, load_project_binary};
+pub use package::{
+    build_project, emit_interfaces_from_compiled, load_project_binary,
+    load_project_binary_with_options,
+};

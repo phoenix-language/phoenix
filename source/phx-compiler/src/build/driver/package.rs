@@ -18,7 +18,7 @@ use crate::typeck::{
 
 use super::super::error::BuildError;
 use super::super::manifest::BuildManifest;
-use super::super::options::BuildOptions;
+use super::super::options::{BuildOptions, LoadOptions};
 use super::BuildResult;
 use super::artifacts::{
     ArtifactEmitCtx, write_interfaces_and_collect_objects, write_interfaces_and_manifest,
@@ -99,10 +99,29 @@ pub fn emit_interfaces_from_compiled(
 
 /// Loads the linked binary from `build/bin` for `config`.
 ///
+/// Decode-only by default; see [`LoadOptions::verify_on_load`] on
+/// [`load_project_binary_with_options`].
+///
 /// # Errors
 ///
 /// Returns [`BuildError`] when the project was not built or the file is missing.
 pub fn load_project_binary(config: &ProjectConfig) -> Result<BytecodeModule, BuildError> {
+    load_project_binary_with_options(config, LoadOptions::default())
+}
+
+/// Loads the linked binary from `build/bin` for `config`.
+///
+/// When [`LoadOptions::verify_on_load`] is enabled, malformed bytecode that decodes
+/// successfully is rejected with [`BuildError::Verify`] before returning the module.
+///
+/// # Errors
+///
+/// Returns [`BuildError`] when the project was not built, the file is missing, decode fails,
+/// or optional verification fails.
+pub fn load_project_binary_with_options(
+    config: &ProjectConfig,
+    options: LoadOptions,
+) -> Result<BytecodeModule, BuildError> {
     if config.package_type != PackageType::Bin {
         return Err(BuildError::Project(crate::project::ProjectError::Invalid {
             message: "phx run requires project.type = bin".to_owned(),
@@ -111,10 +130,14 @@ pub fn load_project_binary(config: &ProjectConfig) -> Result<BytecodeModule, Bui
     let layout = BuildLayout::new(config);
     let bin_path = layout.bin_path(config.output_name());
     let bytes = std::fs::read(&bin_path).map_err(|e| io_err_path(&bin_path, &e))?;
-    BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
-        path: bin_path,
+    let module = BytecodeModule::decode(&bytes).map_err(|e| BuildError::Io {
+        path: bin_path.clone(),
         message: format!("{e:?}"),
-    })
+    })?;
+    if options.verify_on_load {
+        phx_bytecode::verify(&module).map_err(BuildError::Verify)?;
+    }
+    Ok(module)
 }
 
 #[allow(clippy::too_many_lines)] // incremental build driver: single orchestration pass
