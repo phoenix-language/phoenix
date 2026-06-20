@@ -1,7 +1,39 @@
 //! Trait bound checking at generic instantiation sites.
 //!
-//! Validates that concrete type arguments satisfy declared trait bounds when monomorphizing
-//! functions, types, and impl methods.
+//! When monomorphization supplies concrete type arguments for a generic function, type, or impl
+//! method, this module verifies that each argument satisfies the corresponding generic parameter's
+//! trait bounds. Failures become [`TypeCheckError::TraitNotSatisfied`] or related diagnostics in
+//! the caller's [`TypeCheckBag`].
+//!
+//! # Role in type checking
+//!
+//! Invoked from [`super::mono`] and call-site checking when building explicit or inferred
+//! instantiations — not during the main AST walk itself. Bound checking consults
+//! [`ProgramLayout`] for user `impl` blocks and std-kernel trait impls recorded during layout
+//! collection; it does not re-walk impl items.
+//!
+//! # Bound validation flow
+//!
+//! [`validate_instantiation_bounds`] builds a [`Substitution`] from generic parameter defs to
+//! concrete [`TypeId`]s, lowers each bound type from the AST, and tests satisfaction per bound.
+//! [`Copyable`] is handled specially via [`super::builtins::is_copyable`] rather than a layout
+//! lookup alone. Other traits use [`type_satisfies_trait_inst`], which normalizes aliases when an
+//! [`AliasEnv`](super::unify::AliasEnv) is provided.
+//!
+//! Unresolved generic-to-generic substitutions (same parameter name on both sides) are skipped
+//! so nested generic signatures do not false-positive during partial instantiation.
+//!
+//! # Trait satisfaction
+//!
+//! [`type_satisfies_trait_inst`] walks the interned shape of `concrete`:
+//!
+//! - Primitives and `str` may satisfy std-kernel or layout-recorded builtin impls.
+//! - Unit satisfies a fixed set of std traits (`Copyable`, `Clone`, `PartialEq`, …).
+//! - Named types, tuples, and arrays delegate to layout keys ([`TraitInstKey`]) or element-wise
+//!   rules for homogenous aggregates.
+//!
+//! [`resolve_from_fn_for_error`] locates `From::from` for `?` lowering when the output error type
+//! implements `From` for the scrutinee error type.
 
 use std::collections::HashMap;
 
@@ -22,7 +54,18 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
 /// Validates that each concrete type argument satisfies the corresponding generic parameter bounds.
 ///
-/// Returns `false` when any bound fails (errors are appended to `bag`).
+/// Compares `generic_params`, `param_defs`, and `concrete_args` lengths first; on mismatch,
+/// records [`TypeCheckError::ArityMismatch`] and returns `false`. When `generics` is `None`, there
+/// is nothing to validate and the function returns `true`.
+///
+/// For each bound on each parameter, lowers the bound type under `subst` and checks satisfaction.
+/// Non-trait bounds produce [`TypeCheckError::UnsupportedFeature`]; unknown trait names produce
+/// [`TypeCheckError::UnknownTraitBound`].
+///
+/// # Errors
+///
+/// Appends to `bag` rather than returning `Result`. Returns `false` when any bound fails or when
+/// arity metadata is inconsistent.
 #[must_use]
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn validate_instantiation_bounds(
@@ -143,7 +186,10 @@ pub fn validate_instantiation_bounds(
     ok
 }
 
-/// Returns the trait name and optional generic arguments from a bound type.
+/// Returns the trait name and optional generic arguments from a bound type AST node.
+///
+/// Only [`Type::Named`] bounds are supported (for example `Copyable` or `From<E>`). Other shapes
+/// return `None` and callers should report an unsupported bound.
 #[must_use]
 pub fn trait_bound_head(ty: &Type) -> Option<(phx_syntax::Symbol, Option<&[Node<Type>]>)> {
     match ty {
@@ -228,6 +274,14 @@ fn type_satisfies_copyable(
 }
 
 /// Returns `true` when `concrete` implements `trait_def` with the given trait type arguments.
+///
+/// When `aliases` is provided, `concrete` is normalized through [`super::unify::normalize_type`]
+/// before testing. Empty `trait_args` on the std `Copyable` trait delegates to
+/// [`super::builtins::is_copyable`].
+///
+/// Lookup order for named types: exact [`TraitInstKey`] in [`ProgramLayout::trait_impls`], or any
+/// matching entry in [`ProgramLayout::trait_methods`] (impl blocks that declare methods but no
+/// separate empty impl marker).
 #[must_use]
 pub fn type_satisfies_trait_inst(
     layout: &ProgramLayout,
@@ -344,6 +398,10 @@ fn layout_has_str_trait_impl(
 }
 
 /// Resolves `From::from` for `E_out: From<E_in>` when the trait impl exists.
+///
+/// Used by [`super::std_kernel`] when a postfix `?` must convert the scrutinee error type into
+/// the function's error type. Returns `None` when `From` is not implemented or no method named
+/// `from` is recorded in layout for the matching [`TraitInstKey`].
 #[must_use]
 pub fn resolve_from_fn_for_error(
     layout: &ProgramLayout,
