@@ -1,4 +1,12 @@
-//! Standalone (non-project) compile and check entry points.
+//! Compile and type-check a single entry file without `phoenix.toml`.
+//!
+//! Tier-2 driver API for the CLI and in-repo tooling when no project manifest is present.
+//! [`StandaloneOptions`] describes the entry path, module root for `#import` resolution, optional
+//! package name override, and path dependencies. Build a [`ProgramLoadContext`] via
+//! [`StandaloneOptions::load_context`], then call one of the `*_with_context` entry points.
+//!
+//! For project-based workflows, use [`crate::build_project`] or [`crate::check_project_file`]
+//! instead. For stable embedder APIs, prefer [`crate::facade`].
 
 use std::path::PathBuf;
 
@@ -10,25 +18,29 @@ use crate::modules::{ProgramLoadContext, load_program_with_context, resolve_load
 use crate::project::ProjectError;
 use crate::typeck::type_check;
 
-/// Options for compiling a single entry file without `phoenix.toml`.
+/// Configuration for compiling or checking one entry file outside a Phoenix project.
 #[derive(Debug, Clone)]
 pub struct StandaloneOptions {
-    /// Entry `.phx` file to compile or check.
+    /// Absolute or relative path to the entry `.phx` file.
     pub entry: PathBuf,
-    /// Module root for `#import` resolution (`::` paths under this directory).
+    /// Directory used as the module root for `#import` resolution (`::` paths resolve here).
     pub module_root: PathBuf,
-    /// Workspace package name override (defaults to module root directory name).
+    /// Workspace package name override; defaults to the final component of [`Self::module_root`].
     pub package_name: Option<String>,
-    /// Path dependencies: `(package_name, filesystem_path)`.
+    /// Path dependencies as `(package_name, filesystem_path)` pairs.
     pub path_deps: Vec<(String, PathBuf)>,
 }
 
 impl StandaloneOptions {
     /// Builds a [`ProgramLoadContext`] for this standalone invocation.
     ///
+    /// Resolves path dependencies relative to [`Self::module_root`] and applies the optional
+    /// [`Self::package_name`] override.
+    ///
     /// # Errors
     ///
-    /// Returns [`ProjectError`] when a path dependency is invalid.
+    /// Returns [`ProjectError`] when a path dependency is missing, invalid, or duplicates a
+    /// package name.
     pub fn load_context(&self) -> Result<ProgramLoadContext, ProjectError> {
         ProgramLoadContext::from_standalone(
             &self.module_root,
@@ -40,9 +52,13 @@ impl StandaloneOptions {
 
 /// Type-checks a standalone entry file using a pre-built load context.
 ///
+/// Runs parse, resolve, and type-check only — no lowering or codegen. Discards the
+/// [`crate::unit::CompilationUnit`]; use [`check_standalone_unit_with_context`] when the typed
+/// program is needed (e.g. lint or `.pxi` export).
+///
 /// # Errors
 ///
-/// Returns [`CompileError`] on parse, resolve, type-check, or I/O failure.
+/// Returns [`CompileError`] on I/O failure, parse, resolve, or type-check failure.
 pub fn check_standalone_with_context(
     opts: &StandaloneOptions,
     ctx: &ProgramLoadContext,
@@ -53,9 +69,15 @@ pub fn check_standalone_with_context(
 
 /// Type-checks a standalone entry and returns the compilation unit.
 ///
+/// On success, the returned [`crate::unit::CompilationUnit`] holds the entry source text and
+/// [`crate::unstable::TypedProgram`]. Pass it to [`crate::compile_compilation_unit`] for bytecode
+/// emission, or to lint / interface export helpers.
+///
 /// # Errors
 ///
-/// Returns [`CompileError`] on failure.
+/// Returns [`CompileError::Io`] when the entry file cannot be read.
+/// Returns [`CompileError::Resolve`] when module loading or name resolution fails.
+/// Returns [`CompileError::TypeCheck`] when type checking fails.
 pub fn check_standalone_unit_with_context(
     opts: &StandaloneOptions,
     ctx: &ProgramLoadContext,
@@ -90,9 +112,13 @@ pub fn check_standalone_unit_with_context(
 
 /// Compiles a standalone entry to bytecode.
 ///
+/// Runs the full pipeline: parse, resolve, type-check, lower, and codegen. The returned
+/// [`BytecodeModule`] should still be verified with [`phx_bytecode::verify`] before execution.
+///
 /// # Errors
 ///
-/// Returns [`CompileError`] on failure.
+/// Same as [`check_standalone_unit_with_context`], plus lowering or codegen failures surfaced
+/// as [`CompileError`].
 pub fn compile_standalone_with_context(
     opts: &StandaloneOptions,
     ctx: &ProgramLoadContext,
