@@ -494,7 +494,6 @@ pub const DIAG_SHARED_MUT_BORROW: DiagnosticCase = DiagnosticCase {
    = help: finish using shared borrows of `x` before creating `&mut x`",
 };
 
-
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
