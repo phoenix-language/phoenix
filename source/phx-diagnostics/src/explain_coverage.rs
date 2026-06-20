@@ -43,4 +43,9 @@ mod tests {
     fn lint_codes_have_explain_entry() {
         assert_explain_codes(&["W3001", "W3002"]);
     }
+
+    #[test]
+    fn typeck_copyable_drop_has_explain_entry() {
+        assert_explain_codes(&["E2033"]);
+    }
 }

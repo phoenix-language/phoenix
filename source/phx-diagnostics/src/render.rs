@@ -406,7 +406,7 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
         }
         "E2032" => Some("An `extern \"C\"` call requires an `unsafe` block or `unsafe fn`."),
         "E2033" => Some(
-            "A type cannot implement both `Drop` and `Copyable` — custom cleanup and bitwise copy conflict.",
+            "A type cannot implement both `Drop` and `Copyable` — remove one impl; custom cleanup and bitwise copy conflict.",
         ),
         "E2034" => Some("A VM intrinsic call requires an `unsafe` block or `unsafe fn`."),
         "E2035" => {
@@ -427,10 +427,18 @@ pub fn explain_code(code: &str) -> Option<&'static str> {
             "Generic type nesting exceeds the monomorphization depth limit (64 layers); flatten wrappers or reduce `:: <...>` nesting.",
         ),
         "E3001" => Some("The parser encountered unexpected tokens."),
-        "E3002" => Some("Input ended before the parser found a required token."),
-        "E3003" => Some("The syntax is recognized but not supported in this compiler version."),
-        "E3004" => Some("A pattern could not be parsed at this location."),
-        "E3005" => Some("The identifier intern table ran out of index space."),
+        "E3002" => Some(
+            "Input ended before the parser found a required token — add the missing `}`, `)`, `;`, or close an unclosed string or comment.",
+        ),
+        "E3003" => Some(
+            "The syntax is recognized but not supported in this compiler version — use an MVP alternative or upgrade when the feature lands.",
+        ),
+        "E3004" => Some(
+            "A pattern could not be parsed here — use a literal, binding, struct/enum variant, or `if let`/`match` pattern form.",
+        ),
+        "E3005" => Some(
+            "The identifier intern table ran out of index space — split into smaller modules or reduce distinct identifier count.",
+        ),
         "E4001" | "E4002" => {
             Some("The compiler hit an internal lowering invariant (please report).")
         }
@@ -506,11 +514,19 @@ mod tests {
     }
 
     #[test]
-    fn explain_code_covers_parse_and_typeck_gaps() {
-        for code in ["E2033", "E3002", "E3003", "E3004", "E3005"] {
+    fn explain_code_covers_phx_013_codes() {
+        let cases = [
+            ("E2033", "Drop"),
+            ("E3002", "required token"),
+            ("E3003", "not supported"),
+            ("E3004", "pattern"),
+            ("E3005", "intern"),
+        ];
+        for (code, needle) in cases {
+            let text = explain_code(code).unwrap_or_else(|| panic!("missing explain entry for {code}"));
             assert!(
-                explain_code(code).is_some(),
-                "missing explain entry for {code}"
+                text.contains(needle),
+                "explain for {code} should mention {needle:?}, got: {text}"
             );
         }
     }
