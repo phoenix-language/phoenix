@@ -364,16 +364,72 @@ fn bitnot_scalar(v: ScalarValue, kind: PrimitiveKind) -> ScalarValue {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod scalar_tests {
     use super::*;
     use phx_bytecode::PrimitiveKind;
+
+    fn arith_ok(
+        lhs: ScalarValue,
+        rhs: ScalarValue,
+        kind: PrimitiveKind,
+        op: ArithOp,
+    ) -> ScalarValue {
+        match arith_scalar(lhs, rhs, kind, op) {
+            Ok(value) => value,
+            Err(kind) => panic!("arith_scalar: {kind:?}"),
+        }
+    }
+
+    fn cmp_ok(stack: &mut Vec<Value>, kind: PrimitiveKind, op: CmpOp) {
+        if let Err(kind) = binop_cmp(stack, kind, op) {
+            panic!("binop_cmp: {kind:?}");
+        }
+    }
+
+    fn bit_ok(stack: &mut Vec<Value>, kind: PrimitiveKind, op: BitOp) {
+        if let Err(kind) = binop_bit(stack, kind, op) {
+            panic!("binop_bit: {kind:?}");
+        }
+    }
+
+    fn pop_bool(stack: &mut Vec<Value>) -> bool {
+        match stack.pop() {
+            Some(Value::Scalar(ScalarValue::Bool(v))) => v,
+            other => panic!("expected bool on stack, got {other:?}"),
+        }
+    }
+
+    fn pop_u8(stack: &mut Vec<Value>) -> u8 {
+        match stack.pop() {
+            Some(Value::Scalar(ScalarValue::U8(v))) => v,
+            other => panic!("expected u8 on stack, got {other:?}"),
+        }
+    }
+
+    fn pop_u32(stack: &mut Vec<Value>) -> u32 {
+        match stack.pop() {
+            Some(Value::Scalar(ScalarValue::U32(v))) => v,
+            other => panic!("expected u32 on stack, got {other:?}"),
+        }
+    }
+
+    fn arith_err(
+        lhs: ScalarValue,
+        rhs: ScalarValue,
+        kind: PrimitiveKind,
+        op: ArithOp,
+    ) -> VmErrorKind {
+        match arith_scalar(lhs, rhs, kind, op) {
+            Err(kind) => kind,
+            Ok(_) => panic!("arith_scalar should fail"),
+        }
+    }
 
     #[test]
     fn u128_div_above_i128_max() {
         let top = ScalarValue::U128(1u128 << 127);
         let two = ScalarValue::U128(2);
-        let half = arith_scalar(top, two, PrimitiveKind::U128, ArithOp::Div).expect("div");
+        let half = arith_ok(top, two, PrimitiveKind::U128, ArithOp::Div);
         assert_eq!(half, ScalarValue::U128(1u128 << 126));
     }
 
@@ -383,22 +439,18 @@ mod scalar_tests {
             Value::Scalar(ScalarValue::U128(1u128 << 127)),
             Value::Scalar(ScalarValue::U128(1)),
         ];
-        binop_cmp(&mut stack, PrimitiveKind::U128, CmpOp::Ge).expect("cmp");
-        let Value::Scalar(ScalarValue::Bool(gt)) = stack.pop().expect("bool") else {
-            panic!("expected bool");
-        };
-        assert!(gt);
+        cmp_ok(&mut stack, PrimitiveKind::U128, CmpOp::Ge);
+        assert!(pop_bool(&mut stack));
     }
 
     #[test]
     fn float_mod_truncated_remainder() {
-        let out = arith_scalar(
+        let out = arith_ok(
             ScalarValue::F64(5.5),
             ScalarValue::F64(2.0),
             PrimitiveKind::F64,
             ArithOp::Mod,
-        )
-        .expect("mod");
+        );
         assert_eq!(out, ScalarValue::F64(1.5));
     }
 
@@ -408,11 +460,8 @@ mod scalar_tests {
             Value::Scalar(ScalarValue::U8(1)),
             Value::Scalar(ScalarValue::U8(9)),
         ];
-        binop_bit(&mut stack, PrimitiveKind::U8, BitOp::Shl).expect("shl");
-        let Value::Scalar(ScalarValue::U8(v)) = stack.pop().expect("u8") else {
-            panic!("expected u8");
-        };
-        assert_eq!(v, 2);
+        bit_ok(&mut stack, PrimitiveKind::U8, BitOp::Shl);
+        assert_eq!(pop_u8(&mut stack), 2);
     }
 
     #[test]
@@ -421,22 +470,16 @@ mod scalar_tests {
             Value::Scalar(ScalarValue::U32(1)),
             Value::Scalar(ScalarValue::U32(32)),
         ];
-        binop_bit(&mut stack, PrimitiveKind::U32, BitOp::Shl).expect("shl");
-        let Value::Scalar(ScalarValue::U32(v)) = stack.pop().expect("u32") else {
-            panic!("expected u32");
-        };
-        assert_eq!(v, 1);
+        bit_ok(&mut stack, PrimitiveKind::U32, BitOp::Shl);
+        assert_eq!(pop_u32(&mut stack), 1);
     }
 
     #[test]
     fn nan_eq_nan_is_false() {
         let nan = ScalarValue::F64(f64::NAN);
         let mut stack = vec![Value::Scalar(nan), Value::Scalar(nan)];
-        binop_cmp(&mut stack, PrimitiveKind::F64, CmpOp::Eq).expect("eq");
-        let Value::Scalar(ScalarValue::Bool(v)) = stack.pop().expect("bool") else {
-            panic!("expected bool");
-        };
-        assert!(!v);
+        cmp_ok(&mut stack, PrimitiveKind::F64, CmpOp::Eq);
+        assert!(!pop_bool(&mut stack));
     }
 
     #[test]
@@ -445,11 +488,8 @@ mod scalar_tests {
             Value::Scalar(ScalarValue::F64(f64::NAN)),
             Value::Scalar(ScalarValue::F64(1.0)),
         ];
-        binop_cmp(&mut stack, PrimitiveKind::F64, CmpOp::Lt).expect("lt");
-        let Value::Scalar(ScalarValue::Bool(v)) = stack.pop().expect("bool") else {
-            panic!("expected bool");
-        };
-        assert!(!v);
+        cmp_ok(&mut stack, PrimitiveKind::F64, CmpOp::Lt);
+        assert!(!pop_bool(&mut stack));
     }
 
     #[test]
@@ -458,22 +498,18 @@ mod scalar_tests {
             Value::Scalar(ScalarValue::F64(f64::NAN)),
             Value::Scalar(ScalarValue::F64(1.0)),
         ];
-        binop_cmp(&mut stack, PrimitiveKind::F64, CmpOp::Le).expect("le");
-        let Value::Scalar(ScalarValue::Bool(v)) = stack.pop().expect("bool") else {
-            panic!("expected bool");
-        };
-        assert!(!v);
+        cmp_ok(&mut stack, PrimitiveKind::F64, CmpOp::Le);
+        assert!(!pop_bool(&mut stack));
     }
 
     #[test]
     fn pow_returns_unsupported() {
-        let err = arith_scalar(
+        let err = arith_err(
             ScalarValue::I32(2),
             ScalarValue::I32(3),
             PrimitiveKind::S32,
             ArithOp::Pow,
-        )
-        .expect_err("pow");
+        );
         assert_eq!(err, VmErrorKind::UnsupportedArithOp);
     }
 }

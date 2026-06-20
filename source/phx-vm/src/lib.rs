@@ -126,7 +126,6 @@ pub fn run_unverified(module: &BytecodeModule) -> Result<(), VmError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use phx_bytecode::{
         BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
@@ -138,14 +137,85 @@ mod tests {
         run_unverified,
     };
 
+    trait TestInstructionEncode {
+        fn test_encode(&self) -> Vec<u8>;
+    }
+
+    impl TestInstructionEncode for Instruction {
+        fn test_encode(&self) -> Vec<u8> {
+            match self.encode() {
+                Ok(bytes) => bytes,
+                Err(err) => panic!("encode {self:?}: {err:?}"),
+            }
+        }
+    }
+
+    fn code_offset(len: usize) -> u32 {
+        match u32::try_from(len) {
+            Ok(offset) => offset,
+            Err(err) => panic!("code offset {len} exceeds u32::MAX: {err}"),
+        }
+    }
+
+    fn verify_ok(module: &BytecodeModule) {
+        if let Err(err) = verify(module) {
+            panic!("verify should succeed: {err}");
+        }
+    }
+
+    fn run_ok(module: &BytecodeModule) {
+        let verified = match verify(module) {
+            Ok(verified) => verified,
+            Err(err) => panic!("verify should succeed: {err}"),
+        };
+        if let Err(err) = run(verified) {
+            panic!("run should succeed: {err}");
+        }
+    }
+
+    fn run_err(module: &BytecodeModule) -> VmError {
+        let verified = match verify(module) {
+            Ok(verified) => verified,
+            Err(err) => panic!("verify should succeed: {err}"),
+        };
+        match run(verified) {
+            Err(err) => err,
+            Ok(()) => panic!("run should fail"),
+        }
+    }
+
+    fn run_unverified_err(module: &BytecodeModule) -> VmError {
+        match run_unverified(module) {
+            Err(err) => err,
+            Ok(()) => panic!("run_unverified should fail"),
+        }
+    }
+
+    fn run_captured_err(module: &BytecodeModule) -> VmError {
+        let verified = match verify(module) {
+            Ok(verified) => verified,
+            Err(err) => panic!("verify should succeed: {err}"),
+        };
+        match run_captured(verified) {
+            Err(err) => err,
+            Ok(_) => panic!("run_captured should fail"),
+        }
+    }
+
+    fn run_captured_unverified_heap_err(module: &BytecodeModule, heap_cap: usize) -> VmError {
+        match run_captured_unverified_with_heap_cap(module, heap_cap) {
+            Err(err) => err,
+            Ok(_) => panic!("run_captured_unverified_with_heap_cap should fail"),
+        }
+    }
+
     #[test]
     fn run_const_return() {
         let code = Instruction {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode()
-        .expect("encode");
+        .test_encode();
 
         let module = BytecodeModule {
             header: FileHeader::new(5, 0),
@@ -168,8 +238,7 @@ mod tests {
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
             pc_spans: PcSpanTable::default(),
         };
-        let verified = verify(&module).expect("verify");
-        run(verified).expect("run");
+        run_ok(&module);
     }
 
     fn minimal_module(code: Vec<u8>, local_count: u16, stack_max: u16) -> BytecodeModule {
@@ -202,8 +271,7 @@ mod tests {
             opcode: Opcode::Return,
             operands: vec![],
         }
-        .encode()
-        .expect("encode");
+        .test_encode();
         let main_body: Vec<u8> = [
             Instruction {
                 opcode: Opcode::Call,
@@ -219,9 +287,9 @@ mod tests {
             },
         ]
         .into_iter()
-        .flat_map(|i| i.encode().expect("encode"))
+        .flat_map(|i| i.test_encode())
         .collect();
-        let callee_off = u32::try_from(main_body.len()).expect("offset");
+        let callee_off = code_offset(main_body.len());
         let mut code = main_body;
         code.extend(unit_body);
         let module = BytecodeModule {
@@ -249,7 +317,7 @@ mod tests {
                         stack_max: 4,
                         flags: 0,
                         code_offset: callee_off,
-                        code_len: u32::try_from(code.len()).expect("len") - callee_off,
+                        code_len: code_offset(code.len()) - callee_off,
                         return_type_id: 0,
                     },
                 ],
@@ -258,8 +326,7 @@ mod tests {
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
             pc_spans: PcSpanTable::default(),
         };
-        let verified = verify(&module).expect("verify unit call/pop");
-        run(verified).expect("run unit call/pop");
+        run_ok(&module);
     }
 
     #[test]
@@ -268,10 +335,9 @@ mod tests {
             opcode: Opcode::Add,
             operands: vec![],
         }
-        .encode()
-        .expect("encode");
+        .test_encode();
         let module = minimal_module(code, 0, 4);
-        let err = run_unverified(&module).expect_err("stack underflow");
+        let err = run_unverified_err(&module);
         assert_eq!(err.kind, VmErrorKind::StackUnderflow);
         assert_eq!(err.function_id, Some(0));
         assert_eq!(err.pc, Some(0));
@@ -290,11 +356,11 @@ mod tests {
             },
         ]
         .into_iter()
-        .flat_map(|i| i.encode().expect("encode"))
+        .flat_map(|i| i.test_encode())
         .collect::<Vec<_>>();
         let module = minimal_module(code, 1, 4);
         assert!(matches!(
-            run_unverified(&module).expect_err("invalid local"),
+            run_unverified_err(&module),
             VmError {
                 kind: VmErrorKind::InvalidLocalSlot(99),
                 function_id: Some(0),
@@ -317,11 +383,11 @@ mod tests {
             },
         ]
         .into_iter()
-        .flat_map(|i| i.encode().expect("encode"))
+        .flat_map(|i| i.test_encode())
         .collect::<Vec<_>>();
         let module = minimal_module(code, 0, 4);
         assert!(matches!(
-            run_unverified(&module).expect_err("invalid call"),
+            run_unverified_err(&module),
             VmError {
                 kind: VmErrorKind::InvalidFunctionId(99),
                 function_id: Some(0),
@@ -337,11 +403,10 @@ mod tests {
             opcode: Opcode::Trap,
             operands: vec![],
         }
-        .encode()
-        .expect("encode");
+        .test_encode();
         let module = minimal_module(code, 0, 4);
-        let verified = verify(&module).expect("trap module verifies");
-        let err = run(verified).expect_err("trap");
+        verify_ok(&module);
+        let err = run_err(&module);
         assert_eq!(err.kind, VmErrorKind::GivenMismatch);
         assert_eq!(err.function_id, Some(0));
         assert_eq!(err.pc, Some(0));
@@ -355,16 +420,14 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, 2],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Return,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         let module = BytecodeModule {
             header: FileHeader::new(5, 0),
@@ -392,7 +455,7 @@ mod tests {
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
             pc_spans: PcSpanTable::default(),
         };
-        let err = run_unverified(&module).expect_err("unsupported const");
+        let err = run_unverified_err(&module);
         assert_eq!(err.kind, VmErrorKind::UnsupportedConst);
         assert_eq!(err.function_id, Some(0));
         assert_eq!(err.pc, Some(0));
@@ -401,7 +464,7 @@ mod tests {
     #[test]
     fn run_fallthrough_without_return_returns_truncated_code() {
         let module = minimal_module(Vec::new(), 0, 4);
-        let err = run_unverified(&module).expect_err("truncated");
+        let err = run_unverified_err(&module);
         assert_eq!(err.kind, VmErrorKind::TruncatedCode);
         assert_eq!(err.function_id, Some(0));
         assert_eq!(err.pc, Some(0));
@@ -417,32 +480,28 @@ mod tests {
                 opcode: Opcode::Const,
                 operands: vec![0, u32::from(PrimitiveKind::U32.as_u8())],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Alloc,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Pop,
                 operands: vec![],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
         code.extend(
             Instruction {
                 opcode: Opcode::Jump,
                 operands: vec![0],
             }
-            .encode()
-            .expect("encode"),
+            .test_encode(),
         );
 
         let module = BytecodeModule {
@@ -472,7 +531,7 @@ mod tests {
             pc_spans: PcSpanTable::default(),
         };
 
-        let err = run_captured_unverified_with_heap_cap(&module, 32).expect_err("oom");
+        let err = run_captured_unverified_heap_err(&module, 32);
         assert_eq!(err.kind, VmErrorKind::OutOfMemory);
         assert!(err.function_id.is_some());
         assert!(err.pc.is_some());
@@ -536,7 +595,7 @@ mod tests {
                 operands: vec![u8_kind, 0],
             },
         ] {
-            code.extend(inst.encode().expect("encode"));
+            code.extend(inst.test_encode());
         }
 
         let module = BytecodeModule {
@@ -577,8 +636,8 @@ mod tests {
             pc_spans: PcSpanTable::default(),
         };
 
-        let verified = verify(&module).expect("verify heap uaf bytecode");
-        let err = run_captured(verified).expect_err("uaf");
+        verify_ok(&module);
+        let err = run_captured_err(&module);
         assert_eq!(err.kind, VmErrorKind::UseAfterFree);
         assert!(err.function_id.is_some());
         assert!(err.pc.is_some());
