@@ -523,7 +523,8 @@ mod tests {
             ("E3005", "intern"),
         ];
         for (code, needle) in cases {
-            let text = explain_code(code).unwrap_or_else(|| panic!("missing explain entry for {code}"));
+            let text =
+                explain_code(code).unwrap_or_else(|| panic!("missing explain entry for {code}"));
             assert!(
                 text.contains(needle),
                 "explain for {code} should mention {needle:?}, got: {text}"
