@@ -1,8 +1,13 @@
 //! Closed registry of valid `(kind, name)` language items.
 //!
-//! v1 accepts only the names listed here. [`super::collect::build_lang_item_registry`]
+//! v1 accepts only the names listed in [`is_known_lang_item`]. [`super::collect::build_lang_item_registry`]
 //! rejects unknown pairs with [`TypeCheckError::LangItemInvalid`](crate::typeck::TypeCheckError::LangItemInvalid)
 //! and auto-links enum variants when explicit `#[lang_item]` markers are omitted.
+//!
+//! ## Consumers
+//!
+//! - [`super::collect`] — validates markers before registration
+//! - [`super::parse`] — defers unknown `kind` strings until collection validates
 
 use super::LangItemKind;
 
