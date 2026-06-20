@@ -339,7 +339,32 @@ impl TypeChecker<'_> {
                 self.types.intern(&Ty::Array { elem, len })
             }
             Expr::Unary { op, operand } => {
-                let o = self.check_expr_node(operand);
+                let read_operand = matches!(
+                    op,
+                    phx_syntax::ast::expr::UnaryOp::Ref | phx_syntax::ast::expr::UnaryOp::RefMut
+                );
+                let o = if read_operand {
+                    self.check_expr_node_read(operand)
+                } else {
+                    self.check_expr_node(operand)
+                };
+                if matches!(op, phx_syntax::ast::expr::UnaryOp::RefMut) {
+                    if let Some(symbol) = mut_borrow_target(&operand.inner) {
+                        if let Some(prior_span) = self.ownership.conflicting_mut_borrow(symbol) {
+                            let name = self.symbol_name(symbol);
+                            self.bag.push(
+                                self.current_module,
+                                TypeCheckError::OverlappingMutBorrow {
+                                    name,
+                                    prior_span,
+                                    span,
+                                },
+                            );
+                        } else {
+                            self.ownership.register_mut_borrow(symbol, span);
+                        }
+                    }
+                }
                 check_unary(&mut self.types, *op, o).unwrap_or_else(|| {
                     self.bag.push(
                         self.current_module,
@@ -3220,6 +3245,13 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
             PathSegment::Ident(ident) => Some(ident.id),
             PathSegment::Type(seg) => Some(seg.name.id),
         },
+        _ => None,
+    }
+}
+
+fn mut_borrow_target(expr: &Expr) -> Option<Symbol> {
+    match expr {
+        Expr::Ident(ident) => Some(ident.symbol),
         _ => None,
     }
 }

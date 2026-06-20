@@ -89,6 +89,7 @@ typecheck_error_registry! {
     LangItemDuplicate => "E2044",
     LangItemInvalid => "E2045",
     GenericNestingTooDeep => "E2046",
+    OverlappingMutBorrow => "E2047",
 }
 
 #[cfg(test)]

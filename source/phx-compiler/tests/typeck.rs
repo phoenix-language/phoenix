@@ -205,6 +205,50 @@ fn use_after_move_fn_arg() {
 }
 
 #[test]
+fn overlapping_mut_borrow_rejected() {
+    let source =
+        "main :: () => { var x: s32 = 1; const a = &mut x; const b = &mut x; const _ = (); };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }))
+        .expect("overlapping mut borrow");
+    if let TypeCheckError::OverlappingMutBorrow {
+        name,
+        prior_span,
+        span,
+    } = &err.error
+    {
+        assert_eq!(name, "x");
+        let first = source.find("&mut x").expect("first &mut x");
+        let second = source.rfind("&mut x").expect("second &mut x");
+        assert!(second > first, "expected two distinct borrow sites");
+        assert_eq!(
+            prior_span.start,
+            u32::try_from(first).expect("offset fits u32")
+        );
+        assert_eq!(span.start, u32::try_from(second).expect("offset fits u32"));
+    }
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
+    assert!(msg.contains("mutably borrowed"));
+    assert!(msg.contains("note:"));
+}
+
+#[test]
+fn sequential_mut_borrow_after_block_ok() {
+    compile_ok(
+        "main :: () => { var x: s32 = 1; { const _a = &mut x; }; const _b = &mut x; const _ = (); };",
+    );
+}
+
+#[test]
+fn single_mut_borrow_ok() {
+    compile_ok("main :: () => { var x: s32 = 1; const a = &mut x; const _ = a; };");
+}
+
+#[test]
 fn if_move_in_then_use_in_else_ok() {
     compile_ok(
         "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { var q: Point = p; } else { const _ = p.r; }; };",
