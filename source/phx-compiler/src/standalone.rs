@@ -7,6 +7,28 @@
 //!
 //! For project-based workflows, use [`crate::build_project`] or [`crate::check_project_file`]
 //! instead. For stable embedder APIs, prefer [`crate::facade`].
+//!
+//! ## Pipeline
+//!
+//! All entry points share the same front half:
+//!
+//! ```text
+//! entry .phx → read → load_program_with_context → resolve → type_check → CompilationUnit
+//! ```
+//!
+//! [`compile_standalone_with_context`] continues through lower and codegen via
+//! [`crate::compile_compilation_unit`].
+//!
+//! ## Entry points
+//!
+//! | Function | Stops after | Returns |
+//! |----------|-------------|---------|
+//! | [`check_standalone_with_context`] | type-check | `()` |
+//! | [`check_standalone_unit_with_context`] | type-check | [`CompilationUnit`](crate::unit::CompilationUnit) |
+//! | [`compile_standalone_with_context`] | codegen | [`BytecodeModule`] |
+//!
+//! Reuse a single [`ProgramLoadContext`] across calls when checking then compiling the same
+//! standalone tree to avoid re-resolving path dependencies.
 
 use std::path::PathBuf;
 
@@ -19,15 +41,29 @@ use crate::project::ProjectError;
 use crate::typeck::type_check;
 
 /// Configuration for compiling or checking one entry file outside a Phoenix project.
+///
+/// Built by the CLI for `phx check path/to/main.phx` and similar invocations where no
+/// `phoenix.toml` is present. Path dependencies are resolved relative to [`Self::module_root`].
 #[derive(Debug, Clone)]
 pub struct StandaloneOptions {
     /// Absolute or relative path to the entry `.phx` file.
+    ///
+    /// Becomes the compilation unit path and the starting module for
+    /// [`load_program_with_context`].
     pub entry: PathBuf,
     /// Directory used as the module root for `#import` resolution (`::` paths resolve here).
+    ///
+    /// Typically the directory containing the entry file or a parent `src/` tree.
     pub module_root: PathBuf,
     /// Workspace package name override; defaults to the final component of [`Self::module_root`].
+    ///
+    /// Controls the root package namespace for absolute imports when multiple standalone
+    /// trees are linked via path dependencies.
     pub package_name: Option<String>,
     /// Path dependencies as `(package_name, filesystem_path)` pairs.
+    ///
+    /// Each path is resolved relative to [`Self::module_root`]; names must match the depended
+    /// package's declared name when that dependency is itself a project.
     pub path_deps: Vec<(String, PathBuf)>,
 }
 
@@ -35,7 +71,9 @@ impl StandaloneOptions {
     /// Builds a [`ProgramLoadContext`] for this standalone invocation.
     ///
     /// Resolves path dependencies relative to [`Self::module_root`] and applies the optional
-    /// [`Self::package_name`] override.
+    /// [`Self::package_name`] override. The returned context is immutable for the duration of
+    /// check/compile calls and may be reused across [`check_standalone_with_context`] and
+    /// [`compile_standalone_with_context`] on the same options.
     ///
     /// # Errors
     ///
@@ -58,7 +96,9 @@ impl StandaloneOptions {
 ///
 /// # Errors
 ///
-/// Returns [`CompileError`] on I/O failure, parse, resolve, or type-check failure.
+/// Returns [`CompileError::Io`] when the entry file cannot be read.
+/// Returns [`CompileError::Resolve`] when module loading or name resolution fails.
+/// Returns [`CompileError::TypeCheck`] when type checking fails.
 pub fn check_standalone_with_context(
     opts: &StandaloneOptions,
     ctx: &ProgramLoadContext,
@@ -117,8 +157,11 @@ pub fn check_standalone_unit_with_context(
 ///
 /// # Errors
 ///
-/// Same as [`check_standalone_unit_with_context`], plus lowering or codegen failures surfaced
-/// as [`CompileError`].
+/// Returns [`CompileError::Io`] when the entry file cannot be read.
+/// Returns [`CompileError::Resolve`] when module loading or name resolution fails.
+/// Returns [`CompileError::TypeCheck`] when type checking fails.
+/// Returns [`CompileError::Lower`], [`CompileError::IrValidate`], or [`CompileError::Codegen`]
+/// when back-end passes fail after a successful type-check.
 pub fn compile_standalone_with_context(
     opts: &StandaloneOptions,
     ctx: &ProgramLoadContext,

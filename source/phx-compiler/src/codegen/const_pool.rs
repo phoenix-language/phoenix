@@ -8,6 +8,18 @@
 //! Emission ([`super::emit`]) resolves [`IrInst::Const`](crate::ir::IrInst::Const) and
 //! [`IrInst::MakeStr`](crate::ir::IrInst::MakeStr) operands through
 //! [`ConstPoolBuilder::pool_index_for_literal`], which maps each IR literal index to its pool index.
+//!
+//! ## Lifecycle
+//!
+//! 1. [`ConstPoolBuilder::new`] — empty builder
+//! 2. [`ConstPoolBuilder::fill_from_ir`] — register all module literals from IR
+//! 3. During emission — [`ConstPoolBuilder::pool_index_for_literal`] for each load instruction
+//! 4. [`ConstPoolBuilder::finish`] — produce the wire [`ConstPool`] section
+//!
+//! ## Deduplication
+//!
+//! Identical tag/payload pairs share one pool slot via an internal hash map; distinct IR literal
+//! indices may therefore map to the same pool index when lower reused the same scalar value.
 
 use std::collections::HashMap;
 
@@ -26,8 +38,10 @@ struct PoolKey {
 
 /// Builds a deduplicated module [`ConstPool`] from IR literals.
 ///
-/// Call [`Self::fill_from_ir`] once per module, then look up pool indices while emitting
-/// instructions; finish with [`Self::finish`].
+/// One builder is created per module during [`super::codegen`] / [`super::codegen_module`].
+/// Call [`Self::fill_from_ir`] once with the module's [`IrModule::constants`](crate::ir::IrModule::constants),
+/// then look up pool indices while emitting instructions; finish with [`Self::finish`] to attach
+/// the pool section to the outgoing [`BytecodeModule`](phx_bytecode::BytecodeModule).
 #[derive(Debug, Default)]
 pub struct ConstPoolBuilder {
     entries: Vec<ConstEntry>,
@@ -37,13 +51,17 @@ pub struct ConstPoolBuilder {
 }
 
 impl ConstPoolBuilder {
-    /// Creates an empty builder.
+    /// Creates an empty builder with no entries and no IR literal mappings.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Registers all literals from `constants`, deduplicating identical payloads.
+    ///
+    /// Clears any prior IR-to-pool mapping and rebuilds from scratch. Each [`IrConst`] is
+    /// encoded as a [`ConstEntry`] (tag + little-endian payload); integer narrowing follows
+    /// Phoenix `as` semantics via [`scalar_bytes_i128`].
     ///
     /// # Errors
     ///
@@ -72,10 +90,14 @@ impl ConstPoolBuilder {
 
     /// Returns the constant pool index for IR literal `literal_index`.
     ///
+    /// `literal_index` is the operand of [`IrInst::Const`](crate::ir::IrInst::Const) or
+    /// [`IrInst::MakeStr`](crate::ir::IrInst::MakeStr) — the index into
+    /// [`IrModule::constants`](crate::ir::IrModule::constants), not the wire pool index directly.
+    ///
     /// # Errors
     ///
     /// Returns [`CodegenError::MissingLiteralIndex`] when `literal_index` is out of range
-    /// or `fill_from_ir` was not called for that literal.
+    /// or [`Self::fill_from_ir`] was not called for that literal.
     pub fn pool_index_for_literal(&self, literal_index: u32) -> Result<u32, CodegenError> {
         self.ir_to_pool
             .get(literal_index as usize)
@@ -84,6 +106,8 @@ impl ConstPoolBuilder {
     }
 
     /// Consumes the builder and returns the assembled constant pool section.
+    ///
+    /// After this call the builder is moved; create a new [`Self::new`] for another module.
     #[must_use]
     pub fn finish(self) -> ConstPool {
         ConstPool {
