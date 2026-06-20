@@ -1,4 +1,21 @@
-//! Minimal `phoenix.toml` parsing (stdlib only).
+//! `phoenix.toml` parsing and project schema validation (M2).
+//!
+//! Loads the minimal TOML subset Phoenix supports today: `[project]`, `[build]`, `[vm]`,
+//! `[lint]`, and `[dependencies]` with `path = ...` entries. After parse,
+//! [`ProjectConfig::validate`] checks `module_src`, required entry files (`main.phx` or
+//! `lib.phx`), and that dependency keys match depended [`ProjectConfig::name`] values.
+//!
+//! ## Bundled std
+//!
+//! [`ProjectConfig::load`] calls [`super::stdlib::apply_bundled_std`] unless
+//! `bundle_std = false` or `std` is already declared. [`ProjectConfig::load_without_bundled_std`]
+//! skips injection (used when validating the `std` package root to avoid recursion).
+//!
+//! ## Entry points
+//!
+//! - [`ProjectConfig::load`] — primary CLI/embedder loader
+//! - [`ProjectConfig::module_root`] / [`ProjectConfig::build_root`] — absolute path helpers
+//! - [`ProjectConfig::default_entry_file`] — `main.phx` or `lib.phx` under `module_src`
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -8,11 +25,13 @@ use phx_diagnostics::LintDenyConfig;
 use crate::byte_size;
 
 /// Package kind from `[project] type`.
+///
+/// Controls the required entry file and linked output directory (`build/bin/` vs `build/lib/`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageType {
-    /// Executable; requires `main.phx` and `main` function.
+    /// Executable; requires `main.phx` and a `main` function.
     Bin,
-    /// Library; requires `lib.phx`; `main` function forbidden.
+    /// Library; requires `lib.phx`; a `main` function is forbidden.
     Lib,
 }
 
@@ -24,6 +43,10 @@ pub struct PathDependency {
 }
 
 /// Parsed `phoenix.toml` project configuration.
+///
+/// Produced by [`ProjectConfig::load`] after parse, optional bundled-std injection, and
+/// [`ProjectConfig::validate`]. Immutable for the duration of a build; path fields are
+/// relative to [`Self::root`] unless documented otherwise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectConfig {
     /// Project root directory (contains `phoenix.toml`).
@@ -178,6 +201,8 @@ impl ProjectConfig {
 }
 
 /// Project configuration errors.
+///
+/// Surfaces missing markers, I/O failures, and schema violations from load/validate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectError {
     /// `phoenix.toml` not found (walk exhausted).

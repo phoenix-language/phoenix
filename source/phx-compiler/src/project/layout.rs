@@ -1,10 +1,27 @@
-//! Artifact paths under `build/`.
+//! Build directory layout — artifact paths under `build/` (M2).
+//!
+//! [`BuildLayout`] maps logical module paths (`app::util::math`) to on-disk `.pxi` and
+//! `.phx0` locations under the workspace or a path dependency's `build/deps/{name}/`
+//! subtree. Used by [`crate::build`] when emitting interfaces, objects, and linked bins.
+//!
+//! ## Directory tree
+//!
+//! Workspace root (`config.build_root()`):
+//!
+//! - `manifest.json` — incremental rebuild metadata
+//! - `pxi/` — interface files mirroring `::` as `/`
+//! - `phx0/` — per-module object bytecode
+//! - `bin/` or `lib/` — linked PHX0 image (package type dependent)
+//! - `deps/{name}/` — prebuilt path-dependency artifacts (same internal layout)
 
 use std::path::PathBuf;
 
 use super::config::ProjectConfig;
 
 /// Paths for one logical module's build artifacts.
+///
+/// Logical paths use `::` segments (e.g. `myapp::util::math`); on-disk paths mirror them
+/// as `/` under `build/pxi/` and `build/phx0/` with `.pxi` / `.phx0` extensions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleArtifacts {
     /// `build/pxi/.../*.pxi`
@@ -14,6 +31,9 @@ pub struct ModuleArtifacts {
 }
 
 /// Build directory layout helpers.
+///
+/// Construct with [`Self::new`] for the workspace crate or [`Self::for_dependency`] for
+/// a path dependency's `build/deps/{name}/` subtree.
 #[derive(Debug, Clone)]
 pub struct BuildLayout {
     build_root: PathBuf,
@@ -35,6 +55,9 @@ impl BuildLayout {
     }
 
     /// Layout for a dependency built under `build/deps/{dep_name}/`.
+    ///
+    /// Uses the workspace [`ProjectConfig::build_root`] as the parent; artifact paths
+    /// inside the dependency mirror the workspace layout.
     #[must_use]
     pub fn for_dependency(workspace: &ProjectConfig, dep_name: &str) -> Self {
         Self {
@@ -75,6 +98,10 @@ impl BuildLayout {
     }
 
     /// Artifact paths for `logical_path`, using `build/deps/{dep}/` when the first path segment is a path dependency.
+    ///
+    /// When the first `::` segment names a key in `dep_names` and differs from
+    /// `workspace_package`, resolves under that dependency's build subtree; otherwise uses
+    /// the workspace layout.
     #[must_use]
     pub fn module_artifacts_resolved(
         &self,
