@@ -1,23 +1,52 @@
-//! Human-readable byte size parsing for VM limits and project config.
+//! Human-readable byte size parsing for VM heap limits and project config.
+//!
+//! [`parse_byte_size`] converts strings such as `"64mb"` or `"67108864"` into a byte count
+//! (`usize`). It is re-exported at the [`crate`] root for CLI and embedder use.
+//!
+//! ## Consumers
+//!
+//! - [`ProjectConfig`] `[vm] heap_cap` field in `phoenix.toml`
+//! - `phx run --heap-cap` — parsed in `phx-cli`
+//!
+//! See the VM linear memory design doc for precedence between flag, manifest, and built-in
+//! defaults.
+//!
+//! ## Accepted formats
+//!
+//! Input is trimmed. The numeric portion must be a positive unsigned integer (no decimals).
+//! Suffixes use **binary (IEC) multipliers**; matching is case-insensitive.
+//!
+//! | Suffix | Multiplier |
+//! |--------|------------|
+//! | *(none)* or `b` | 1 |
+//! | `k`, `kb`, `kib` | 1024 |
+//! | `m`, `mb`, `mib` | 1024² |
+//! | `g`, `gb`, `gib` | 1024³ |
+//!
+//! Longer suffixes (`kib`, `mib`, `gib`, `kb`, `mb`, `gb`) are matched before single-letter
+//! forms so `"64mib"` is unambiguous.
 
-/// Error parsing a byte size string.
+/// Error parsing a human-readable byte size string.
+///
+/// Returned by [`parse_byte_size`]. Implements [`Display`](std::fmt::Display) with
+/// user-facing messages suitable for CLI and manifest diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ByteSizeError {
     /// Input was empty or whitespace only.
     Empty,
     /// Value must be greater than zero.
     Zero,
-    /// Unrecognized suffix or trailing junk.
+    /// Unrecognized suffix, trailing junk, or non-digit characters in the numeric portion.
     InvalidSuffix {
-        /// Token that could not be parsed.
+        /// Original input token that could not be parsed.
         detail: String,
     },
-    /// Numeric portion is not a valid unsigned integer.
+    /// Numeric portion is not a valid unsigned integer (e.g. contains `.`).
     InvalidNumber {
-        /// Token that could not be parsed.
+        /// Original input token that could not be parsed.
         detail: String,
     },
-    /// Multiplication overflowed `usize`.
+    /// The product of base × multiplier exceeded [`usize::MAX`].
     Overflow,
 }
 
@@ -37,14 +66,40 @@ impl std::fmt::Display for ByteSizeError {
 
 impl std::error::Error for ByteSizeError {}
 
-/// Parses a byte count from a bare integer or suffix string (`64mb`, `1gb`, `512k`).
+/// Parses a byte count from a bare integer or suffixed string.
 ///
-/// Suffixes are binary (IEC): `k`/`kb`/`kib` = 1024, `m`/`mb`/`mib` = 1024²,
-/// `g`/`gb`/`gib` = 1024³. Matching is case-insensitive.
+/// Accepts forms such as `"67108864"`, `"64mb"`, `"512k"`, and `"1gib"`. See the
+/// [module-level suffix table](self#accepted-formats) for the full set of multipliers.
 ///
 /// # Errors
 ///
-/// Returns [`ByteSizeError`] when the input is empty, zero, malformed, or overflows.
+/// Returns [`ByteSizeError::Empty`] when `s` is empty or whitespace only.
+///
+/// Returns [`ByteSizeError::Zero`] when the numeric portion parses to zero.
+///
+/// Returns [`ByteSizeError::InvalidSuffix`] for unrecognized tokens, trailing junk
+/// (e.g. `"64mbx"`), or non-digit characters outside a valid suffix.
+///
+/// Returns [`ByteSizeError::InvalidNumber`] when the numeric portion contains a decimal
+/// point or otherwise fails unsigned integer parsing.
+///
+/// Returns [`ByteSizeError::Overflow`] when base × multiplier exceeds [`usize::MAX`].
+///
+/// # Panics
+///
+/// Never panics on any input.
+///
+/// # Examples
+///
+/// ```
+/// use phx_compiler::parse_byte_size;
+///
+/// assert_eq!(parse_byte_size("67108864").unwrap(), 67_108_864);
+/// assert_eq!(parse_byte_size("64mb").unwrap(), 64 * 1024 * 1024);
+/// assert_eq!(parse_byte_size("512k").unwrap(), 512 * 1024);
+/// assert!(parse_byte_size("").is_err());
+/// assert!(parse_byte_size("0mb").is_err());
+/// ```
 pub fn parse_byte_size(s: &str) -> Result<usize, ByteSizeError> {
     let s = s.trim();
     if s.is_empty() {
