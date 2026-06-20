@@ -343,15 +343,34 @@ impl Machine {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::Machine;
     use crate::VmErrorKind;
 
+    fn alloc_ok(machine: &mut Machine, size: usize) -> u64 {
+        match machine.alloc_bytes(size) {
+            Ok(ptr) => ptr,
+            Err(kind) => panic!("alloc_bytes({size}): {kind:?}"),
+        }
+    }
+
+    fn free_ok(machine: &mut Machine, ptr: u64, size: u32) {
+        if let Err(kind) = machine.free_bytes(ptr, size) {
+            panic!("free_bytes({ptr}, {size}): {kind:?}");
+        }
+    }
+
+    fn ptr_usize(ptr: u64) -> usize {
+        match usize::try_from(ptr) {
+            Ok(addr) => addr,
+            Err(err) => panic!("ptr {ptr} does not fit usize: {err}"),
+        }
+    }
+
     #[test]
     fn alloc_then_free_clears_ledger() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(8).expect("alloc");
+        let ptr = alloc_ok(&mut machine, 8);
         assert_eq!(machine.live_heap_block_count(), 1);
         assert!(machine.free_bytes(ptr, 8).is_ok());
         assert_eq!(machine.live_heap_block_count(), 0);
@@ -360,7 +379,7 @@ mod tests {
     #[test]
     fn double_free_returns_error() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4).expect("alloc");
+        let ptr = alloc_ok(&mut machine, 4);
         assert!(machine.free_bytes(ptr, 4).is_ok());
         let err = machine.free_bytes(ptr, 4);
         assert_eq!(err, Err(VmErrorKind::DoubleFree));
@@ -369,7 +388,7 @@ mod tests {
     #[test]
     fn wrong_size_free_returns_invalid_free() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4).expect("alloc");
+        let ptr = alloc_ok(&mut machine, 4);
         let err = machine.free_bytes(ptr, 8);
         assert_eq!(err, Err(VmErrorKind::InvalidFree));
     }
@@ -384,8 +403,8 @@ mod tests {
     #[test]
     fn cumulative_alloc_hits_cap() {
         let mut machine = Machine::with_heap_cap(16);
-        assert_eq!(machine.alloc_bytes(8).expect("first"), 0);
-        assert_eq!(machine.alloc_bytes(8).expect("second"), 8);
+        assert_eq!(alloc_ok(&mut machine, 8), 0);
+        assert_eq!(alloc_ok(&mut machine, 8), 8);
         assert_eq!(machine.alloc_bytes(1), Err(VmErrorKind::OutOfMemory));
         assert_eq!(machine.runtime.heap.len(), 16);
     }
@@ -393,8 +412,8 @@ mod tests {
     #[test]
     fn live_heap_access_allowed() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4).expect("alloc");
-        let addr = usize::try_from(ptr).expect("ptr fits usize");
+        let ptr = alloc_ok(&mut machine, 4);
+        let addr = ptr_usize(ptr);
         assert!(machine.validate_live_heap_access(addr, 1).is_ok());
         assert!(machine.validate_live_heap_access(addr, 4).is_ok());
     }
@@ -402,9 +421,9 @@ mod tests {
     #[test]
     fn freed_heap_access_returns_use_after_free() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4).expect("alloc");
-        let addr = usize::try_from(ptr).expect("ptr fits usize");
-        machine.free_bytes(ptr, 4).expect("free");
+        let ptr = alloc_ok(&mut machine, 4);
+        let addr = ptr_usize(ptr);
+        free_ok(&mut machine, ptr, 4);
         assert_eq!(
             machine.validate_live_heap_access(addr, 1),
             Err(VmErrorKind::UseAfterFree)
@@ -414,9 +433,9 @@ mod tests {
     #[test]
     fn partial_past_block_end_returns_use_after_free() {
         let mut machine = Machine::default();
-        let ptr = machine.alloc_bytes(4).expect("first alloc");
-        let _second = machine.alloc_bytes(4).expect("second alloc");
-        let addr = usize::try_from(ptr).expect("ptr fits usize");
+        let ptr = alloc_ok(&mut machine, 4);
+        let _second = alloc_ok(&mut machine, 4);
+        let addr = ptr_usize(ptr);
         assert_eq!(
             machine.validate_live_heap_access(addr, 5),
             Err(VmErrorKind::UseAfterFree)
@@ -426,9 +445,9 @@ mod tests {
     #[test]
     fn heap_check_disabled_allows_freed_access() {
         let mut machine = Machine::with_heap_checking(false);
-        let ptr = machine.alloc_bytes(4).expect("alloc");
-        let addr = usize::try_from(ptr).expect("ptr fits usize");
-        machine.free_bytes(ptr, 4).expect("free");
+        let ptr = alloc_ok(&mut machine, 4);
+        let addr = ptr_usize(ptr);
+        free_ok(&mut machine, ptr, 4);
         assert!(machine.validate_live_heap_access(addr, 1).is_ok());
     }
 }

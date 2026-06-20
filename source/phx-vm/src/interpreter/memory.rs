@@ -370,10 +370,22 @@ pub(super) fn write_heap_scalar(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::frame::{Frame, Value};
+
+    fn ptr_load_ok(
+        ctx: &ExecutionContext,
+        runtime: &VmRuntime,
+        ptr: u64,
+        kind: PrimitiveKind,
+        signed: u8,
+    ) -> ScalarValue {
+        match ptr_load(ctx, runtime, ptr, kind, signed) {
+            Ok(value) => value,
+            Err(kind) => panic!("ptr_load: {kind:?}"),
+        }
+    }
 
     #[test]
     fn ptr_load_local_tag_skips_borrow_cell_and_reads_caller_scalar() {
@@ -393,7 +405,7 @@ mod tests {
         let ScalarValue::Ptr(encoded) = ptr else {
             panic!("expected ptr");
         };
-        let loaded = ptr_load(&ctx, &runtime, encoded, PrimitiveKind::S32, 1).expect("load");
+        let loaded = ptr_load_ok(&ctx, &runtime, encoded, PrimitiveKind::S32, 1);
         assert_eq!(loaded, ScalarValue::I32(42));
     }
 }
