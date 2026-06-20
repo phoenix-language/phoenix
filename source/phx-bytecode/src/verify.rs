@@ -1064,6 +1064,7 @@ fn fn_sig_param_count(aux: &[u8]) -> u32 {
 #[allow(clippy::cast_lossless, clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use crate::pc_span::PcSpanTable;
     use crate::{
         ConstEntry, ConstPool, ConstTag, FileHeader, FunctionLocalLayout, FunctionRecord,
         FunctionTable, Instruction, LocalLayoutTable, Opcode, PrimitiveKind, TypeKind, TypeRecord,
@@ -1100,7 +1101,7 @@ mod tests {
             },
             code,
             local_layouts: LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         }
     }
 
@@ -1490,7 +1491,7 @@ mod tests {
                     slots: vec![LocalSlotKind::primitive(PrimitiveKind::S32)],
                 }],
             },
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         }
     }
 

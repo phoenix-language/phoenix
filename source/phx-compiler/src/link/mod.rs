@@ -92,6 +92,7 @@ impl std::error::Error for LinkError {}
 /// # Errors
 ///
 /// Returns [`LinkError`] on duplicate ids or missing entry.
+#[allow(clippy::too_many_lines)]
 pub fn link_modules(
     inputs: &[LinkInput],
     entry_function_id: u32,

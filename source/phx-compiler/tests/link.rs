@@ -4,7 +4,8 @@
 use phx_bytecode::ENTRY_NONE;
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-    Instruction, LocalLayoutTable, Opcode, PrimitiveKind, TypeKind, TypeRecord, TypeTable, verify,
+    Instruction, LocalLayoutTable, Opcode, PcSpanTable, PrimitiveKind, TypeKind, TypeRecord,
+    TypeTable, verify,
 };
 use phx_compiler::{LinkInput, link_modules};
 
@@ -45,7 +46,7 @@ fn module_with_tables(
         },
         code,
         local_layouts: LocalLayoutTable::default(),
-        pc_spans: Default::default(),
+        pc_spans: PcSpanTable::default(),
     }
 }
 
