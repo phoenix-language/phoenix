@@ -15,12 +15,15 @@ use crate::error::{VmError, VmErrorKind};
 use crate::frame::{Aggregate, Value};
 
 /// Captured VM state when the entry function returns (integration tests only).
+///
+/// Populated by [`run_captured`] and related `#[doc(hidden)]` helpers. Production callers use
+/// [`crate::run`] and do not need this struct.
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct VmRunCapture {
-    /// Local slots for `main` at return.
+    /// Local slots for `main` at return (index matches bytecode local layout).
     pub main_locals: Vec<Value>,
-    /// Aggregate arena at return (for struct/enum inspection).
+    /// Aggregate arena at return (for struct/enum inspection in tests).
     pub aggregates: Vec<Aggregate>,
     /// Stack value popped at top-level `Return`, if the stack was non-empty.
     pub return_value: Option<Value>,
@@ -28,6 +31,9 @@ pub struct VmRunCapture {
 
 impl VmRunCapture {
     /// Returns the value stored in `main` local slot `index`, if present.
+    ///
+    /// Used by `phx run --dump-main` and integration tests to assert computed results without
+    /// parsing stdout.
     #[must_use]
     pub fn main_local(&self, index: usize) -> Option<Value> {
         self.main_locals.get(index).copied()
@@ -43,13 +49,21 @@ pub fn interpret(verified: VerifiedModule<'_>) -> Result<(), VmError> {
     run_captured(verified).map(|_| ())
 }
 
-/// Runs a verified `module` and returns `main` local slots captured at entry return.
+/// Runs a verified `module` and returns captured `main` state at entry return.
 ///
-/// Integration-test harness only; production callers use [`interpret`].
+/// Integration-test harness only; production callers use [`interpret`] or [`crate::run`].
+///
+/// On success, inspect [`VmRunCapture::main_locals`] or [`VmRunCapture::main_local`] for `main`
+/// slot values, and [`VmRunCapture::return_value`] when the entry function leaves a value on the
+/// stack at `Return`.
 ///
 /// # Errors
 ///
-/// Returns [`VmError`] on runtime failure.
+/// Returns [`VmError`] on runtime failure with optional `(function_id, pc)` site attribution.
+///
+/// # Panics
+///
+/// Never panics on verified bytecode or malformed user bytecode; returns [`VmError`] instead.
 #[doc(hidden)]
 pub fn run_captured(verified: VerifiedModule<'_>) -> Result<VmRunCapture, VmError> {
     run_captured_with_heap_cap(verified, DEFAULT_HEAP_CAP_BYTES)

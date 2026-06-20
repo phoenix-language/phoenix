@@ -6,13 +6,40 @@
     clippy::cast_possible_wrap
 )]
 //!
-//! Executes verified [`phx_bytecode::BytecodeModule`] images with a single-process stack machine.
+//! Stack-machine interpreter for verified [`phx_bytecode::BytecodeModule`] images. Runtime contract:
+//! `docs/design/features/vm-linear.md`.
 //!
-//! Production callers obtain a [`VerifiedModule`] via [`phx_bytecode::verify`] and pass it to
-//! [`run`]. [`run_unverified`] is `#[doc(hidden)]` for mutation and VM error-path tests only.
+//! ## Entry points
 //!
-//! [`run_captured`] is `#[doc(hidden)]` and exists only for integration tests that inspect `main`
-//! locals (via [`VmRunCapture::main_local`]) or the stack return value after execution.
+//! | API | Audience |
+//! | --- | --- |
+//! | [`run`] | Production — execute a [`VerifiedModule`] until `main` returns |
+//! | [`run_with_heap_cap`] | Same as [`run`] with a custom linear-heap byte limit |
+//! | [`run_unverified`] | `#[doc(hidden)]` — mutation / VM error-path tests only |
+//!
+//! Obtain a [`VerifiedModule`] with [`phx_bytecode::verify`] before calling [`run`]; the token
+//! proves the verifier ran on the image.
+//!
+//! ## Test harness
+//!
+//! [`run_captured`] and related helpers are `#[doc(hidden)]` for integration tests that inspect
+//! [`VmRunCapture::main_locals`], [`VmRunCapture::main_local`], or the optional stack
+//! [`VmRunCapture::return_value`] after execution. Production callers should use [`run`].
+//!
+//! ## Errors
+//!
+//! Runtime failures return [`VmError`] with a [`VmErrorKind`] and optional coarse bytecode site
+//! `(function_id, pc)` — the byte offset of the faulting instruction in that function's code.
+//! Module-level failures omit the site. See [`VmError`] for `Display` formatting and attribution
+//! rules.
+//!
+//! ## Re-exports
+//!
+//! - **Execution** — [`ExecutionContext`], [`Machine`], [`VmRuntime`], [`DEFAULT_HEAP_CAP_BYTES`]
+//! - **Values** — [`Value`], [`Aggregate`]
+//! - **Foreign stubs (Phase A)** — [`ForeignRegistry`], [`register_foreign_stub`],
+//!   [`register_builtin_foreign_stubs`], [`PHOENIX_WRITE_STDOUT`]
+//! - **Bytecode** — [`BytecodeModule`], [`VerifiedModule`] (from `phx_bytecode`)
 //!
 //! ## Stack convention
 //!
@@ -42,27 +69,50 @@ pub use phx_bytecode::{BytecodeModule, VerifiedModule};
 
 /// Runs a verified `module` from its entry function until `main` returns.
 ///
+/// Discards operand-stack and local state on success. For integration tests that need `main` locals
+/// or the optional return value, use the `#[doc(hidden)]` [`run_captured`] helper instead.
+///
 /// # Errors
 ///
-/// Returns [`VmError`] when execution fails.
+/// Returns [`VmError`] when execution fails (stack underflow, heap cap, `Trap`, and other
+/// [`VmErrorKind`] variants). Site-attributed errors include `(function_id, pc)` when known.
+///
+/// # Panics
+///
+/// Never panics on verified bytecode or malformed user bytecode; returns [`VmError`] instead.
 pub fn run(verified: VerifiedModule<'_>) -> Result<(), VmError> {
     interpreter::interpret(verified)
 }
 
 /// Runs a verified `module` with a custom VM linear heap byte cap.
 ///
+/// Uses [`run_captured_with_heap_cap`] internally and discards captured state. The default cap used
+/// by [`run`] is [`DEFAULT_HEAP_CAP_BYTES`] (`64` MiB).
+///
 /// # Errors
 ///
-/// Returns [`VmError`] when execution fails or the heap cap is exceeded.
+/// Returns [`VmError`] when execution fails or the heap cap is exceeded
+/// ([`VmErrorKind::OutOfMemory`]).
+///
+/// # Panics
+///
+/// Never panics on verified bytecode or malformed user bytecode; returns [`VmError`] instead.
 pub fn run_with_heap_cap(verified: VerifiedModule<'_>, heap_cap: usize) -> Result<(), VmError> {
     run_captured_with_heap_cap(verified, heap_cap).map(|_| ())
 }
 
 /// Runs `module` without a verification token (mutation / VM error-path tests only).
 ///
+/// Skips the [`VerifiedModule`] proof from [`phx_bytecode::verify`]. Do not use for production
+/// execution of untrusted images.
+///
 /// # Errors
 ///
 /// Returns [`VmError`] when execution fails.
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmError`] instead.
 #[doc(hidden)]
 pub fn run_unverified(module: &BytecodeModule) -> Result<(), VmError> {
     interpreter::interpret_unverified(module)
