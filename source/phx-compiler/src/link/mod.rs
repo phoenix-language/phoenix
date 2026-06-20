@@ -2,7 +2,7 @@
 
 use phx_bytecode::{
     BytecodeModule, ConstPool, ENTRY_NONE, FileHeader, FunctionRecord, FunctionTable, InstrError,
-    Instruction, LocalLayoutTable, TypeTable,
+    Instruction, LocalLayoutTable, PHX0_HAS_DEBUG, PcSpanTable, TypeTable,
 };
 use std::collections::HashMap;
 
@@ -122,6 +122,7 @@ pub fn link_modules(
     let mut merged_functions = Vec::new();
     let mut merged_code = Vec::new();
     let mut merged_layouts = LocalLayoutTable::default();
+    let mut merged_pc_spans = PcSpanTable::default();
 
     let mut const_off = 0u32;
     let mut type_off = 0u32;
@@ -174,6 +175,7 @@ pub fn link_modules(
         merged_layouts
             .layouts
             .extend(m.local_layouts.layouts.iter().cloned());
+        merged_pc_spans.merge_from(m.pc_spans.clone());
     }
 
     if entry_function_id != ENTRY_NONE
@@ -186,11 +188,19 @@ pub fn link_modules(
         });
     }
 
+    let section_count = u32::from(5u8.saturating_add(u8::from(!merged_pc_spans.is_empty())));
+    let flags = if merged_pc_spans.is_empty() {
+        0
+    } else {
+        PHX0_HAS_DEBUG
+    };
+
     Ok(BytecodeModule {
         header: FileHeader {
             entry_function_id,
-            section_count: 5,
-            ..FileHeader::new(5, entry_function_id)
+            section_count,
+            flags,
+            ..FileHeader::new(section_count, entry_function_id)
         },
         constants: merged_constants,
         types: merged_types,
@@ -199,6 +209,7 @@ pub fn link_modules(
         },
         code: merged_code,
         local_layouts: merged_layouts,
+        pc_spans: merged_pc_spans,
     })
 }
 

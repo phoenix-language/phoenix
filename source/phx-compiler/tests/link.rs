@@ -45,6 +45,7 @@ fn module_with_tables(
         },
         code,
         local_layouts: LocalLayoutTable::default(),
+        pc_spans: Default::default(),
     }
 }
 

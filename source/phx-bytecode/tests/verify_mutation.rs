@@ -252,6 +252,7 @@ fn jump_if_false_underflow_module(code: Vec<u8>) -> BytecodeModule {
         },
         code,
         local_layouts: LocalLayoutTable::default(),
+        pc_spans: Default::default(),
     }
 }
 

@@ -9,7 +9,8 @@ mod error;
 
 use phx_bytecode::{
     BytecodeModule, ENTRY_NONE, FileHeader, FunctionLocalLayout, FunctionRecord, FunctionTable,
-    LocalLayoutTable, LocalSlotKind, TypeKind, TypeRecord, TypeTable,
+    LocalLayoutTable, LocalSlotKind, PHX0_HAS_DEBUG, PcSpanEntry, PcSpanTable, TypeKind,
+    TypeRecord, TypeTable,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -22,6 +23,54 @@ use crate::typeck::{
 
 pub use const_pool::ConstPoolBuilder;
 pub use error::CodegenError;
+
+fn emit_pc_spans_enabled() -> bool {
+    cfg!(debug_assertions)
+}
+
+fn file_id_for_path(table: &mut PcSpanTable, path: Option<&str>) -> u32 {
+    let Some(path) = path else {
+        return 0;
+    };
+    if let Some(pos) = table.files.iter().position(|existing| existing == path) {
+        return u32::try_from(pos).unwrap_or(0);
+    }
+    let id = table.files.len();
+    table.files.push(path.to_owned());
+    u32::try_from(id).unwrap_or(0)
+}
+
+fn record_emitted_pc_spans(
+    table: &mut PcSpanTable,
+    function_id: u32,
+    file_id: u32,
+    rows: &[(u32, phx_diagnostics::Span)],
+) {
+    for (pc, span) in rows {
+        table.push_sorted(PcSpanEntry::new(
+            function_id,
+            *pc,
+            file_id,
+            span.start,
+            span.end,
+        ));
+    }
+}
+
+fn module_header(entry_function_id: u32, pc_spans: &PcSpanTable) -> FileHeader {
+    let section_count = u32::from(5u8.saturating_add(u8::from(!pc_spans.is_empty())));
+    let flags = if pc_spans.is_empty() {
+        0
+    } else {
+        PHX0_HAS_DEBUG
+    };
+    FileHeader {
+        entry_function_id,
+        section_count,
+        flags,
+        ..FileHeader::new(section_count, entry_function_id)
+    }
+}
 
 /// Maps an IR function return type to the bytecode `return_type_id` field.
 ///
@@ -314,6 +363,12 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     pool.fill_from_ir(&ir.constants)?;
     let mut code = Vec::new();
     let mut records = Vec::new();
+    let mut pc_spans = PcSpanTable::default();
+    let file_id = if emit_pc_spans_enabled() {
+        file_id_for_path(&mut pc_spans, None)
+    } else {
+        0
+    };
 
     for func in &ir.functions {
         let offset = u32_section("code_offset", code.len())?;
@@ -325,6 +380,9 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
             None,
             &typed.resolved,
         )?;
+        if emit_pc_spans_enabled() {
+            record_emitted_pc_spans(&mut pc_spans, func.id.index(), file_id, &emitted.pc_spans);
+        }
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: func.id.index(),
@@ -356,16 +414,13 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     let constants = pool.finish();
     let local_layouts = build_local_layouts(ir, typed);
     Ok(BytecodeModule {
-        header: FileHeader {
-            entry_function_id,
-            section_count: 5,
-            ..FileHeader::new(5, entry_function_id)
-        },
+        header: module_header(entry_function_id, &pc_spans),
         constants,
         types: build_type_table(layout, &typed.types),
         functions: FunctionTable { functions: records },
         code,
         local_layouts,
+        pc_spans,
     })
 }
 
@@ -380,6 +435,7 @@ pub fn codegen_module(
     typed: &TypedProgram,
     global_fn: &HashMap<DefId, u32>,
     is_entry_module: bool,
+    source_file: Option<&str>,
 ) -> Result<BytecodeModule, CodegenError> {
     use error::u32_section;
     let layout = &typed.layout;
@@ -392,6 +448,12 @@ pub fn codegen_module(
     pool.fill_from_ir(&ir.constants)?;
     let mut code = Vec::new();
     let mut records = Vec::new();
+    let mut pc_spans = PcSpanTable::default();
+    let file_id = if emit_pc_spans_enabled() {
+        file_id_for_path(&mut pc_spans, source_file)
+    } else {
+        0
+    };
 
     for func in &ir.functions {
         let fn_id = global_fn.get(&func.def).copied().unwrap_or(func.id.index());
@@ -404,6 +466,9 @@ pub fn codegen_module(
             Some(&type_remap),
             &typed.resolved,
         )?;
+        if emit_pc_spans_enabled() {
+            record_emitted_pc_spans(&mut pc_spans, fn_id, file_id, &emitted.pc_spans);
+        }
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
             function_id: fn_id,
@@ -454,16 +519,13 @@ pub fn codegen_module(
     }
 
     Ok(BytecodeModule {
-        header: FileHeader {
-            entry_function_id,
-            section_count: 5,
-            ..FileHeader::new(5, entry_function_id)
-        },
+        header: module_header(entry_function_id, &pc_spans),
         constants,
         types: module_types,
         functions: FunctionTable { functions: records },
         code,
         local_layouts: LocalLayoutTable { layouts },
+        pc_spans,
     })
 }
 

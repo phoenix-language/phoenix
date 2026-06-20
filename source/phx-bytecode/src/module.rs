@@ -6,6 +6,7 @@ use super::function::FunctionTable;
 use super::header::{FileHeader, HEADER_SIZE, HeaderError};
 use super::instr::Instruction;
 use super::local_layout::{LocalLayoutError, LocalLayoutTable};
+use super::pc_span::{PHX0_HAS_DEBUG, PcSpanError, PcSpanTable};
 use super::section::{SectionEntry, SectionError, SectionKind, validate_section_table};
 use super::types::TypeTable;
 
@@ -24,6 +25,8 @@ pub struct BytecodeModule {
     pub code: Vec<u8>,
     /// Per-function local slot layout metadata.
     pub local_layouts: LocalLayoutTable,
+    /// Optional `(function_id, pc) → span` map (section 5 when non-empty).
+    pub pc_spans: PcSpanTable,
 }
 
 impl BytecodeModule {
@@ -37,7 +40,13 @@ impl BytecodeModule {
             functions: FunctionTable::default(),
             code: Vec::new(),
             local_layouts: LocalLayoutTable::default(),
+            pc_spans: PcSpanTable::default(),
         }
+    }
+
+    /// Returns `true` when section 5 (PC span map) should be written.
+    pub(crate) fn writes_pc_spans(&self) -> bool {
+        !self.pc_spans.is_empty()
     }
 
     /// Computes the canonical MVP section table and total file size from in-memory payloads.
@@ -52,7 +61,9 @@ impl BytecodeModule {
         let code_len = self.code.len();
         let local_layouts = self.local_layouts.encode();
 
-        let table_size = 5usize.saturating_mul(12);
+        let base_sections = 5usize;
+        let table_size = base_sections.saturating_add(usize::from(self.writes_pc_spans()));
+        let table_size = table_size.saturating_mul(12);
         let mut offset = HEADER_SIZE.saturating_add(table_size);
 
         let constants_entry = SectionEntry {
@@ -88,18 +99,27 @@ impl BytecodeModule {
             offset: u32_len("local_layouts_offset", offset)?,
             length: u32_len("local_layouts", local_layouts.len())?,
         };
-        let file_len = offset.saturating_add(local_layouts.len());
+        offset = offset.saturating_add(local_layouts.len());
 
-        Ok((
-            vec![
-                constants_entry,
-                types_entry,
-                functions_entry,
-                code_entry,
-                local_layouts_entry,
-            ],
-            file_len,
-        ))
+        let mut entries = vec![
+            constants_entry,
+            types_entry,
+            functions_entry,
+            code_entry,
+            local_layouts_entry,
+        ];
+
+        if self.writes_pc_spans() {
+            let symbols = self.pc_spans.encode();
+            entries.push(SectionEntry {
+                kind: SectionKind::Symbols,
+                offset: u32_len("symbols_offset", offset)?,
+                length: u32_len("symbols", symbols.len())?,
+            });
+            offset = offset.saturating_add(symbols.len());
+        }
+
+        Ok((entries, offset))
     }
 
     /// Encodes the module to a PHX0 byte vector.
@@ -113,6 +133,7 @@ impl BytecodeModule {
         let types = self.types.encode();
         let functions = self.functions.encode();
         let local_layouts = self.local_layouts.encode();
+        let symbols = self.pc_spans.encode();
 
         let section_count =
             u32::try_from(entries.len()).map_err(|_| EncodeError::SectionTooLarge {
@@ -120,9 +141,15 @@ impl BytecodeModule {
                 len: entries.len(),
             })?;
 
+        let mut flags = self.header.flags;
+        if self.writes_pc_spans() {
+            flags |= PHX0_HAS_DEBUG;
+        }
+
         let header = FileHeader {
             section_count,
             entry_function_id: self.header.entry_function_id,
+            flags,
             ..self.header
         };
 
@@ -136,6 +163,9 @@ impl BytecodeModule {
         out.extend_from_slice(&functions);
         out.extend_from_slice(&self.code);
         out.extend_from_slice(&local_layouts);
+        if self.writes_pc_spans() {
+            out.extend_from_slice(&symbols);
+        }
         Ok(out)
     }
 
@@ -179,6 +209,7 @@ impl BytecodeModule {
         let mut functions = FunctionTable::default();
         let mut code = Vec::new();
         let mut local_layouts = LocalLayoutTable::default();
+        let mut pc_spans = PcSpanTable::default();
         for entry in section_entries {
             let off = usize::try_from(entry.offset).unwrap_or(0);
             let len = usize::try_from(entry.length).unwrap_or(0);
@@ -199,7 +230,9 @@ impl BytecodeModule {
                     local_layouts =
                         LocalLayoutTable::decode(payload).map_err(ModuleError::LocalLayouts)?;
                 }
-                SectionKind::Symbols => {}
+                SectionKind::Symbols => {
+                    pc_spans = PcSpanTable::decode(payload).map_err(ModuleError::PcSpans)?;
+                }
             }
         }
         Ok(Self {
@@ -209,6 +242,7 @@ impl BytecodeModule {
             functions,
             code,
             local_layouts,
+            pc_spans,
         })
     }
 
@@ -250,6 +284,8 @@ pub enum ModuleError {
     Functions(super::function::FunctionTableError),
     /// Local layouts section invalid.
     LocalLayouts(LocalLayoutError),
+    /// PC span section invalid.
+    PcSpans(PcSpanError),
     /// Instruction stream invalid.
     Instruction(super::instr::InstrError),
 }

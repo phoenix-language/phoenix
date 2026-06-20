@@ -126,6 +126,7 @@ mod tests {
             functions: phx_bytecode::FunctionTable::default(),
             code: Vec::new(),
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
+            pc_spans: Default::default(),
         };
         machine.stack().push(Value::Scalar(ScalarValue::I32(1)));
         let err = phoenix_write_stdout_stub(&mut machine, &module).expect_err("not str");
@@ -143,6 +144,7 @@ mod tests {
             functions: phx_bytecode::FunctionTable::default(),
             code: Vec::new(),
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
+            pc_spans: Default::default(),
         };
         let elems: Vec<Value> = b"42\0"
             .iter()
