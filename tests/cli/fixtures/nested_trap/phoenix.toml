@@ -1,0 +1,9 @@
+[project]
+name = "nested_trap"
+version = "0.1.0"
+description = "VM fault in nested helper resolves to helper source line"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"

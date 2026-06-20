@@ -894,6 +894,40 @@ dir = "build"
     files: PROJECT_HEAP_UAF_FILES,
 };
 
+static PROJECT_NESTED_TRAP_FILES: &[(&str, &str)] = &[(
+    r"src/main.phx",
+    r"#import std::core::alloc::{alloc_bytes, dealloc_bytes};
+
+read_after_free :: () => {
+    unsafe {
+        const buf: *mut u8 = alloc_bytes(4u);
+        dealloc_bytes(buf, 4u);
+        const v: u8 = *buf;
+        const _ = v;
+    };
+};
+
+main :: () => {
+    read_after_free();
+};
+",
+)];
+
+pub const PROJECT_NESTED_TRAP: ProjectSpec = ProjectSpec {
+    name: r"nested_trap",
+    toml: r#"[project]
+name = "nested_trap"
+version = "0.1.0"
+description = "VM fault in nested helper resolves to helper source line"
+type = "bin"
+module_src = "src"
+
+[build]
+dir = "build"
+"#,
+    files: PROJECT_NESTED_TRAP_FILES,
+};
+
 static PROJECT_HELLO_PRINT_FILES: &[(&str, &str)] = &[(
     r"src/main.phx",
     r#"#import std::io::write_stdout;
@@ -2646,6 +2680,7 @@ pub const PROJECTS: &[ProjectSpec] = &[
     PROJECT_HEAP_SLICE_STORE,
     PROJECT_HEAP_SLICE_UNSAFE,
     PROJECT_HEAP_UAF,
+    PROJECT_NESTED_TRAP,
     PROJECT_HELLO_PRINT,
     PROJECT_LIB_WITH_MAIN,
     PROJECT_LINK_REBASE,

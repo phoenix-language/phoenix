@@ -159,6 +159,44 @@ mod tests {
     }
 
     #[test]
+    fn format_vm_error_maps_callee_function_pc_span() {
+        let source = "helper :: () => { const n: s32 = 1 / 0; const _ = n; };\nmain :: () => { helper(); };\n";
+        let module = BytecodeModule {
+            pc_spans: PcSpanTable {
+                files: vec!["src/main.phx".to_owned()],
+                entries: vec![
+                    PcSpanEntry::new(0, 0, 0, 0, 10),
+                    PcSpanEntry::new(1, 0, 0, 50, 60),
+                ],
+            },
+            ..BytecodeModule::empty()
+        };
+        let err = VmError::at(0, 0, VmErrorKind::DivisionByZero);
+        let root = std::env::temp_dir().join("phx_vm_diag_callee_test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).expect("mkdir");
+        let main_path = root.join("src/main.phx");
+        std::fs::write(&main_path, source).expect("write");
+        let ctx = SourceContext {
+            project_root: Some(&root),
+            entry_path: Some(&main_path),
+            entry_source: Some(source),
+        };
+
+        let msg = format_vm_error(&module, &err, &ctx);
+        assert!(
+            msg.contains("division by zero at src/main.phx:1:"),
+            "expected callee helper line, got: {msg}"
+        );
+        assert!(
+            !msg.contains("(function"),
+            "should not fall back to bytecode site, got: {msg}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn format_vm_error_falls_back_to_bytecode_site_without_debug_section() {
         let module = BytecodeModule::empty();
         let err = VmError::at(2, 16, VmErrorKind::StackUnderflow);
