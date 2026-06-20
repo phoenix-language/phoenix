@@ -1,7 +1,19 @@
-//! Lexical scope stack for name lookup.
+//! Lexical scope stack for name resolution.
 //!
-//! Each [`Scope`] holds value and type maps keyed by [`Symbol`]. Lookup walks from innermost to
-//! module scope.
+//! ## Pass role
+//!
+//! Owned by the [`super::Resolver`] during the AST walk in [`super::walk`]. Tracks
+//! which [`DefId`] is bound to each interned [`Symbol`] in the current lexical environment.
+//!
+//! ## Inputs and outputs
+//!
+//! - **Inputs:** binding introductions from the AST walk (`define_*`) and name uses (`lookup_*`).
+//! - **Outputs:** [`DefId`] hits for successful lookups; duplicate bindings append
+//!   [`ResolveError::DuplicateDefinition`] to a shared [`DiagnosticBag`] without aborting the pass.
+//!
+//! Value names (expressions, patterns) and type names (signatures, paths) live in separate maps per
+//! [`Scope`]. Lookup walks from innermost to outermost scope; the module scope seeded by
+//! [`super::walk`] seeds the outermost module scope before body resolution.
 
 use std::collections::HashMap;
 
@@ -10,31 +22,53 @@ use phx_syntax::Symbol;
 
 use super::def_id::{Def, DefId};
 
-/// One lexical scope layer.
+/// One lexical scope layer with separate value and type bindings.
+///
+/// Each map stores the most recent [`DefId`] for a [`Symbol`] introduced in this layer only.
+/// Shadowing is represented by pushing a child [`Scope`] on [`ScopeStack`]; outer bindings remain
+/// visible until the child is popped.
 #[derive(Debug, Default)]
 pub(crate) struct Scope {
     values: HashMap<Symbol, DefId>,
     types: HashMap<Symbol, DefId>,
 }
 
-/// Stack of nested scopes (innermost last).
+/// Stack of nested scopes with the innermost scope at the end of the vector.
+///
+/// [`Resolver`](super::Resolver) pushes before block bodies, generic parameter lists, and closure
+/// parameter lists, then pops when leaving. Module-level and import bindings live in the bottom
+/// scope(s) and are not removed until the module walk finishes.
 #[derive(Debug, Default)]
 pub(crate) struct ScopeStack {
     scopes: Vec<Scope>,
 }
 
 impl ScopeStack {
-    /// Pushes an empty scope.
+    /// Pushes an empty scope layer for a new lexical block or signature list.
+    ///
+    /// Must be paired with [`Self::pop`] on all exit paths (including early returns in the walker).
     pub(crate) fn push(&mut self) {
         self.scopes.push(Scope::default());
     }
 
-    /// Pops the innermost scope.
+    /// Removes the innermost scope layer.
+    ///
+    /// Bindings defined only in that layer become invisible to subsequent [`Self::lookup_value`]
+    /// and [`Self::lookup_type`] calls. Popping past the module scope is a resolver bug.
     pub(crate) fn pop(&mut self) {
         self.scopes.pop();
     }
 
-    /// Inserts a value binding; reports duplicate definitions via `bag`.
+    /// Registers a value-namespace binding in the innermost scope.
+    ///
+    /// On a duplicate name in the same layer, records [`ResolveError::DuplicateDefinition`] with the
+    /// first defining span from `defs` and still overwrites the map entry so later lookups resolve
+    /// to the latest binding.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on user input. If the stack is empty, the binding is silently dropped (an
+    /// internal invariant violation in the walker).
     pub(crate) fn define_value(
         &mut self,
         defs: &[Def],
@@ -60,7 +94,15 @@ impl ScopeStack {
         scope.values.insert(name, def_id);
     }
 
-    /// Inserts a type binding; reports duplicate definitions via `bag`.
+    /// Registers a type-namespace binding in the innermost scope.
+    ///
+    /// Same duplicate-reporting and overwrite behavior as [`Self::define_value`], but uses the type
+    /// map (generics, structs, traits, type aliases, etc.).
+    ///
+    /// # Panics
+    ///
+    /// Never panics on user input. If the stack is empty, the binding is silently dropped (an
+    /// internal invariant violation in the walker).
     pub(crate) fn define_type(
         &mut self,
         defs: &[Def],
@@ -86,7 +128,11 @@ impl ScopeStack {
         scope.types.insert(name, def_id);
     }
 
-    /// Looks up a value name from innermost to outermost scope.
+    /// Resolves a value-namespace name from innermost to outermost scope.
+    ///
+    /// Returns `None` when the name is not bound in any active layer (caller emits
+    /// [`ResolveError::UnresolvedIdent`]).
+    #[must_use]
     pub(crate) fn lookup_value(&self, name: Symbol) -> Option<DefId> {
         for scope in self.scopes.iter().rev() {
             if let Some(id) = scope.values.get(&name) {
@@ -96,7 +142,11 @@ impl ScopeStack {
         None
     }
 
-    /// Looks up a type name from innermost to outermost scope.
+    /// Resolves a type-namespace name from innermost to outermost scope.
+    ///
+    /// Returns `None` when the name is not bound in any active layer (caller emits
+    /// [`ResolveError::UnresolvedType`]).
+    #[must_use]
     pub(crate) fn lookup_type(&self, name: Symbol) -> Option<DefId> {
         for scope in self.scopes.iter().rev() {
             if let Some(id) = scope.types.get(&name) {
@@ -106,7 +156,9 @@ impl ScopeStack {
         None
     }
 
-    /// Current nesting depth (number of active scopes).
+    /// Returns the number of active scope layers (module scope counts as one).
+    ///
+    /// Stored on each [`Def::scope_depth`] at introduction time for closure upvar detection.
     #[must_use]
     pub(crate) fn depth(&self) -> u32 {
         u32::try_from(self.scopes.len()).unwrap_or(u32::MAX)

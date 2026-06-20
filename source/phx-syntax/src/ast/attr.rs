@@ -1,4 +1,16 @@
 //! Item attribute AST (`#[name(...)]`).
+//!
+//! Bracket attributes prefix declarations and functions. Parsed into [`Attribute`] nodes before
+//! the item body; [`crate::attr_collect`] gathers them for resolve and codegen passes.
+//!
+//! ## Argument shapes
+//!
+//! - [`AttrArg::Named`] — `key = value`.
+//! - [`AttrArg::Flag`] — bare identifier flag.
+//! - [`AttrArg::Nested`] — nested calls such as `not(…)` / `all(…)` in `#[cfg(…)]`.
+//! - [`AttrArg::TypeName`] — positional type name (e.g. traits in `#[derive(…)]`).
+//!
+//! [`AttrValue`] is string, identifier, or boolean inside named arguments.
 
 use crate::ast::ident::{Ident, TypeName};
 

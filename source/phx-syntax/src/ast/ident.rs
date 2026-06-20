@@ -1,6 +1,13 @@
 //! Identifier AST types.
 //!
-//! [`Ident`] and [`TypeName`] store [`Symbol`] indices; [`Path`] is a `::`-separated sequence.
+//! [`Ident`] (`snake_case`) and [`TypeName`] (`PascalCase`) store [`Symbol`] indices plus span
+//! and [`AstNodeId`] for name resolution. [`Path`] is a `::`-separated sequence of value and type
+//! segments used in imports, qualified names, and module paths.
+//!
+//! ## Path segments
+//!
+//! - [`PathSegment::Ident`] — value or module segment.
+//! - [`PathSegment::Type`] — type segment, optionally with generic arguments (`Foo :: <T> :: bar`).
 
 use crate::ast::Node;
 use crate::ast::node_id::AstNodeId;

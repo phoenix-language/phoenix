@@ -1,6 +1,22 @@
 //! Declaration AST.
 //!
-//! Top-level [`Program`] items, functions, user types, traits, impls, and `#import` metadata.
+//! Top-level [`Program`] shape, functions, user types, traits, impls, and `#import` metadata.
+//!
+//! ## Program layout
+//!
+//! [`Program`] holds file-level [`ImportDirective`] nodes followed by [`TopLevelItem`] declarations.
+//! Each [`TopLevelItem`] wraps a [`TopLevelDecl`] with optional `pub` and bracket attributes.
+//!
+//! ## Top-level declarations
+//!
+//! User types (`struct`, `enum`, `type`, `trait`, `impl`), functions, module items (`mod`,
+//! `pub reexport`), and `extern` blocks. [`Function`] carries body, generics, and collected
+//! `#[derive]` / `#inline` metadata expanded before resolve.
+//!
+//! ## Impl and traits
+//!
+//! [`ImplMember`] is either an associated type assignment or a method. [`TraitItem`] is an
+//! associated type declaration or method signature (with optional default body).
 
 use crate::ast::Node;
 use crate::ast::attr::Attribute;

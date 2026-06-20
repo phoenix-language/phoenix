@@ -1,6 +1,14 @@
 //! Literal AST types.
 //!
-//! Literal values attached to expressions and patterns (numeric, bool, byte char/string).
+//! Literal payloads shared by expressions ([`super::expr::Expr::Literal`]) and patterns
+//! ([`super::Pattern::Literal`]). Numeric literals record optional suffixes from
+//! [`crate::token`]; the type checker interprets default types.
+//!
+//! ## Payloads
+//!
+//! - [`IntLit`] / [`FloatLit`] — parsed numeric value plus suffix.
+//! - [`Literal::Bool`], [`Literal::ByteChar`], [`Literal::ByteStr`], [`Literal::Unit`] — non-numeric
+//!   literals.
 
 use crate::token::{FloatSuffix, IntegerSuffix};
 

@@ -1,6 +1,23 @@
 //! Expression AST.
 //!
 //! Covers literals through assignment, casts, postfix chains, and control-flow expressions.
+//! The main payload is [`Expr`]; spanned nodes use [`ExprNode`] (`Node<Expr>`).
+//!
+//! ## Operator enums
+//!
+//! - [`BinOp`], [`UnaryOp`], [`AssignOp`] — infix, prefix, and assignment operators.
+//! - [`PostfixOp`] — field access, method/call chains, indexing, and `?`.
+//!
+//! ## Control flow
+//!
+//! - [`IfCondition`] — boolean `if` or `if const` / `if var` pattern bindings.
+//! - [`MatchArm`] (in [`crate::pat`]) — pattern plus block or expression body.
+//! - [`LambdaBody`] — closure body after `=>` (expression or block).
+//!
+//! ## Post-MVP surface
+//!
+//! [`RuntimeDirectiveKind`] and [`Expr::RuntimeDirective`] parse `@spawn` / `@send` syntax reserved
+//! for a future runtime; the MVP compiler may reject them later in the pipeline.
 
 use crate::ast::Node;
 use crate::ast::decl::Param;
