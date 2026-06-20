@@ -1,9 +1,35 @@
-//! Incremental freshness checks for workspace and path-dependency builds (M2).
+//! Incremental freshness checks for workspace and path-dependency builds (M2 driver).
 //!
-//! Compares live source and `.pxi` digests against `build/manifest.json` to decide
-//! whether a module, workspace, or prebuilt dependency crate can be reused without
-//! recompilation. Drives skip paths in the artifact emitter and early-return in
+//! Compares live source digests and dependency `.pxi` hashes against the recorded
+//! [`BuildManifest`] to decide whether modules, the whole workspace, or a prebuilt
+//! path dependency can be reused without recompilation. Drives skip paths in
+//! [`super::artifacts::write_interfaces_and_collect_objects`] and early returns in
 //! [`super::package::build_project`].
+//!
+//! ## Staleness model
+//!
+//! A workspace module is **fresh** when all of the following hold:
+//!
+//! - Its source file digest matches the manifest entry.
+//! - Every import dependency's `(logical_module, pxi_hash)` pair matches the manifest.
+//! - No transitive import depends on a module in the stale set
+//!   ([`module_imports_stale`]).
+//!
+//! A path dependency crate is **fresh** when its linked `lib/*.phx0` exists, its
+//! manifest loads, every mangled fn export in dependency `.pxi` files has a
+//! `function_id`, and [`all_modules_fresh`] succeeds for the dependency's own sources.
+//!
+//! [`BuildOptions::force`] bypasses freshness and always triggers a full rebuild.
+//!
+//! ## Submodule map
+//!
+//! | Function | Role |
+//! | --- | --- |
+//! | [`workspace_stale_modules`] | Collect workspace logical paths needing rebuild |
+//! | [`all_modules_fresh`] | True when every workspace module matches manifest |
+//! | [`dependency_build_is_fresh`] | True when a path dependency crate can be skipped |
+//! | [`dependency_pxi_has_function_ids`] | Guard for legacy manifests missing ids |
+//! | [`module_imports_stale`] | Transitive invalidation via import graph |
 
 use std::collections::HashSet;
 
@@ -15,12 +41,25 @@ use super::super::manifest::{BuildManifest, module_is_up_to_date, resolve_manife
 use super::super::options::BuildOptions;
 use super::util::module_in_workspace_package;
 
-/// Returns true when any import dependency is in the stale set.
+/// Returns `true` when any direct import dependency is in the stale module set.
+///
+/// Used during per-module artifact emission to invalidate a module whose own source
+/// hash is unchanged but that imports a logical path listed in `stale` (typically
+/// from [`workspace_stale_modules`]).
 pub(super) fn module_imports_stale(deps: &[PxiDependency], stale: &HashSet<String>) -> bool {
     deps.iter().any(|d| stale.contains(&d.logical_module))
 }
 
-/// Workspace modules whose source or dependency hashes differ from the manifest.
+/// Returns workspace logical module paths whose artifacts are out of date.
+///
+/// Filters `loaded.modules` to those owned by the workspace package (see
+/// [`super::util::module_in_workspace_package`]) and compares each module's source
+/// digest and dependency hash list against `old_manifest` via
+/// [`module_is_up_to_date`](crate::build::manifest::module_is_up_to_date).
+///
+/// Returns an empty set when `old_manifest` is `None` (first build) or when
+/// [`BuildOptions::force`] is set — callers treat a non-empty set as "rebuild all
+/// workspace modules" to propagate transitive changes.
 pub(super) fn workspace_stale_modules(
     loaded: &LoadedProgram,
     layout: &BuildLayout,
@@ -65,7 +104,13 @@ pub(super) fn workspace_stale_modules(
         .collect()
 }
 
-/// Returns true when every workspace module matches the manifest.
+/// Returns `true` when every workspace module matches the manifest.
+///
+/// Recomputes source digests and import dependency hashes for each workspace-owned
+/// module in `loaded` and requires each to pass
+/// [`module_is_up_to_date`](crate::build::manifest::module_is_up_to_date) against
+/// `manifest`. Used by [`dependency_build_is_fresh`] after reloading a dependency
+/// program to confirm its prebuilt artifacts still match live sources.
 pub(super) fn all_modules_fresh(
     manifest: &BuildManifest,
     loaded: &LoadedProgram,
@@ -102,7 +147,13 @@ pub(super) fn all_modules_fresh(
         })
 }
 
-/// Returns false when any fn export in dependency `.pxi` files lacks `function_id`.
+/// Returns `false` when any mangled fn export in dependency `.pxi` files lacks `function_id`.
+///
+/// Scans every module record in `manifest`, reads the corresponding `.pxi` under
+/// `build_root`, and rejects manifests where a function export name contains `$`
+/// (mangled monomorphization symbol) but has no assigned `function_id`. This guards
+/// against incremental cache hits on dependency builds produced before cross-crate
+/// function-id assignment was enforced.
 pub(super) fn dependency_pxi_has_function_ids(
     manifest: &BuildManifest,
     build_root: &std::path::Path,
@@ -121,7 +172,19 @@ pub(super) fn dependency_pxi_has_function_ids(
     true
 }
 
-/// Returns true when a dependency crate's linked output and manifest are up to date.
+/// Returns `true` when a path dependency's linked output and manifest are up to date.
+///
+/// Checks, in order:
+///
+/// 1. [`BuildOptions::force`] is not set.
+/// 2. The dependency's linked library file (`build/deps/{name}/lib/{name}.phx0`) exists.
+/// 3. The dependency manifest loads from disk.
+/// 4. [`dependency_pxi_has_function_ids`] passes for that manifest.
+/// 5. The dependency entry program reloads without diagnostics errors.
+/// 6. [`all_modules_fresh`] succeeds for the reloaded program.
+///
+/// When this returns `true`, [`super::package::build_dependency`] can skip rebuilding
+/// the dependency crate.
 pub(super) fn dependency_build_is_fresh(
     dep_cfg: &ProjectConfig,
     dep_layout: &BuildLayout,
