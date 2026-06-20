@@ -1,4 +1,47 @@
 //! Width-faithful runtime scalar payloads for the MVP stack machine.
+//!
+//! Each [`ScalarValue`] variant stores a Phoenix primitive at its declared width (`s32` is four
+//! bytes, `bool` is one byte, and so on). The VM operand stack and typed local slots use these
+//! cells instead of a shared integer lane; binary opcodes carry a [`PrimitiveKind`] operand so
+//! mixed-width stacks fail at runtime.
+//!
+//! [`ScalarValue::Ptr`] carries tagged `u64` addresses for frame locals, aggregate handles,
+//! const-pool indices, function pointers, and untagged heap offsets. Tag layout:
+//! `docs/design/features/vm-linear.md` § "Runtime value model (MVP)".
+//!
+//! ## Pointer tag layout
+//!
+//! High bits of a raw `u64` pointer discriminate the address space (low bits hold the index or
+//! offset):
+//!
+//! | Tag constant | Mask | Low bits |
+//! |---|---|---|
+//! | [`PTR_LOCAL_TAG`] | `0x8000_0000_0000_0000` | frame local slot index |
+//! | [`PTR_AGG_TAG`] | `0x4000_0000_0000_0000` | aggregate arena handle |
+//! | [`PTR_CONST_TAG`] | `0x2000_0000_0000_0000` | const-pool index |
+//! | [`PTR_FN_TAG`] | `0x1000_0000_0000_0000` | [`fn_ptr_from_id`] payload (bits 32–39 = `target_kind`, low 32 = id) |
+//! | *(none)* | `0` | VM byte-heap offset from [`Opcode::Alloc`](crate::Opcode::Alloc) |
+//!
+//! ## Owning passes
+//!
+//! - **Codegen / const pool** — materialize literals via [`ScalarValue::from_le_bytes`] /
+//!   [`ScalarValue::to_le_bytes`]; build tagged pointers with [`ScalarValue::local_ptr`],
+//!   [`ScalarValue::agg_ptr`], and [`ScalarValue::fn_ptr`].
+//! - **VM interpreter** — stack and locals hold [`ScalarValue`]; arithmetic widens through
+//!   [`scalar_to_i128`], [`scalar_to_u128`], and [`scalar_to_f64`], then narrows with
+//!   [`scalar_from_i128`], [`scalar_from_u128`], and [`scalar_from_f64`].
+//! - **Foreign stubs** — decode [`PTR_CONST_TAG`] strings and [`PTR_FN_TAG`] call targets on the
+//!   host.
+//!
+//! ## In this module
+//!
+//! - [`PTR_*_TAG`] — pointer tag masks.
+//! - [`ScalarValue`] — width-faithful stack/local cell.
+//! - [`fn_ptr_from_id`] / [`decode_fn_ptr`] / [`is_fn_ptr`] — function-pointer encoding.
+//! - [`scalar_to_*`] / [`scalar_from_*`] — cast helpers for arithmetic and
+//!   [`Opcode::Cast`](crate::Opcode::Cast).
+//! - [`mask_shift_amount`] — width-aware shift masking for [`Opcode::Shl`](crate::Opcode::Shl) /
+//!   [`Opcode::Shr`](crate::Opcode::Shr).
 
 #![allow(
     clippy::cast_possible_truncation,
@@ -9,19 +52,37 @@
 
 use crate::cast::PrimitiveKind;
 
-/// Address tag in the high bits of a raw pointer value.
+/// Address tag in the high bits of a raw pointer value (`0x8000…`).
+///
+/// Low 32 bits hold a frame local slot index. Produced by [`ScalarValue::local_ptr`] and decoded
+/// by [`ScalarValue::local_slot_from_ptr`].
 pub const PTR_LOCAL_TAG: u64 = 0x8000_0000_0000_0000;
-/// Address tag for aggregate arena handles used as slice data pointers.
+
+/// Address tag for aggregate arena handles used as slice data pointers (`0x4000…`).
+///
+/// Low 32 bits hold an aggregate handle. Produced by [`ScalarValue::agg_ptr`].
 pub const PTR_AGG_TAG: u64 = 0x4000_0000_0000_0000;
-/// Address tag for constant-pool indices (`pool_index` in low bits).
+
+/// Address tag for constant-pool indices (`0x2000…`).
+///
+/// Low 32 bits hold a const-pool index (`pool_index`). Used for string literals and rodata slice
+/// views.
 pub const PTR_CONST_TAG: u64 = 0x2000_0000_0000_0000;
-/// Address tag for function pointer values (`target_kind` in bits 32–39, id in low 32 bits).
+
+/// Address tag for function pointer values (`0x1000…`).
+///
+/// Bits 32–39 hold `target_kind`; low 32 bits hold the target id. See [`fn_ptr_from_id`] and
+/// [`decode_fn_ptr`].
 pub const PTR_FN_TAG: u64 = 0x1000_0000_0000_0000;
 
 /// A primitive value with storage matching its Phoenix type width.
+///
+/// Stack cells and typed local slots store exactly one variant. Arithmetic opcodes require matching
+/// [`PrimitiveKind`] operands; [`ScalarValue::Ptr`] is not a [`PrimitiveKind`] and is handled by
+/// pointer-specific opcodes (`PTR_LOAD`, `MAKE_FN_PTR`, and so on).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScalarValue {
-    /// `bool`
+    /// `bool` — one byte on the wire (`0` / non-zero).
     Bool(bool),
     /// `s8`
     I8(i8),
@@ -47,12 +108,14 @@ pub enum ScalarValue {
     F32(f32),
     /// `f64`
     F64(f64),
-    /// Raw address (`*T`, `&T`, `&mut T`).
+    /// Raw address (`*T`, `&T`, `&mut T`, tagged pointers, heap offsets).
     Ptr(u64),
 }
 
 impl ScalarValue {
     /// Returns the wire [`PrimitiveKind`] for this scalar, if any.
+    ///
+    /// [`ScalarValue::Ptr`] has no primitive kind and returns `None`.
     #[must_use]
     pub fn primitive_kind(self) -> Option<PrimitiveKind> {
         Some(match self {
@@ -74,6 +137,8 @@ impl ScalarValue {
     }
 
     /// Zero value for a primitive kind.
+    ///
+    /// Integer kinds use numeric zero; floats use `0.0`; `bool` is `false`.
     #[must_use]
     pub fn zero(kind: PrimitiveKind) -> Self {
         match kind {
@@ -93,19 +158,27 @@ impl ScalarValue {
         }
     }
 
-    /// Encodes a local slot index as a pointer value.
+    /// Encodes a local slot index as a tagged pointer value.
+    ///
+    /// Sets [`PTR_LOCAL_TAG`] in the high bits and `slot` in the low 32 bits.
     #[must_use]
     pub fn local_ptr(slot: u32) -> Self {
         Self::Ptr(PTR_LOCAL_TAG | u64::from(slot))
     }
 
     /// Encodes a function pointer value.
+    ///
+    /// Wraps [`fn_ptr_from_id`] as [`ScalarValue::Ptr`]. `target_kind` `0` = Phoenix
+    /// `function_id`; `1` = foreign stub id.
     #[must_use]
     pub fn fn_ptr(target_kind: u32, id: u32) -> Self {
         Self::Ptr(fn_ptr_from_id(target_kind, id))
     }
 
     /// Decodes a local slot from a local pointer, if tagged correctly.
+    ///
+    /// Returns `None` when `ptr` does not carry [`PTR_LOCAL_TAG`] or the index does not fit in
+    /// `u32`.
     #[must_use]
     pub fn local_slot_from_ptr(ptr: u64) -> Option<u32> {
         if ptr & PTR_LOCAL_TAG == PTR_LOCAL_TAG {
@@ -116,12 +189,17 @@ impl ScalarValue {
     }
 
     /// Encodes an aggregate handle as a data pointer for slices.
+    ///
+    /// Sets [`PTR_AGG_TAG`] in the high bits and `handle` in the low 32 bits.
     #[must_use]
     pub fn agg_ptr(handle: u32) -> Self {
         Self::Ptr(PTR_AGG_TAG | u64::from(handle))
     }
 
     /// Writes little-endian bytes for `kind`.
+    ///
+    /// Returns an empty vector when `kind` does not match the active storage variant (for example
+    /// requesting `PrimitiveKind::U32` bytes from [`ScalarValue::I32`]).
     #[must_use]
     pub fn to_le_bytes(self, kind: PrimitiveKind) -> Vec<u8> {
         match (kind, self) {
@@ -146,7 +224,22 @@ impl ScalarValue {
     ///
     /// # Errors
     ///
-    /// Returns `None` when payload length does not match `kind`.
+    /// Returns `None` when the payload is shorter than the width required by `kind`. For
+    /// [`PrimitiveKind::Bool`], a missing byte is treated as zero (false).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use phx_bytecode::{PrimitiveKind, ScalarValue};
+    ///
+    /// let v = ScalarValue::from_le_bytes(PrimitiveKind::U32, &[0x2A, 0, 0, 0]).unwrap();
+    /// assert_eq!(v, ScalarValue::U32(42));
+    /// assert_eq!(v.to_le_bytes(PrimitiveKind::U32), vec![0x2A, 0, 0, 0]);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Never panics.
     #[must_use]
     pub fn from_le_bytes(kind: PrimitiveKind, bytes: &[u8]) -> Option<Self> {
         match kind {
@@ -199,7 +292,10 @@ impl ScalarValue {
         }
     }
 
-    /// Returns `true` when the value is truthy (for branches).
+    /// Returns `true` when the value is truthy (for branch opcodes).
+    ///
+    /// Integers and floats compare against zero; [`ScalarValue::Bool`] uses its stored bit;
+    /// [`ScalarValue::Ptr`] is truthy when the raw address is non-zero.
     #[must_use]
     pub fn is_truthy(self) -> bool {
         match self {
@@ -223,6 +319,9 @@ impl ScalarValue {
 
 /// Encodes a function pointer raw address.
 ///
+/// Sets [`PTR_FN_TAG`], stores `target_kind` in bits 32–39 (masked to one byte), and `id` in the
+/// low 32 bits.
+///
 /// `target_kind` `0` = Phoenix `function_id`; `1` = foreign stub id.
 #[must_use]
 pub fn fn_ptr_from_id(target_kind: u32, id: u32) -> u64 {
@@ -230,6 +329,9 @@ pub fn fn_ptr_from_id(target_kind: u32, id: u32) -> u64 {
 }
 
 /// Decodes `(target_kind, id)` from a function pointer raw address.
+///
+/// Does not verify that `ptr` carries [`PTR_FN_TAG`]; use [`is_fn_ptr`] first when the tag must
+/// be present.
 #[must_use]
 pub fn decode_fn_ptr(ptr: u64) -> (u32, u32) {
     let id = u32::try_from(ptr & 0xFFFF_FFFF).unwrap_or(0);
@@ -244,6 +346,9 @@ pub fn is_fn_ptr(ptr: u64) -> bool {
 }
 
 /// Widens a scalar to `i128` using sign extension for signed storage variants.
+///
+/// Unsigned integers zero-extend into the low bits; floats truncate toward zero after promotion
+/// to `f64`. [`ScalarValue::Ptr`] maps its raw `u64` into `i128`.
 #[must_use]
 pub fn scalar_to_i128(value: ScalarValue, _from: PrimitiveKind) -> i128 {
     match value {
@@ -265,6 +370,9 @@ pub fn scalar_to_i128(value: ScalarValue, _from: PrimitiveKind) -> i128 {
 }
 
 /// Widens a scalar to `u128` using zero extension for unsigned storage variants.
+///
+/// Signed integers are cast to their unsigned bit pattern before widening. Floats truncate toward
+/// zero after promotion to `f64`. [`ScalarValue::Ptr`] maps its raw `u64` into `u128`.
 #[must_use]
 pub fn scalar_to_u128(value: ScalarValue, _from: PrimitiveKind) -> u128 {
     match value {
@@ -286,6 +394,8 @@ pub fn scalar_to_u128(value: ScalarValue, _from: PrimitiveKind) -> u128 {
 }
 
 /// Narrows an `i128` to `kind` with truncating/wrapping casts.
+///
+/// Matches Rust/Wasm two's-complement narrowing semantics for integer targets.
 #[must_use]
 pub fn scalar_from_i128(value: i128, kind: PrimitiveKind) -> ScalarValue {
     match kind {
@@ -306,6 +416,8 @@ pub fn scalar_from_i128(value: i128, kind: PrimitiveKind) -> ScalarValue {
 }
 
 /// Narrows a `u128` to `kind` with truncating/wrapping casts.
+///
+/// Signed targets reinterpret the low bits as two's-complement; floats truncate toward zero.
 #[must_use]
 pub fn scalar_from_u128(value: u128, kind: PrimitiveKind) -> ScalarValue {
     match kind {
@@ -326,6 +438,9 @@ pub fn scalar_from_u128(value: u128, kind: PrimitiveKind) -> ScalarValue {
 }
 
 /// Widens a scalar to `f64` for float casts and arithmetic.
+///
+/// Float storage passes through unchanged (with `f32` promoted to `f64`). Integer paths choose
+/// [`scalar_to_u128`] or [`scalar_to_i128`] based on `from.is_unsigned_int()`.
 #[must_use]
 pub fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
     match value {
@@ -339,6 +454,10 @@ pub fn scalar_to_f64(value: ScalarValue, from: PrimitiveKind) -> f64 {
 /// Masks a shift amount to the operand bit width (Rust/Wasm `wrapping_shl` on declared width).
 ///
 /// Equivalent to `amount & (W - 1)` when `W` is a power of two.
+///
+/// # Panics
+///
+/// Panics in debug builds when `kind.bit_width()` is zero (non-integer kind).
 #[must_use]
 pub fn mask_shift_amount(amount: u128, kind: PrimitiveKind) -> u32 {
     let width = u128::from(kind.bit_width());
@@ -350,6 +469,9 @@ pub fn mask_shift_amount(amount: u128, kind: PrimitiveKind) -> u32 {
 }
 
 /// Narrows an `f64` to `kind`.
+///
+/// Float targets cast directly; integer targets truncate toward zero via [`scalar_from_u128`] or
+/// [`scalar_from_i128`].
 #[must_use]
 pub fn scalar_from_f64(value: f64, kind: PrimitiveKind) -> ScalarValue {
     match kind {
