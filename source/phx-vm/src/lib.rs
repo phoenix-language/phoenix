@@ -36,6 +36,8 @@
 //! ## Re-exports
 //!
 //! - **Execution** — [`ExecutionContext`], [`Machine`], [`VmRuntime`], [`DEFAULT_HEAP_CAP_BYTES`]
+//! - **Scheduler (PHX-sched-0)** — [`SingleThreadScheduler`], [`RunnableContext`], [`RunQueue`],
+//!   [`ParkReason`], [`ContextState`]
 //! - **Values** — [`Value`], [`Aggregate`]
 //! - **Foreign stubs (Phase A)** — [`ForeignRegistry`], [`register_foreign_stub`],
 //!   [`register_builtin_foreign_stubs`], [`PHOENIX_WRITE_STDOUT`]
@@ -52,6 +54,7 @@ mod error;
 mod foreign;
 mod frame;
 mod interpreter;
+pub mod scheduler;
 
 pub use builtin_foreign::{PHOENIX_WRITE_STDOUT, register_builtin_foreign_stubs};
 pub use context::{DEFAULT_HEAP_CAP_BYTES, ExecutionContext, Machine, VmRuntime};
@@ -66,6 +69,10 @@ pub use interpreter::{
     run_captured_unverified_with_heap_cap, run_captured_with_heap_cap,
 };
 pub use phx_bytecode::{BytecodeModule, VerifiedModule};
+pub use scheduler::{
+    ContextId, ContextState, ParkReason, RunQueue, RunnableContext, RunningGuard, SchedulerError,
+    SingleThreadScheduler, StepOutcome,
+};
 
 /// Runs a verified `module` from its entry function until `main` returns.
 ///
