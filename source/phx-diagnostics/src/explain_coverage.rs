@@ -48,4 +48,9 @@ mod tests {
     fn typeck_copyable_drop_has_explain_entry() {
         assert_explain_codes(&["E2033"]);
     }
+
+    #[test]
+    fn typeck_borrow_codes_have_explain_entry() {
+        assert_explain_codes(&["E2047", "E2048"]);
+    }
 }
