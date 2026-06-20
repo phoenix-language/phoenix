@@ -2,6 +2,11 @@
 //!
 //! Attributes prefix declarations and functions (`#[inline]`, `#[cold]`, custom names with
 //! optional parenthesized arguments). Parsed before the item body in [`super::decl`].
+//!
+//! ## Consumers
+//!
+//! - [`super::decl`] — item and function attribute lists
+//! - [`phx_compiler::attrs`] — semantic interpretation after parse
 
 #![allow(clippy::elidable_lifetime_names)]
 

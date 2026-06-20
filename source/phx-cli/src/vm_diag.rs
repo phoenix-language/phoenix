@@ -4,6 +4,11 @@
 //! [`format_vm_error`] maps a [`VmError`] bytecode site to a file, line, and
 //! column in Phoenix source. Callers supply optional [`SourceContext`] so
 //! project-relative paths and in-memory entry source resolve without extra I/O.
+//!
+//! ## Requires
+//!
+//! Dev builds with PHX0 section 5 (PC span table). Release modules without section 5
+//! still format the VM error message but omit source locations.
 
 use std::path::{Path, PathBuf};
 

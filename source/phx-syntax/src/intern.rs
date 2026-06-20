@@ -3,6 +3,11 @@
 //! AST nodes store [`Symbol`] indices, not `String`. The [`Interner`] owns one heap-allocated
 //! copy of each distinct identifier for the compilation unit (`Vec<String>` is required so
 //! symbols outlive the original source borrows and deduplication is stable).
+//!
+//! ## Invariants
+//!
+//! - [`Symbol`] values are dense `u32` indices into [`Interner::strings`].
+//! - Equality is by index; use [`Interner::resolve`] for display names.
 
 use core::fmt;
 use std::collections::HashMap;
