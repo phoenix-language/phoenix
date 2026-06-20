@@ -1,22 +1,68 @@
 //! Secondary notes and help text for type-check diagnostics.
 //!
-//! Variant codes live in [`crate::type_error_registry`]; add a match arm here when introducing
-//! a new [`TypeCheckError`] variant that needs notes or help text.
+//! [`TypeCheckError`](crate::TypeCheckError) carries the primary message and span; this module
+//! builds **ancillary** lines rendered after the header as Cargo-style `= note:` and `= help:`
+//! labels. [`format_typecheck_error_styled`](crate::format::format_typecheck_error_styled) calls
+//! [`typecheck_ancillary`] and passes the result to [`render_diagnostic_enriched`](crate::render::render_diagnostic_enriched).
+//!
+//! ## Note vs help
+//!
+//! | Kind | [`TypeCheckAncillary`] field | Typical content |
+//! |------|------------------------------|-----------------|
+//! | Note | [`TypeCheckAncillary::notes`] | Context with optional caret (move site, type annotation, duplicate lang item) |
+//! | Help | [`TypeCheckAncillary::helps`] | Actionable fix suggestions (add import, cast, match arm, trait impl) |
+//!
+//! Notes may include a [`Span`] so the renderer can underline a related site (e.g. where a value
+//! was moved). Help lines are plain text only.
+//!
+//! ## When to extend this module
+//!
+//! Variant codes live in [`crate::type_error_registry`]. When adding a new [`TypeCheckError`]
+//! variant:
+//!
+//! 1. Register the variant → code mapping in `type_error_registry.rs`.
+//! 2. Add primary message text in [`typecheck_message`](crate::format::typecheck_message).
+//! 3. Add long-form explain text in [`crate::render::explain_code`].
+//! 4. Add a match arm in [`typecheck_ancillary`] here when the error benefits from secondary
+//!    notes or help (most user-facing variants do; [`TypeCheckError::InternalError`] and
+//!    [`TypeCheckError::ProgramTooLarge`] intentionally produce empty ancillary output).
+//!
+//! [`MismatchKind`](crate::MismatchKind) on [`TypeCheckError::Mismatch`] selects mismatch-specific
+//! notes (binding annotation span, argument index, struct field name) via the private
+//! `mismatch_ancillary` helper.
+//!
+//! ## Symbol resolution
+//!
+//! Variants that store interned indices ([`TypeCheckError::UnresolvedValue`],
+//! [`TypeCheckError::UnknownType`], method errors) resolve names through the caller-supplied
+//! [`SymbolNames`](crate::SymbolNames) trait. When a symbol cannot be resolved, help text falls
+//! back to `"<?>"`.
 
 use crate::Span;
 use crate::SymbolNames;
 use crate::TypeCheckError;
 
-/// Secondary note with optional source span (rendered with a caret when present).
+/// Secondary note with optional source span.
+///
+/// Rendered as `= note: {text}`. When [`TypeCheckNote::span`] is [`Some`], the diagnostic
+/// renderer may emit a second snippet with a caret at that location (e.g. the move site for
+/// [`TypeCheckError::UseAfterMove`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeCheckNote {
-    /// Note body (shown after `= note:`).
+    /// Note body shown after the `= note:` label.
     pub text: String,
-    /// Optional related source span.
+    /// Optional related source span for a secondary caret underline.
     pub span: Option<Span>,
 }
 
-/// Notes and suggestions appended after the primary diagnostic.
+/// Notes and suggestions appended after the primary type-check diagnostic.
+///
+/// Built by [`typecheck_ancillary`] from a [`TypeCheckError`] variant. Consumed by
+/// [`format_typecheck_error_styled`](crate::format::format_typecheck_error_styled), which maps
+/// notes into [`AncillaryNote`](crate::render::AncillaryNote) for layout.
+///
+/// Defaults to empty vectors; callers may append multiple help lines (e.g. cast hint plus
+/// annotation change suggestion for numeric binding mismatches).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TypeCheckAncillary {
     /// Context notes (binding site, move site, etc.).
@@ -26,6 +72,20 @@ pub struct TypeCheckAncillary {
 }
 
 /// Builds notes and help text for `err`.
+///
+/// Matches exhaustively on [`TypeCheckError`] and returns a fresh [`TypeCheckAncillary`]. Does not
+/// mutate `err` or consult source buffers — span values are copied from the error payload for
+/// the formatter to resolve against module source later.
+///
+/// [`TypeCheckError::Mismatch`] delegates to `mismatch_ancillary`, which branches on
+/// [`MismatchKind`](crate::MismatchKind) for binding, return, argument, and field context.
+/// Numeric primitive mismatches may suggest an explicit `as` cast when both sides are known
+/// numeric type names (`S8`–`U128`, `F32`, `F64`).
+///
+/// # Panics
+///
+/// Never panics on any [`TypeCheckError`] variant or symbol lookup failure; unresolved symbols
+/// render as `"<?>"` in help text.
 #[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> TypeCheckAncillary {
@@ -311,6 +371,7 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
     out
 }
 
+/// Appends mismatch-specific notes and help for [`TypeCheckError::Mismatch`].
 #[allow(clippy::too_many_lines)]
 fn mismatch_ancillary(
     expected: &str,
