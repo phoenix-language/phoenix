@@ -278,14 +278,139 @@ _Not counted toward the 8-task cap._ Orchestrator promotes items here when the a
 
 _Do not re-queue the above unless a regression appears._
 
+## Completed — sprint iteration 1 (2026-06-20)
+
+| # | Task | Notes |
+|---|------|-------|
+| 6 | PHX-070-p4 — Release strip of PHX0 section 5 | PR #101, #121, #123 |
+| 7 | PHX-070-p5 — PC span map across nested / indirect calls | PR #103 |
+| 8 | PHX-borrow-0 — `&mut T` exclusivity | PR #106 |
+| 9 | PHX-borrow-1 — `&T` shared borrow + conflict diagnostic | PR #111, #115 |
+| 10 | PHX-sched-0 — Scheduler types + park/resume harness | PR #104 |
+| 11 | PHX-sched-1 — Schedulable I/O contract doc | PR #113 |
+| 12 | Golden diagnostic — double mutable borrow | PR #110, #119 |
+| 13 | Verifier — hostile PHX0 section 5 / stripped-module cases | PR #102 |
+| 14 | README + CONTRIBUTING sync | PR #118 |
+| 15 | Stabilize flaky `heap_uaf_cli_shows_source_span_on_stderr` | PR #112, #122 |
+
+_Also on trunk from same sprint window: PHX-sched-2 I/O wait registry stub — PR #116._
+
+---
+
+## Task 16 — PHX-sched-3: AwaitIo opcode contract doc
+
+**Stream:** INFRA  
+**Design:** `docs/design/features/vm-linear.md`, `docs/design/features/runtime-transparency.md`  
+**Depends on:** PHX-sched-0 (#104), PHX-sched-1 (#113), PHX-sched-2 (#116)
+
+### Goal
+
+Document the **AwaitIo** / scheduler-wakeup opcode contract in `vm-linear.md` so codegen and std I/O slices share one normative reference.
+
+### Work
+
+1. Add opcode stub subsection: stack effect, park reason mapping, wakeup invariants.
+2. Cross-link from `runtime-transparency.md` Schedulable I/O contract.
+3. No Rust changes required unless a doc example needs a one-line rustdoc pointer.
+
+### Acceptance
+
+- Design doc PR reviewable in isolation; orchestrator can queue opcode implementation after merge.
+
+---
+
+## Task 17 — CLI `--release` e2e integration test
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/debug.md` (release profile)  
+**Depends on:** PHX-070-p4 (#101, #121, #123)
+
+### Goal
+
+End-to-end test: `phx build --release` + `phx run` on a minimal fixture; artifact verifies, runs, and stderr omits dev source spans.
+
+### Work
+
+1. Add `tests/integration/tests/release_build.rs` (or extend existing) with release profile build + run.
+2. Assert no section 5 in linked PHX0; VM fault (if triggered) has no `path:line:col` mapping.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Integration test passes on trunk; fails if release strip regresses.
+
+---
+
+## Task 18 — mvp-finish P3 doc truth
+
+**Stream:** INFRA  
+**Design:** `docs/mvp-finish-todo.md`, `docs/ROADMAP.md`
+
+### Goal
+
+Sync P3 rows with trunk: PHX-070 partial completion, borrow-checker phase-0 slices, scheduler harness + I/O contract.
+
+### Work
+
+1. Update P3 checkboxes and sub-bullets in `mvp-finish-todo.md`.
+2. Align ROADMAP PHX-070 / borrow / sched deferred rows with shipped PRs.
+3. No Rust changes.
+
+### Acceptance
+
+- P3 PHX-070 shows partial completion; borrow and sched rows reflect #104–#116, #106–#111.
+
+---
+
+## Task 19 — PHX-borrow-2: loop / branch borrow join
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/ownership.md`  
+**Depends on:** PHX-borrow-0 (#106), PHX-borrow-1 (#111)
+
+### Goal
+
+First join-rules slice: reject overlapping borrows across **if** arms or **loop** bodies where control-flow merge would alias `&mut T`.
+
+### Work
+
+1. Extend borrow map with branch/loop join points (minimal — no lifetime syntax).
+2. Unit tests in `source/phx-compiler/tests/typeck.rs`.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Fixture with borrows in both if arms fails type-check; sequential non-overlapping borrows still OK.
+
+---
+
+## Task 20 — Golden diagnostic: release build without source spans
+
+**Stream:** TESTS  
+**Depends on:** PHX-070-p4 (#101, #121, #123), Task 17
+
+### Goal
+
+Golden locks CLI stderr for a release-built program that traps: no Phoenix source line mapping in output.
+
+### Work
+
+1. `tests/integration/diagnostics/` fixture built with release profile + `.stderr` golden.
+2. Register in diagnostic or cli_e2e case list.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Test passes on trunk; catches accidental re-emission of section 5 in release builds.
+
 ---
 
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | — (refresh after next merge) |
-| Last trunk SHA | `777805cd` |
-| Active queue count | 8 / 8 |
+| Last completed task | #6–#13, #15 (iteration 1 merge batch) |
+| Last trunk SHA | `627fd8ec` |
+| Active queue count | 5 / 8 |
 | Blockers | — |
-| Next replenish | When #6–#8 complete → borrow goldens + sched doc |
+| Next replenish | When #16–#18 complete → borrow join + release goldens |

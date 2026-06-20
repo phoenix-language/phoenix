@@ -15,7 +15,7 @@
 | **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
 
 
-**Last verified:** 2026-06-15 — `just pre-commit` green; `cargo test -p phx-integration-tests --test cli_e2e`: **61 pass**; PHX-037 cursor drift closed (`f486b64`, `d04864b`, `c106981`).
+**Last verified:** 2026-06-20 — `just pre-commit` green on trunk (`627fd8ec`); sprint iteration 1 merged PHX-070-p4/p5, borrow phase-0, scheduler harness + I/O contract (PRs #101–#123).
 
 ---
 
@@ -105,11 +105,25 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
 
-- [ ] **Bytecode source maps / debugger (PHX0 section 5)** — Encode `(function_id, pc) → span` at link time; CLI maps runtime errors to Phoenix source. **Ref:** PHX-070 (deferred). **Owner:** compiler + VM + CLI. **Gate:** Post-beta.
+- [ ] **Bytecode source maps / debugger (PHX0 section 5)** — **Partial (2026-06-20):** core pipeline shipped on trunk; remaining work is stress fixtures and ROADMAP sync. **Ref:** PHX-070. **Owner:** compiler + VM + CLI. **Gate:** Post-beta.
+  - [x] `PcSpanTable` codegen + CLI `format_vm_error` (PR #12–#13)
+  - [x] Link-time merge + `heap_uaf` integration span test
+  - [x] Release profile strips section 5; verifier accepts stripped modules (PR #101, #121, #123)
+  - [x] Nested / indirect callee PC span map (PR #103)
+  - [x] Hostile section 5 verifier mutation tests (PR #102)
+  - [ ] Multi-module stress fixtures; full ROADMAP PHX-070 status sync
 
-- [ ] **Full borrow checker** — `&T` / `&mut T` exclusivity and lifetimes beyond MVP use-after-move. **Ref:** `ownership.md`, ROADMAP Deferred. **Owner:** compiler. **Gate:** Post-MVP.
+- [ ] **Full borrow checker** — **Partial (2026-06-20):** phase-0 exclusivity slices on trunk; lifetimes and join rules remain. **Ref:** `ownership.md`, ROADMAP Deferred. **Owner:** compiler. **Gate:** Post-MVP.
+  - [x] Overlapping `&mut T` rejection (PR #106)
+  - [x] Shared `&T` + `&T`/`&mut T` conflict (PR #111, #115)
+  - [x] Golden diagnostics E2047 / E2048 (PR #110, #119)
+  - [ ] Loop / branch borrow join rules; lifetime syntax (post-MVP)
 
-- [ ] **M:N scheduler + schedulable I/O** — Prerequisite for std I/O (`File.read`, networking). **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
+- [ ] **M:N scheduler + schedulable I/O** — **Partial (2026-06-20):** in-tree harness + design contract + I/O wait stub; no Phoenix syntax or std I/O yet. **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
+  - [x] Scheduler types + single-thread park/resume harness (PR #104)
+  - [x] Schedulable I/O contract documented (PR #113)
+  - [x] I/O wait registry stub + `AwaitIo` wakeup (PR #116)
+  - [ ] Opcode contract in `vm-linear.md`; M:N OS-thread scheduler; std I/O integration
 
 - [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
 
