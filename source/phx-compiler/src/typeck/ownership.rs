@@ -104,6 +104,9 @@ struct MutBorrowEntry {
 pub struct OwnershipTracker {
     bindings: Vec<BindingEntry>,
     mut_borrows: Vec<MutBorrowEntry>,
+    /// Every `&mut` borrow registered on this path, including those released by
+    /// [`Self::exit_scope`]. Used to detect overlapping borrows across conditional arms.
+    mut_borrow_log: Vec<MutBorrowEntry>,
     shared_borrows: Vec<SharedBorrowEntry>,
     scope_depth: u32,
 }
@@ -187,12 +190,14 @@ impl OwnershipTracker {
         let Some(binding_depth) = self.active_binding_depth(symbol) else {
             return;
         };
-        self.mut_borrows.push(MutBorrowEntry {
+        let entry = MutBorrowEntry {
             symbol,
             binding_depth,
             depth: self.scope_depth,
             span,
-        });
+        };
+        self.mut_borrows.push(entry.clone());
+        self.mut_borrow_log.push(entry);
     }
 
     /// Registers a new binding as [`BindingState::Valid`] at the current scope depth.
@@ -309,6 +314,43 @@ impl OwnershipTracker {
             }
         }
         out
+    }
+
+    /// Returns the first pair of mutable-borrow sites when two or more conditional arms
+    /// mutably borrowed the same binding visible at `base`.
+    #[must_use]
+    pub fn overlapping_mut_borrow_across_arms(
+        base: &Self,
+        arm_ends: &[Self],
+    ) -> Option<(Symbol, Span, Span)> {
+        let mut seen = std::collections::HashSet::new();
+        for entry in base
+            .bindings
+            .iter()
+            .rev()
+            .filter(|entry| entry.depth <= base.scope_depth)
+        {
+            if !seen.insert((entry.symbol, entry.depth)) {
+                continue;
+            }
+            let symbol = entry.symbol;
+            let binding_depth = entry.depth;
+            let mut first_span: Option<Span> = None;
+            for arm in arm_ends {
+                let Some(borrow) = arm
+                    .mut_borrow_log
+                    .iter()
+                    .find(|e| e.symbol == symbol && e.binding_depth == binding_depth)
+                else {
+                    continue;
+                };
+                if let Some(prior) = first_span {
+                    return Some((symbol, prior, borrow.span));
+                }
+                first_span = Some(borrow.span);
+            }
+        }
+        None
     }
 
     fn binding_state_at_depth(&self, symbol: Symbol, depth: u32) -> Option<BindingState> {
@@ -565,6 +607,49 @@ mod tests {
 
         let joined = OwnershipTracker::join_arms(&base, &[arm_a, arm_b]);
         assert_eq!(joined.conflicting_mut_borrow(sym), Some(borrow_span));
+    }
+
+    #[test]
+    fn overlapping_mut_borrow_across_arms_detects_block_scoped_borrows() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let first = Span::new(1, 2);
+        let second = Span::new(3, 4);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+
+        let mut arm_a = base.clone();
+        arm_a.enter_scope();
+        arm_a.register_mut_borrow(sym, first);
+        arm_a.exit_scope();
+        assert_eq!(arm_a.conflicting_mut_borrow(sym), None);
+
+        let mut arm_b = base.clone();
+        arm_b.enter_scope();
+        arm_b.register_mut_borrow(sym, second);
+        arm_b.exit_scope();
+
+        let overlap = OwnershipTracker::overlapping_mut_borrow_across_arms(&base, &[arm_a, arm_b]);
+        assert_eq!(overlap, Some((sym, first, second)));
+    }
+
+    #[test]
+    fn overlapping_mut_borrow_across_arms_none_when_single_arm_borrows() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let borrow_span = Span::new(5, 6);
+
+        let mut base = OwnershipTracker::new();
+        base.define(sym, ty);
+
+        let mut arm_a = base.clone();
+        arm_a.register_mut_borrow(sym, borrow_span);
+        let arm_b = base.clone();
+
+        assert!(
+            OwnershipTracker::overlapping_mut_borrow_across_arms(&base, &[arm_a, arm_b]).is_none()
+        );
     }
 
     #[test]

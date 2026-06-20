@@ -260,6 +260,27 @@ impl<'a> TypeChecker<'a> {
         (result, end)
     }
 
+    pub(in crate::typeck::check) fn report_overlapping_mut_borrows_across_arms(
+        &mut self,
+        pre: &OwnershipTracker,
+        arm_ends: &[OwnershipTracker],
+    ) {
+        let Some((symbol, prior_span, borrow_span)) =
+            OwnershipTracker::overlapping_mut_borrow_across_arms(pre, arm_ends)
+        else {
+            return;
+        };
+        let name = self.symbol_name(symbol);
+        self.bag.push(
+            self.current_module,
+            TypeCheckError::OverlappingMutBorrow {
+                name,
+                prior_span,
+                span: borrow_span,
+            },
+        );
+    }
+
     /// Enters a nested binding scope in ownership and optional function layout builders.
     pub(in crate::typeck::check) fn enter_scope(&mut self) {
         self.ownership.enter_scope();
