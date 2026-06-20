@@ -1,4 +1,28 @@
-//! Collect all `#import` directives in a program (file scope and block scope).
+//! Collect all `#import` directives in a parsed program.
+//!
+//! Phoenix allows `#import` at file scope (before top-level items) and inside blocks (function
+//! bodies, nested scopes, control-flow arms). Resolver and module passes need every directive
+//! regardless of nesting depth — this module walks the untyped AST and returns them in
+//! discovery order.
+//!
+//! ## What is collected
+//!
+//! | Location | AST path |
+//! |----------|----------|
+//! | File header | [`Program::imports`](crate::ast::Program::imports) |
+//! | Block scope | [`BlockItem::Import`](crate::ast::stmt::BlockItem::Import) inside functions, `if` arms, loops, etc. |
+//!
+//! Directives nested inside expressions (for example within a closure body) are included. Type
+//! and item declarations without executable bodies are skipped.
+//!
+//! ## Public API
+//!
+//! - [`all_imports`] — single entry point for the full list.
+//!
+//! ## Pipeline position
+//!
+//! Called by resolver/module logic after [`crate::parse`]. Does not validate paths or resolve
+//! symbols — it only enumerates syntax nodes.
 
 use crate::ast::decl::{ImplMember, ImportDirective, Program, TopLevelDecl, TopLevelItem};
 use crate::ast::expr::{Expr, IfCondition, LambdaBody};
@@ -6,7 +30,46 @@ use crate::ast::pat::MatchArm;
 use crate::ast::stmt::{Block, BlockItem, Stmt};
 use crate::ast::{BlockNode, Node};
 
-/// Returns every `#import` in `program`, including block-scoped directives.
+/// Returns every `#import` directive in `program`, in depth-first discovery order.
+///
+/// File-level imports ([`Program::imports`](crate::ast::Program::imports)) appear first, in
+/// source order, followed by block-scoped imports encountered while walking top-level items and
+/// their nested expressions, statements, and control-flow bodies.
+///
+/// Each returned node carries the directive's [`Span`](crate::Span) for diagnostics.
+///
+/// # Panics
+///
+/// Never panics — read-only traversal of a parsed AST.
+///
+/// # Examples
+///
+/// File-level import:
+///
+/// ```
+/// use phx_syntax::{all_imports, parse};
+///
+/// let src = "#import std::io;\nmain :: () => { };";
+/// let file = parse(src);
+/// assert!(!file.has_errors());
+/// assert_eq!(all_imports(&file.value.program).len(), 1);
+/// ```
+///
+/// Block-scoped import inside a function body:
+///
+/// ```
+/// use phx_syntax::{all_imports, parse};
+///
+/// let src = r"
+/// main :: () => {
+///   #import util::math::add;
+///   const _ = add(1, 2);
+/// };
+/// ";
+/// let file = parse(src);
+/// assert!(!file.has_errors());
+/// assert_eq!(all_imports(&file.value.program).len(), 1);
+/// ```
 #[must_use]
 pub fn all_imports(program: &Program) -> Vec<&Node<ImportDirective>> {
     let mut out = Vec::new();
