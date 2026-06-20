@@ -73,6 +73,7 @@ fn malformed_module_bytes() -> Vec<u8> {
         },
         code,
         local_layouts: LocalLayoutTable::default(),
+        pc_spans: Default::default(),
     };
     module.encode().expect("encode malformed module")
 }
