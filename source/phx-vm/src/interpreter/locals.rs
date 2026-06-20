@@ -6,6 +6,9 @@
 //!
 //! Byte-typed constants ([`ConstTag::Bytes`](phx_bytecode::ConstTag::Bytes)) are not yet
 //! supported at runtime.
+//!
+//! Local slots hold arbitrary [`Value`] cells (scalars or aggregate handles). Load/store opcodes
+//! copy the cell by value; they do not deep-copy aggregate arena contents.
 
 use phx_bytecode::{BytecodeModule, ConstTag, Instruction, PrimitiveKind, ScalarValue};
 
@@ -13,7 +16,27 @@ use crate::VmErrorKind;
 use crate::context::ExecutionContext;
 use crate::frame::Value;
 
-/// Loads a constant pool entry onto the stack.
+/// Loads a constant-pool entry onto the operand stack.
+///
+/// Operand 0 is the constant-pool index; operand 1 is the wire [`PrimitiveKind`] passed to
+/// [`ScalarValue::from_le_bytes`](phx_bytecode::ScalarValue::from_le_bytes) when decoding the
+/// entry payload. The verifier ensures the kind matches the pool entry tag; a mismatch at runtime
+/// yields [`VmErrorKind::InvalidConstPayload`].
+///
+/// Stack: `[...] → [..., value]`.
+///
+/// # Errors
+///
+/// Returns [`VmErrorKind::InvalidConstIndex`] when the pool index is out of range.
+/// Returns [`VmErrorKind::InvalidConstPayload`] when operand 1 is not a valid
+/// [`PrimitiveKind`](phx_bytecode::PrimitiveKind) or the payload cannot be decoded for the given
+/// kind.
+/// Returns [`VmErrorKind::UnsupportedConst`] for [`ConstTag::Bytes`] entries (not implemented in
+/// v0).
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmErrorKind`] instead.
 pub(super) fn exec_const(
     ctx: &mut ExecutionContext,
     module: &BytecodeModule,
@@ -26,7 +49,22 @@ pub(super) fn exec_const(
     Ok(())
 }
 
-/// Loads a local slot onto the stack.
+/// Copies a local slot from the active frame onto the operand stack.
+///
+/// Operand 0 is the slot index in the current frame's [`crate::frame::Frame::locals`] vector.
+/// The slot value is copied ([`Copy`](std::marker::Copy) for [`Value`]); aggregate handles refer
+/// to the same arena entry after the load.
+///
+/// Stack: `[...] → [..., local]`.
+///
+/// # Errors
+///
+/// Returns [`VmErrorKind::InvalidLocalSlot`] when the slot index does not fit in `usize`, the
+/// call stack is empty, or the slot is beyond the frame's local vector length.
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmErrorKind`] instead.
 pub(super) fn exec_load_local(
     ctx: &mut ExecutionContext,
     inst: &Instruction,
@@ -42,7 +80,22 @@ pub(super) fn exec_load_local(
     Ok(())
 }
 
-/// Stores the stack top into a local slot.
+/// Pops the stack top and stores it into a local slot on the active frame.
+///
+/// Operand 0 is the destination slot index. Overwrites the previous cell in place; if the popped
+/// value is an aggregate handle, the slot now refers to that handle (shared arena semantics).
+///
+/// Stack: `[..., value] → [...]`.
+///
+/// # Errors
+///
+/// Returns [`VmErrorKind::StackUnderflow`] when the operand stack is empty.
+/// Returns [`VmErrorKind::InvalidLocalSlot`] when the slot index is invalid or out of range for
+/// the active frame (same rules as [`exec_load_local`]).
+///
+/// # Panics
+///
+/// Never panics on malformed user bytecode; returns [`VmErrorKind`] instead.
 pub(super) fn exec_store_local(
     ctx: &mut ExecutionContext,
     inst: &Instruction,
@@ -59,6 +112,12 @@ pub(super) fn exec_store_local(
     Ok(())
 }
 
+/// Decodes one constant-pool entry into a stack [`Value`].
+///
+/// Matches on [`ConstTag`](phx_bytecode::ConstTag) to select the decode path. Integer tags use the
+/// instruction's wire `kind`; bool and float tags use fixed primitive kinds. Payload length and
+/// tag/kind consistency are checked at verify time; runtime decoding failures indicate corrupt
+/// images or verifier bypass (unverified test path).
 fn load_const(
     module: &BytecodeModule,
     index: usize,
