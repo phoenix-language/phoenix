@@ -111,7 +111,7 @@ fn str_literal_bytes<'a>(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use phx_bytecode::ScalarValue;
+    use phx_bytecode::{PcSpanTable, ScalarValue};
 
     use super::*;
     use crate::{Machine, Value};
@@ -126,7 +126,7 @@ mod tests {
             functions: phx_bytecode::FunctionTable::default(),
             code: Vec::new(),
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
         machine.stack().push(Value::Scalar(ScalarValue::I32(1)));
         let err = phoenix_write_stdout_stub(&mut machine, &module).expect_err("not str");
@@ -144,7 +144,7 @@ mod tests {
             functions: phx_bytecode::FunctionTable::default(),
             code: Vec::new(),
             local_layouts: phx_bytecode::LocalLayoutTable::default(),
-            pc_spans: Default::default(),
+            pc_spans: PcSpanTable::default(),
         };
         let elems: Vec<Value> = b"42\0"
             .iter()

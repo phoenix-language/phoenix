@@ -5,8 +5,8 @@ mod support;
 
 use phx_bytecode::{
     BytecodeModule, ConstEntry, ConstPool, ConstTag, FileHeader, FunctionRecord, FunctionTable,
-    Instruction, LocalLayoutTable, ModuleError, Opcode, PrimitiveKind, SectionError, SectionKind,
-    TypeTable, VerifyError, verify,
+    Instruction, LocalLayoutTable, ModuleError, Opcode, PcSpanTable, PrimitiveKind, SectionError,
+    SectionKind, TypeTable, VerifyError, verify,
 };
 use phx_vm::run_unverified;
 use support::{
@@ -252,7 +252,7 @@ fn jump_if_false_underflow_module(code: Vec<u8>) -> BytecodeModule {
         },
         code,
         local_layouts: LocalLayoutTable::default(),
-        pc_spans: Default::default(),
+        pc_spans: PcSpanTable::default(),
     }
 }
 

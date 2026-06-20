@@ -158,6 +158,7 @@ fn ir_binop_to_opcode(op: IrBinOp) -> Opcode {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn emit_blocks(
     func: &IrFunction,
     pool: &mut ConstPoolBuilder,
