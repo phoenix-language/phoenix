@@ -1,4 +1,20 @@
-//! Submodule declarations and filesystem discovery (V0-061).
+//! Submodule declarations, filesystem discovery, and layout validation (V0-061).
+//!
+//! ## Pass role
+//!
+//! While [`super::loader`] parses each file, this module ingests `mod` / `pub mod` and
+//! `pub reexport` declarations into [`SubmoduleRegistry`], resolves child `.phx` paths on disk,
+//! and (for project builds) reports layout mistakes: orphan files, ambiguous flat-vs-directory
+//! entries, and directories missing a module entry file.
+//!
+//! ## Entry points
+//!
+//! - [`SubmoduleRegistry::ingest_module`] — record declarations from one parsed parent module
+//! - [`resolve_submodule_file`] — map a `mod child;` to logical path + filesystem path
+//! - [`effective_submodule_parent`] — parent logical path for ad-hoc entry files at package root
+//! - [`is_module_importable`] — whether an importer may `#import` a target (pub-mod visibility chain)
+//! - [`validate_orphan_files`], [`validate_ambiguous_module_entries`],
+//!   [`validate_missing_module_entries`] — project layout checks (called from loader when layout is set)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -32,6 +48,9 @@ pub struct ReexportDecl {
 }
 
 /// Submodule graph collected while loading a program.
+///
+/// Built incrementally by [`Self::ingest_module`] during load; consumed by the loader for enqueueing
+/// child files and by import resolve for cross-package visibility checks.
 #[derive(Debug, Clone, Default)]
 pub struct SubmoduleRegistry {
     /// `child_logical_display` → parent logical display.

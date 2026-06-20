@@ -1,4 +1,13 @@
 //! Shared `#import` binding resolution for file- and block-scoped imports.
+//!
+//! ## Pass role
+//!
+//! Called from [`super::resolve_loaded_program`] while building import prefaces for each module.
+//! Resolves a single [`ImportDirective`] to local bindings (value and type namespaces), including
+//! `.pxi` type tables for cross-package imports and [`super::discover::is_module_importable`]
+//! visibility checks for submodule paths.
+//!
+//! [`ImportResolveCtx`] bundles the loaded program tables needed for one resolution pass.
 
 use std::collections::{HashMap, HashSet};
 

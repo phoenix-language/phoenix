@@ -1,9 +1,18 @@
 //! Import dependency graph and topological ordering.
 //!
-//! When every module in an import SCC has a **fresh** `.pxi` (source hash matches), compilation
-//! may proceed with **undefined** module order inside the SCC; cross-module ABI is frozen by the
-//! interface files, not by parse order. If any cyclic module lacks a fresh `.pxi`, [`ResolveError::CircularImport`]
-//! is reported at an `#import` edge in the cycle.
+//! ## Pass role
+//!
+//! Used by [`super::loader`] after all modules are parsed: [`collect_edges`] turns `#import`
+//! directives into `(importer, imported, span)` edges, then [`topo_sort_with_pxi_escape`] either
+//! validates acyclic order or permits import SCCs when every cyclic module has a **fresh** `.pxi`
+//! (source hash matches). Cross-module ABI inside an SCC is frozen by interface files, not parse
+//! order. If any cyclic module lacks a fresh `.pxi`, [`ResolveError::CircularImport`] is reported
+//! at an `#import` edge in the cycle.
+//!
+//! ## Entry points
+//!
+//! - [`import_target_module`] — resolve one `#import` path to a [`ModulePath`] (public helper for tests)
+//! - `collect_edges` / `topo_sort_with_pxi_escape` — loader-internal edge build and cycle check
 
 use std::collections::{HashMap, HashSet, VecDeque};
 

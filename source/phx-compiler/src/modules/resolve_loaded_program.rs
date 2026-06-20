@@ -1,4 +1,16 @@
 //! Cross-module name resolution for a loaded program.
+//!
+//! ## Pass role
+//!
+//! Consumes [`LoadedProgram`] from the loader and produces [`ResolvedProgram`] for typeck. Runs
+//! in two phases per module: collect top-level defs and exports (including reexports from
+//! [`SubmoduleRegistry`]), then resolve bodies with import prefaces built by
+//! [`super::import_resolve`] and optional prelude bindings from [`super::prelude`].
+//!
+//! ## Entry points
+//!
+//! - [`resolve_loaded_program`] — sole public entry; merges all modules into one def table and
+//!   resolution map
 
 use std::collections::{HashMap, HashSet};
 
