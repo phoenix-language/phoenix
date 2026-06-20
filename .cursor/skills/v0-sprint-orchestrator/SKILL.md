@@ -41,7 +41,8 @@ Work top-to-bottom within a priority tier. Skip items already in flight on an op
 
 | ID | Task | Stage | Notes |
 |---|---|---|---|
-| PHX-070 | PHX0 section 5 source maps: encode `(function_id, pc) → span` at link; CLI maps runtime errors | codegen/link/cli | Read `docs/design/features/debug.md` first |
+| PHX-070-p1 | PHX0 section 5 `PcSpanTable` encode at link/codegen | codegen/link | **Done** — PR #12 |
+| PHX-070-p2 | CLI maps `(function_id, pc)` runtime errors to Phoenix source spans | cli/vm | In flight — stacks on #12 |
 | PHX-061 | PXI round-trip property tests for nested generic types | tests/pxi | **Done** — PR #9 |
 | PHX-050-adj | `load_project_binary` optional verify-on-load | vm/cli | **Done** — PR #11 |
 
