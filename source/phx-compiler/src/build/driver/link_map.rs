@@ -1,9 +1,31 @@
-//! Global function-id map and dependency link inputs (M2).
+//! Global function-id map and dependency link inputs (M2 driver).
 //!
-//! Assigns stable function indices across workspace and path-dependency exports for
-//! codegen and link. Reads dependency `.pxi` `function_id` fields, verifies export
-//! signature stability, and appends decoded dependency `.phx0` modules to the link
-//! input list.
+//! Bridges cross-crate codegen and the linker by assigning stable numeric function
+//! indices to every [`DefId`] that appears in IR or dependency exports. Called from
+//! [`super::package::build_package`] after type-check and before per-module codegen.
+//!
+//! ## Responsibilities
+//!
+//! - **Global map** — [`build_global_fn_map`] merges dependency `.pxi` `function_id`
+//!   values with freshly allocated ids for workspace-local functions and in-crate
+//!   monomorphizations of dependency generics.
+//! - **Link inputs** — [`append_dependency_link_inputs`] decodes prebuilt dependency
+//!   `.phx0` objects from each path dependency's manifest for the final link step.
+//! - **Interface stability** — [`verify_pxi_exports`] rejects signature changes on
+//!   existing exports when regenerating `.pxi` files.
+//!
+//! ## Inputs and outputs
+//!
+//! | Function | Reads | Produces |
+//! | --- | --- | --- |
+//! | [`build_global_fn_map`] | [`ProjectConfig`], [`LoadedProgram`], [`TypedProgram`], IR | `HashMap<DefId, u32>` for codegen |
+//! | [`append_dependency_link_inputs`] | dependency manifests under `build/deps/` | extra [`LinkInput`] slices |
+//! | [`collect_export_maps`] | [`ResolvedProgram`](crate::resolver::ResolvedProgram) | per-module export name → [`DefId`] |
+//! | [`verify_pxi_exports`] | old manifest + new [`PxiFile`] | `Ok(())` or [`BuildError::InterfaceMismatch`] |
+//!
+//! Dependency `.pxi` files must list every imported function export with a `function_id`
+//! (except template/generic exports resolved at monomorphization time). A stale or
+//! incomplete dependency interface surfaces as [`BuildError::StaleInterface`].
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -21,7 +43,13 @@ use super::super::error::BuildError;
 use super::super::manifest::{BuildManifest, resolve_manifest_path};
 use super::util::module_in_workspace_package;
 
-/// Returns true when the dependency `.pxi` exports the mangled mono symbol.
+/// Returns `true` when a path dependency's `.pxi` already exports a monomorphized symbol.
+///
+/// Looks up the dependency crate's module artifact for `req.logical_module`, reads its
+/// `.pxi`, and checks for a function export whose name matches [`CrossCrateMonoReq::mangled_name`]
+/// with a populated `function_id`. Used by the driver to decide whether cross-crate
+/// monomorphization work can be satisfied from a prebuilt dependency or must be lowered
+/// in the consumer crate.
 pub(super) fn dep_pxi_has_mangled_export(
     consumer: &ProjectConfig,
     dep_cfg: &ProjectConfig,
@@ -37,7 +65,13 @@ pub(super) fn dep_pxi_has_mangled_export(
         .any(|e| e.name == req.mangled_name && e.kind == "fn" && e.function_id.is_some())
 }
 
-/// Per-module export maps from the resolved program.
+/// Builds per-module export name → [`DefId`] maps from the resolved program.
+///
+/// Iterates [`ResolvedProgram::defs`](crate::resolver::ResolvedProgram) and records
+/// each exported definition in the vector slot indexed by its owning module id. The
+/// resulting table is indexed by module id during
+/// [`super::artifacts::write_interfaces_and_collect_objects`] when constructing
+/// `.pxi` export lists.
 pub(super) fn collect_export_maps(
     resolved: &crate::resolver::ResolvedProgram,
 ) -> Vec<HashMap<phx_syntax::Symbol, DefId>> {
@@ -54,11 +88,18 @@ pub(super) fn collect_export_maps(
     per_module
 }
 
-/// Appends decoded dependency `.phx0` modules to the link input list.
+/// Appends decoded dependency `.phx0` modules to the workspace link input list.
+///
+/// For each path dependency in `config`, loads its [`BuildManifest`] from
+/// `build/deps/{name}/manifest.json`, resolves each recorded `phx0_path` relative to
+/// that dependency's build root, decodes the bytecode, and pushes a [`LinkInput`].
+/// Workspace-local modules are not included here — they are collected separately by
+/// [`super::artifacts::write_interfaces_and_collect_objects`].
 ///
 /// # Errors
 ///
-/// Returns [`BuildError`] when a dependency manifest or object file is missing.
+/// Returns [`BuildError::StaleInterface`] when a dependency manifest is missing.
+/// Returns [`BuildError::Io`] when a `.phx0` file cannot be read or decoded.
 pub(super) fn append_dependency_link_inputs(
     config: &ProjectConfig,
     link_inputs: &mut Vec<LinkInput>,
@@ -96,11 +137,30 @@ pub(super) fn append_dependency_link_inputs(
     Ok(())
 }
 
-/// Builds the global `DefId` → function index map for codegen and linking.
+/// Builds the global [`DefId`] → function index map for codegen and linking.
+///
+/// Produces the table passed to [`codegen_module`](crate::codegen::codegen_module) so
+/// call sites across crates agree on numeric function ids embedded in bytecode.
+///
+/// ## Algorithm
+///
+/// 1. Scan every path dependency manifest and collect `function_id` values from `.pxi`
+///    fn exports into `dep_export_fn_ids`; track generic/template exports separately.
+/// 2. For defs in dependency logical modules, map imported functions to the dependency's
+///    stable or mangled export id (skipping template exports monomorphized locally).
+/// 3. Walk IR functions: reuse dependency ids where already mapped; allocate sequential
+///    ids starting at `max(dep ids) + 1` for workspace-local defs and in-crate mono
+///    instances of dependency generic impl methods.
+///
+/// When `config.dependencies` is empty, ids start at `0` and increment per IR function
+/// in workspace modules only.
 ///
 /// # Errors
 ///
-/// Returns [`BuildError`] when dependency `.pxi` files are stale or incomplete.
+/// Returns [`BuildError::StaleInterface`] when an imported function lacks a matching
+/// `function_id` in the dependency `.pxi`, or when a dependency manifest is missing.
+/// Returns [`BuildError::Project`] / [`BuildError::Pxi`] when dependency configuration
+/// or interface files cannot be loaded.
 #[allow(clippy::too_many_lines)]
 pub(super) fn build_global_fn_map(
     config: &ProjectConfig,
@@ -241,7 +301,17 @@ pub(super) fn build_global_fn_map(
     Ok(map)
 }
 
-/// Verifies that new `.pxi` exports do not change signatures of existing exports.
+/// Verifies that regenerated `.pxi` exports preserve signatures of existing exports.
+///
+/// Compares `new_pxi` against the on-disk interface recorded in `old` for `logical`.
+/// Exports present in both files must have identical `signature` strings; new exports
+/// and removed exports are allowed. When the previous `.pxi` file is missing (stale
+/// manifest entry), verification succeeds so the driver can regenerate artifacts.
+///
+/// # Errors
+///
+/// Returns [`BuildError::InterfaceMismatch`] when an export name exists in both the old
+/// and new interfaces but the signature string differs.
 pub(super) fn verify_pxi_exports(
     old: &BuildManifest,
     build_root: &Path,
