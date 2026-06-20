@@ -1,4 +1,7 @@
 //! Parser for `#[...]` item attributes.
+//!
+//! Attributes prefix declarations and functions (`#[inline]`, `#[cold]`, custom names with
+//! optional parenthesized arguments). Parsed before the item body in [`super::decl`].
 
 #![allow(clippy::elidable_lifetime_names)]
 
@@ -12,6 +15,8 @@ use crate::token::{Keyword, TokenKind};
 
 impl<'src> Parser<'src> {
     /// Parses zero or more `#[ident(args?)]` attributes.
+    ///
+    /// Returns an empty vector when the next token is not [`TokenKind::HashBracket`].
     pub(crate) fn parse_attribute_list(&mut self) -> Result<Vec<Node<Attribute>>, ParseError> {
         let mut attrs = Vec::new();
         while matches!(self.peek_kind(), TokenKind::HashBracket) {

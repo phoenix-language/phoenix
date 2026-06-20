@@ -1,6 +1,12 @@
 //! Pattern parsing for `match`, `if const` / `if var`, and bindings.
 //!
 //! Covers wildcards, literals, ident bindings, struct/tuple patterns, and enum variant patterns.
+//!
+//! ## Entry points
+//!
+//! - [`Parser::parse_pattern`] — one pattern in a match arm or binding position
+//! - [`Parser::parse_match_arm`] — `pattern => expr` or `pattern => { block }`
+//! - [`Parser::parse_expr_or_block_value`] — RHS of a match arm
 
 use phx_diagnostics::ExpectedToken;
 
@@ -12,6 +18,10 @@ use crate::token::{Keyword, TokenKind};
 
 impl Parser<'_> {
     /// Parses one [`Pattern`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::UnexpectedToken`] when the next token cannot start a pattern.
     pub(crate) fn parse_pattern(&mut self) -> Result<PatternNode, ParseError> {
         let start = self.checkpoint();
         match self.peek_kind() {

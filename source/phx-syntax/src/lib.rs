@@ -7,7 +7,7 @@
 //! - [`ast`] — untyped syntax tree nodes (declarations, expressions, types, patterns).
 //! - [`token`] — lexical token kinds and [`Keyword`]s.
 //! - [`lexer`] — [`Lexer`] and [`lex`] over a source `&str`.
-//! - [`parser`] — recursive-descent parser; public entry [`parse`].
+//! - [`parser`] — recursive-descent parser; public entries [`parse`] and [`parse_with_interner`].
 //! - [`intern`] — [`Interner`] and [`Symbol`] for identifier deduplication.
 //! - [`source_file`] — [`SourceFile`] bundles [`Program`] + interner after parse.
 
