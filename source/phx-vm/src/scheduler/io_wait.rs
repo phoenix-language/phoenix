@@ -139,10 +139,80 @@ impl IoWaitRegistry {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::scheduler::harness::RunningGuard;
     use crate::scheduler::{ParkReason, StepOutcome};
+
+    fn run_next_guard<'a>(sched: &'a mut SingleThreadScheduler, label: &str) -> RunningGuard<'a> {
+        match sched.run_next() {
+            Ok(Some(guard)) => guard,
+            Ok(None) => panic!("{label}: expected runnable context"),
+            Err(err) => panic!("{label}: {err:?}"),
+        }
+    }
+
+    fn step_ok(guard: RunningGuard<'_>, label: &str) -> StepOutcome {
+        match guard.step() {
+            Ok(outcome) => outcome,
+            Err(err) => panic!("{label}: {err:?}"),
+        }
+    }
+
+    fn park_ok(guard: RunningGuard<'_>, reason: ParkReason, label: &str) {
+        if let Err(err) = guard.park(reason) {
+            panic!("{label}: {err:?}");
+        }
+    }
+
+    fn register_ok(
+        registry: &mut IoWaitRegistry,
+        handle: IoHandle,
+        context: ContextId,
+        sched: &SingleThreadScheduler,
+        label: &str,
+    ) {
+        if let Err(err) = registry.register(handle, context, sched) {
+            panic!("{label}: {err:?}");
+        }
+    }
+
+    fn register_err(
+        registry: &mut IoWaitRegistry,
+        handle: IoHandle,
+        context: ContextId,
+        sched: &SingleThreadScheduler,
+        label: &str,
+    ) -> IoWaitError {
+        match registry.register(handle, context, sched) {
+            Err(err) => err,
+            Ok(()) => panic!("{label}: expected register error"),
+        }
+    }
+
+    fn signal_ready_ok(
+        registry: &mut IoWaitRegistry,
+        handle: IoHandle,
+        sched: &mut SingleThreadScheduler,
+        label: &str,
+    ) -> ContextId {
+        match registry.signal_ready(handle, sched) {
+            Ok(context) => context,
+            Err(err) => panic!("{label}: {err:?}"),
+        }
+    }
+
+    fn signal_ready_err(
+        registry: &mut IoWaitRegistry,
+        handle: IoHandle,
+        sched: &mut SingleThreadScheduler,
+        label: &str,
+    ) -> IoWaitError {
+        match registry.signal_ready(handle, sched) {
+            Err(err) => err,
+            Ok(_) => panic!("{label}: expected signal_ready error"),
+        }
+    }
 
     #[test]
     fn park_await_io_signal_ready_context_becomes_runnable() {
@@ -151,9 +221,9 @@ mod tests {
         let handle = IoHandle::from_index(1);
 
         let ctx = sched.spawn(2);
-        let guard = sched.run_next().unwrap().expect("dequeue spawned context");
+        let guard = run_next_guard(&mut sched, "dequeue spawned context");
         assert_eq!(guard.id(), ctx);
-        guard.park(ParkReason::AwaitIo).expect("park for I/O");
+        park_ok(guard, ParkReason::AwaitIo, "park for I/O");
 
         assert_eq!(
             sched.state_of(ctx),
@@ -162,15 +232,17 @@ mod tests {
         assert_eq!(sched.runnable_count(), 0);
         assert_eq!(sched.parked_count(), 1);
 
-        registry
-            .register(handle, ctx, &sched)
-            .expect("register parked context");
+        register_ok(
+            &mut registry,
+            handle,
+            ctx,
+            &sched,
+            "register parked context",
+        );
         assert_eq!(registry.pending_count(), 1);
         assert_eq!(registry.context_for(handle), Some(ctx));
 
-        let resumed = registry
-            .signal_ready(handle, &mut sched)
-            .expect("I/O readiness wakeup");
+        let resumed = signal_ready_ok(&mut registry, handle, &mut sched, "I/O readiness wakeup");
         assert_eq!(resumed, ctx);
         assert_eq!(registry.pending_count(), 0);
         assert!(!registry.is_registered(handle));
@@ -180,10 +252,10 @@ mod tests {
         assert_eq!(sched.parked_count(), 0);
         assert!(sched.run_queue().contains(ctx));
 
-        let guard = sched.run_next().unwrap().expect("run after I/O wakeup");
+        let guard = run_next_guard(&mut sched, "run after I/O wakeup");
         assert_eq!(guard.id(), ctx);
         assert!(matches!(
-            guard.step().expect("step after wakeup"),
+            step_ok(guard, "step after wakeup"),
             StepOutcome::Stepped { id, .. } if id == ctx
         ));
     }
@@ -195,9 +267,13 @@ mod tests {
         let ctx = sched.spawn(1);
         let handle = IoHandle::from_index(7);
 
-        let err = registry
-            .register(handle, ctx, &sched)
-            .expect_err("runnable context cannot register");
+        let err = register_err(
+            &mut registry,
+            handle,
+            ctx,
+            &sched,
+            "runnable context cannot register",
+        );
         assert!(matches!(
             err,
             IoWaitError::ContextNotAwaitingIo {
@@ -215,18 +291,14 @@ mod tests {
         let b = sched.spawn(1);
         let handle = IoHandle::from_index(3);
 
-        let guard = sched.run_next().unwrap().expect("run a");
-        guard.park(ParkReason::AwaitIo).expect("park a");
-        registry
-            .register(handle, a, &sched)
-            .expect("first register");
+        let guard = run_next_guard(&mut sched, "run a");
+        park_ok(guard, ParkReason::AwaitIo, "park a");
+        register_ok(&mut registry, handle, a, &sched, "first register");
 
-        let guard = sched.run_next().unwrap().expect("run b");
-        guard.park(ParkReason::AwaitIo).expect("park b");
+        let guard = run_next_guard(&mut sched, "run b");
+        park_ok(guard, ParkReason::AwaitIo, "park b");
 
-        let err = registry
-            .register(handle, b, &sched)
-            .expect_err("duplicate handle");
+        let err = register_err(&mut registry, handle, b, &sched, "duplicate handle");
         assert_eq!(err, IoWaitError::HandleAlreadyRegistered(handle));
     }
 
@@ -236,9 +308,7 @@ mod tests {
         let mut registry = IoWaitRegistry::new();
         let handle = IoHandle::from_index(99);
 
-        let err = registry
-            .signal_ready(handle, &mut sched)
-            .expect_err("unknown handle");
+        let err = signal_ready_err(&mut registry, handle, &mut sched, "unknown handle");
         assert_eq!(err, IoWaitError::HandleNotFound(handle));
     }
 }
