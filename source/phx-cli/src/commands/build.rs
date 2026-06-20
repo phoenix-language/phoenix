@@ -55,7 +55,7 @@
 
 use std::path::Path;
 
-use phx_compiler::{BuildOptions, build_project};
+use phx_compiler::{BuildOptions, BuildProfile, build_project};
 
 use crate::args::{ProjectCommandArgs, effective_lint_deny};
 use crate::color::ColorChoice;
@@ -99,6 +99,11 @@ pub fn run_build(args: ProjectCommandArgs, color: ColorChoice, verbose: bool) ->
     let options = BuildOptions {
         force: args.force_build,
         emit_interface_only: args.emit_interface_only,
+        profile: if args.release {
+            BuildProfile::Release
+        } else {
+            BuildProfile::Dev
+        },
     };
     match build_project(&config, args.entry.as_deref(), options) {
         Ok(result) => {

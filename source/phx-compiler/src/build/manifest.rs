@@ -48,6 +48,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
+use super::options::BuildProfile;
 use crate::pxi::digest_bytes;
 
 /// Per-module record in `build/manifest.json`.
@@ -83,6 +84,8 @@ pub struct BuildManifest {
     pub entry: String,
     /// Stored path to the linked output binary (`.phx0` or final artifact).
     pub bin_path: String,
+    /// Build profile used to produce this artifact set.
+    pub profile: String,
     /// Per-module records keyed by logical path (`ManifestModule::logical_path`).
     pub modules: HashMap<String, ManifestModule>,
 }
@@ -122,6 +125,7 @@ impl BuildManifest {
         let mut out = String::from("{\n");
         let _ = writeln!(out, "  \"entry\": {},", json_str(&self.entry));
         let _ = writeln!(out, "  \"bin_path\": {},", json_str(&self.bin_path));
+        let _ = writeln!(out, "  \"profile\": {},", json_str(&self.profile));
         out.push_str("  \"modules\": {\n");
         let keys: Vec<_> = self.modules.keys().collect();
         for (i, key) in keys.iter().enumerate() {
@@ -137,6 +141,12 @@ impl BuildManifest {
         }
         out.push_str("  }\n}\n");
         out
+    }
+
+    /// Returns `true` when this manifest was produced for `profile`.
+    #[must_use]
+    pub fn matches_profile(&self, profile: BuildProfile) -> bool {
+        BuildProfile::from_manifest_str(&self.profile).is_some_and(|stored| stored == profile)
     }
 }
 
@@ -159,6 +169,9 @@ fn parse_manifest(text: &str) -> BuildManifest {
     }
     if let Some(bin) = extract_string(text, "bin_path") {
         manifest.bin_path = bin;
+    }
+    if let Some(profile) = extract_string(text, "profile") {
+        manifest.profile = profile;
     }
     let modules_text = modules_section(text).unwrap_or(text);
     for (logical, ()) in extract_module_keys(text) {
@@ -363,6 +376,7 @@ mod tests {
 "#;
         let manifest = parse_manifest(text);
         let std_mod = manifest.modules.get("std").expect("std module");
+        assert_eq!(manifest.profile, "");
         assert_eq!(std_mod.pxi_path, "pxi/std.pxi");
         assert_eq!(std_mod.source, "src/lib.phx");
     }
@@ -386,5 +400,27 @@ mod tests {
         let manifest = parse_manifest(text);
         assert_eq!(manifest.modules.len(), 1);
         assert!(manifest.modules.contains_key("math"));
+    }
+
+    #[test]
+    fn parse_manifest_profile_round_trips() {
+        let text = r#"{
+  "entry": "math",
+  "bin_path": "lib/math.phx0",
+  "profile": "release",
+  "modules": {
+    "math": {
+      "source": "src/lib.phx",
+      "source_hash": "abc",
+      "pxi_hash": "def",
+      "phx0_path": "phx0/math.phx0",
+      "pxi_path": "pxi/math.pxi"
+    }
+  }
+}
+"#;
+        let manifest = parse_manifest(text);
+        assert!(manifest.matches_profile(BuildProfile::Release));
+        assert!(!manifest.matches_profile(BuildProfile::Dev));
     }
 }

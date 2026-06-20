@@ -69,8 +69,8 @@ use std::path::Path;
 
 use phx_bytecode::verify;
 use phx_compiler::{
-    BuildOptions, build_project, check_standalone_unit_with_context, compile_compilation_unit,
-    load_project_binary,
+    BuildOptions, BuildProfile, build_project, check_standalone_unit_with_context,
+    compile_compilation_unit, load_project_binary,
 };
 use phx_diagnostics::DiagnosticStyle;
 use phx_vm::{
@@ -197,6 +197,7 @@ fn run_project(
         let options = BuildOptions {
             force,
             emit_interface_only: false,
+            profile: BuildProfile::Dev,
         };
         match build_project(config, entry, options) {
             Ok(result) => {

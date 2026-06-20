@@ -27,6 +27,7 @@ use phx_bytecode::{
 use std::collections::{HashMap, HashSet};
 
 use crate::PxiType;
+use crate::build::BuildProfile;
 use crate::ir::{IrFunction, IrInst, IrModule};
 use crate::resolver::DefId;
 use crate::typeck::{
@@ -36,8 +37,8 @@ use crate::typeck::{
 pub use const_pool::ConstPoolBuilder;
 pub use error::CodegenError;
 
-fn emit_pc_spans_enabled() -> bool {
-    cfg!(debug_assertions)
+fn emit_pc_spans_enabled(profile: BuildProfile) -> bool {
+    profile.emits_debug_sections()
 }
 
 fn file_id_for_path(table: &mut PcSpanTable, path: Option<&str>) -> u32 {
@@ -69,9 +70,13 @@ fn record_emitted_pc_spans(
     }
 }
 
-fn module_header(entry_function_id: u32, pc_spans: &PcSpanTable) -> FileHeader {
+fn module_header(
+    entry_function_id: u32,
+    pc_spans: &PcSpanTable,
+    profile: BuildProfile,
+) -> FileHeader {
     let section_count = u32::from(5u8.saturating_add(u8::from(!pc_spans.is_empty())));
-    let flags = if pc_spans.is_empty() {
+    let flags = if pc_spans.is_empty() || !profile.emits_debug_sections() {
         0
     } else {
         PHX0_HAS_DEBUG
@@ -376,6 +381,27 @@ fn build_fn_arity_map(
 ///
 /// Never panics on malformed user input.
 pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, CodegenError> {
+    codegen_with_profile(ir, typed, BuildProfile::Dev)
+}
+
+/// Emits bytecode for a single [`IrModule`] using an explicit build profile.
+///
+/// [`BuildProfile::Dev`] keeps debug-only metadata such as section 5 PC spans. Release profile
+/// emission strips those sections while preserving verifier-correct PHX0.
+///
+/// # Errors
+///
+/// Returns [`CodegenError::SectionTooLarge`] when a section length, arity, or local count does
+/// not fit in its on-disk field (`u32` / `u16`).
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
+pub fn codegen_with_profile(
+    ir: &IrModule,
+    typed: &TypedProgram,
+    profile: BuildProfile,
+) -> Result<BytecodeModule, CodegenError> {
     use error::u32_section;
     let layout = &typed.layout;
     let def_to_fn: HashMap<DefId, u32> =
@@ -396,7 +422,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     let mut code = Vec::new();
     let mut records = Vec::new();
     let mut pc_spans = PcSpanTable::default();
-    let file_id = if emit_pc_spans_enabled() {
+    let file_id = if emit_pc_spans_enabled(profile) {
         file_id_for_path(&mut pc_spans, None)
     } else {
         0
@@ -412,7 +438,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
             None,
             &typed.resolved,
         )?;
-        if emit_pc_spans_enabled() {
+        if emit_pc_spans_enabled(profile) {
             record_emitted_pc_spans(&mut pc_spans, func.id.index(), file_id, &emitted.pc_spans);
         }
         let len = u32_section("code_len", emitted.code.len())?;
@@ -446,7 +472,7 @@ pub fn codegen(ir: &IrModule, typed: &TypedProgram) -> Result<BytecodeModule, Co
     let constants = pool.finish();
     let local_layouts = build_local_layouts(ir, typed);
     Ok(BytecodeModule {
-        header: module_header(entry_function_id, &pc_spans),
+        header: module_header(entry_function_id, &pc_spans, profile),
         constants,
         types: build_type_table(layout, &typed.types),
         functions: FunctionTable { functions: records },
@@ -488,6 +514,7 @@ pub fn codegen_module(
     global_fn: &HashMap<DefId, u32>,
     is_entry_module: bool,
     source_file: Option<&str>,
+    profile: BuildProfile,
 ) -> Result<BytecodeModule, CodegenError> {
     use error::u32_section;
     let layout = &typed.layout;
@@ -501,7 +528,7 @@ pub fn codegen_module(
     let mut code = Vec::new();
     let mut records = Vec::new();
     let mut pc_spans = PcSpanTable::default();
-    let file_id = if emit_pc_spans_enabled() {
+    let file_id = if emit_pc_spans_enabled(profile) {
         file_id_for_path(&mut pc_spans, source_file)
     } else {
         0
@@ -518,7 +545,7 @@ pub fn codegen_module(
             Some(&type_remap),
             &typed.resolved,
         )?;
-        if emit_pc_spans_enabled() {
+        if emit_pc_spans_enabled(profile) {
             record_emitted_pc_spans(&mut pc_spans, fn_id, file_id, &emitted.pc_spans);
         }
         let len = u32_section("code_len", emitted.code.len())?;
@@ -571,7 +598,7 @@ pub fn codegen_module(
     }
 
     Ok(BytecodeModule {
-        header: module_header(entry_function_id, &pc_spans),
+        header: module_header(entry_function_id, &pc_spans, profile),
         constants,
         types: module_types,
         functions: FunctionTable { functions: records },

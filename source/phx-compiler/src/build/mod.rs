@@ -44,4 +44,4 @@ pub use driver::{
     load_project_binary_with_options,
 };
 pub use error::BuildError;
-pub use options::{BuildOptions, LoadOptions};
+pub use options::{BuildOptions, BuildProfile, LoadOptions};

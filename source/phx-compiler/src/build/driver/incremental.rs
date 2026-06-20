@@ -201,6 +201,9 @@ pub(super) fn dependency_build_is_fresh(
     let Some(manifest) = BuildManifest::read(&manifest_path) else {
         return false;
     };
+    if !manifest.matches_profile(options.profile) {
+        return false;
+    }
     if !dependency_pxi_has_function_ids(&manifest, dep_layout.build_root()) {
         return false;
     }

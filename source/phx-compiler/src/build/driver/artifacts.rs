@@ -160,6 +160,7 @@ pub(super) fn write_interfaces_and_collect_objects(
     let mut manifest = BuildManifest {
         entry: entry_logical.to_string(),
         bin_path: bin_path.to_string(),
+        profile: options.profile.as_manifest_str().to_owned(),
         modules: HashMap::new(),
     };
 
@@ -252,6 +253,7 @@ pub(super) fn write_interfaces_and_collect_objects(
                     global_fn,
                     module.id == loaded.root,
                     Some(rel_source.as_str()),
+                    options.profile,
                 )
                 .map_err(BuildError::Codegen)?;
                 let bytes = obj.encode().map_err(BuildError::Encode)?;
