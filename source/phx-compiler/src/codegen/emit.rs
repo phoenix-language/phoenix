@@ -28,7 +28,7 @@
 
 use std::collections::HashMap;
 
-use phx_bytecode::{Instruction, Opcode};
+use phx_bytecode::{InstrError, Instruction, Opcode};
 use phx_diagnostics::Span;
 
 use crate::ir::{IrBinOp, IrFunction, IrInst};
@@ -216,7 +216,8 @@ fn emit_blocks(
     let mut pc_spans = Vec::new();
     for block in &func.blocks {
         for spanned in &block.insts {
-            let pc = u32::try_from(out.len()).unwrap_or(u32::MAX);
+            let base_pc = u32::try_from(out.len()).unwrap_or(u32::MAX);
+            let inst_start = out.len();
             emit_inst(
                 &mut out,
                 &spanned.inst,
@@ -226,7 +227,7 @@ fn emit_blocks(
                 type_remap,
                 resolved,
             )?;
-            pc_spans.push((pc, spanned.span));
+            record_instruction_pc_spans(&mut pc_spans, base_pc, &out[inst_start..], spanned.span);
         }
     }
     let max_stack = compute_ir_stack_max(func, def_to_fn, fn_arity).map_err(map_stack_sim_error)?;
@@ -237,6 +238,34 @@ fn emit_blocks(
 fn map_stack_sim_error(err: StackSimError) -> CodegenError {
     match err {
         StackSimError::MissingCallee { def_index } => CodegenError::MissingCallee { def_index },
+    }
+}
+
+/// Records one `(pc, span)` row at the start of each encoded instruction in `code`.
+///
+/// IR instructions such as [`IrInst::JumpIf`](crate::ir::IrInst::JumpIf),
+/// [`IrInst::DropLocal`](crate::ir::IrInst::DropLocal), and nested
+/// [`IrInst::Call`](crate::ir::IrInst::Call) sites may expand to multiple bytecode
+/// instructions; VM faults report the function-local PC of the faulting opcode, so every
+/// emitted instruction needs a span entry (not only the first byte of the IR lowering).
+fn record_instruction_pc_spans(
+    pc_spans: &mut Vec<(u32, Span)>,
+    base_pc: u32,
+    code: &[u8],
+    span: Span,
+) {
+    let mut off = 0usize;
+    while off < code.len() {
+        pc_spans.push((
+            base_pc.saturating_add(u32::try_from(off).unwrap_or(u32::MAX)),
+            span,
+        ));
+        off = match Instruction::decode_at(code, off) {
+            Ok((_, next)) => next,
+            Err(
+                InstrError::Truncated | InstrError::TooManyOperands { .. } | InstrError::Opcode(_),
+            ) => break,
+        };
     }
 }
 
@@ -570,6 +599,47 @@ mod tests {
         )
         .expect("drop local stack effect");
         assert_eq!(stack, 0);
+    }
+
+    #[test]
+    fn jump_if_records_pc_span_for_each_emitted_instruction() {
+        let func = minimal_func(vec![IrInst::JumpIf {
+            then_block: 0,
+            else_block: 0,
+        }]);
+        let mut pool = ConstPoolBuilder::new();
+        let def_to_fn = HashMap::new();
+        let fn_arity = HashMap::new();
+        let resolved = empty_resolved();
+        let emitted = emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None, &resolved)
+            .expect("emit jump if");
+        assert_eq!(
+            emitted.pc_spans.len(),
+            2,
+            "JumpIf lowers to JumpIfTrue + Jump"
+        );
+    }
+
+    #[test]
+    fn drop_local_records_pc_span_for_each_emitted_instruction() {
+        let func = minimal_func(vec![IrInst::DropLocal {
+            slot: LocalSlot::from_raw(0),
+            ty: TypeId::from_raw(0),
+            drop_fn: DefId::from_raw(1),
+            prim_kind: 0,
+        }]);
+        let mut def_to_fn = HashMap::new();
+        def_to_fn.insert(DefId::from_raw(1), 0);
+        let fn_arity = HashMap::from([(0u32, 1u16)]);
+        let mut pool = ConstPoolBuilder::new();
+        let resolved = empty_resolved();
+        let emitted = emit_function(&func, &mut pool, &def_to_fn, &fn_arity, None, &resolved)
+            .expect("emit drop local");
+        assert_eq!(
+            emitted.pc_spans.len(),
+            3,
+            "DropLocal lowers to LoadLocal + Call + Pop"
+        );
     }
 
     #[test]

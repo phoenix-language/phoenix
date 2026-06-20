@@ -2,10 +2,91 @@
 
 #![allow(clippy::expect_used)]
 
+use std::path::Path;
+
 use phx_bytecode::{PcSpanTable, verify};
 use phx_cli::vm_diag::{SourceContext, format_vm_error};
+use phx_compiler::{
+    compile_source,
+    unstable::{codegen, lower},
+};
 use phx_test::{ensure_built_project, require_cli_project, shared_cli};
 use phx_vm::{VmErrorKind, run};
+
+#[test]
+fn nested_helper_runtime_error_maps_to_helper_source_line() {
+    require_cli_project("nested_trap");
+    let built = ensure_built_project("nested_trap");
+    let verified = verify(&built.module).expect("verify nested_trap");
+    let err = run(verified).expect_err("nested use after free should fail");
+    assert!(
+        matches!(err.kind, VmErrorKind::UseAfterFree),
+        "expected UseAfterFree, got {err:?}"
+    );
+
+    let project = require_cli_project("nested_trap");
+    let entry = project.join("src/main.phx");
+    let ctx = SourceContext {
+        project_root: Some(&project),
+        entry_path: Some(&entry),
+        entry_source: None,
+    };
+    let msg = format_vm_error(&built.module, &err, &ctx);
+    assert!(
+        msg.contains("use after free") && msg.contains("src/main.phx:7:"),
+        "expected helper *buf line in formatted error, got:\n{msg}"
+    );
+    assert!(
+        !msg.contains("(function"),
+        "should not fall back to bytecode site when debug section present, got:\n{msg}"
+    );
+}
+
+#[test]
+fn nested_helper_cli_shows_helper_source_line_on_stderr() {
+    let project = require_cli_project("nested_trap");
+    let out = shared_cli().run_project_fails(&project);
+    out.assert_contains("runtime error:");
+    out.assert_contains("use after free");
+    out.assert_contains("src/main.phx:7:");
+}
+
+#[test]
+fn indirect_call_runtime_error_maps_to_callee_source_line() {
+    let source = r"div_zero :: (a: s32, b: s32) => s32 {
+    a / b
+};
+
+invoke :: (f: :: (s32, s32) => s32, x: s32, y: s32) => s32 {
+    f(x, y)
+};
+
+main :: () => {
+    const n: s32 = invoke(div_zero, 1, 0);
+    const _ = n;
+};
+";
+    let path = Path::new("tests/cli/fixtures/indirect_trap.phx");
+    let unit = compile_source(source, Some(path)).expect("compile indirect_trap");
+    let module = codegen(&lower(&unit.typed).expect("lower"), &unit.typed).expect("codegen");
+    verify(&module).expect("verify indirect_trap");
+    let err = run(verify(&module).expect("verify")).expect_err("division by zero");
+    assert!(
+        matches!(err.kind, VmErrorKind::DivisionByZero),
+        "expected DivisionByZero, got {err:?}"
+    );
+
+    let ctx = SourceContext {
+        project_root: Some(Path::new("tests/cli/fixtures")),
+        entry_path: Some(path),
+        entry_source: Some(source),
+    };
+    let msg = format_vm_error(&module, &err, &ctx);
+    assert!(
+        msg.contains("division by zero at indirect_trap.phx:2:"),
+        "expected callee div_zero line, got:\n{msg}"
+    );
+}
 
 #[test]
 fn heap_uaf_runtime_error_maps_to_source_span() {
