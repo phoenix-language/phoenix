@@ -1,4 +1,13 @@
-//! Arithmetic, comparison, bitwise, cast, and unary opcodes.
+//! Stack arithmetic, comparison, bitwise, cast, and unary opcodes.
+//!
+//! Implements [`phx_bytecode::Opcode`] handlers that pop two scalars (or one for unary ops),
+//! combine them according to the instruction's [`PrimitiveKind`](phx_bytecode::PrimitiveKind)
+//! operand, and push the result. Binary ops follow the codegen stack convention: pop `b` then
+//! `a`, push `op(a, b)`.
+//!
+//! Division and modulo trap on zero divisors; power is retained for opcode coverage but always
+//! returns [`VmErrorKind::UnsupportedArithOp`]. Comparisons push a bool scalar. Operand decoding
+//! and scalar pops are shared with [`super::util`].
 
 use phx_bytecode::{
     Instruction, PrimitiveKind, ScalarValue, mask_shift_amount, scalar_from_f64, scalar_from_i128,

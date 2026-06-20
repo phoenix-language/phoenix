@@ -1,4 +1,12 @@
-//! Heap allocation and pointer load/store opcodes.
+//! Linear-heap allocation and tagged pointer load/store opcodes.
+//!
+//! [`exec_alloc`] and [`exec_free`] delegate to [`VmRuntime`](crate::context::VmRuntime)'s heap
+//! ledger (see [`crate::context`]). Raw pointer ops decode [`PTR_LOCAL_TAG`], [`PTR_AGG_TAG`],
+//! and untagged heap addresses in [`ptr_load`] and [`ptr_store`].
+//!
+//! [`exec_address_of_local`] and [`exec_load_agg_via_local_ptr`] support borrow-by-slot: local
+//! pointers encode a slot index and resolve by walking ancestor frames. Aggregate element reads
+//! for tagged aggregate pointers delegate to [`super::aggregates`].
 
 use phx_bytecode::{Instruction, PTR_AGG_TAG, PTR_LOCAL_TAG, PrimitiveKind, ScalarValue};
 

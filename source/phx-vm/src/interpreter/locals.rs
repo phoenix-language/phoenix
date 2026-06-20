@@ -1,4 +1,11 @@
-//! Local slot and constant-pool load/store opcodes.
+//! Constant-pool and local-slot load/store opcodes.
+//!
+//! [`exec_const`] materializes rodata from the module constant pool using the instruction's wire
+//! kind operand. [`exec_load_local`] and [`exec_store_local`] read/write the active frame's local
+//! vector by slot index; out-of-range slots return [`VmErrorKind::InvalidLocalSlot`].
+//!
+//! Byte-typed constants ([`ConstTag::Bytes`](phx_bytecode::ConstTag::Bytes)) are not yet
+//! supported at runtime.
 
 use phx_bytecode::{BytecodeModule, ConstTag, Instruction, PrimitiveKind, ScalarValue};
 

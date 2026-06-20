@@ -1,4 +1,12 @@
-//! Aggregate construction, field access, indexing, and slice opcodes.
+//! Aggregate construction, field access, indexing, and slice/string opcodes.
+//!
+//! Values live in the run-wide aggregate arena on [`VmRuntime`](crate::context::VmRuntime); stack
+//! cells hold [`Value::Agg`](crate::frame::Value::Agg) handles. Opcodes build structs, enums,
+//! tuples, arrays, slices, and string views; [`exec_get_field`], [`exec_set_field`], and
+//! [`exec_match_tag`] operate on struct and enum shapes; [`exec_index`] and [`exec_index_store`]
+//! cover tuple, array, and slice element access.
+//!
+//! Slice views over heap bytes use scalar I/O helpers in [`super::memory`].
 
 use phx_bytecode::{
     BytecodeModule, ConstTag, Instruction, PTR_AGG_TAG, PTR_CONST_TAG, PrimitiveKind, ScalarValue,
