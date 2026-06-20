@@ -1,7 +1,16 @@
 //! AST traversal for name resolution.
 //!
-//! Pass order: reject `#import` → collect top-level defs → resolve bodies/types/exprs → check
-//! `main`. Uses separate value and type namespaces per [`super::scopes::ScopeStack`].
+//! Implements [`Resolver::resolve_program`] and the recursive walks over types, expressions,
+//! patterns, and top-level items. Pass order:
+//!
+//! 1. Reject file-level `#import` when [`Resolver::allow_imports`] is false.
+//! 2. Seed scope stack (prelude / import bindings from phase 1).
+//! 3. **Collect** top-level defs when [`Resolver::collect_only`] or defs are empty.
+//! 4. **Resolve** bodies — register inner bindings, record [`ResolutionKey`] entries, build closure
+//!    upvar tables.
+//! 5. **Check** MVP `main` on the entry module when imports are disabled.
+//!
+//! Uses separate value and type namespaces per [`super::scopes::ScopeStack`].
 
 #![allow(
     clippy::match_same_arms,
@@ -31,8 +40,16 @@ use super::Resolver;
 use super::def_id::{DefId, DefKind};
 
 impl Resolver<'_> {
-    /// Resolves the whole program in `self.source`.
-    /// Runs the full resolve pass on [`Resolver::source`].
+    /// Runs the full resolve pass on [`Resolver::source`] for the current module.
+    ///
+    /// **Phase behavior** (see module docs in `walk.rs`):
+    /// - When [`Resolver::collect_only`] is true, only top-level definitions and exports are
+    ///   collected; no expression/type resolution or `main` check runs.
+    /// - Otherwise, defs are collected or seeded from a prior phase-1 table, then bodies are
+    ///   resolved and [`Resolver::check_main`] runs for entry modules without file imports.
+    ///
+    /// Pushes/pops one module scope around the whole program. Diagnostics accumulate in
+    /// [`Resolver::bag`]; callers test [`DiagnosticBag::has_errors`] after return.
     pub(crate) fn resolve_program(&mut self) {
         if !self.allow_imports {
             for import in &self.source.program.imports {
@@ -228,7 +245,12 @@ impl Resolver<'_> {
         }
     }
 
-    /// Registers existing program defs for this module into scope (phase-2 resolve).
+    /// Registers existing program defs for this module into the scope stack (phase 2).
+    ///
+    /// Called when phase 1 already populated [`Resolver::defs`] for multi-module builds. Replays
+    /// each def belonging to [`Resolver::current_module`] into the value or type namespace
+    /// without allocating new [`DefId`]s. Skips locals, params, impl methods, and other inner
+    /// bindings that are reintroduced during the body walk.
     fn seed_module_scopes(&mut self) {
         for (i, def) in self.defs.iter().enumerate() {
             if def.module != self.current_module {
@@ -771,7 +793,11 @@ impl Resolver<'_> {
         self.source.interner.resolves_to(trait_symbol, "Copyable")
     }
 
-    /// Resolves a `PascalCase` name in expression position (enum variant ctors before types).
+    /// Resolves a `PascalCase` name in expression position.
+    ///
+    /// Tries the value namespace first (enum variant constructors, const-like names), then falls
+    /// back to type lookup. Records a resolution on success; emits unresolved-type/ident
+    /// diagnostics through the type or ident paths when both fail.
     fn resolve_type_or_value_name(&mut self, name: &TypeName, expr_span: Span) {
         if let Some(id) = self.scopes.lookup_value(name.symbol) {
             self.record_resolution(name.id, Some(id));
@@ -1109,7 +1135,13 @@ impl Resolver<'_> {
         self.resolve_ident(ident);
     }
 
-    /// Validates MVP entry `main :: () => { … }`.
+    /// Validates the MVP entry-point `main :: () => { … }` contract on the entry module.
+    ///
+    /// Requires a nullary `main` in [`Resolver::root_module`] with unit return (explicit or
+    /// omitted). Pushes [`ResolveError::MissingMain`] when no `main` binding was collected,
+    /// [`ResolveError::InvalidMainSignature`] for parameters or non-unit return types, and
+    /// [`ResolveError::MainNotInEntry`] when `main` appears in a non-entry module (checked during
+    /// collection). No-op when [`Resolver::main_fn`] is already invalid from earlier diagnostics.
     pub(crate) fn check_main(&mut self) {
         if self.main_fn.is_none() {
             self.bag.push(
@@ -1164,7 +1196,10 @@ impl Resolver<'_> {
         }
     }
 
-    /// Returns `true` when `symbol` is the interned `main` identifier.
+    /// Returns `true` when `symbol` is the interned identifier `main`.
+    ///
+    /// Used during top-level collection and `main` signature validation; compares via
+    /// [`Interner::resolves_to`], not raw string equality.
     pub(crate) fn is_main_name(&self, symbol: Symbol) -> bool {
         self.source.interner.resolves_to(symbol, "main")
     }
