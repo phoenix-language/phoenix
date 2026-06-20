@@ -1,7 +1,37 @@
 //! Shared type-checker context: constructors, scope, errors, and finish.
 //!
-//! [`TypeChecker`] helpers for allocating expression ids, recording diagnostics, entering scopes,
-//! and extracting finished side tables at the end of the pass.
+//! Owns [`TypeChecker`] lifecycle utilities used across every [`super`] submodule:
+//! construction and seeding for template vs monomorphized passes, scope and ownership stack
+//! management, diagnostic helpers, expression-id allocation, and teardown that returns side
+//! tables for lowering and monomorphization.
+//!
+//! # Responsibilities
+//!
+//! - **Construction** — [`TypeChecker::new_with_types`] builds a fresh checker;
+//!   [`TypeChecker::new_with_substitution`] seeds generic substitution for mono body re-checks.
+//! - **Scope and unsafe** — [`TypeChecker::enter_scope`] / [`TypeChecker::exit_scope`] push/pop
+//!   ownership and layout scopes; [`TypeChecker::with_unsafe`] tracks unsafe-block depth for
+//!   call-site rules in [`super::intrinsic`].
+//! - **Diagnostics** — [`TypeChecker::error_mismatch`], [`TypeChecker::format_ty_diagnostic`], and
+//!   [`TypeChecker::poison_type`] centralize type error reporting and error-recovery types.
+//! - **Finish** — [`TypeChecker::finish`] and [`TypeChecker::finish_all`] extract the interner,
+//!   expr-type maps, layout tables, call-site metadata, and the diagnostic bag at pass end.
+//! - **Mono seeding** — [`TypeChecker::seed_layout_tables`], [`TypeChecker::seed_lang_items`], and
+//!   [`TypeChecker::seed_value_types`] reuse template-pass state during specialization.
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::new`] | Construct a checker for the main template type-check pass. |
+//! | [`TypeChecker::new_with_substitution`] | Construct a checker for one monomorphized body. |
+//! | [`TypeChecker::enter_scope`] / [`TypeChecker::exit_scope`] | Push/pop binding and drop scopes. |
+//! | [`TypeChecker::with_unsafe`] | Run a closure inside a nested unsafe block. |
+//! | [`TypeChecker::define_local`] | Register a local binding in ownership and layout builders. |
+//! | [`TypeChecker::alloc_expr_id`] | Allocate the next stable [`ExprId`] for an AST node. |
+//! | [`TypeChecker::error_mismatch`] | Push a formatted type mismatch diagnostic. |
+//! | [`TypeChecker::finish`] | Tear down and return full pass outputs (including inherited traits). |
+//! | [`TypeChecker::finish_all`] | Tear down and return outputs for a mono body re-check. |
 
 use std::collections::HashMap;
 
@@ -33,6 +63,7 @@ use crate::typeck::types::{ExprId, Ty, TypeId, TypeInterner};
 use crate::typeck::unify::AliasEnv;
 
 impl<'a> TypeChecker<'a> {
+    /// Constructs a type checker for the main template pass over `resolved`.
     pub(in crate::typeck::check) fn new(resolved: &'a ResolvedProgram) -> Self {
         Self::new_with_types(resolved, TypeInterner::new())
     }
@@ -48,6 +79,10 @@ impl<'a> TypeChecker<'a> {
         checker
     }
 
+    /// Constructs a type checker with a pre-populated type interner.
+    ///
+    /// Seeds `value_types` from PXI import metadata and initializes layout and ownership state
+    /// for the template pass.
     pub(in crate::typeck::check) fn new_with_types(
         resolved: &'a ResolvedProgram,
         mut types: TypeInterner,
@@ -115,10 +150,13 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    /// Copies effective-unsafe flags computed during the template pass.
     pub(crate) fn seed_fn_effective_unsafe(&mut self, map: &HashMap<DefId, bool>) {
         self.fn_effective_unsafe
             .extend(map.iter().map(|(k, v)| (*k, *v)));
     }
+    /// Returns whether `def` must be called from inside an `unsafe` block.
+    #[must_use]
     pub(in crate::typeck::check) fn is_effective_unsafe(&self, def: DefId) -> bool {
         self.fn_effective_unsafe.get(&def).copied().unwrap_or(false)
     }
@@ -138,6 +176,7 @@ impl<'a> TypeChecker<'a> {
         }
         is_copyable(&self.types, &self.program_layout, &self.lang_items, ty)
     }
+    /// Drains monomorphization instantiation sites collected during checking.
     pub(crate) fn take_mono_insts(&mut self) -> Vec<MonoInst> {
         std::mem::take(&mut self.mono_insts)
     }
@@ -187,6 +226,10 @@ impl<'a> TypeChecker<'a> {
         self.program_layout.type_ids.insert(def, id);
         id
     }
+    /// Runs `f` with an incremented unsafe-block depth.
+    ///
+    /// Call-site checks in [`super::intrinsic`] consult `unsafe_depth` to decide whether
+    /// unsafe fn, extern, and intrinsic calls are permitted.
     pub(in crate::typeck::check) fn with_unsafe<F: FnOnce(&mut Self)>(&mut self, f: F) {
         self.unsafe_depth = self.unsafe_depth.saturating_add(1);
         f(self);
@@ -217,6 +260,7 @@ impl<'a> TypeChecker<'a> {
         (result, end)
     }
 
+    /// Enters a nested binding scope in ownership and optional function layout builders.
     pub(in crate::typeck::check) fn enter_scope(&mut self) {
         self.ownership.enter_scope();
         if let Some(layout) = &mut self.layout {
@@ -224,6 +268,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    /// Exits a binding scope, planning drops for bindings at the leaving depth.
     pub(in crate::typeck::check) fn exit_scope(&mut self) {
         let exiting = self.layout_scope_depth();
         self.plan_drops_at_scope_depth(exiting);
@@ -259,6 +304,7 @@ impl<'a> TypeChecker<'a> {
         None
     }
 
+    /// Registers a local binding in the ownership tracker and function layout builder.
     pub(in crate::typeck::check) fn define_local(
         &mut self,
         symbol: phx_syntax::Symbol,
@@ -278,6 +324,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    /// Allocates the next stable [`ExprId`] for an expression AST node.
     pub(in crate::typeck::check) fn alloc_expr_id(&mut self) -> ExprId {
         let id = ExprId::from_raw(self.next_expr);
         self.next_expr += 1;
@@ -302,6 +349,7 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    /// Pushes a formatted type mismatch into the diagnostic bag.
     pub(in crate::typeck::check) fn error_mismatch(
         &mut self,
         expected: TypeId,
@@ -328,6 +376,10 @@ impl<'a> TypeChecker<'a> {
         self.resolved.interner.resolve_display(symbol)
     }
 
+    /// Tears down the checker and returns full pass outputs for the driver.
+    ///
+    /// Includes inherited trait method metadata and effective-unsafe flags in addition to the
+    /// tables returned by [`Self::finish_all`].
     #[allow(clippy::type_complexity)]
     pub(in crate::typeck::check) fn finish(
         self,
@@ -375,6 +427,7 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    /// Tears down the checker and returns pass outputs for a monomorphized body re-check.
     #[allow(clippy::type_complexity)]
     pub(crate) fn finish_all(
         self,

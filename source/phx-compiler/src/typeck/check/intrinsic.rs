@@ -1,7 +1,31 @@
 //! VM intrinsics, extern calls, and unsafe fn call sites.
 //!
-//! Recognizes compiler intrinsics and `extern "C"` targets, records [`IndirectCallMeta`] and
-//! [`IntrinsicSite`] entries, and enforces `unsafe` call-site rules.
+//! Handles call forms that bypass ordinary static fn resolution: compiler intrinsics
+//! ([`IntrinsicSite`]), `extern "C"` symbols, and indirect fn-pointer calls. Invoked from
+//! [`super::expr`] when checking postfix call sites. Records lowering metadata in
+//! [`IndirectCallMeta`] and intrinsic site maps, and enforces Phoenix unsafe-block rules at
+//! each call site.
+//!
+//! # Responsibilities
+//!
+//! - **Unsafe call sites** — [`TypeChecker::check_unsafe_fn_call`] and
+//!   [`TypeChecker::check_extern_call`] require an enclosing `unsafe` block when calling
+//!   effective-unsafe fns or extern symbols.
+//! - **Intrinsics** — [`TypeChecker::check_intrinsic_call`] validates arity and argument types for
+//!   `alloc_bytes`, `dealloc_bytes`, `slice_from_raw_parts`, `slice_len`, and `size_of`, and
+//!   records [`IntrinsicSite`] plus compile-time `size_of` literals where applicable.
+//! - **Indirect calls** — [`TypeChecker::record_indirect_call`] tags fn-pointer and foreign calls
+//!   with expected arity and signature ids for bytecode verification.
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::check_intrinsic_call`] | Type-check one intrinsic; populate site metadata. |
+//! | [`TypeChecker::check_unsafe_fn_call`] | Emit error when an unsafe fn is called outside `unsafe`. |
+//! | [`TypeChecker::check_extern_call`] | Emit error when an extern fn is called outside `unsafe`. |
+//! | [`TypeChecker::record_indirect_call`] | Record fn-pointer call metadata for lowering/verify. |
+//! | [`TypeChecker::is_static_fn_callee`] | True when callee is a resolved static fn body (not a pointer). |
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::types::Type;
@@ -17,6 +41,7 @@ use crate::typeck::subst::Substitution;
 use crate::typeck::types::{ExprId, Ty, TypeId};
 
 impl TypeChecker<'_> {
+    /// Emits an error when an effective-unsafe fn is called outside an `unsafe` block.
     pub(in crate::typeck::check) fn check_unsafe_fn_call(&mut self, def: DefId, span: Span) {
         if !self.is_effective_unsafe(def) || self.unsafe_depth > 0 {
             return;
@@ -32,6 +57,8 @@ impl TypeChecker<'_> {
             },
         );
     }
+    /// Returns whether `def` resolves to a static function body (not a fn pointer or extern stub).
+    #[must_use]
     pub(in crate::typeck::check) fn is_static_fn_callee(&self, def: DefId) -> bool {
         self.resolved
             .defs
@@ -39,6 +66,7 @@ impl TypeChecker<'_> {
             .is_some_and(|d| d.kind.is_function_body())
     }
 
+    /// Emits an error when an `extern "C"` fn is called outside an `unsafe` block.
     pub(in crate::typeck::check) fn check_extern_call(&mut self, def: DefId, span: Span) {
         let Some(record) = self.resolved.defs.get(def.index() as usize) else {
             return;
@@ -125,6 +153,11 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Type-checks one compiler intrinsic call site.
+    ///
+    /// Dispatches on [`IntrinsicSite`], validates arguments, records the site in
+    /// `intrinsic_call_sites`, and stores compile-time `size_of` byte counts when applicable.
+    /// Most intrinsics require an enclosing `unsafe` block; `size_of` and `slice_len` do not.
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_intrinsic_call(
         &mut self,
@@ -316,6 +349,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Records metadata for an indirect (fn-pointer or foreign) call at `expr_id`.
+    ///
+    /// Skips static fn callees. Populates `indirect_call_sites` with expected arity and a stable
+    /// signature id for bytecode verification.
     pub(in crate::typeck::check) fn record_indirect_call(
         &mut self,
         callee_ty: TypeId,
