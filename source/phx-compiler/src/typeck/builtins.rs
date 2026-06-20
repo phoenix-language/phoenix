@@ -1,7 +1,47 @@
-//! Builtin types and Copyable rules.
+//! Builtin type constructors and Copyable/Drop trait rules.
 //!
-//! Seeds primitive and unit/bool types, resolves std kernel types via [`LangItemRegistry`], and
-//! implements [`is_copyable`] used by move checking and aggregate layout.
+//! Seeds canonical [`TypeId`]s for unit, bool, literals, and `str`, and implements the
+//! compiler's Copyable eligibility predicate used by move checking and aggregate layout.
+//! Drop resolution hooks connect user and std-kernel trait impls in [`ProgramLayout`] to
+//! destructor lowering.
+//!
+//! # Role in type checking
+//!
+//! Called from [`super::check`] when typing literals, when validating moves and copies in
+//! [`super::ownership`], and when [`super::layout`] decides whether a struct or enum may be
+//! passed by value without an explicit move. Does not walk the AST itself — it answers
+//! type-shape and trait-layout questions given an interned [`Ty`] and a populated layout.
+//!
+//! # Copyable eligibility
+//!
+//! [`is_copyable`] returns `true` when a value of `id` may be duplicated bitwise without
+//! running a user-defined destructor:
+//!
+//! - Primitives, [`Ty::Unit`], [`Ty::Str`], raw [`Ty::Ptr`], and function types are always
+//!   Copyable.
+//! - References ([`Ty::Ref`]), inference variables ([`Ty::Var`]), and error types are never
+//!   Copyable.
+//! - Tuples, arrays, and slices are Copyable when every element is.
+//! - Named structs and enums are Copyable when they have no `Drop` impl, every payload field
+//!   is Copyable, and either an explicit `Copyable` trait impl exists or the type is
+//!   **compiler-eligible** (all fields Copyable with no `Drop`).
+//!
+//! Recursive aggregate checks track a `seen` stack to reject cyclic self-referential layouts.
+//!
+//! # Drop trait resolution
+//!
+//! [`implements_drop`] and [`implements_drop_for_def`] consult [`LangItemRegistry`] for the
+//! std `Drop` trait, then fall back to a user-defined `Drop` trait that has at least one impl
+//! recorded in layout. Generic instantiations match either an exact `TraitInstKey` or a
+//! blanket impl with empty implementer type arguments.
+//!
+//! [`resolve_drop_fn`] selects the single `Drop::drop` method for a named type instantiation
+//! when exactly one candidate exists in [`ProgramLayout::trait_methods`].
+//!
+//! # Literal type helpers
+//!
+//! [`int_literal_type`] and [`float_literal_type`] map untyped literal suffixes to default
+//! primitive [`TypeId`]s (`s32`/`u32` for integers, `f32`/`f64` for floats).
 
 use phx_syntax::token::Keyword;
 
@@ -10,13 +50,18 @@ use super::types::{Ty, TypeId, TypeInterner};
 use crate::lang_items::LangItemRegistry;
 use crate::resolver::{DefId, DefKind, ResolvedProgram};
 
-/// Returns the interned unit type.
+/// Returns the interned unit type (`()`).
+///
+/// Used as the result type of statements and functions with no explicit return.
 #[must_use]
 pub fn unit(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Unit)
 }
 
-/// Returns the interned type for a literal integer with optional `u` suffix.
+/// Returns the interned type for an integer literal.
+///
+/// Unsigned literals (`42u`) map to [`Keyword::U32`]; signed or unsuffixed literals map to
+/// [`Keyword::S32`]. The type checker does not infer a narrower width from the literal value.
 #[must_use]
 pub fn int_literal_type(types: &mut TypeInterner, unsigned: bool) -> TypeId {
     let kw = if unsigned { Keyword::U32 } else { Keyword::S32 };
@@ -24,6 +69,9 @@ pub fn int_literal_type(types: &mut TypeInterner, unsigned: bool) -> TypeId {
 }
 
 /// Returns the interned type for a float literal.
+///
+/// Unsuffixed and `f32`-suffixed literals map to [`Keyword::F32`]; `f64`-suffixed literals
+/// map to [`Keyword::F64`].
 #[must_use]
 pub fn float_literal_type(
     types: &mut TypeInterner,
@@ -36,25 +84,31 @@ pub fn float_literal_type(
     types.intern(&Ty::Primitive(kw))
 }
 
-/// Returns `bool` type id.
+/// Returns the interned `bool` primitive type.
 #[must_use]
 pub fn bool_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Primitive(Keyword::Bool))
 }
 
-/// Returns `u8` type id.
+/// Returns the interned `u8` primitive type.
+///
+/// Used for byte-oriented view casts (for example `str` as `[u8]`).
 #[must_use]
 pub fn u8_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Primitive(Keyword::U8))
 }
 
-/// Returns `str` type id.
+/// Returns the interned language `str` type ([`Ty::Str`]).
 #[must_use]
 pub fn str_type(types: &mut TypeInterner) -> TypeId {
     types.intern(&Ty::Str)
 }
 
-/// Returns whether `id` is Copyable (primitives, unit, str, tuples/arrays of Copyable, eligible structs).
+/// Returns whether values of `id` may be copied implicitly (Copyable).
+///
+/// See the [module-level Copyable rules](self#copyable-eligibility) for the full predicate.
+/// Consults [`ProgramLayout`] for struct/enum field types and trait impl keys; uses
+/// [`LangItemRegistry`] to recognize std `Drop` and `Copyable` traits.
 #[must_use]
 pub fn is_copyable(
     types: &TypeInterner,
@@ -175,7 +229,11 @@ fn enum_is_copyable(
     true
 }
 
-/// Returns whether `def` with `args` has a `Drop` trait impl in `layout`.
+/// Returns whether `def` instantiated with `args` has a `Drop` trait impl in `layout`.
+///
+/// Matches an exact [`TraitInstKey`] for `(def, args)`, or a blanket impl on `def` with
+/// empty implementer type arguments when `args` is non-empty. Resolves the `Drop` trait
+/// through [`LangItemRegistry`] first, then a user `Drop` trait with recorded impls.
 #[must_use]
 pub fn implements_drop_for_def(
     layout: &ProgramLayout,
@@ -191,7 +249,9 @@ pub fn implements_drop_for_def(
         || (!args.is_empty() && layout_has_trait_impl(layout, def, &[], drop_trait, &[]))
 }
 
-/// Returns whether `id` implements `Drop`.
+/// Returns whether the named type `id` implements `Drop`.
+///
+/// Only [`Ty::Named`] types can implement `Drop`; all other shapes return `false`.
 #[must_use]
 pub fn implements_drop(
     types: &TypeInterner,
@@ -209,6 +269,10 @@ pub fn implements_drop(
 }
 
 /// Resolves the `Drop::drop` function for a named type instantiation.
+///
+/// Searches [`ProgramLayout::trait_methods`] for methods on `TraitImplementer::Type(type_def)`
+/// with a matching `Drop` trait and implementer type arguments. Returns [`Some`] only when
+/// exactly one candidate exists after deduplication by [`DefId`].
 #[must_use]
 pub fn resolve_drop_fn(
     layout: &ProgramLayout,
@@ -241,7 +305,7 @@ fn implementer_args_match(key_args: &[TypeId], concrete_args: &[TypeId]) -> bool
     key_args == concrete_args || (key_args.is_empty() && !concrete_args.is_empty())
 }
 
-/// Returns whether `trait_def` is the compiler-bootstrapped or user `Copyable` trait.
+/// Returns whether `trait_def` names the std-kernel or user-defined `Copyable` trait.
 #[must_use]
 pub fn is_copyable_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
     resolved
@@ -252,7 +316,7 @@ pub fn is_copyable_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bo
         })
 }
 
-/// Returns whether `trait_def` is the std or user `Drop` trait.
+/// Returns whether `trait_def` names the std-kernel or user-defined `Drop` trait.
 #[must_use]
 pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
     resolved
@@ -261,7 +325,9 @@ pub fn is_drop_trait_def(resolved: &ResolvedProgram, trait_def: DefId) -> bool {
         .is_some_and(|d| d.kind == DefKind::Trait && resolved.interner.resolves_to(d.name, "Drop"))
 }
 
-/// Returns whether `def` with `args` has a `Copyable` trait impl in `layout`.
+/// Returns whether `def` instantiated with `args` has a `Copyable` trait impl in `layout`.
+///
+/// Uses the same exact-or-blanket matching rules as [`implements_drop_for_def`].
 #[must_use]
 pub fn implements_copyable_for_def(
     layout: &ProgramLayout,
