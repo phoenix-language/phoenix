@@ -17,6 +17,12 @@ use crate::frame::Value;
 use super::util::{operand_prim_kind, pop_scalar};
 
 /// Allocates heap bytes.
+///
+/// [`Opcode::Alloc`](phx_bytecode::Opcode::Alloc) — stack: `[size: u32] → [addr: ptr]`.
+///
+/// # Errors
+///
+/// Returns [`VmErrorKind::ExpectedScalar`] or heap ledger errors from [`VmRuntime::alloc_bytes`].
 pub(super) fn exec_alloc(
     ctx: &mut ExecutionContext,
     runtime: &mut VmRuntime,

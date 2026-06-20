@@ -8,6 +8,15 @@
 //! Division and modulo trap on zero divisors; power is retained for opcode coverage but always
 //! returns [`VmErrorKind::UnsupportedArithOp`]. Comparisons push a bool scalar. Operand decoding
 //! and scalar pops are shared with [`super::util`].
+//!
+//! ## In this module
+//!
+//! | Handler family | Opcodes |
+//! |----------------|---------|
+//! | Arithmetic | `Add`, `Sub`, `Mul`, `Div`, `Mod`, `Pow` |
+//! | Compare | `Eq`, `Ne`, `Lt`, `Le`, `Ge` |
+//! | Unary / bitwise | `Neg`, `Not`, `BitNot`, `BitAnd`, `BitOr`, `BitXor`, `Shl`, `Shr` |
+//! | Cast | `Cast` |
 
 use phx_bytecode::{
     Instruction, PrimitiveKind, ScalarValue, mask_shift_amount, scalar_from_f64, scalar_from_i128,
@@ -20,7 +29,13 @@ use crate::frame::Value;
 
 use super::util::{operand_prim_kind, pop_scalar};
 
-/// Binary add.
+/// [`Opcode::Add`](phx_bytecode::Opcode::Add) — binary add.
+///
+/// Stack: `[a, b] → [a + b]`. Operand: `prim_kind`.
+///
+/// # Errors
+///
+/// Returns [`VmErrorKind::StackUnderflow`], [`VmErrorKind::ExpectedScalar`], or arithmetic errors.
 pub(super) fn exec_add(ctx: &mut ExecutionContext, inst: &Instruction) -> Result<(), VmErrorKind> {
     binop_arith(&mut ctx.stack, operand_prim_kind(inst, 0)?, ArithOp::Add)
 }

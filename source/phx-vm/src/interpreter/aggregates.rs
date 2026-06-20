@@ -20,6 +20,13 @@ use super::memory::{read_heap_scalar, scalar_store_bytes, write_heap_scalar};
 use super::util::{operand_prim_kind, pop_scalar, scalar_to_usize};
 
 /// Constructs a struct aggregate.
+///
+/// [`Opcode::MakeStruct`](phx_bytecode::Opcode::MakeStruct) — stack: `[field₀…fieldₙ₋₁] → [agg]`.
+/// Operands: `type_id`, `field_count`. Fields pop top-first and store in declaration order.
+///
+/// # Errors
+///
+/// Returns [`VmErrorKind::StackUnderflow`] when fewer than `field_count` values are on the stack.
 pub(super) fn exec_make_struct(
     ctx: &mut ExecutionContext,
     runtime: &mut VmRuntime,
