@@ -1,7 +1,5 @@
 //! Tests for `#[derive]` expansion.
 
-#![allow(clippy::expect_used)]
-
 mod support;
 
 use phx_compiler::{
@@ -11,12 +9,16 @@ use phx_compiler::{
 use phx_syntax::ast::decl::TopLevelDecl;
 use phx_syntax::ast::types::Type;
 use phx_syntax::parse;
+use support::{test_err, test_ok, test_some};
 
 fn expand_and_count_impls(source: &str) -> usize {
     let parsed = parse(source);
     assert!(!parsed.has_errors(), "parse: {:?}", parsed.errors);
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
     file.program
         .items
         .iter()
@@ -28,7 +30,10 @@ fn expand_source(source: &str) -> phx_syntax::SourceFile {
     let parsed = parse(source);
     assert!(!parsed.has_errors(), "parse: {:?}", parsed.errors);
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
     file
 }
 
@@ -51,7 +56,10 @@ fn expand_unsupported_trait_errors() {
     let parsed = parse("#[derive(Clone)] Point :: struct { x: s32 }; main :: () => { };");
     assert!(!parsed.has_errors());
     let mut file = parsed.value;
-    let err = expand_derives(&mut file.program, &mut file.interner).expect_err("clone");
+    let err = test_err(
+        expand_derives(&mut file.program, &mut file.interner),
+        "clone",
+    );
     assert!(err.message.contains("unsupported derive trait"));
 }
 
@@ -72,14 +80,14 @@ fn expand_generic_struct_partialeq_adds_bounded_impl() {
         .program
         .items
         .iter()
-        .find(|item| matches!(item.inner.decl, TopLevelDecl::Impl { .. }))
-        .expect("impl");
+        .find(|item| matches!(item.inner.decl, TopLevelDecl::Impl { .. }));
+    let impl_item = test_some(impl_item, "impl");
     let TopLevelDecl::Impl { generics, .. } = &impl_item.inner.decl else {
         panic!("expected impl");
     };
-    let generics = generics.as_ref().expect("generic impl");
+    let generics = test_some(generics.as_ref(), "generic impl");
     assert_eq!(generics.len(), 1);
-    let bounds = generics[0].bounds.as_ref().expect("PartialEq bound");
+    let bounds = test_some(generics[0].bounds.as_ref(), "PartialEq bound");
     assert_eq!(bounds.len(), 1);
 }
 
@@ -99,9 +107,12 @@ fn derive_partialeq_typechecks() {
     let parsed = parse(source);
     assert!(!parsed.has_errors());
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
-    let resolved = resolve(&file).expect("resolve");
-    type_check(resolved).expect("typecheck");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
+    let resolved = test_ok(resolve(&file), "resolve");
+    test_ok(type_check(resolved), "typecheck");
 }
 
 #[test]
@@ -112,9 +123,12 @@ fn derive_enum_partialeq_typechecks() {
     let parsed = parse(source);
     assert!(!parsed.has_errors());
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
-    let resolved = resolve(&file).expect("resolve");
-    type_check(resolved).expect("typecheck");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
+    let resolved = test_ok(resolve(&file), "resolve");
+    test_ok(type_check(resolved), "typecheck");
 }
 
 #[test]
@@ -126,9 +140,12 @@ fn derive_generic_struct_partialeq_typechecks() {
     let parsed = parse(source);
     assert!(!parsed.has_errors());
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
-    let resolved = resolve(&file).expect("resolve");
-    type_check(resolved).expect("typecheck");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
+    let resolved = test_ok(resolve(&file), "resolve");
+    test_ok(type_check(resolved), "typecheck");
 }
 
 #[test]
@@ -140,9 +157,12 @@ fn derive_generic_enum_partialeq_typechecks() {
     let parsed = parse(source);
     assert!(!parsed.has_errors());
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
-    let resolved = resolve(&file).expect("resolve");
-    type_check(resolved).expect("typecheck");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
+    let resolved = test_ok(resolve(&file), "resolve");
+    test_ok(type_check(resolved), "typecheck");
 }
 
 #[test]
@@ -153,12 +173,15 @@ fn expand_std_dynamic_array_partialeq_has_eq_method() {
 
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../std/src/collections/dynamic_array.phx");
-    let source = std::fs::read_to_string(&path).expect("read dynamic_array");
+    let source = test_ok(std::fs::read_to_string(&path), "read dynamic_array");
     let mut interner = Interner::new();
     let parsed = parse_with_interner(&source, &mut interner);
     assert!(!parsed.has_errors(), "parse: {:?}", parsed.errors);
     let mut file = parsed.value;
-    expand_derives(&mut file.program, &mut file.interner).expect("expand");
+    test_ok(
+        expand_derives(&mut file.program, &mut file.interner),
+        "expand",
+    );
     let mut found = false;
     for item in &file.program.items {
         let TopLevelDecl::Impl {
@@ -193,6 +216,8 @@ fn derive_generic_struct_imported_trait_typechecks() {
 
     let (root, entry) = support::modules_fixture_root_and_entry("derive_import_main");
     let (_, source) = support::module_entry_source("derive_import_main");
-    compile_source_with_module_root(source, &entry, &root)
-        .unwrap_or_else(|e| panic!("expected ok: {e}"));
+    test_ok(
+        compile_source_with_module_root(source, &entry, &root),
+        "expected ok",
+    );
 }

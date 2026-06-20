@@ -1,9 +1,11 @@
 //! Language item registry tests.
-#![allow(clippy::expect_used)]
+
+mod support;
 
 use phx_compiler::build_lang_item_registry;
 use phx_compiler::{CompileError, compile_source};
 use phx_diagnostics::TypeCheckBag;
+use support::{test_err, test_ok};
 
 #[test]
 fn user_lang_item_rejected() {
@@ -12,7 +14,7 @@ fn user_lang_item_rejected() {
         "alloc_bytes :: (size: u32) => *mut u8 { size as *mut u8 };\n\n",
         "main :: () => {};\n",
     );
-    let err = compile_source(source, None).expect_err("compile");
+    let err = test_err(compile_source(source, None), "compile");
     let CompileError::TypeCheck { bag, .. } = err else {
         panic!("expected type-check failure");
     };
@@ -25,7 +27,7 @@ fn user_lang_item_rejected() {
 #[test]
 fn build_registry_empty_without_std() {
     let source = "main :: () => {};\n";
-    let unit = compile_source(source, None).expect("compile");
+    let unit = test_ok(compile_source(source, None), "compile");
     let mut bag = TypeCheckBag::new();
     let registry = build_lang_item_registry(&unit.typed.resolved, &mut bag);
     assert!(registry.option_enum.is_none());

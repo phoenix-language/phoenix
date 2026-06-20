@@ -1,5 +1,6 @@
 //! `load_project_binary` decode and optional verify-on-load.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod support;
 
 use std::path::PathBuf;
 
@@ -11,13 +12,14 @@ use phx_compiler::{
     BuildError, BuildOptions, LoadOptions, ProjectConfig, build_project, load_project_binary,
     load_project_binary_with_options,
 };
+use support::{fs_create_dir_all, fs_write, test_encode, test_err, test_ok};
 
 fn temp_bin_project(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("phx_load_bin_test_{name}"));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
-    std::fs::write(
-        dir.join("phoenix.toml"),
+    fs_create_dir_all(&dir.join("src"), "create src dir");
+    fs_write(
+        &dir.join("phoenix.toml"),
         r#"
 [project]
 name = "demo"
@@ -25,30 +27,26 @@ type = "bin"
 module_src = "src"
 bundle_std = false
 "#,
-    )
-    .unwrap();
-    std::fs::write(dir.join("src/main.phx"), "main :: () => { };").unwrap();
+        "write phoenix.toml",
+    );
+    fs_write(
+        &dir.join("src/main.phx"),
+        "main :: () => { };",
+        "write main.phx",
+    );
     dir
 }
 
 fn malformed_module_bytes() -> Vec<u8> {
     let mut code = Vec::new();
-    code.extend(
-        Instruction {
-            opcode: Opcode::Jump,
-            operands: vec![],
-        }
-        .encode()
-        .expect("encode"),
-    );
-    code.extend(
-        Instruction {
-            opcode: Opcode::Return,
-            operands: vec![],
-        }
-        .encode()
-        .expect("encode"),
-    );
+    code.extend(test_encode(&Instruction {
+        opcode: Opcode::Jump,
+        operands: vec![],
+    }));
+    code.extend(test_encode(&Instruction {
+        opcode: Opcode::Return,
+        operands: vec![],
+    }));
     let module = BytecodeModule {
         header: FileHeader::new(5, 0),
         constants: ConstPool {
@@ -75,15 +73,18 @@ fn malformed_module_bytes() -> Vec<u8> {
         local_layouts: LocalLayoutTable::default(),
         pc_spans: PcSpanTable::default(),
     };
-    module.encode().expect("encode malformed module")
+    test_ok(module.encode(), "encode malformed module")
 }
 
 #[test]
 fn default_load_skips_verify_for_valid_binary() {
     let dir = temp_bin_project("default");
-    let config = ProjectConfig::load(&dir).unwrap();
-    build_project(&config, None, BuildOptions::default()).expect("build");
-    let module = load_project_binary(&config).expect("load without verify");
+    let config = test_ok(ProjectConfig::load(&dir), "load config");
+    test_ok(
+        build_project(&config, None, BuildOptions::default()),
+        "build",
+    );
+    let module = test_ok(load_project_binary(&config), "load without verify");
     assert_eq!(module.header.entry_function_id, 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -91,13 +92,18 @@ fn default_load_skips_verify_for_valid_binary() {
 #[test]
 fn verify_on_load_accepts_valid_binary() {
     let dir = temp_bin_project("verify_ok");
-    let config = ProjectConfig::load(&dir).unwrap();
-    build_project(&config, None, BuildOptions::default()).expect("build");
+    let config = test_ok(ProjectConfig::load(&dir), "load config");
+    test_ok(
+        build_project(&config, None, BuildOptions::default()),
+        "build",
+    );
     let options = LoadOptions {
         verify_on_load: true,
     };
-    let module =
-        load_project_binary_with_options(&config, options).expect("load with verify-on-load");
+    let module = test_ok(
+        load_project_binary_with_options(&config, options),
+        "load with verify-on-load",
+    );
     assert_eq!(module.header.entry_function_id, 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -105,14 +111,20 @@ fn verify_on_load_accepts_valid_binary() {
 #[test]
 fn verify_on_load_rejects_malformed_binary() {
     let dir = temp_bin_project("verify_reject");
-    let config = ProjectConfig::load(&dir).unwrap();
-    build_project(&config, None, BuildOptions::default()).expect("build");
+    let config = test_ok(ProjectConfig::load(&dir), "load config");
+    test_ok(
+        build_project(&config, None, BuildOptions::default()),
+        "build",
+    );
     let bin_path = config.build_root().join("bin").join("demo.phx0");
-    std::fs::write(&bin_path, malformed_module_bytes()).expect("write malformed bin");
+    fs_write(&bin_path, malformed_module_bytes(), "write malformed bin");
     let options = LoadOptions {
         verify_on_load: true,
     };
-    let err = load_project_binary_with_options(&config, options).unwrap_err();
+    let err = test_err(
+        load_project_binary_with_options(&config, options),
+        "load malformed",
+    );
     match err {
         BuildError::Verify(VerifyError::MalformedInstruction { function_id, .. }) => {
             assert_eq!(function_id, 0);

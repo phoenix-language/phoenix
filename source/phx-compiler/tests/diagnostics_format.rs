@@ -1,5 +1,4 @@
 //! Integration tests for diagnostic formatting (carets, multi-module routing).
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::path::PathBuf;
 
