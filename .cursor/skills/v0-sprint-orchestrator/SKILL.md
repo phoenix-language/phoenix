@@ -3,7 +3,7 @@ name: v0-sprint-orchestrator
 description: >-
   10-hour autonomous sprint toward Language v0+ and post-beta gates. Each
   iteration picks independent tasks, spawns parallel subagents in isolated
-  branches, runs tests, then commits and pushes. Use when continuing a v0
+  branches, runs tests, commits, pushes, and opens PRs. Use when continuing a v0
   sprint loop tick or starting a new sprint iteration.
 ---
 
@@ -20,6 +20,7 @@ Autonomous multi-agent sprint for the Phoenix compiler. **Authority:** `docs/des
 - **Quality gate before push:** `just test` must pass. For compiler/VM semantic changes, also run `just pre-commit`.
 - **Commit format:** `[stage]: description` (e.g. `[typeck]: split expr checking into submodule`).
 - **Push:** Push the feature branch to `origin` after tests pass. Do **not** merge to `trunk` automatically.
+- **Pull request:** After a successful push, open a PR to `trunk` with `gh pr create` (see PR template below). If a PR already exists for the branch, skip creation and return its URL.
 - **Design rule:** Never invent language semantics — update design docs first when behavior is ambiguous.
 
 ## Current priority backlog (post Language v0)
@@ -89,9 +90,22 @@ Workflow:
 3. Add/extend tests for observable behavior
 4. Run `just test`; if compiler/VM semantics changed, run `just pre-commit`
 5. If green: commit with [stage]: message, push -u origin <branch>
-6. Return: branch name, commit SHA, test summary, PR-ready bullet summary
+6. Open PR to trunk (skip if one already exists):
+   gh pr create --base trunk --head <branch> --title "[<task-id>] <short title>" --body "$(cat <<'EOF'
+   ## Summary
+   - <bullet 1>
+   - <bullet 2>
 
-Do NOT merge to trunk. Do NOT push if tests fail.
+   ## Test plan
+   - [x] `just test` green
+   - [ ] Reviewer: spot-check acceptance criteria for <task-id>
+
+   Automated v0 sprint agent — do not merge without review.
+   EOF
+   )"
+7. Return: branch name, commit SHA, PR URL, test summary
+
+Do NOT merge to trunk. Do NOT push if tests fail. Do NOT skip PR creation after a successful push.
 ```
 
 Launch all tasks in **one message** so they run concurrently.
@@ -100,7 +114,7 @@ Launch all tasks in **one message** so they run concurrently.
 
 When subagents return:
 
-- If all green: log branches pushed; optionally open PRs with `gh pr create`.
+- If all green: log branches pushed and PR URLs. If a subagent forgot to open a PR, open it from the orchestrator with `gh pr create` using the subagent's bullet summary.
 - If any failed: log failure; do not push failed work; leave branch for manual review or retry next iteration.
 - Update this skill's mental backlog — mark completed items.
 
