@@ -12,7 +12,7 @@ use phx_diagnostics::{
     DiagnosticBag, DiagnosticStyle, IrBag, LintBag, LowerBag, ParseBag, PlainStyle, SpanContext,
     TypeCheckBag, format_ir_error_styled, format_lints_styled, format_lower_error_styled,
     format_parse_bag_styled, format_resolve_error_styled, format_typecheck_error_styled,
-    join_diagnostics,
+    join_diagnostics, prepend_parse_bag_styled,
 };
 use phx_syntax::{Interner, parse};
 
@@ -161,11 +161,14 @@ impl CompileError {
                 let mods = context.as_ref().map(|c| c.modules.as_slice()).or(modules);
                 let intern = context.as_ref().map(|c| &c.interner).or(interner);
                 let stage = format_resolve_bag(bag, entry_source, entry_path, mods, intern, style);
-                prepend_parse_bag(
+                prepend_parse_bag_styled(
                     prior_parse.as_deref(),
                     &stage,
                     entry_source,
-                    entry_path,
+                    SpanContext {
+                        file_path: entry_path,
+                        logical_module: None,
+                    },
                     style,
                 )
             }
@@ -182,11 +185,14 @@ impl CompileError {
                     Some(&context.interner),
                     style,
                 );
-                prepend_parse_bag(
+                prepend_parse_bag_styled(
                     prior_parse.as_deref(),
                     &stage,
                     entry_source,
-                    entry_path,
+                    SpanContext {
+                        file_path: entry_path,
+                        logical_module: None,
+                    },
                     style,
                 )
             }
@@ -215,33 +221,6 @@ struct ModuleSource<'a> {
     file_path: String,
     logical_module: Option<String>,
     source: &'a str,
-}
-
-fn prepend_parse_bag(
-    prior_parse: Option<&ParseBag>,
-    stage: &str,
-    entry_source: Option<&str>,
-    entry_path: Option<&str>,
-    style: &dyn DiagnosticStyle,
-) -> String {
-    match prior_parse {
-        Some(bag) => join_diagnostics(
-            style,
-            &[
-                format_parse_bag_styled(
-                    bag,
-                    entry_source,
-                    SpanContext {
-                        file_path: entry_path,
-                        logical_module: None,
-                    },
-                    style,
-                ),
-                stage.to_owned(),
-            ],
-        ),
-        None => stage.to_owned(),
-    }
 }
 
 fn format_resolve_bag(

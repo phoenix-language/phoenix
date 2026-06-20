@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use phx_diagnostics::{DiagnosticBag, ResolveError};
+use phx_diagnostics::{DiagnosticBag, ResolveError, format_parse_bag_messages};
 use phx_syntax::{Interner, Program, all_imports, parse_with_interner};
 
 use crate::cfg::{CompileCfg, strip_cfg};
@@ -195,7 +195,7 @@ pub fn load_program_with_context(
                 ResolveError::ModuleParse {
                     span,
                     path: fs_path.display().to_string(),
-                    message: parse_bag.to_string(),
+                    message: format_parse_bag_messages(&parse_bag),
                 },
             );
         }
