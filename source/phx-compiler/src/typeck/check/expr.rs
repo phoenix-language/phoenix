@@ -3138,6 +3138,7 @@ impl TypeChecker<'_> {
             });
         }
         self.ownership = OwnershipTracker::join_arms(&pre, &arm_states);
+        self.report_overlapping_mut_borrows_across_arms(&pre, &arm_states);
         then_ty
     }
 
