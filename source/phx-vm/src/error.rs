@@ -1,6 +1,33 @@
-//! VM runtime errors.
+//! VM runtime errors surfaced by the stack interpreter.
+//!
+//! Failures are classified by [`VmErrorKind`]. [`VmError`] optionally records a bytecode site
+//! `(function_id, pc)` for dispatch-time faults. `Display` on [`VmError`] renders the kind and
+//! appends ` (function {function_id}, pc {pc})` when both fields are present.
+//!
+//! ## Site attribution
+//!
+//! - **With site** — instruction dispatch failures ([`VmErrorKind::StackUnderflow`],
+//!   [`VmErrorKind::InvalidLocalSlot`], heap faults, and similar) carry the function id and PC of
+//!   the faulting instruction (before PC advance).
+//! - **Without site** — module-level setup failures ([`VmErrorKind::NoEntryPoint`],
+//!   [`VmErrorKind::MissingEntry`], [`VmErrorKind::EntryArityNotZero`]) use
+//!   [`VmError::without_site`].
+//!
+//! ## Kind taxonomy
+//!
+//! | Category | Examples |
+//! | --- | --- |
+//! | Module / entry | [`VmErrorKind::NoEntryPoint`], [`VmErrorKind::MissingEntry`], [`VmErrorKind::EntryArityNotZero`] |
+//! | Operand stack | [`VmErrorKind::StackUnderflow`], [`VmErrorKind::ExpectedScalar`] |
+//! | Indices / ids | [`VmErrorKind::InvalidFunctionId`], [`VmErrorKind::InvalidLocalSlot`], [`VmErrorKind::InvalidConstIndex`] |
+//! | Control flow | [`VmErrorKind::TruncatedCode`], [`VmErrorKind::GivenMismatch`] (`Trap` / `match`) |
+//! | Heap | [`VmErrorKind::OutOfMemory`], [`VmErrorKind::HeapOutOfBounds`], [`VmErrorKind::UseAfterFree`], [`VmErrorKind::DoubleFree`], [`VmErrorKind::InvalidFree`] |
+//! | MVP limits | [`VmErrorKind::UnsupportedOpcode`], [`VmErrorKind::UnsupportedConst`], [`VmErrorKind::UnsupportedArithOp`] |
 
 /// Failure kind during bytecode execution (no bytecode site).
+///
+/// See the module docs for a grouped taxonomy. Variants map to user-facing `Display` strings on
+/// [`VmError`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
     /// `entry_function_id` not found in the function table.
@@ -89,6 +116,21 @@ impl std::fmt::Display for VmErrorKind {
 }
 
 /// Failure during bytecode execution with optional coarse bytecode site.
+///
+/// Construct with [`Self::at`] when the faulting instruction is known, or [`Self::without_site`]
+/// for module-level failures. `Display` formats as `{kind}` or `{kind} (function {id}, pc {pc})`.
+///
+/// # Examples
+///
+/// ```
+/// use phx_vm::{VmError, VmErrorKind};
+///
+/// let err = VmError::at(0, 12, VmErrorKind::StackUnderflow);
+/// assert_eq!(err.to_string(), "stack underflow (function 0, pc 12)");
+///
+/// let err = VmError::without_site(VmErrorKind::NoEntryPoint);
+/// assert_eq!(err.to_string(), "module has no entry function");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VmError {
     /// Underlying failure kind.
@@ -101,6 +143,9 @@ pub struct VmError {
 
 impl VmError {
     /// Builds an error attributed to `function_id` and `pc`.
+    ///
+    /// `pc` is the byte offset of the faulting instruction in that function's code section (before
+    /// PC advance).
     #[must_use]
     pub const fn at(function_id: u32, pc: u32, kind: VmErrorKind) -> Self {
         Self {
@@ -111,6 +156,9 @@ impl VmError {
     }
 
     /// Builds an error with no bytecode site (module-level or non-dispatch failures).
+    ///
+    /// Used for [`VmErrorKind::NoEntryPoint`], [`VmErrorKind::MissingEntry`], and
+    /// [`VmErrorKind::EntryArityNotZero`].
     #[must_use]
     pub const fn without_site(kind: VmErrorKind) -> Self {
         Self {
