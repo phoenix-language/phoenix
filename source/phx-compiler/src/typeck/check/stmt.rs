@@ -1,7 +1,30 @@
 //! Statement, block, loop, and drop planning.
 //!
-//! Type-checks control flow, records loop binding plans and drop points, and coordinates with
-//! [`crate::typeck::ownership::OwnershipTracker`] for move semantics at statement boundaries.
+//! Second-phase body checking for functions, blocks, and control-flow statements. After
+//! [`super::decl`] collects signatures and seeds [`crate::typeck::layout::ProgramLayout`], this
+//! module walks statement trees, assigns expression types via [`super::expr`], and records
+//! binding slots and drop events in [`crate::typeck::bindings::FunctionLayoutBuilder`].
+//!
+//! # Responsibilities
+//!
+//! - **Blocks and statements** — `let`/`const`, assignment, expression statements, `unsafe` blocks.
+//! - **Control flow** — `return`, `break`/`continue`, `while`, `loop`, and `for-in` iteration plans.
+//! - **Ownership at boundaries** — loop back-edges, move-from-init on `let`, and discarded
+//!   std `Result`/`Option` linting.
+//! - **Drop planning** — schedule [`DropEvent`]s when scopes exit or control jumps (`return`, `break`).
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::check_function_body`] | Check (or layout-only scan) one function/impl method body. |
+//! | [`TypeChecker::check_block_value`] | Type-check a block; return the trailing value type. |
+//! | [`TypeChecker::check_stmt`] | Dispatch on [`Stmt`] variants. |
+//! | [`TypeChecker::check_return`] | Validate return type and plan drops up to function root. |
+//! | [`TypeChecker::with_loop_body`] | Enter a loop: fork ownership, check body, join back-edge. |
+//! | [`TypeChecker::plan_drops_at_scope_depth`] | Emit drop events for bindings leaving a scope depth. |
+//!
+//! Pure AST helpers such as [`super::decl::trailing_value_expr`] live in [`super::decl`].
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckError};
 use phx_syntax::ast::decl::{Function, Param};
@@ -64,6 +87,8 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Enters a loop body: increments loop depth, forks ownership, runs `f`, then joins the
+    /// back-edge and reports use-after-move on values moved in the loop head but read in the body.
     pub(in crate::typeck::check) fn with_loop_body<F: FnOnce(&mut Self)>(
         &mut self,
         body: &Block,
@@ -371,6 +396,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Schedules [`DropEvent`]s for non-moved, non-match-temp bindings at `depth`.
+    ///
+    /// Skips parameters when checking a user-defined `drop` method body. Invoked on scope exit,
+    /// `return`, and `break` after computing the target scope depth.
     pub(in crate::typeck::check) fn plan_drops_at_scope_depth(&mut self, depth: u32) {
         let candidates: Vec<_> = self
             .layout
@@ -502,6 +531,17 @@ impl TypeChecker<'_> {
             })
     }
 
+    /// Type-checks or layout-scans a function (or impl method) body.
+    ///
+    /// When `check_body` is true, checks the block against [`Self::fn_ret`], enforces unsafe
+    /// context, and validates trailing borrow escapes. When `emit_layout` is true, binds
+    /// parameters, walks the body for slot allocation, and appends a finished
+    /// [`FunctionLayout`](crate::typeck::bindings::FunctionLayout) to [`TypeChecker::functions`].
+    /// Intrinsic definitions and layout-only trait default stubs skip body checking.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed user input.
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_function_body(
         &mut self,
@@ -638,11 +678,19 @@ impl TypeChecker<'_> {
         self.layout = None;
     }
 
+    /// Type-checks `block` for side effects; discards the block's value type.
     pub(in crate::typeck::check) fn check_block(&mut self, block: &Block) {
         let _ = self.check_block_value(block);
     }
 
     /// Type-checks `block` and returns the type of its last value-producing item.
+    ///
+    /// Uses [`super::decl::trailing_value_expr`] to decide which trailing expressions may be
+    /// discarded without triggering the std `Result`/`Option` lint.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed user input.
     pub(in crate::typeck::check) fn check_block_value(&mut self, block: &Block) -> TypeId {
         self.enter_scope();
         let trailing = super::decl::trailing_value_expr(block);
@@ -697,6 +745,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Validates a `return` (with or without value) against the enclosing function's return type.
+    ///
+    /// Plans drops from the current scope depth down to the function root before checking the
+    /// returned expression. Borrow-typed returns are checked for local escape.
     pub(in crate::typeck::check) fn check_return(
         &mut self,
         span: Span,
@@ -728,6 +780,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Dispatches on [`Stmt`] and records bindings, moves, and layout events.
+    ///
+    /// Loop bodies delegate to [`Self::with_loop_body`]; `for-in` to [`Self::check_for_in`].
+    /// Expression statements run the discarded-value lint unless the expression is the block tail.
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_stmt(&mut self, stmt: &phx_syntax::ast::StmtNode) {
         match &stmt.inner {
@@ -834,6 +890,8 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Type-checks a `for-in` loop: resolves the iterator type, binds the loop variable, and
+    /// records a [`ForInPlan`](crate::typeck::bindings::ForInPlan) when layout emission is active.
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_for_in(
         &mut self,

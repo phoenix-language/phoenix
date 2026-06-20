@@ -1,7 +1,29 @@
 //! Top-level declaration collection and checking.
 //!
-//! First pass over modules: lower type signatures, collect struct fields, register trait and impl
-//! metadata, and seed [`ProgramLayout`] before function bodies are checked.
+//! First pass over the resolved program: lower AST type syntax into [`TypeId`]s, register struct
+//! and enum layouts, collect function signatures, and seed [`crate::typeck::layout::ProgramLayout`]
+//! before [`super::stmt`] and [`super::impls`] check bodies.
+//!
+//! # Two-phase orchestration
+//!
+//! 1. **Collection** — [`TypeChecker::collect_decls`] walks every module and calls
+//!    [`TypeChecker::collect_top_level_decl`] to populate `type_defs`, `struct_fields`,
+//!    `value_types`, trait/impl metadata, and layout tables without entering function bodies.
+//! 2. **Checking** — [`TypeChecker::check_program`] builds the lang-item registry, validates
+//!    type-alias cycles, then [`TypeChecker::check_top_level`] dispatches each item (functions,
+//!    consts, impl blocks) to body checkers in sibling modules.
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::check_program`] | Run collection, alias validation, and top-level checking. |
+//! | [`TypeChecker::collect_decls`] | Module-wide declaration collection pass. |
+//! | [`TypeChecker::collect_top_level_decl`] | Register one struct/enum/trait/impl/fn signature. |
+//! | [`TypeChecker::check_top_level`] | Check one top-level item after collection. |
+//! | [`TypeChecker::lower_ast_type_with_defs`] | Lower AST [`Type`] using a frozen generic map. |
+//! | [`TypeChecker::validate_type_aliases`] | Detect cyclic type-alias definitions. |
+//! | [`trailing_value_expr`] | Find the block expression that supplies a trailing value. |
 
 use std::collections::{HashMap, HashSet};
 
@@ -131,6 +153,11 @@ impl TypeChecker<'_> {
         Some(self.resolve_instantiated_named(def, args, span))
     }
 
+    /// Lowers an AST [`Type`] node to a [`TypeId`] using `type_defs` for generic parameter lookup.
+    ///
+    /// Handles `Self`, associated types in impl/trait context, references, tuples, and named types
+    /// (with optional generic arguments). Errors are recorded in the diagnostic bag and a poison
+    /// type is returned when resolution fails.
     pub(in crate::typeck::check) fn lower_ast_type_with_defs(
         &mut self,
         ty: &Node<Type>,
@@ -212,6 +239,7 @@ impl TypeChecker<'_> {
         id
     }
 
+    /// Reports cyclic type-alias chains reachable from each alias definition.
     pub(in crate::typeck::check) fn validate_type_aliases(&mut self) {
         for (index, def) in self.resolved.defs.iter().enumerate() {
             if def.kind != DefKind::TypeAlias {
@@ -259,6 +287,7 @@ impl TypeChecker<'_> {
         cycled
     }
 
+    /// Lowers an AST [`Type`] using the checker's current [`TypeDefMap`](crate::typeck::lower_ty::TypeDefMap).
     pub(in crate::typeck::check) fn lower_ast_type(&mut self, ty: &Node<Type>) -> TypeId {
         let type_defs = self.type_defs.clone();
         self.lower_ast_type_with_defs(ty, &type_defs)
@@ -305,6 +334,10 @@ impl TypeChecker<'_> {
             .copied()
     }
 
+    /// Runs declaration collection, lang-item setup, alias validation, and top-level checking.
+    ///
+    /// Called once from [`super::type_check`](crate::typeck::check::type_check) after name
+    /// resolution. Does not monomorphize; that runs after the checker finishes successfully.
     pub(in crate::typeck::check) fn check_program(&mut self) {
         self.collect_decls();
         self.lang_items = build_lang_item_registry(self.resolved, &mut self.bag);
@@ -364,6 +397,7 @@ impl TypeChecker<'_> {
         );
     }
 
+    /// Walks all modules and collects top-level declarations without checking bodies.
     pub(in crate::typeck::check) fn collect_decls(&mut self) {
         for module in &self.resolved.modules {
             self.current_module = module.id;
@@ -373,6 +407,11 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Registers layouts, signatures, and trait metadata for one [`TopLevelDecl`].
+    ///
+    /// Struct and enum variants populate [`StructFields`](super::StructFields) and
+    /// [`ProgramLayout`](crate::typeck::layout::ProgramLayout); functions store fn types in
+    /// `value_types` via [`Self::collect_fn_sig`].
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn collect_top_level_decl(&mut self, decl: &TopLevelDecl) {
         match decl {
@@ -753,6 +792,7 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Collects a function's type signature into `value_types` using the current generic scope.
     pub(in crate::typeck::check) fn collect_fn_sig(&mut self, f: &Function) {
         let fn_ty = self.fn_type_for_function(f);
         if let Some(def) = self.fn_def_for(f) {
@@ -886,6 +926,9 @@ impl TypeChecker<'_> {
         self.type_defs = saved_type_defs;
     }
 
+    /// Second-phase dispatch for one [`TopLevelItem`] after [`Self::collect_decls`].
+    ///
+    /// Checks function bodies, const initializers, and delegates impl blocks to [`super::impls`].
     pub(in crate::typeck::check) fn check_top_level(&mut self, item: &TopLevelItem, span: Span) {
         match &item.decl {
             TopLevelDecl::Function(f) => self.check_function(f),
@@ -950,6 +993,7 @@ impl TypeChecker<'_> {
     }
 }
 
+/// Returns trait/type bound clauses for generic parameter `name` on `decl`, if any.
 pub(in crate::typeck::check) fn generic_bounds_in_decl(
     decl: &TopLevelDecl,
     name: Symbol,
@@ -980,6 +1024,11 @@ fn generic_bounds_in_params(
     None
 }
 
+/// Returns the expression that supplies a block's trailing value, if any.
+///
+/// Walks items from the end: a trailing expression statement, `return` operand, or `let`/`const`
+/// initializer. Assignment expressions are skipped. Used by [`super::stmt::TypeChecker::check_block_value`]
+/// to avoid linting intentionally discarded tail expressions.
 pub(in crate::typeck::check) fn trailing_value_expr(block: &Block) -> Option<&ExprNode> {
     for item in block.items.iter().rev() {
         match item {

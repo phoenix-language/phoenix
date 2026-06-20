@@ -1,7 +1,27 @@
 //! Match arms, patterns, and exhaustiveness.
 //!
-//! Checks pattern/type compatibility, binds locals from patterns, and validates match arm
-//! scrutinee and result type unification.
+//! Type-checks `match` expressions: binds pattern variables, unifies arm body types, and validates
+//! reachability and exhaustiveness against the scrutinee type. Invoked from [`super::expr`] when
+//! checking [`Expr::Match`](phx_syntax::ast::expr::Expr::Match).
+//!
+//! # Responsibilities
+//!
+//! - **Pattern binding** — [`TypeChecker::check_pattern`] introduces locals (or match temps) with
+//!   types derived from struct fields, enum variant payloads, or the scrutinee type for wildcards
+//!   and identifiers.
+//! - **Arm typing** — each arm body is checked under an ownership fork; results join via
+//!   [`crate::typeck::unify::unify_branch`].
+//! - **Diagnostics** — unreachable arms (duplicate literals, shadowed `_`) and non-exhaustive
+//!   matches on enums and `bool` are reported without stopping the walk.
+//!
+//! # Key entry points
+//!
+//! | Function | Role |
+//! |----------|------|
+//! | [`TypeChecker::check_match`] | Check scrutinee, all arms, join ownership, return arm type. |
+//! | [`TypeChecker::check_pattern`] | Recursively bind/destructure one [`Pattern`]. |
+//! | [`TypeChecker::check_match_exhaustiveness`] | Ensure enum/bool scrutinees are fully covered. |
+//! | [`TypeChecker::check_match_unreachable_arms`] | Flag arms shadowed by earlier patterns. |
 
 use std::collections::HashMap;
 
@@ -25,6 +45,11 @@ use crate::typeck::unify::unify_branch;
 use phx_syntax::token::Keyword;
 
 impl TypeChecker<'_> {
+    /// Type-checks a `match`: scrutinee expression, arms, guards, and unified result type.
+    ///
+    /// Forks ownership per arm and joins with [`OwnershipTracker::join_arms`](crate::typeck::ownership::OwnershipTracker::join_arms).
+    /// Allocates a match scrutinee temp when layout emission is active. Returns [`TypeChecker::unit`]
+    /// when there are no arms or branch types fail to unify.
     pub(in crate::typeck::check) fn check_match(
         &mut self,
         scrutinee: &ExprNode,
@@ -71,6 +96,7 @@ impl TypeChecker<'_> {
         acc.unwrap_or(self.unit)
     }
 
+    /// Reports match arms that can never execute because an earlier arm already covers them.
     pub(in crate::typeck::check) fn check_match_unreachable_arms(
         &mut self,
         scrutinee: TypeId,
@@ -132,6 +158,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Ensures `match` on enums and `bool` covers every variant or literal value.
+    ///
+    /// Wildcard arms satisfy exhaustiveness for any scrutinee type. Enum scrutinees require every
+    /// variant name to appear in at least one arm pattern.
     pub(in crate::typeck::check) fn check_match_exhaustiveness(
         &mut self,
         scrutinee: TypeId,
@@ -294,6 +324,11 @@ impl TypeChecker<'_> {
         );
     }
 
+    /// Recursively checks `pat` against `scrutinee`, introducing bindings with `binding_kind`.
+    ///
+    /// Struct and enum patterns destructure fields or tuple payloads from
+    /// [`ProgramLayout`](crate::typeck::layout::ProgramLayout). Bare identifiers that name enum
+    /// variants are validated against the scrutinee enum; other identifiers become locals.
     #[allow(clippy::too_many_lines)]
     pub(in crate::typeck::check) fn check_pattern(
         &mut self,
