@@ -28,6 +28,8 @@ pub(super) struct ReturnCapture {
 }
 
 /// Unconditional jump.
+///
+/// [`Opcode::Jump`](phx_bytecode::Opcode::Jump) — sets the active frame PC to operand 0.
 pub(super) fn exec_jump(ctx: &mut crate::context::ExecutionContext, inst: &Instruction) {
     let target = inst.operands.first().copied().unwrap_or(0);
     if let Some(f) = ctx.frames.last_mut() {
