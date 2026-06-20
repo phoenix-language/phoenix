@@ -4,6 +4,10 @@
 //! prints a generic message. Set [`PHX_ICE_DEBUG_ENV`] to `"1"` (or set
 //! `RUST_BACKTRACE` to a non-empty value other than `"0"`) to also print the
 //! panic message and a backtrace on stderr.
+//!
+//! ## Exit code
+//!
+//! ICE paths exit with code **6** via [`crate::exit::CliExit::InternalError`].
 
 use std::any::Any;
 use std::backtrace::Backtrace;

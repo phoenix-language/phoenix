@@ -4,6 +4,10 @@
 //! `phx run`. [`print_usage`] shows top-level commands; [`print_command_help`]
 //! documents flags for a single subcommand. These functions are invoked from
 //! [`crate::run`] when the user runs `phx help` or `phx help <command>`.
+//!
+//! ## Output convention
+//!
+//! All help text goes to **stderr** so stdout remains available for `phx run` program output.
 
 use crate::args::SubcommandName;
 

@@ -3,6 +3,12 @@
 //! [`Token`] and [`TokenKind`] describe the lexical vocabulary produced by the
 //! lexer. Shapes follow `docs/design/grammar.ebnf`; reserved words are listed in
 //! `docs/design/grammer.md`.
+//!
+//! ## Pipeline
+//!
+//! ```text
+//! source bytes → lexer → Token stream → parser
+//! ```
 
 use phx_diagnostics::Span;
 
