@@ -1,4 +1,16 @@
-//! Structured types in `.pxi` v2 (JSON, no external deps).
+//! Structured type AST for `.pxi` v2 exports (JSON, no external deps).
+//!
+//! ## Pass role
+//!
+//! Owns the in-memory type tree written to each export's `"type"` field in format v2.
+//! [`PxiType::to_json`] and [`parse_type_value`] round-trip this AST without a JSON library;
+//! [`super::serialize_ty`] builds trees from typeck, and [`super::import_types`] lowers them
+//! back into the importer's [`TypeInterner`](crate::typeck::TypeInterner).
+//!
+//! ## On-disk shape
+//!
+//! Each node is a JSON object with a `"kind"` discriminator (`primitive`, `named`, `fn`, …).
+//! See `docs/design/features/pxi-format.md` for field names and generic mangling rules.
 
 /// Enum variant payload in a `.pxi` export.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +105,14 @@ pub enum PxiType {
 
 impl PxiType {
     /// Serializes this type as a JSON object fragment (no surrounding braces).
+    ///
+    /// Output is suitable for embedding in a `.pxi` export's `"type"` field. Well-formed
+    /// trees produced by the compiler never panic.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic on malformed in-memory trees; only panics if the process runs out of
+    /// memory while allocating the output string.
     #[must_use]
     pub fn to_json(&self) -> String {
         match self {

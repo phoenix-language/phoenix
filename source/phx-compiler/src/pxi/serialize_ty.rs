@@ -1,4 +1,21 @@
-//! Map typeck [`Ty`] / layout tables to [`PxiType`] for `.pxi` v2.
+//! Map typeck [`Ty`] and layout tables to [`PxiType`] for `.pxi` v2 emission.
+//!
+//! ## Pass role
+//!
+//! Called by [`crate::pxi::emit::build_pxi_for_module`] when constructing format-v2 export
+//! records. Converts interned [`TypeId`] values and per-definition layout metadata into the
+//! structured type trees stored in each [`PxiExport::ty`](super::format::PxiExport::ty).
+//!
+//! ## Path qualification
+//!
+//! [`Ty::Named`] nodes serialize as `logical_module::Name` strings relative to the module
+//! being emitted. Cross-module references keep the exporter's logical path prefix so importers
+//! can resolve them through [`super::import_types::build_named_def_paths`].
+//!
+//! ## Signatures
+//!
+//! [`signature_string`] preserves the v1-compatible textual signature used in manifest diffs
+//! alongside the structured v2 `type` object.
 
 use phx_syntax::token::Keyword;
 use phx_syntax::{Interner, Symbol};
@@ -9,7 +26,9 @@ use crate::typeck::{Ty, TypeId, TypeInterner, format_type};
 
 use super::type_ast::{PxiField, PxiType, PxiVariant, PxiVariantPayload};
 
-/// Serializes `ty` for export in `logical_module`.
+/// Serializes one interned type as a [`PxiType`] tree for `logical_module`.
+///
+/// Type variables, error types, and unit collapse to [`PxiType::Unit`] in export form.
 #[must_use]
 pub fn ty_to_pxi(
     types: &TypeInterner,
@@ -111,6 +130,8 @@ fn ty_to_pxi_inner(
 fn pxi_symbol_name(interner: &Interner, sym: Symbol) -> String {
     interner.resolve_display(sym)
 }
+
+/// Builds the structured export type for a struct definition from its layout table.
 #[must_use]
 pub fn struct_export_type(
     types: &TypeInterner,
@@ -202,7 +223,10 @@ pub fn fn_export_type(
     }
 }
 
-/// Signature string for manifest diff (v1 compatible).
+/// Returns the v1-compatible textual type signature for manifest diffing.
+///
+/// Delegates to [`format_type`] so legacy `signature` fields stay aligned with structured
+/// v2 exports.
 #[must_use]
 pub fn signature_string(
     types: &TypeInterner,
