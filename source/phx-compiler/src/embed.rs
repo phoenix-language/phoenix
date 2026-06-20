@@ -35,8 +35,7 @@
 //! Do not assume a stable path across calls; always use the [`PathBuf`] returned by the
 //! materializer.
 
-#![allow(clippy::expect_used)]
-
+use std::io;
 use std::path::{Path, PathBuf};
 
 use phx_programs::{SingleFile, single::single_by_name};
@@ -92,12 +91,18 @@ pub fn single_file_path(name: &str) -> PathBuf {
 pub fn project_root_path(project_name: &str) -> PathBuf {
     let spec = phx_programs::projects::project_by_name(project_name)
         .unwrap_or_else(|| panic!("unknown project: {project_name}"));
-    let root = temp_root(spec.name);
+    let root = io_unwrap(temp_root(spec.name), "mkdir temp root");
     let base = format!("tests/cli/fixtures/{}", spec.name);
-    write_at(&root, &format!("{base}/phoenix.toml"), spec.toml);
+    io_unwrap(
+        write_at(&root, &format!("{base}/phoenix.toml"), spec.toml),
+        "write embedded phoenix.toml",
+    );
     for (rel, source) in spec.files {
         if !rel.ends_with(".gitkeep") {
-            write_at(&root, &format!("{base}/{rel}"), source);
+            io_unwrap(
+                write_at(&root, &format!("{base}/{rel}"), source),
+                "write embedded source",
+            );
         }
     }
     root.join(base)
@@ -123,27 +128,38 @@ pub fn project_main_path(project_name: &str) -> PathBuf {
 }
 
 fn write_single(program: &SingleFile) -> PathBuf {
-    let root = temp_root(program.name);
+    let root = io_unwrap(temp_root(program.name), "mkdir temp root");
     let logical = format!("tests/cli/fixtures/{}", program.name);
-    write_at(&root, &logical, program.source);
+    io_unwrap(
+        write_at(&root, &logical, program.source),
+        "write embedded source",
+    );
     root.join(logical)
 }
 
-fn temp_root(label: &str) -> PathBuf {
+fn temp_root(label: &str) -> io::Result<PathBuf> {
     static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
         "phx_compiler_embed_{label}_{}_{n}",
         std::process::id()
     ));
-    std::fs::create_dir_all(&root).expect("mkdir temp root");
-    root
+    std::fs::create_dir_all(&root)?;
+    Ok(root)
 }
 
-fn write_at(root: &Path, relative: &str, contents: &str) {
+fn write_at(root: &Path, relative: &str, contents: &str) -> io::Result<()> {
     let path = root.join(relative);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("mkdir");
+        std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, contents).expect("write embedded source");
+    std::fs::write(&path, contents)?;
+    Ok(())
+}
+
+fn io_unwrap<T>(result: io::Result<T>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => panic!("{context}: {err}"),
+    }
 }
