@@ -1,8 +1,35 @@
-//! Phoenix lexer — source text to token stream.
+//! Phoenix lexer — source text to [`Token`] stream.
 //!
-//! Tokens borrow lexeme text from the source (`Token<'src>`). Numeric lexemes are parsed
-//! in-place (underscore separators are skipped without allocation); byte string payloads use
-//! `Vec<u8>`.
+//! ## Public entry points
+//!
+//! - [`lex`] — tokenize an entire source buffer in one call (includes a final
+//!   [`TokenKind::Eof`]).
+//! - [`Lexer`] + [`Lexer::next_token`] — incremental tokenization when callers need to
+//!   interleave lexing with another pass or stop early.
+//!
+//! Both paths produce [`Token`] values whose identifier and literal lexemes borrow from the
+//! input `&str` (`Token<'src>`). Numeric literals are parsed in-place (underscore separators
+//! are skipped without allocation); byte string payloads are owned `Vec<u8>`; UTF-8 string
+//! literals are owned `String`.
+//!
+//! Token shapes follow `docs/design/grammar.ebnf`; reserved words are listed in
+//! `docs/design/grammer.md`. See [`crate::token`] for the full [`TokenKind`] vocabulary.
+//!
+//! ## Trivia and comments
+//!
+//! Whitespace and comments are skipped automatically before each token:
+//!
+//! - Line comments: `// …` through end of line.
+//! - Block comments: `/// … ///` (nested `///` openers are not supported).
+//!
+//! ## Invariants
+//!
+//! - **Never panics on user input.** Malformed source returns a [`LexError`]; it does not
+//!   trigger Rust panics.
+//! - **Spans index the original `source` string.** Every token carries a [`Span`] of byte
+//!   offsets into the `&str` passed to [`Lexer::new`] or [`lex`].
+//! - **Lexeme length is bounded.** A single token lexeme longer than 1 MiB returns
+//!   [`LexError::LexemeTooLong`].
 
 use phx_diagnostics::{LexError, Span};
 
@@ -11,7 +38,13 @@ use crate::token::{FloatSuffix, IntegerSuffix, Keyword, Token, TokenKind};
 /// Maximum length of a single lexeme in bytes.
 const MAX_LEXEME_LEN: usize = 1_048_576;
 
-/// Lexical analyzer over a borrowed source buffer.
+/// Incremental lexical analyzer over a borrowed source buffer.
+///
+/// Create with [`Lexer::new`], then call [`Lexer::next_token`] until
+/// [`TokenKind::Eof`]. For whole-file tokenization prefer [`lex`].
+///
+/// The lifetime `'src` ties emitted [`Token`] lexemes to the source string; the lexer does
+/// not copy identifier or numeric lexeme text.
 #[derive(Debug)]
 pub struct Lexer<'src> {
     source: &'src str,
@@ -20,7 +53,10 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    /// Creates a lexer positioned at the start of `source`.
+    /// Creates a lexer at the start of `source`.
+    ///
+    /// The lexer holds a borrow of `source` for its entire lifetime; tokens returned by
+    /// [`Lexer::next_token`] reference slices of this same string.
     #[must_use]
     pub fn new(source: &'src str) -> Self {
         Self {
@@ -30,11 +66,21 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    /// Returns the next token, or an error.
+    /// Returns the next token after skipping trivia, or an error.
+    ///
+    /// On success the token's [`Span`] covers the lexeme bytes in the original `source`.
+    /// When the cursor is at end-of-input, returns [`TokenKind::Eof`] with an empty span at
+    /// the final offset.
     ///
     /// # Errors
     ///
-    /// Returns [`LexError`] on malformed input.
+    /// Returns [`LexError`] when the next lexeme is malformed — for example unterminated
+    /// strings or block comments, invalid escapes, unexpected characters, integer overflow,
+    /// or lexemes exceeding the maximum length.
+    ///
+    /// # Panics
+    ///
+    /// Never panics on malformed user input.
     pub fn next_token(&mut self) -> Result<Token<'src>, LexError> {
         self.skip_trivia()?;
         self.start = self.cursor;
@@ -849,9 +895,27 @@ enum IntegerBase {
 
 /// Tokenizes all of `source`, including a final [`TokenKind::Eof`].
 ///
+/// Convenience wrapper around [`Lexer::new`] and repeated [`Lexer::next_token`] calls.
+/// Prefer this entry point unless incremental lexing is required.
+///
 /// # Errors
 ///
-/// Returns the first [`LexError`] encountered.
+/// Returns the first [`LexError`] encountered; no partial token vector is returned on
+/// failure.
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
+///
+/// # Examples
+///
+/// ```
+/// use phx_syntax::{lex, TokenKind};
+///
+/// let tokens = lex("main :: () => { };").expect("valid Phoenix source");
+/// assert!(matches!(tokens.last().map(|t| &t.kind), Some(TokenKind::Eof)));
+/// assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Ident("main"))));
+/// ```
 pub fn lex(source: &str) -> Result<Vec<Token<'_>>, LexError> {
     let mut lexer = Lexer::new(source);
     let mut tokens = Vec::with_capacity(source.len() / 4 + 1);
