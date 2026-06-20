@@ -475,17 +475,120 @@ fn json_string(s: &str) -> String {
 mod tests {
     use super::*;
 
+    fn prim(name: &str) -> PxiType {
+        PxiType::Primitive(name.to_owned())
+    }
+
+    fn named(path: &str, args: Vec<PxiType>) -> PxiType {
+        PxiType::Named {
+            path: path.to_owned(),
+            args,
+        }
+    }
+
+    fn assert_type_round_trips(ty: &PxiType) {
+        let json = ty.to_json();
+        let back = parse_type_value(&json).expect("parse nested generic type");
+        assert_eq!(&back, ty, "round-trip failed for json: {json}");
+    }
+
+    fn nested_option(depth: usize) -> PxiType {
+        if depth == 0 {
+            prim("s32")
+        } else {
+            named("std::core::option::Option", vec![nested_option(depth - 1)])
+        }
+    }
+
+    fn nested_result(depth: usize) -> PxiType {
+        if depth == 0 {
+            prim("bool")
+        } else {
+            named(
+                "std::core::result::Result",
+                vec![nested_result(depth - 1), prim("s32")],
+            )
+        }
+    }
+
     #[test]
     fn pxi_type_round_trip_fn() {
         let ty = PxiType::Fn {
-            params: vec![
-                PxiType::Primitive("s32".to_owned()),
-                PxiType::Primitive("s32".to_owned()),
-            ],
-            ret: Box::new(PxiType::Primitive("s32".to_owned())),
+            params: vec![prim("s32"), prim("s32")],
+            ret: Box::new(prim("s32")),
         };
-        let json = ty.to_json();
-        let back = parse_type_value(&json).expect("parse");
-        assert_eq!(back, ty);
+        assert_type_round_trips(&ty);
+    }
+
+    #[test]
+    fn pxi_type_round_trip_nested_generic_fixtures() {
+        let fixtures = [
+            named("std::core::option::Option", vec![prim("s32")]),
+            named("std::core::result::Result", vec![prim("s32"), prim("bool")]),
+            named(
+                "std::core::option::Option",
+                vec![named(
+                    "std::core::result::Result",
+                    vec![prim("s32"), prim("bool")],
+                )],
+            ),
+            named(
+                "std::core::result::Result",
+                vec![
+                    named("std::core::option::Option", vec![prim("s32")]),
+                    prim("bool"),
+                ],
+            ),
+            named(
+                "std::collections::dynamic_array::DynamicArray",
+                vec![named("std::core::option::Option", vec![prim("s32")])],
+            ),
+            named(
+                "std::core::option::Option",
+                vec![named(
+                    "std::core::option::Option",
+                    vec![named(
+                        "std::core::result::Result",
+                        vec![prim("s32"), prim("bool")],
+                    )],
+                )],
+            ),
+        ];
+        for ty in &fixtures {
+            assert_type_round_trips(ty);
+        }
+    }
+
+    #[test]
+    fn pxi_type_round_trip_nested_generic_depth_property() {
+        for depth in 1..=8 {
+            assert_type_round_trips(&nested_option(depth));
+            assert_type_round_trips(&nested_result(depth));
+        }
+    }
+
+    #[test]
+    fn pxi_type_round_trip_nested_generic_in_fn_signature() {
+        let ret = named(
+            "std::core::result::Result",
+            vec![
+                named("std::core::option::Option", vec![prim("s32")]),
+                prim("bool"),
+            ],
+        );
+        let ty = PxiType::Fn {
+            params: vec![named(
+                "std::collections::dynamic_array::DynamicArray",
+                vec![named(
+                    "std::core::option::Option",
+                    vec![named(
+                        "std::core::result::Result",
+                        vec![prim("s32"), prim("bool")],
+                    )],
+                )],
+            )],
+            ret: Box::new(ret),
+        };
+        assert_type_round_trips(&ty);
     }
 }
