@@ -261,6 +261,23 @@ fn explain_unknown_code() {
 }
 
 #[test]
+fn explain_phx_013_codes() {
+    let cli = shared_cli();
+    let cases = [
+        ("E3002", "required token"),
+        ("E3003", "not supported"),
+        ("E3004", "pattern"),
+        ("E3005", "intern"),
+        ("E2033", "Drop"),
+    ];
+    for (code, needle) in cases {
+        cli.run(&["explain", code])
+            .assert_success()
+            .assert_contains(needle);
+    }
+}
+
+#[test]
 fn panic_is_caught_without_rust_backtrace() {
     let cli = shared_cli();
     let out = cli.run_with_env(&["version"], &[("PHX_TEST_FORCE_PANIC", "1")]);
@@ -271,6 +288,31 @@ fn panic_is_caught_without_rust_backtrace() {
         out.combined
     );
     out.assert_contains("internal compiler error");
+    assert!(
+        !out.combined.contains("panic message:"),
+        "default ICE mode must not leak panic detail; got:\n{}",
+        out.combined
+    );
+    assert_eq!(out.status.code(), Some(6));
+}
+
+#[test]
+fn panic_shows_debug_detail_when_phx_ice_debug_set() {
+    let cli = shared_cli();
+    let out = cli.run_with_env(
+        &["version"],
+        &[("PHX_TEST_FORCE_PANIC", "1"), ("PHX_ICE_DEBUG", "1")],
+    );
+    out.assert_failure();
+    out.assert_contains("internal compiler error");
+    out.assert_contains("panic message:");
+    out.assert_contains("integration test forced panic");
+    out.assert_contains("backtrace:");
+    assert!(
+        !out.combined.contains("thread 'main' panicked"),
+        "Rust default panic hook must stay suppressed; got:\n{}",
+        out.combined
+    );
     assert_eq!(out.status.code(), Some(6));
 }
 

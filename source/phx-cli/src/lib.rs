@@ -18,6 +18,7 @@ pub mod args;
 pub mod color;
 pub mod commands;
 pub mod exit;
+pub mod ice;
 pub mod help;
 pub mod lints;
 pub mod report;
