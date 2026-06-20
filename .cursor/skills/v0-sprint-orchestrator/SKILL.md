@@ -35,7 +35,7 @@ Work top-to-bottom within a priority tier. Skip items already in flight on an op
 | PHX-012 | Move parse-error formatting into `phx-diagnostics` | diagnostics | **Done** — PR #10 |
 | PHX-013 | Complete `phx explain` for E3002–E3005, E2033 | diagnostics/cli | **Done** — PR #8 |
 | PHX-058 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | cli | **Done** — PR #6 |
-| PHX-031 | Split `typeck/check.rs` into `check/{decl,impl,expr,stmt,pattern,intrinsic}.rs` | typeck | Large refactor; one submodule per PR |
+| PHX-031 | Split `typeck/check.rs` into `check/{decl,impl,expr,stmt,pattern,intrinsic}.rs` | typeck | **Done** on trunk (`c36ada0`) |
 
 ### Tier B — Post-beta foundations
 
