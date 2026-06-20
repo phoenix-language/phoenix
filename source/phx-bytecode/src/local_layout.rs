@@ -1,4 +1,27 @@
 //! Per-function local slot layout metadata for typed load/store.
+//!
+//! PHX0 section [`crate::section::SectionKind::LocalLayouts`] (tag 6): one row per function
+//! mapping local slot index to a wire kind byte. Primitive slots use
+//! [`crate::cast::PrimitiveKind`] discriminants; aggregates and function pointers use reserved
+//! tags from [`crate::cast`].
+//!
+//! ## Wire layout
+//!
+//! `count` (u32), then per function: `function_id` (u32), `slot_count` (u16), `slot_count`
+//! kind bytes.
+//!
+//! ## Owning passes
+//!
+//! - **Codegen** — builds layouts from typed IR locals when emitting PHX0.
+//! - **Verifier** — checks row count, `slot_count` vs `local_count`, and
+//!   `LOAD_LOCAL` / `STORE_LOCAL` operand kinds.
+//! - **VM** — uses layouts when pushing frames and interpreting typed local access.
+//!
+//! ## Public API
+//!
+//! - [`LocalSlotKind`] — one slot descriptor.
+//! - [`FunctionLocalLayout`] — slot kinds for one function.
+//! - [`LocalLayoutTable`] — section encode/decode and per-function lookup.
 
 use crate::cast::{PrimitiveKind, SLOT_KIND_AGG, SLOT_KIND_FN_PTR};
 use crate::decode::checked_entry_count;
