@@ -16,9 +16,13 @@ use crate::typeck::TypedProgram;
 
 /// Runs lint checks on a type-checked program.
 ///
+/// Walks every function body in every loaded module, collecting deprecated-use and must-use
+/// discard warnings. Does not mutate the AST.
+///
 /// # Errors
 ///
-/// Returns [`DiagnosticBag`] when `#[allow(...)]` uses an unknown lint name.
+/// Returns [`DiagnosticBag`] when `#[allow(...)]` uses an unknown lint name on a module item or
+/// function.
 pub fn lint_program(typed: &TypedProgram) -> Result<LintBag, DiagnosticBag> {
     let resolved = &typed.resolved;
     let mut bag = DiagnosticBag::new();
@@ -50,6 +54,7 @@ pub fn lint_program(typed: &TypedProgram) -> Result<LintBag, DiagnosticBag> {
     Ok(lints)
 }
 
+/// Validates `#[allow(...)]` on module items and nested function/method attrs before the walk.
 fn validate_allow_attrs(items: &[Node<TopLevelItem>], interner: &Interner) -> Vec<(Span, String)> {
     let mut errors = Vec::new();
     for item in items {
@@ -77,6 +82,7 @@ fn validate_allow_attrs(items: &[Node<TopLevelItem>], interner: &Interner) -> Ve
     errors
 }
 
+/// Records invalid `#[allow(...)]` on a single function or impl method.
 fn check_fn_allow(f: &Function, interner: &Interner, errors: &mut Vec<(Span, String)>) {
     if let Err(msg) = parse_allow_lint_kinds(interner, &f.attrs)
         && let Some(attr) = f
@@ -88,11 +94,17 @@ fn check_fn_allow(f: &Function, interner: &Interner, errors: &mut Vec<(Span, Str
     }
 }
 
+/// AST visitor that emits lints while honoring nested `#[allow(...)]` scopes.
 struct LintWalker<'a> {
+    /// Module id for resolution keys and lint routing.
     module: u32,
+    /// Type-checked program (AST, resolutions, def attrs).
     typed: &'a TypedProgram,
+    /// Symbol interner for lint messages.
     interner: &'a Interner,
+    /// Stack of allowed lint kinds; inner scopes inherit outer allows.
     allow_stack: Vec<HashSet<LintKind>>,
+    /// Collected warnings for the current compilation.
     lints: &'a mut LintBag,
 }
 
@@ -246,6 +258,7 @@ impl LintWalker<'_> {
         }
     }
 
+    /// Emits [`LintKind::Deprecated`] when an identifier or path resolves to a deprecated def.
     fn check_deprecated_use(&mut self, expr: &ExprNode) {
         if self.is_allowed(LintKind::Deprecated) {
             return;
@@ -292,6 +305,7 @@ impl LintWalker<'_> {
         );
     }
 
+    /// Emits [`LintKind::MustUse`] for expression statements and block tails that drop a must-use value.
     fn check_discard(&mut self, expr: &ExprNode) {
         if self.is_allowed(LintKind::MustUse) {
             return;
@@ -310,6 +324,7 @@ impl LintWalker<'_> {
         );
     }
 
+    /// Returns a lint message when `expr` is used as a discarded value and carries `#[must_use]`.
     fn discard_must_use_reason(&self, expr: &ExprNode) -> Option<String> {
         if self.expr_attr_must_use(expr) {
             return Some("unused result of `#[must_use]` item".to_string());
@@ -317,6 +332,7 @@ impl LintWalker<'_> {
         None
     }
 
+    /// Whether `expr` evaluates to a value from a definition marked `#[must_use]`.
     fn expr_attr_must_use(&self, expr: &ExprNode) -> bool {
         match &expr.inner {
             Expr::Postfix { base, ops } if matches!(ops.last(), Some(PostfixOp::Call { .. })) => {
@@ -398,6 +414,7 @@ impl LintWalker<'_> {
         self.resolve_node(node_id)
     }
 
+    /// Whether the innermost allow scope suppresses `kind`.
     fn is_allowed(&self, kind: LintKind) -> bool {
         self.allow_stack
             .last()
