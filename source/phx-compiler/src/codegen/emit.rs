@@ -1,9 +1,30 @@
-//! Emit IR CFG to flat PHX0 instruction bytes.
+//! IR control-flow graph → flat PHX0 instruction bytes.
+//!
+//! Part of the [`codegen`](crate::codegen) pass. [`emit_function`] walks one
+//! [`IrFunction`](crate::ir::IrFunction)'s basic blocks in order, maps each
+//! [`IrInst`](crate::ir::IrInst) to wire-format [`Instruction`](phx_bytecode::Instruction)
+//! bytes, and records per-PC source spans for debug builds.
+//!
+//! ## Two-phase layout
+//!
+//! Forward jumps need block start offsets before emission finishes. Emission therefore runs
+//! in two passes: [`compute_block_starts`] dry-runs instruction encoding to build a
+//! block-id → code-offset table, then [`emit_blocks`] writes the final bytes using those
+//! offsets for [`IrInst::Jump`](crate::ir::IrInst::Jump) and
+//! [`IrInst::JumpIf`](crate::ir::IrInst::JumpIf) targets.
+//!
+//! ## Entry point
+//!
+//! - [`emit_function`] — called from [`codegen`](crate::codegen::codegen) and
+//!   [`codegen_module`](crate::codegen::codegen_module) for each function body
 //!
 //! ## Stack convention
 //!
-//! Operands are evaluated left-to-right (bottom = left, top = right). Binary ops pop `b`,
-//! then `a`, and push `op(a, b)`. Call leaves `arity` arguments on the stack (bottom = first param).
+//! Operand evaluation matches the VM stack model: left-to-right (bottom = left, top = right).
+//! Binary ops pop `b`, then `a`, and push `op(a, b)`. [`IrInst::Call`](crate::ir::IrInst::Call)
+//! leaves `arity` arguments on the stack (bottom = first param). After emission,
+//! [`compute_ir_stack_max`](crate::ir::compute_ir_stack_max) validates the observed
+//! [`EmittedFunction::stack_max`].
 
 use std::collections::HashMap;
 
@@ -17,24 +38,35 @@ use crate::resolver::{DefId, DefKind, ResolvedProgram};
 use super::const_pool::ConstPoolBuilder;
 use super::error::CodegenError;
 
-/// Result of emitting one function body.
+/// Encoded body for one [`IrFunction`](crate::ir::IrFunction).
+///
+/// Produced by [`emit_function`] and stitched into the module code section by
+/// [`codegen`](crate::codegen::codegen) / [`codegen_module`](crate::codegen::codegen_module).
 #[derive(Debug)]
 pub struct EmittedFunction {
-    /// Encoded instructions for this function.
+    /// Contiguous PHX0 instruction bytes for this function (function-local PCs).
     pub code: Vec<u8>,
-    /// Maximum operand stack depth observed during emission.
+    /// Maximum operand stack depth required at run time, from [`compute_ir_stack_max`](crate::ir::compute_ir_stack_max).
     pub stack_max: u16,
-    /// Source span at each instruction's start PC (function-local byte offset).
+    /// `(pc, span)` pairs at each instruction start, for debug PC→source mapping.
     pub pc_spans: Vec<(u32, Span)>,
 }
 
 /// Emits one function's CFG to bytecode bytes.
+///
+/// Flattens `func.blocks` in block-id order, resolves [`DefId`](crate::resolver::DefId)
+/// callees through `def_to_fn`, and optionally remaps aggregate / indirect-call type ids
+/// via `type_remap` (project builds only; `None` for single-unit [`codegen`](crate::codegen::codegen)).
 ///
 /// # Errors
 ///
 /// Returns [`CodegenError`] when a constant pool lookup fails, a callee or drop function
 /// has no function id mapping, a jump target block has no code offset, or a type id is
 /// missing from the module-local remap.
+///
+/// # Panics
+///
+/// Never panics on malformed user input.
 pub fn emit_function(
     func: &IrFunction,
     pool: &mut ConstPoolBuilder,
@@ -60,6 +92,7 @@ pub fn emit_function(
     })
 }
 
+/// Maps a layout-global type id to the module-local id when `type_remap` is present.
 fn map_type_id(global: u32, type_remap: Option<&HashMap<u32, u32>>) -> Result<u32, CodegenError> {
     match type_remap {
         None => Ok(global),
@@ -70,6 +103,7 @@ fn map_type_id(global: u32, type_remap: Option<&HashMap<u32, u32>>) -> Result<u3
     }
 }
 
+/// Resolves a [`DefId`](crate::resolver::DefId) to its PHX0 function id for direct calls.
 fn function_id_for(def: DefId, def_to_fn: &HashMap<DefId, u32>) -> Result<u32, CodegenError> {
     def_to_fn
         .get(&def)
@@ -79,6 +113,7 @@ fn function_id_for(def: DefId, def_to_fn: &HashMap<DefId, u32>) -> Result<u32, C
         })
 }
 
+/// Looks up the code-section byte offset for basic block `block`.
 fn block_offset(block: u32, starts: &[u32]) -> Result<u32, CodegenError> {
     starts
         .get(block as usize)
@@ -86,6 +121,10 @@ fn block_offset(block: u32, starts: &[u32]) -> Result<u32, CodegenError> {
         .ok_or(CodegenError::InvalidJumpBlock { block })
 }
 
+/// Computes the foreign-stub index for an [`DefKind::ExternFn`](crate::resolver::DefKind::ExternFn) def.
+///
+/// Foreign targets use a dense id space separate from module function ids; this counts prior
+/// extern declarations in definition order.
 fn foreign_stub_id(def: DefId, resolved: &ResolvedProgram) -> Result<u32, CodegenError> {
     let record = resolved
         .defs
@@ -107,6 +146,10 @@ fn foreign_stub_id(def: DefId, resolved: &ResolvedProgram) -> Result<u32, Codege
     })
 }
 
+/// Dry-runs instruction encoding to compute each basic block's start offset.
+///
+/// Used by [`emit_function`] before the final [`emit_blocks`] pass so forward jumps can
+/// reference absolute code offsets.
 fn compute_block_starts(
     func: &IrFunction,
     pool: &ConstPoolBuilder,
@@ -158,6 +201,7 @@ fn ir_binop_to_opcode(op: IrBinOp) -> Opcode {
     }
 }
 
+/// Encodes all blocks in `func`, recording PC spans and computing `stack_max`.
 #[allow(clippy::type_complexity)]
 fn emit_blocks(
     func: &IrFunction,
@@ -196,6 +240,10 @@ fn map_stack_sim_error(err: StackSimError) -> CodegenError {
     }
 }
 
+/// Encodes one [`IrInst`](crate::ir::IrInst) and appends its bytes to `out`.
+///
+/// Jump operands use precomputed `block_starts`; aggregate and indirect-call operands use
+/// `type_remap` when emitting a pruned module type table.
 #[allow(clippy::too_many_lines)]
 fn emit_inst(
     out: &mut Vec<u8>,
@@ -411,6 +459,7 @@ fn emit_inst(
     Ok(())
 }
 
+/// Builds and encodes a single [`Instruction`](phx_bytecode::Instruction).
 fn encode(opcode: Opcode, operands: &[u32]) -> Result<Vec<u8>, CodegenError> {
     Instruction {
         opcode,
