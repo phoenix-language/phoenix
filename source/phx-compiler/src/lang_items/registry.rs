@@ -1,4 +1,8 @@
 //! [`LangItemRegistry`] — unified compiler-known std definitions.
+//!
+//! Maps stable `(kind, name)` language item markers to [`DefId`](crate::resolver::DefId)
+//! values. Cached fields on [`LangItemRegistry`] provide fast lookups for the type
+//! checker, monomorphizer, and lowering passes without scanning the entry map.
 
 use phx_syntax::Interner;
 use phx_syntax::token::Keyword;
@@ -7,15 +11,19 @@ use crate::resolver::DefId;
 use crate::typeck::{IntrinsicSite, ProgramLayout, Ty, TypeId, TypeInterner};
 
 /// Closed language item kind (v1).
+///
+/// Each kind corresponds to a distinct role in the compiler pipeline: VM intrinsics
+/// become dedicated opcodes, enum/variant markers drive `Option`/`Result` special
+/// cases, and trait markers seed built-in bound checking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItemKind {
-    /// VM intrinsic lowered to dedicated opcodes.
+    /// VM intrinsic lowered to dedicated opcodes instead of a function body.
     Intrinsic,
     /// Std `Option` / `Result` enum template.
     Enum,
-    /// Enum variant constructor (optional explicit marker).
+    /// Enum variant constructor (optional explicit marker; may be auto-linked).
     Variant,
-    /// Core trait definition.
+    /// Core trait definition referenced by built-in bound rules.
     Trait,
 }
 
@@ -54,6 +62,9 @@ pub struct LangItemMarker {
 }
 
 /// Canonical std / VM language item definitions for one program.
+///
+/// Populated by [`super::build_lang_item_registry`] at the start of type checking.
+/// Optional fields remain `None` when std is not linked or a required marker is missing.
 #[derive(Debug, Clone, Default)]
 pub struct LangItemRegistry {
     /// `std::core::option::Option` enum template.
@@ -103,7 +114,7 @@ pub struct LangItemRegistry {
 }
 
 impl LangItemRegistry {
-    /// Returns `true` when a variant language item is already registered.
+    /// Returns `true` when a variant language item with `name` is already registered.
     #[must_use]
     pub fn variant_registered(&self, name: &str) -> bool {
         self.entries
@@ -125,6 +136,9 @@ impl LangItemRegistry {
     }
 
     /// Returns the intrinsic site for a direct call to `def`, if any.
+    ///
+    /// Used by the expression checker and lowering to emit VM opcodes instead of
+    /// inlining an intrinsic function body.
     #[must_use]
     pub fn site_for_call(&self, def: DefId) -> Option<IntrinsicSite> {
         if self.alloc_bytes == Some(def) {
@@ -163,6 +177,8 @@ impl LangItemRegistry {
     }
 
     /// Payload type `T` from `Option<T>`.
+    ///
+    /// Returns `None` when `ty` is not a std `Option` instance.
     #[must_use]
     pub fn option_payload_ty(&self, types: &TypeInterner, ty: TypeId) -> Option<TypeId> {
         if !self.is_std_option(types, ty) {
@@ -175,6 +191,8 @@ impl LangItemRegistry {
     }
 
     /// `(ok, err)` types from `Result<ok, err>`.
+    ///
+    /// Returns `None` when `ty` is not a std `Result` instance or lacks both type args.
     #[must_use]
     pub fn result_ok_err_tys(&self, types: &TypeInterner, ty: TypeId) -> Option<(TypeId, TypeId)> {
         if !self.is_std_result(types, ty) {
@@ -190,6 +208,9 @@ impl LangItemRegistry {
     }
 
     /// Success variant tag (`Some` / `Ok`) for a std `Option` or `Result` scrutinee.
+    ///
+    /// Uses [`ProgramLayout`] variant metadata to map registered variant ctors to
+    /// discriminant tags for pattern lowering and `?` desugaring.
     #[must_use]
     pub fn success_tag_for(
         &self,
@@ -284,7 +305,10 @@ impl LangItemRegistry {
         self.from_trait == Some(trait_def)
     }
 
-    /// Returns whether a primitive satisfies a std trait bound.
+    /// Returns whether a primitive keyword type satisfies a std trait bound.
+    ///
+    /// Used when checking trait bounds on numeric and boolean primitives before
+    /// user impls are considered.
     #[must_use]
     pub fn primitive_satisfies(&self, kw: Keyword, trait_def: DefId) -> bool {
         if self.copyable_trait == Some(trait_def) {
@@ -308,6 +332,9 @@ impl LangItemRegistry {
         false
     }
 
+    /// Inserts `marker` → `def_id`, updating cached fields and the entry map.
+    ///
+    /// Returns the previous `DefId` for the same `(kind, name)` key, if any.
     pub(crate) fn insert_entry(&mut self, marker: &LangItemMarker, def_id: DefId) -> Option<DefId> {
         self.assign_cached(marker.kind, &marker.name, def_id);
         self.entries
@@ -344,6 +371,7 @@ impl LangItemRegistry {
     }
 }
 
+/// Extracts the enum template `DefId` from a named type instance.
 fn enum_template(types: &TypeInterner, ty: TypeId) -> Option<DefId> {
     match types.get(ty) {
         Ty::Named { def, .. } => Some(*def),
@@ -351,6 +379,7 @@ fn enum_template(types: &TypeInterner, ty: TypeId) -> Option<DefId> {
     }
 }
 
+/// Maps a variant ctor `DefId` to its discriminant tag within `enum_def`.
 fn variant_tag(layout: &ProgramLayout, enum_def: DefId, variant: Option<DefId>) -> Option<u32> {
     let variant = variant?;
     layout.variants.get(&variant).and_then(|meta| {
