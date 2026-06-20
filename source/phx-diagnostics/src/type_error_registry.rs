@@ -1,6 +1,16 @@
-//! Generated [`TypeCheckError`] metadata (`code`, `span`) from a single variant table.
+//! Type-check diagnostic code registry (E2001–E2046).
 //!
-//! Add new variants here once; `code()` / `span()` and explain drift tests stay in sync.
+//! The [`typecheck_error_registry!`] macro generates [`TypeCheckError::code`] and
+//! [`TypeCheckError::span`] from the table below so variant → code mapping lives in one place.
+//!
+//! ## Adding a variant
+//!
+//! 1. Add the variant to [`TypeCheckError`](crate::TypeCheckError) with a `span` field.
+//! 2. Append `VariantName => "E2xxx"` to the macro invocation below (unique code).
+//! 3. Add explain text in [`super::render::explain_code`].
+//! 4. Extend [`super::type_notes::typecheck_ancillary`] when the error needs secondary notes.
+//!
+//! The `registry_tests` module asserts every table code has an explain entry.
 
 use crate::Span;
 use crate::TypeCheckError;

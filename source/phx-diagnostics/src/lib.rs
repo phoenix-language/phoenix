@@ -1,20 +1,43 @@
 //! Phoenix diagnostics — spans, labels, and user-facing error reporting.
 //!
-//! Compiler passes return structured errors with [`Span`]s; formatters render source lines and
-//! carets for the CLI. Spans are byte offsets into a specific module's source buffer; use
-//! [`LocatedError`] until spans carry a file id.
+//! Compiler passes return structured errors with [`Span`]s; formatters turn those into
+//! Cargo-style snippets (path, line/column, caret) for the CLI and golden tests.
 //!
-//! ## Modules
+//! ## Spans and module identity
 //!
-//! - `span` (private) — byte-offset [`Span`] into UTF-8 source.
+//! [`Span`] is a half-open byte range into one module's UTF-8 source buffer. Multi-file crates
+//! wrap errors in [`LocatedError`] until spans carry a file id.
+//!
+//! ## Public API overview
+//!
+//! | Layer | Role | Key types |
+//! |-------|------|-----------|
+//! | Errors | Structured failures per pass | [`LexError`], [`ParseError`], [`ResolveError`], [`TypeCheckError`], [`LowerError`], [`IrError`] |
+//! | Codes | Stable `E####` / `W####` labels | [`DiagnosticCode`], `{Error}::code()` |
+//! | Messages | Human-readable text (no snippet) | [`format_lex_error_styled`], [`format_typecheck_error_styled`], … |
+//! | Rendering | Snippet + header + location line | [`render_diagnostic`], [`DiagnosticStyle`], [`PlainStyle`] |
+//! | Explain | Static text for `phx explain` | [`explain_code`], [`normalize_code`] |
+//! | Lints | Warnings with optional deny | [`Lint`], [`LintBag`], [`format_lints_styled`] |
+//!
+//! Typical CLI flow: resolve a message with `*_message` or `format_*_styled`, then optionally
+//! wrap with [`render_diagnostic_enriched`] when a source buffer and display path are available.
+//!
+//! ## Diagnostic code registries
+//!
+//! Each error enum exposes [`DiagnosticCode`] via a `code()` method. Type-check variants map
+//! through the generated table in `type_error_registry.rs` (E2001–E2046); other passes implement
+//! `code()` on their enum directly (E0xxx lex, E1xxx resolve, E3xxx parse, E4xxx lower/IR).
+//! Every registered code should have a matching entry in [`explain_code`] for `phx explain`.
+//!
+//! ## Internal modules
+//!
+//! - `span` — byte-offset [`Span`] into UTF-8 source.
 //! - `code` — stable [`DiagnosticCode`] labels.
 //! - `located` — [`LocatedError`] tying an error to a module id.
-//! - `lex_error` — lexer failures ([`LexError`]).
-//! - `parse_error` — parser failures ([`ParseError`], [`ExpectedToken`]).
-//! - `resolve_error` — name resolution ([`ResolveError`], [`DiagnosticBag`]).
-//! - `type_error` — type checking ([`TypeCheckError`], [`TypeCheckBag`]).
-//! - `lower_error` — IR lowering ([`LowerError`], [`LowerBag`]).
-//! - `ir_error` — IR validation ([`IrError`], [`IrBag`]).
+//! - `format` — message formatters (re-exported at crate root).
+//! - `render` — snippet rendering (re-exported at crate root).
+//! - `explain` — code normalization and lookup (re-exported as [`explain_code`]).
+//! - `type_error_registry` — generated [`TypeCheckError::code`] / [`TypeCheckError::span`].
 
 mod code;
 mod explain;
