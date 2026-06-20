@@ -42,9 +42,9 @@ pub use format::{
     format_ir_error, format_ir_error_styled, format_lex_error, format_lex_error_styled,
     format_lower_error, format_lower_error_styled, format_parse_bag_messages,
     format_parse_bag_styled, format_parse_error, format_parse_error_styled, format_resolve_error,
-    format_resolve_error_styled, prepend_parse_bag_styled,
-    format_span_message, format_span_message_with_note, format_typecheck_error,
-    format_typecheck_error_styled, parse_message, resolve_message, typecheck_message,
+    format_resolve_error_styled, format_span_message, format_span_message_with_note,
+    format_typecheck_error, format_typecheck_error_styled, parse_message, prepend_parse_bag_styled,
+    resolve_message, typecheck_message,
 };
 pub use ir_error::{IrBag, IrError, IrResult};
 pub use lex_error::LexError;

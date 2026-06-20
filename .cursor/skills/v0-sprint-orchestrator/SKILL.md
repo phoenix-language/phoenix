@@ -40,11 +40,12 @@ Workers do **one task per branch**. The master may queue 1–3 parallel workers 
 
 ```bash
 just fmt          # required before commit — run even for comment-only edits in Rust
+just fmt-check    # required before push — must pass (same as CI); run after fmt if unsure
 just test         # required before push
 just pre-commit   # required when compiler, VM, bytecode, diagnostics, or CLI semantics change
 ```
 
-If `just fmt` modifies files, include those changes in the commit. **Do not push if any gate fails.**
+If `just fmt` modifies files, include those changes in the commit. **Do not push if any gate fails.** CI runs `cargo fmt --all --check` — a green `just test` alone is not enough.
 
 ---
 
