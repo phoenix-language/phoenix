@@ -1,18 +1,55 @@
-//! Use-after-move tracking (MVP).
+//! Use-after-move tracking for the type checker (MVP).
+//!
+//! [`OwnershipTracker`] records whether each local binding is still valid after
+//! moves. The expression and statement checkers call [`OwnershipTracker::move_binding`]
+//! at move sites and [`OwnershipTracker::moved_at`] before reads; a moved binding
+//! produces a [`TypeCheckError::UseAfterMove`](super::TypeCheckError::UseAfterMove)
+//! diagnostic that cites the original move span.
+//!
+//! # MVP model
+//!
+//! Tracking is **whole-binding** only: a local is either [`BindingState::Valid`] or
+//! [`BindingState::Moved`]. Field-level partial moves (invalidating only part of a
+//! struct binding) are post-MVP; see `docs/design/features/ownership.md`.
+//!
+//! Copyable types skip this tracker entirely — their bindings are never marked moved.
+//!
+//! # Scope and shadowing
+//!
+//! Each binding is tagged with the block [`OwnershipTracker::scope_depth`] at
+//! [`OwnershipTracker::define`]. [`OwnershipTracker::enter_scope`] /
+//! [`OwnershipTracker::exit_scope`] mirror lexical blocks; exiting a scope drops
+//! bindings introduced at deeper depths.
+//!
+//! Lookups (`binding_type`, `move_binding`, `moved_at`) resolve the **innermost**
+//! active binding for a [`Symbol`] (last matching entry in the binding stack).
+//!
+//! # Control-flow merge
+//!
+//! Conditional arms and loop bodies fork from a shared pre-state, then merge:
+//!
+//! - [`OwnershipTracker::join_arms`] implements a flow-insensitive join: a binding
+//!   visible at `base` becomes moved in the result if **any** arm end state moved it.
+//! - [`OwnershipTracker::newly_moved_since`] diffs `base` against a joined head state
+//!   to find bindings that became moved during a loop body — used to flag reads on
+//!   the loop back edge as use-after-move.
+//!
+//! Bindings that exist only in inner scopes of an arm (never visible at `base`) are
+//! ignored by both merge helpers.
 
 use phx_diagnostics::Span;
 use phx_syntax::Symbol;
 
 use super::types::TypeId;
 
-/// State of a local binding.
+/// State of a local binding for use-after-move checking.
 ///
 /// MVP tracks whole-binding validity only; field-level partial moves are post-MVP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingState {
-    /// Available for use.
+    /// Binding may be read or moved again.
     Valid,
-    /// Moved; `move_span` is the move site.
+    /// Ownership was transferred; `move_span` is the site of the move for diagnostics.
     Moved(Span),
 }
 
@@ -25,7 +62,19 @@ struct BindingEntry {
     depth: u32,
 }
 
-/// Tracks moves for locals in the current function/block scope.
+/// Tracks move state for locals while type-checking a function body.
+///
+/// Invariants maintained by callers in `typeck::check`:
+///
+/// - `define` is called once per non-Copyable `let` binding at the current scope depth.
+/// - `move_binding` is called at every move site (assignment RHS into an existing
+///   binding, call argument pass-by-value, non-Copyable field move, etc.).
+/// - `enter_scope` / `exit_scope` bracket every lexical block; `exit_scope` must
+///   balance each `enter_scope`.
+/// - After `if`/`match`, ownership is replaced with [`OwnershipTracker::join_arms`]
+///   of the pre-condition snapshot and each arm's end state.
+/// - Loop bodies use `join_arms(pre, [body_end])` as the head state and
+///   [`OwnershipTracker::newly_moved_since`] to detect back-edge use-after-move.
 #[derive(Debug, Clone, Default)]
 pub struct OwnershipTracker {
     bindings: Vec<BindingEntry>,
@@ -33,18 +82,24 @@ pub struct OwnershipTracker {
 }
 
 impl OwnershipTracker {
-    /// Creates an empty tracker.
+    /// Creates an empty tracker at scope depth zero.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Enters a nested block scope (locals defined here are popped on [`Self::exit_scope`]).
+    /// Enters a nested block scope.
+    ///
+    /// Bindings defined while this scope is active are removed by the matching
+    /// [`Self::exit_scope`] call.
     pub fn enter_scope(&mut self) {
         self.scope_depth = self.scope_depth.saturating_add(1);
     }
 
-    /// Leaves a block scope and drops bindings introduced in that scope.
+    /// Leaves the current block scope and drops bindings introduced in that scope.
+    ///
+    /// If `scope_depth` is already zero, this is a no-op (defensive; well-formed
+    /// checkers always balance enter/exit).
     pub fn exit_scope(&mut self) {
         if self.scope_depth == 0 {
             return;
@@ -54,7 +109,10 @@ impl OwnershipTracker {
             .retain(|entry| entry.depth <= self.scope_depth);
     }
 
-    /// Registers a new binding as valid with its type at the current scope depth.
+    /// Registers a new binding as [`BindingState::Valid`] at the current scope depth.
+    ///
+    /// `ty` is the binding's declared type; it is returned by [`Self::binding_type`]
+    /// until the binding leaves scope or is shadowed.
     pub fn define(&mut self, name: Symbol, ty: TypeId) {
         self.bindings.push(BindingEntry {
             symbol: name,
@@ -64,7 +122,7 @@ impl OwnershipTracker {
         });
     }
 
-    /// Returns the type recorded for `name` in the innermost active scope, if any.
+    /// Returns the type recorded for the innermost active binding named `name`, if any.
     #[must_use]
     pub fn binding_type(&self, name: Symbol) -> Option<TypeId> {
         self.bindings
@@ -74,13 +132,16 @@ impl OwnershipTracker {
     }
 
     /// Marks the innermost active binding for `name` as moved at `span`.
+    ///
+    /// No-op when `name` is not bound in an active scope (e.g. Copyable locals that
+    /// were never registered).
     pub fn move_binding(&mut self, name: Symbol, span: Span) {
         if let Some(entry) = self.bindings.iter_mut().rfind(|entry| entry.symbol == name) {
             entry.state = BindingState::Moved(span);
         }
     }
 
-    /// Returns move span if the innermost active binding for `name` was moved.
+    /// Returns the move site if the innermost active binding for `name` was moved.
     #[must_use]
     pub fn moved_at(&self, name: Symbol) -> Option<Span> {
         self.bindings
@@ -92,8 +153,14 @@ impl OwnershipTracker {
             })
     }
 
-    /// Joins ownership state after conditional arms: bindings visible at `base` are moved when
-    /// moved on any arm (flow-insensitive MVP merge).
+    /// Joins ownership state after conditional arms.
+    ///
+    /// Starts from a clone of `base` and, for each binding visible at `base`'s
+    /// scope depth (innermost shadow per symbol), marks it [`BindingState::Moved`]
+    /// when **any** entry in `arm_ends` moved that symbol at the same depth.
+    ///
+    /// This is intentionally flow-insensitive: if one arm moves and another does
+    /// not, the merged binding is treated as moved after the whole construct.
     #[must_use]
     pub fn join_arms(base: &Self, arm_ends: &[Self]) -> Self {
         let mut out = base.clone();
@@ -138,7 +205,11 @@ impl OwnershipTracker {
             .map(|entry| entry.state)
     }
 
-    /// Bindings visible at `base` that are [`BindingState::Moved`] in `joined` but valid in `base`.
+    /// Lists bindings that became moved in `joined` relative to `base`.
+    ///
+    /// Considers only bindings visible at `base`'s scope depth that were
+    /// [`BindingState::Valid`] in `base` and [`BindingState::Moved`] in `joined`.
+    /// Returns `(symbol, depth, move_span)` triples for loop back-edge checking.
     #[must_use]
     pub fn newly_moved_since(base: &Self, joined: &Self) -> Vec<(Symbol, u32, Span)> {
         let mut out = Vec::new();
