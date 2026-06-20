@@ -3,8 +3,12 @@
 use std::path::Path;
 use std::time::Duration;
 
+use phx_bytecode::BytecodeModule;
 use phx_compiler::{BuildError, CompileError};
 use phx_diagnostics::DiagnosticStyle;
+use phx_vm::VmError;
+
+use crate::vm_diag::{SourceContext, format_vm_error};
 
 use crate::color::AnsiStyle;
 
@@ -75,6 +79,17 @@ impl<'a> Reporter<'a> {
 
     /// Reports a VM runtime failure.
     pub fn runtime_error(&self, message: &str) {
+        eprint_line(&self.style.plain_error(&format!("runtime error: {message}")));
+    }
+
+    /// Reports a VM runtime failure with PHX0 section 5 source mapping when available.
+    pub fn runtime_vm_error(
+        &self,
+        module: &BytecodeModule,
+        err: &VmError,
+        ctx: &SourceContext<'_>,
+    ) {
+        let message = format_vm_error(module, err, ctx);
         eprint_line(&self.style.plain_error(&format!("runtime error: {message}")));
     }
 

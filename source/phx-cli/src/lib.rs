@@ -22,6 +22,7 @@ pub mod ice;
 pub mod help;
 pub mod lints;
 pub mod report;
+pub mod vm_diag;
 pub mod workflow;
 
 use args::{Command, ParseError, parse_env_args};

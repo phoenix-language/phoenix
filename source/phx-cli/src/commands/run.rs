@@ -22,6 +22,7 @@ use crate::color::ColorChoice;
 use crate::exit::CliExit;
 use crate::lints::{apply_lint_deny_policy, emit_lint_warnings, lint_typed_or_exit};
 use crate::report::Reporter;
+use crate::vm_diag::SourceContext;
 use crate::workflow::{CompileMode, resolve_run_mode};
 
 /// Runs `phx run`.
@@ -134,7 +135,14 @@ fn run_project(
             return CliExit::Compile;
         }
     };
-    execute_module(reporter, &module, verbose, dump_main, heap_cap)
+    let default_entry = config.default_entry_file();
+    let entry_path = entry.unwrap_or(&default_entry);
+    let source_ctx = SourceContext {
+        project_root: Some(&config.root),
+        entry_path: Some(entry_path),
+        entry_source: None,
+    };
+    execute_module(reporter, &module, verbose, dump_main, heap_cap, source_ctx)
 }
 
 fn run_standalone(
@@ -188,7 +196,12 @@ fn run_standalone(
             return CliExit::Compile;
         }
     };
-    execute_module(reporter, &module, verbose, dump_main, heap_cap)
+    let source_ctx = SourceContext {
+        project_root: None,
+        entry_path: Some(&options.entry),
+        entry_source: Some(&source),
+    };
+    execute_module(reporter, &module, verbose, dump_main, heap_cap, source_ctx)
 }
 
 fn execute_module(
@@ -197,6 +210,7 @@ fn execute_module(
     verbose: bool,
     dump_main: bool,
     heap_cap: usize,
+    source_ctx: SourceContext<'_>,
 ) -> CliExit {
     reporter.verbose(verbose, "verifying bytecode...");
     let verified = match verify(module) {
@@ -215,12 +229,12 @@ fn execute_module(
                 CliExit::Ok
             }
             Err(e) => {
-                reporter.runtime_error(&e.to_string());
+                reporter.runtime_vm_error(module, &e, &source_ctx);
                 CliExit::Runtime
             }
         }
     } else if let Err(e) = run_with_heap_cap(verified, heap_cap) {
-        reporter.runtime_error(&e.to_string());
+        reporter.runtime_vm_error(module, &e, &source_ctx);
         CliExit::Runtime
     } else {
         CliExit::Ok
