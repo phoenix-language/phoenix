@@ -1,4 +1,31 @@
-//! Lint pass — deprecated use and `#[must_use]` discard warnings.
+//! Lint pass for a type-checked Phoenix program.
+//!
+//! ## Pass role
+//!
+//! Runs after [`crate::typeck`] and before lowering. Consumes [`TypedProgram`] (resolved AST,
+//! definition attribute metadata, and name resolutions) and emits non-fatal warnings in a
+//! [`LintBag`]. Invalid `#[allow(...)]` attribute names are reported as resolve-style errors in
+//! a [`DiagnosticBag`] instead of warnings.
+//!
+//! ## Lints
+//!
+//! | Kind | Trigger |
+//! |------|---------|
+//! | [`LintKind::Deprecated`] | Reference to a definition carrying `#[deprecated(...)]` |
+//! | [`LintKind::MustUse`] | Expression statement or block tail whose value comes from a `#[must_use]` item |
+//!
+//! Std `Result` / `Option` discards are enforced in typeck
+//! ([`phx_diagnostics::TypeCheckError::DiscardedStdResult`]); this pass only checks
+//! attribute-driven `#[must_use]` on user definitions.
+//!
+//! ## `#[allow(...)]`
+//!
+//! Function and module-item attributes suppress lints lexically within the function body via a
+//! stacked allow set ([`LintWalker::allow_stack`]). Names are parsed by [`crate::attrs::parse_allow_lint_kinds`].
+//!
+//! ## Entry point
+//!
+//! [`lint_program`] — called from [`crate::compile::lint_checked`].
 
 use std::collections::HashSet;
 use std::fmt::Write;
