@@ -1,20 +1,40 @@
-//! Format [`TypeId`] for diagnostics.
+//! Format [`TypeId`] values as human-readable strings.
 //!
-//! Renders interned types as human-readable strings for type errors and mangling, resolving
-//! definition names through the [`Interner`] and definition table.
+//! Renders interned types for diagnostics, mangling, and cross-crate monomorphization
+//! requests. Definition names are resolved through the [`Interner`] and the resolver
+//! definition table.
+//!
+//! # Diagnostic vs internal spelling
+//!
+//! [`format_type`] produces spellings suitable for mangling and internal logs (for example
+//! `Point<s32>`). [`format_type_diagnostic`] prefixes user-defined types with their definition
+//! kind (`struct`, `enum`, `type`, `trait`) so type errors read naturally (`struct Point`
+//! rather than bare `Point`).
+//!
+//! # Recursive types
+//!
+//! When a type graph contains a cycle reachable from the root being formatted, output shows
+//! `<recursive>` instead of looping indefinitely.
 
 use phx_syntax::Interner;
 
 use super::types::{Ty, TypeId, TypeInterner};
 use crate::resolver::{Def, DefId, DefKind};
 
-/// Formats `id` as a human-readable type string.
+/// Formats `id` as a human-readable type string for mangling and internal use.
+///
+/// Primitives use debug spellings (`S32`, `Bool`, …). Named types show the definition name
+/// and generic arguments; tuples, arrays, slices, references, pointers, and function types
+/// use Phoenix surface syntax.
 #[must_use]
 pub fn format_type(interner: &TypeInterner, names: &Interner, defs: &[Def], id: TypeId) -> String {
     format_type_inner(interner, names, defs, id, &mut Vec::new(), false)
 }
 
-/// Formats `id` for user-facing type errors, prefixing user-defined types with their definition kind.
+/// Formats `id` for user-facing type errors.
+///
+/// Like [`format_type`], but prefixes user-defined named types with their definition kind
+/// (`struct`, `enum`, `type`, or `trait`) when known from `defs`.
 #[must_use]
 pub fn format_type_diagnostic(
     interner: &TypeInterner,
