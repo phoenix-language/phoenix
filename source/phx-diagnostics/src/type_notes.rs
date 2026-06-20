@@ -254,6 +254,17 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                     .to_owned(),
             );
         }
+        TypeCheckError::OverlappingMutBorrow {
+            name, prior_span, ..
+        } => {
+            out.notes.push(TypeCheckNote {
+                text: format!("`{name}` was mutably borrowed here"),
+                span: Some(*prior_span),
+            });
+            out.helps.push(format!(
+                "finish using the first `&mut {name}` borrow before creating another"
+            ));
+        }
         TypeCheckError::TraitNotSatisfied {
             type_name,
             trait_name,

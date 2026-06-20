@@ -65,6 +65,7 @@
 //! | E2044 | [`TypeCheckError::LangItemDuplicate`] | Duplicate language item registration |
 //! | E2045 | [`TypeCheckError::LangItemInvalid`] | Malformed `#[lang_item]` attribute |
 //! | E2046 | [`TypeCheckError::GenericNestingTooDeep`] | Generic nesting exceeds monomorph limit |
+//! | E2047 | [`TypeCheckError::OverlappingMutBorrow`] | Two active `&mut` borrows of one binding |
 //!
 //! ## Integration with [`crate::format`] and ancillary notes
 //!
@@ -372,6 +373,15 @@ pub enum TypeCheckError {
         span: Span,
         /// Site where the borrow of the local was formed.
         borrow_span: Span,
+    },
+    /// Two overlapping `&mut` borrows of the same local binding.
+    OverlappingMutBorrow {
+        /// Borrowed binding name.
+        name: String,
+        /// First mutable borrow site.
+        prior_span: Span,
+        /// Second (conflicting) borrow site.
+        span: Span,
     },
     /// Concrete type at a generic instantiation does not implement a required trait bound.
     TraitNotSatisfied {

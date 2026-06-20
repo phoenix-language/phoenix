@@ -439,6 +439,9 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
         TypeCheckError::ReturnEscapesLocal { .. } => {
             "cannot return a borrow of a local variable".to_owned()
         }
+        TypeCheckError::OverlappingMutBorrow { name, .. } => {
+            format!("cannot borrow `{name}` as mutable more than once")
+        }
         TypeCheckError::TraitNotSatisfied {
             type_name,
             trait_name,
