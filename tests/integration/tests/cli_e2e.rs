@@ -261,6 +261,23 @@ fn explain_unknown_code() {
 }
 
 #[test]
+fn explain_phx_013_codes() {
+    let cli = shared_cli();
+    let cases = [
+        ("E3002", "required token"),
+        ("E3003", "not supported"),
+        ("E3004", "pattern"),
+        ("E3005", "intern"),
+        ("E2033", "Drop"),
+    ];
+    for (code, needle) in cases {
+        cli.run(&["explain", code])
+            .assert_success()
+            .assert_contains(needle);
+    }
+}
+
+#[test]
 fn panic_is_caught_without_rust_backtrace() {
     let cli = shared_cli();
     let out = cli.run_with_env(&["version"], &[("PHX_TEST_FORCE_PANIC", "1")]);
