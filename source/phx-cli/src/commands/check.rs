@@ -1,4 +1,60 @@
-//! `phx check` handler.
+//! `phx check` handler — type-check without codegen.
+//!
+//! This module is the entry point for [`run_check`]. It resolves project vs
+//! standalone workflow via [`crate::workflow::resolve_check_mode`], loads and
+//! resolves the program graph, runs the type checker, optionally emits
+//! interface artifacts, and applies lint deny policy before reporting success.
+//!
+//! ```text
+//! FileCommandArgs + <file.phx>
+//!       │
+//!       ▼
+//! resolve_check_mode ──► CompileMode::Project | Standalone
+//!       │
+//!       ▼
+//! load_program_with_context ──► resolve_loaded_program ──► type_check
+//!       │                              │                        │
+//!       └──────── CompileError ────────┴────────────────────────┘
+//!       │
+//!       ├── (optional) emit_interfaces_from_compiled  [--emit-interface-only]
+//!       │
+//!       ▼
+//! lint_typed_or_exit
+//!       │
+//!       ▼
+//! Reporter::check_finished ──► CliExit::Ok
+//! ```
+//!
+//! ## Project vs standalone
+//!
+//! **Project mode** discovers `phoenix.toml`, loads the module graph with
+//! [`BuildLayout`], and uses `phoenix.toml` `[lint] deny` for lint policy.
+//! **Standalone mode** compiles a single entry file using module flags from
+//! [`crate::args::FileCommandArgs`]; lint policy defaults to warn-only unless
+//! `--deny` is passed.
+//!
+//! The `--emit-interface-only` flag requires project mode: it reloads the
+//! program and writes interface files via
+//! [`phx_compiler::emit_interfaces_from_compiled`] without producing bytecode.
+//!
+//! ## Compiler passes invoked
+//!
+//! Load (parse + module resolution), resolve, type check, optional interface
+//! emit, and the lint pass ([`crate::lints::lint_typed_or_exit`]). No IR
+//! lowering, codegen, bytecode verification, or VM execution.
+//!
+//! ## Exit codes
+//!
+//! | Outcome | [`crate::exit::CliExit`] |
+//! | --- | --- |
+//! | Success | [`CliExit::Ok`] |
+//! | Missing file, workflow violation, bad `--emit-interface-only`, standalone load context | [`CliExit::Usage`] |
+//! | Source read failure | [`CliExit::Io`] |
+//! | Load/resolve/type-check/interface emit/lint deny | [`CliExit::Compile`] |
+//!
+//! ## Public entry points
+//!
+//! - [`run_check`] — run `phx check` for the given file and flags.
 
 use std::fs;
 use std::time::Instant;
@@ -19,7 +75,27 @@ use crate::lints::lint_typed_or_exit;
 use crate::report::Reporter;
 use crate::workflow::{CompileMode, resolve_check_mode};
 
-/// Runs `phx check`.
+/// Runs `phx check <file>` — type-check the entry file without codegen.
+///
+/// Resolves [`CompileMode`] from the entry path and [`FileCommandArgs`], reads
+/// source from disk, then runs load → resolve → type check. When
+/// `file_args.emit_interface_only` is set, emits interface artifacts for a
+/// project (see module docs). Finally runs the lint pass and prints a summary
+/// via [`Reporter::check_finished`].
+///
+/// # Errors
+///
+/// Returns a non-[`CliExit::Ok`] variant instead of panicking:
+///
+/// - [`CliExit::Usage`] — missing `<file.phx>`, workflow resolution failure,
+///   `--emit-interface-only` outside a project, or standalone load-context error.
+/// - [`CliExit::Io`] — cannot read the entry source file.
+/// - [`CliExit::Compile`] — load, resolve, type-check, interface emit, or lint
+///   deny policy failure (diagnostics rendered through `reporter`).
+///
+/// # Panics
+///
+/// Never panics on user input or malformed source.
 #[allow(clippy::too_many_lines)] // project vs single-file branches + optional interface emit
 pub fn run_check(file_args: FileCommandArgs, color: ColorChoice, verbose: bool) -> CliExit {
     let style = crate::color::diagnostic_style(color);

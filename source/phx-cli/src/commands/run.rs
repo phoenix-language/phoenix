@@ -1,4 +1,67 @@
-//! `phx run` handler.
+//! `phx run` handler — compile when needed and execute on the VM.
+//!
+//! This module is the entry point for [`run_run`]. It resolves project vs
+//! standalone workflow via [`crate::workflow::resolve_run_mode`], produces or
+//! loads bytecode, verifies it, and executes the program entry on the VM with
+//! an optional heap cap and `--dump-main` local capture.
+//!
+//! ```text
+//! RunCommandArgs
+//!       │
+//!       ▼
+//! resolve_run_mode ──► CompileMode::Project | Standalone
+//!       │
+//!       ├── Project ──► build_project (unless --skip-build)
+//!       │                    │
+//!       │                    ▼
+//!       │              load_project_binary
+//!       │
+//!       └── Standalone ──► check_standalone_unit_with_context
+//!                               │
+//!                               ▼
+//!                         compile_compilation_unit
+//!       │
+//!       ▼
+//! verify ──► run_with_heap_cap | run_captured_with_heap_cap
+//!       │
+//!       ▼
+//! CliExit::Ok | Runtime | Verify | …
+//! ```
+//!
+//! ## Project vs standalone
+//!
+//! **Project mode** optionally runs [`phx_compiler::build_project`] (unless
+//! `--skip-build`), loads the built binary from the project output layout, and
+//! applies lint policy from `phoenix.toml` after the build. **Standalone mode**
+//! type-checks and compiles the entry file in-process via
+//! [`phx_compiler::check_standalone_unit_with_context`] and
+//! [`phx_compiler::compile_compilation_unit`], with warn-only lint policy unless
+//! `--deny` is passed.
+//!
+//! Heap capacity comes from `--heap-cap`, then `phoenix.toml` `vm_heap_cap_bytes`,
+//! then [`phx_vm::DEFAULT_HEAP_CAP_BYTES`].
+//!
+//! ## Compiler passes invoked
+//!
+//! **Project:** full project build (load, resolve, type check, lint, lower,
+//! codegen) when build is not skipped, then bytecode load from disk.
+//! **Standalone:** load, resolve, type check, lint, lower, codegen in one unit.
+//! Both paths run [`phx_bytecode::verify`] before VM execution.
+//!
+//! ## Exit codes
+//!
+//! | Outcome | [`crate::exit::CliExit`] |
+//! | --- | --- |
+//! | Success | [`CliExit::Ok`] |
+//! | Workflow resolution, standalone load context | [`CliExit::Usage`] |
+//! | Standalone source read failure | [`CliExit::Io`] |
+//! | Build, check, compile, lint deny | [`CliExit::Compile`] |
+//! | Bytecode verification failure | [`CliExit::Verify`] |
+//! | VM trap or runtime fault | [`CliExit::Runtime`] |
+//!
+//! ## Public entry points
+//!
+//! - [`run_run`] — run `phx run` for the given arguments and global flags.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -25,7 +88,30 @@ use crate::report::Reporter;
 use crate::vm_diag::SourceContext;
 use crate::workflow::{CompileMode, resolve_run_mode};
 
-/// Runs `phx run`.
+/// Runs `phx run` — build or compile the program, verify bytecode, and execute.
+///
+/// Dispatches on [`CompileMode`] from [`resolve_run_mode`]. Project invocations
+/// call [`build_project`] unless `args.skip_build`, then load bytecode from the
+/// project artifact path. Standalone invocations compile the entry file in memory.
+/// Both paths verify bytecode and run the VM with heap cap from CLI, project
+/// config, or the VM default.
+///
+/// When `dump_main` is true, captures and prints `main` local slots instead of
+/// streaming program output normally.
+///
+/// # Errors
+///
+/// Returns a non-[`CliExit::Ok`] variant instead of panicking:
+///
+/// - [`CliExit::Usage`] — workflow resolution or standalone load-context failure.
+/// - [`CliExit::Io`] — cannot read the standalone entry source file.
+/// - [`CliExit::Compile`] — build, type-check, codegen, or lint deny failure.
+/// - [`CliExit::Verify`] — bytecode fails structural verification before run.
+/// - [`CliExit::Runtime`] — VM execution error (source-mapped when available).
+///
+/// # Panics
+///
+/// Never panics on user input or malformed source.
 pub fn run_run(
     args: RunCommandArgs,
     color: ColorChoice,
