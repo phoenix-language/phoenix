@@ -1,10 +1,26 @@
 //! Phoenix bytecode — `PHX0` encode/decode, opcode definitions, and verification.
 //!
-//! Portable output of the compiler; consumed by the `phx_vm` crate after the verifier pass.
-//! Format contract: `docs/design/features/vm-linear.md`.
+//! Portable output of the compiler; consumed by the VM crate after the verifier pass.
+//! Wire layout and stack semantics: `docs/design/features/vm-linear.md`.
 //!
-//! Call [`verify`] on every image before execution; production VM entry points require the
+//! ## Pipeline
+//!
+//! 1. **Encode** — [`BytecodeModule::encode`] writes a PHX0 file (header, section table, payloads).
+//! 2. **Decode** — [`BytecodeModule::decode`] loads bytes into an in-memory module (no verification).
+//! 3. **Verify** — [`verify`] checks layout, control flow, and stack depth; returns a
+//!    [`VerifiedModule`] token on success.
+//! 4. **Execute** — the VM accepts only verified modules.
+//!
+//! Always call [`verify`] on every image before execution; production VM entry points require the
 //! returned [`VerifiedModule`] token.
+//!
+//! ## Public types
+//!
+//! - [`BytecodeModule`] — PHX0 file aggregate ([`BytecodeModule::encode`] / [`BytecodeModule::decode`]).
+//! - [`Instruction`] — decoded code-section records ([`Instruction::encode`] /
+//!   [`Instruction::decode_at`]).
+//! - [`Opcode`] — stable `u8` opcode discriminants and stack effects.
+//! - [`verify`] — pre-execution checks; [`VerifyError`] on failure, [`VerifiedModule`] on success.
 
 mod cast;
 mod const_pool;
