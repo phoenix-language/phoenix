@@ -442,6 +442,17 @@ pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> Stri
         TypeCheckError::OverlappingMutBorrow { name, .. } => {
             format!("cannot borrow `{name}` as mutable more than once")
         }
+        TypeCheckError::SharedMutBorrowConflict {
+            name,
+            new_borrow_is_mut,
+            ..
+        } => {
+            if *new_borrow_is_mut {
+                format!("cannot borrow `{name}` as mutable while it is borrowed")
+            } else {
+                format!("cannot borrow `{name}` as shared while it is mutably borrowed")
+            }
+        }
         TypeCheckError::TraitNotSatisfied {
             type_name,
             trait_name,

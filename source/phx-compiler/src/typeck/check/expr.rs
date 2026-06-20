@@ -348,16 +348,47 @@ impl TypeChecker<'_> {
                 } else {
                     self.check_expr_node(operand)
                 };
-                if matches!(op, phx_syntax::ast::expr::UnaryOp::RefMut) {
-                    if let Some(symbol) = mut_borrow_target(&operand.inner) {
-                        if let Some(prior_span) = self.ownership.conflicting_mut_borrow(symbol) {
-                            let name = self.symbol_name(symbol);
+                if matches!(
+                    op,
+                    phx_syntax::ast::expr::UnaryOp::Ref | phx_syntax::ast::expr::UnaryOp::RefMut
+                ) {
+                    if let Some(symbol) = borrow_target(&operand.inner) {
+                        let name = self.symbol_name(symbol);
+                        if matches!(op, phx_syntax::ast::expr::UnaryOp::Ref) {
+                            if let Some(prior_span) = self.ownership.conflicting_mut_borrow(symbol)
+                            {
+                                self.bag.push(
+                                    self.current_module,
+                                    TypeCheckError::SharedMutBorrowConflict {
+                                        name,
+                                        prior_span,
+                                        span,
+                                        new_borrow_is_mut: false,
+                                    },
+                                );
+                            } else {
+                                self.ownership.register_shared_borrow(symbol, span);
+                            }
+                        } else if let Some(prior_span) =
+                            self.ownership.conflicting_mut_borrow(symbol)
+                        {
                             self.bag.push(
                                 self.current_module,
                                 TypeCheckError::OverlappingMutBorrow {
                                     name,
                                     prior_span,
                                     span,
+                                },
+                            );
+                        } else if let Some(prior_span) = self.ownership.active_shared_borrow(symbol)
+                        {
+                            self.bag.push(
+                                self.current_module,
+                                TypeCheckError::SharedMutBorrowConflict {
+                                    name,
+                                    prior_span,
+                                    span,
+                                    new_borrow_is_mut: true,
                                 },
                             );
                         } else {
@@ -3249,7 +3280,7 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
     }
 }
 
-fn mut_borrow_target(expr: &Expr) -> Option<Symbol> {
+fn borrow_target(expr: &Expr) -> Option<Symbol> {
     match expr {
         Expr::Ident(ident) => Some(ident.symbol),
         _ => None,

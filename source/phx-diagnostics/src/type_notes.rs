@@ -265,6 +265,31 @@ pub fn typecheck_ancillary(names: &impl SymbolNames, err: &TypeCheckError) -> Ty
                 "finish using the first `&mut {name}` borrow before creating another"
             ));
         }
+        TypeCheckError::SharedMutBorrowConflict {
+            name,
+            prior_span,
+            new_borrow_is_mut,
+            ..
+        } => {
+            let prior_label = if *new_borrow_is_mut {
+                format!("`{name}` was borrowed here")
+            } else {
+                format!("`{name}` was mutably borrowed here")
+            };
+            out.notes.push(TypeCheckNote {
+                text: prior_label,
+                span: Some(*prior_span),
+            });
+            if *new_borrow_is_mut {
+                out.helps.push(format!(
+                    "finish using shared borrows of `{name}` before creating `&mut {name}`"
+                ));
+            } else {
+                out.helps.push(format!(
+                    "finish using the `&mut {name}` borrow before creating shared borrows"
+                ));
+            }
+        }
         TypeCheckError::TraitNotSatisfied {
             type_name,
             trait_name,

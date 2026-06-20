@@ -1,4 +1,4 @@
-//! Type-check diagnostic code registry (E2001–E2046).
+//! Type-check diagnostic code registry (E2001–E2048).
 //!
 //! The [`typecheck_error_registry!`] macro generates [`TypeCheckError::code`] and
 //! [`TypeCheckError::span`] from the table below so variant → code mapping lives in one place.
@@ -90,6 +90,7 @@ typecheck_error_registry! {
     LangItemInvalid => "E2045",
     GenericNestingTooDeep => "E2046",
     OverlappingMutBorrow => "E2047",
+    SharedMutBorrowConflict => "E2048",
 }
 
 #[cfg(test)]
