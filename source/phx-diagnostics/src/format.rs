@@ -1,4 +1,38 @@
-//! Source span rendering with carets for CLI diagnostics.
+//! Error-type → rendered diagnostic adapter for the Phoenix compiler.
+//!
+//! This module sits between structured pass errors ([`LexError`], [`ParseError`],
+//! [`ResolveError`], [`TypeCheckError`], [`LowerError`], [`IrError`]) and the layout engine
+//! in [`crate::render`]. Each `format_*` function:
+//!
+//! 1. Maps a variant to a stable [`DiagnosticCode`] and human-readable message (via `*_message`
+//!    helpers when only the text is needed).
+//! 2. Optionally attaches secondary notes (move sites, duplicate-definition locations, module
+//!    paths) through [`crate::type_notes::typecheck_ancillary`] or hard-coded note labels.
+//! 3. Delegates snippet layout (header, `--> path:line:col`, caret underline) to
+//!    [`render_diagnostic`], [`render_diagnostic_enriched`], or [`render_diagnostic_with_note`].
+//!
+//! ## Division of responsibility
+//!
+//! | Module | Responsibility |
+//! |--------|----------------|
+//! | `format` (this file) | Pass-specific message text, error-code selection, ancillary notes |
+//! | [`crate::render`] | Source-line extraction, caret alignment, styling hooks, lint layout |
+//!
+//! Prefer plain `format_*` entry points (they use [`PlainStyle`] and default [`SpanContext`])
+//! for golden tests and `--color never`. Use `*_styled` variants in the CLI when a custom
+//! [`DiagnosticStyle`] or file path context is available.
+//!
+//! ## Entry points by pass
+//!
+//! - **Lex** — [`format_lex_error`], [`format_lex_error_styled`]
+//! - **Parse** — [`parse_message`], [`format_parse_error`], [`format_parse_bag_styled`],
+//!   [`format_parse_bag_messages`], [`prepend_parse_bag_styled`]
+//! - **Resolve** — [`resolve_message`], [`format_resolve_error`], [`format_resolve_error_styled`]
+//! - **Type check** — [`typecheck_message`], [`format_typecheck_error`],
+//!   [`format_typecheck_error_styled`]
+//! - **Lower / IR** — [`format_lower_error`], [`format_ir_error`] and their `*_styled` variants
+//! - **Ad hoc** — [`format_span_message`], [`format_span_message_with_note`] for tests and
+//!   internal callers that already have a message string
 
 use crate::IrError;
 use crate::LexError;
@@ -16,7 +50,15 @@ use crate::render::{
 };
 use crate::type_notes::{TypeCheckNote, typecheck_ancillary};
 
-/// Formats `message` with a source line and caret for `span` in `source`.
+/// Renders `message` at `span` using the generic placeholder code `E0000`.
+///
+/// Convenience wrapper around [`render_diagnostic`] for tests and ad hoc diagnostics that do
+/// not belong to a specific pass error enum. Uses [`PlainStyle`] and default [`SpanContext`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans; invalid offsets produce a
+/// degraded snippet without a caret.
 #[must_use]
 pub fn format_span_message(source: &str, span: Span, message: &str) -> String {
     let style = PlainStyle;
@@ -30,13 +72,29 @@ pub fn format_span_message(source: &str, span: Span, message: &str) -> String {
     )
 }
 
-/// Formats a lexical error with a source caret when possible.
+/// Formats a lexical error as a full Cargo-style diagnostic.
+///
+/// When [`LexError::span`] is present, includes a source snippet and caret; otherwise returns
+/// only the error header (code + message). Delegates to [`format_lex_error_styled`] with
+/// [`PlainStyle`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_lex_error(source: &str, err: &LexError) -> String {
     format_lex_error_styled(source, err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats a lexical error with styling and file context.
+/// Formats a lexical error with a caller-supplied style and file context.
+///
+/// Maps each [`LexError`] variant to a stable message string and [`LexError::code`]. When the
+/// error carries a span, renders via [`render_diagnostic`]; otherwise uses
+/// [`DiagnosticStyle::error_header`] alone.
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_lex_error_styled(
     source: &str,
@@ -69,7 +127,10 @@ fn lex_message(err: &LexError) -> String {
     }
 }
 
-/// Human-readable message for a parse error (no caret).
+/// Returns the human-readable message for a parse error without codes or source snippets.
+///
+/// Used by the CLI for terse output and by [`format_parse_bag_messages`]. Delegates to
+/// [`lex_message`] for [`ParseError::Lex`] variants.
 #[must_use]
 pub fn parse_message(err: &ParseError) -> String {
     match err {
@@ -88,13 +149,28 @@ pub fn parse_message(err: &ParseError) -> String {
     }
 }
 
-/// Formats a parse error with a source caret when possible.
+/// Formats a parse error as a full Cargo-style diagnostic.
+///
+/// When `source` is available and the error (or nested lex error) has a span, includes a source
+/// snippet and caret. Uses [`PlainStyle`] and default [`SpanContext`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_parse_error(source: &str, err: &ParseError) -> String {
     format_parse_error_styled(Some(source), err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats a parse error with styling and file context.
+/// Formats a parse error with a caller-supplied style and optional source buffer.
+///
+/// [`ParseError::Lex`] delegates to [`format_lex_error_styled`] when `source` is `Some`; other
+/// variants use [`parse_message`] and [`render_diagnostic`] when both source and span are
+/// available.
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_parse_error_styled(
     source: Option<&str>,
@@ -118,7 +194,14 @@ pub fn format_parse_error_styled(
     }
 }
 
-/// Formats all errors in a parse bag, joined for multi-error output.
+/// Formats every error in a [`ParseBag`] and joins them for multi-error output.
+///
+/// Each error is rendered via [`format_parse_error_styled`]; parts are separated with blank
+/// lines through [`join_diagnostics`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_parse_bag_styled(
     bag: &ParseBag,
@@ -134,14 +217,24 @@ pub fn format_parse_bag_styled(
     join_diagnostics(style, &parts)
 }
 
-/// Joins human-readable parse messages (no carets or error codes).
+/// Joins parse error messages without codes, carets, or file paths.
+///
+/// Messages are separated by `\n---\n`. Suitable for compact logging or non-snippet UIs.
 #[must_use]
 pub fn format_parse_bag_messages(bag: &ParseBag) -> String {
     let parts: Vec<String> = bag.errors().iter().map(parse_message).collect();
     parts.join("\n---\n")
 }
 
-/// Prepends formatted parse diagnostics before a later-stage bag when parse recovered with errors.
+/// Prepends recovered parse diagnostics before a later-stage error bag.
+///
+/// When the parser recovered with errors (`prior_parse` is `Some`), formats the parse bag and
+/// joins it with `stage` (typically the resolve/type-check bag text). When no prior parse
+/// errors exist, returns `stage` unchanged.
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn prepend_parse_bag_styled(
     prior_parse: Option<&ParseBag>,
@@ -162,7 +255,10 @@ pub fn prepend_parse_bag_styled(
     }
 }
 
-/// Human-readable message for a resolve error (no caret).
+/// Returns the human-readable message for a resolve error without codes or source snippets.
+///
+/// Resolves interned symbol indices through `names` for identifier and type names. Module I/O
+/// and parse failures embed the underlying message or path context in the text.
 #[must_use]
 pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
     match err {
@@ -187,13 +283,29 @@ pub fn resolve_message(names: &impl SymbolNames, err: &ResolveError) -> String {
     }
 }
 
-/// Formats a resolve error with source carets and interned names.
+/// Formats a resolve error as a full Cargo-style diagnostic.
+///
+/// [`ResolveError::DuplicateDefinition`] renders a secondary note at the first definition site
+/// via [`render_diagnostic_with_note`]. Module errors override [`SpanContext::file_path`] with
+/// the module path from the error. Uses [`PlainStyle`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_resolve_error(source: &str, names: &impl SymbolNames, err: &ResolveError) -> String {
     format_resolve_error_styled(source, names, err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats a resolve error with styling and file context.
+/// Formats a resolve error with a caller-supplied style and file context.
+///
+/// See [`format_resolve_error`] for variant-specific behavior (duplicate-definition notes,
+/// module path context). Delegates snippet rendering to [`render_diagnostic`] or
+/// [`render_diagnostic_with_note`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_resolve_error_styled(
     source: &str,
@@ -242,7 +354,10 @@ pub fn format_resolve_error_styled(
     }
 }
 
-/// Human-readable message for a type-check error (no caret).
+/// Returns the human-readable message for a type-check error without codes or source snippets.
+///
+/// Resolves interned symbol indices through `names` where the error stores a `symbol_index`.
+/// Covers the full [`TypeCheckError`] variant set (ownership, traits, `?`, lang items, etc.).
 #[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn typecheck_message(names: &impl SymbolNames, err: &TypeCheckError) -> String {
@@ -419,7 +534,14 @@ fn sym_label(names: &impl SymbolNames, symbol_index: u32) -> String {
         .map_or_else(|| format!("sym#{symbol_index}"), |name| format!("`{name}`"))
 }
 
-/// Formats a type-check error with source carets; includes secondary notes for move errors.
+/// Formats a type-check error as a full Cargo-style diagnostic.
+///
+/// Includes secondary notes and help text from [`crate::type_notes::typecheck_ancillary`] (move
+/// sites, type annotations, trait hints). Uses [`PlainStyle`] and default [`SpanContext`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_typecheck_error(
     source: &str,
@@ -429,7 +551,14 @@ pub fn format_typecheck_error(
     format_typecheck_error_styled(source, names, err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats a type-check error with styling and file context.
+/// Formats a type-check error with a caller-supplied style and file context.
+///
+/// When the error has a span, renders via [`render_diagnostic_enriched`] with ancillary notes
+/// and help lines. Span-less errors emit only the header plus note/help labels.
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_typecheck_error_styled(
     source: &str,
@@ -503,13 +632,27 @@ fn append_ancillary_text(
     }
 }
 
-/// Formats an IR validation error with a source caret when possible.
+/// Formats an IR validation error as a full Cargo-style diagnostic.
+///
+/// Uses [`IrError::to_string`] for the message and [`IrError::code`] for the label. Uses
+/// [`PlainStyle`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_ir_error(source: &str, err: &IrError) -> String {
     format_ir_error_styled(source, err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats an IR validation error with styling and file context.
+/// Formats an IR validation error with a caller-supplied style and file context.
+///
+/// When [`IrError::span`] is present, renders via [`render_diagnostic`]; otherwise uses
+/// [`DiagnosticStyle::error_header`] alone.
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_ir_error_styled(
     source: &str,
@@ -526,13 +669,27 @@ pub fn format_ir_error_styled(
     }
 }
 
-/// Formats a lowering error with a source caret when possible.
+/// Formats a lowering error as a full Cargo-style diagnostic.
+///
+/// Uses [`LowerError::to_string`] for the message and [`LowerError::code`] for the label. Uses
+/// [`PlainStyle`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_lower_error(source: &str, err: &LowerError) -> String {
     format_lower_error_styled(source, err, &PlainStyle, SpanContext::default())
 }
 
-/// Formats a lowering error with styling and file context.
+/// Formats a lowering error with a caller-supplied style and file context.
+///
+/// When [`LowerError::span`] is present, renders via [`render_diagnostic`]; otherwise uses
+/// [`DiagnosticStyle::error_header`] alone.
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_lower_error_styled(
     source: &str,
@@ -549,7 +706,14 @@ pub fn format_lower_error_styled(
     }
 }
 
-/// Formats `message` at `span` plus an optional `note_label` at `note_span`.
+/// Renders `message` at `span` with a secondary note at `note_span`.
+///
+/// Convenience wrapper around [`render_diagnostic_with_note`] for tests and ad hoc diagnostics.
+/// Uses the generic placeholder code `E0000`, [`PlainStyle`], and default [`SpanContext`].
+///
+/// # Panics
+///
+/// Never panics on malformed user input or out-of-range spans.
 #[must_use]
 pub fn format_span_message_with_note(
     source: &str,
