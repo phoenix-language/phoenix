@@ -1,0 +1,4 @@
+// Should fail type-check: numeric literal cannot cast to bool in MVP.
+main :: () => {
+    const _ = 1 as bool;
+};

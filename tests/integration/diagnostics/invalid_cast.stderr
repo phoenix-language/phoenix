@@ -1,0 +1,6 @@
+error[E2014]: invalid cast from `S32` to `Bool`
+  --> tests/integration/diagnostics/invalid_cast.phx:3:15
+  |
+3 |     const _ = 1 as bool;
+  |               ^^^^^^^^^
+   = help: explicit casts between `S32` and `Bool` are not allowed in MVP; use a supported cast target (numeric primitives, array→slice, str→[u8])
