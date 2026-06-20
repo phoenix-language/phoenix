@@ -1,7 +1,42 @@
 //! Compile driver: parse, resolve, type-check, lower, and codegen.
 //!
+//! Orchestrates the Phoenix front-end and back-end for single files, multi-module crates, and
+//! project-aware builds. External embedders should prefer [`crate::facade`]; this module is the
+//! in-repo driver used by the `phx` CLI and integration tests.
+//!
+//! ## Pipeline
+//!
+//! 1. **Parse** — `phx_syntax::parse` (lex + parse into AST)
+//! 2. **Pre-resolve** — `#cfg` strip, `#[derive]` expansion
+//! 3. **Resolve** — name binding, imports, module graph ([`resolve`](crate::resolver::resolve) or
+//!    [`load_program`](crate::modules::load_program) + [`resolve_loaded_program`](crate::modules::resolve_loaded_program))
+//! 4. **Type-check** — ownership, traits, mono ([`type_check`](crate::typeck::type_check))
+//! 5. **Lower + codegen** — IR → PHX0 ([`lower`](crate::lower::lower), [`codegen`](crate::codegen::codegen))
+//!
+//! Stages 1–4 produce a [`CompilationUnit`]; stage 5 is [`compile_compilation_unit`].
+//!
+//! ## Inputs and outputs
+//!
+//! - **Input:** source text and/or on-disk path, optional module root or [`ProjectConfig`](crate::project::ProjectConfig).
+//! - **Output:** [`CompilationUnit`] (typed AST side tables) or [`BytecodeModule`](phx_bytecode::BytecodeModule).
+//! - **Errors:** [`CompileError`] with optional [`DiagnosticContext`] for multi-file carets.
+//!
 //! [`compile_source`] keeps an owned [`String`](crate::unit::CompilationUnit::source) so the
 //! resulting [`CompilationUnit`] is independent of the caller's buffer.
+//!
+//! ## Public entry points
+//!
+//! | Function | Scope | Produces |
+//! | --- | --- | --- |
+//! | [`compile_source`] | Single buffer, no `#import` | [`CompilationUnit`] |
+//! | [`compile_source_with_module_root`] | Entry text + on-disk module tree | [`CompilationUnit`] |
+//! | [`check_file`] | Entry path (auto-discovers `phoenix.toml`) | [`CompilationUnit`] |
+//! | [`check_project_file`] | Entry path + explicit project config | [`CompilationUnit`] |
+//! | [`check_file_with_module_path`] | Entry path + module root | [`CompilationUnit`] |
+//! | [`compile_compilation_unit`] | Already type-checked unit | [`BytecodeModule`] |
+//! | [`compile_to_module`] | Entry path → full pipeline | [`BytecodeModule`] |
+//! | [`compile_to_module_with_module_path`] | Entry path + module root → full pipeline | [`BytecodeModule`] |
+//! | [`lint_checked`] | Post type-check lint pass | [`LintBag`](phx_diagnostics::LintBag) |
 
 use std::io;
 use std::path::Path;
@@ -33,7 +68,8 @@ use crate::unit::CompilationUnit;
 /// Sources and interner needed to format multi-module diagnostics.
 ///
 /// Populated after program load or resolve so [`CompileError::format_with_modules`] can print
-/// carets in the correct file.
+/// carets in the correct file. For single-file [`compile_source`] failures, context is often
+/// `None` and formatting falls back to the entry buffer passed to the formatter.
 #[derive(Debug, Clone)]
 pub struct DiagnosticContext {
     /// All modules in the loaded program (for span → source buffer routing).
@@ -71,7 +107,12 @@ impl DiagnosticContext {
     }
 }
 
-/// Failure during `compile_source` or `check_file`.
+/// Failure during compile or check entry points in this module.
+///
+/// Each variant wraps the diagnostic bag for its pipeline stage. Resolve and type-check failures
+/// may carry a [`DiagnosticContext`] so callers can render spans from imported modules. Use
+/// [`CompileError::format_with_modules`] (or the styled variant) for user-facing output; [`Display`]
+/// is a compact fallback without source carets.
 #[derive(Debug)]
 pub enum CompileError {
     /// Lexical or parse failures.
@@ -553,6 +594,9 @@ pub fn lint_checked(typed: &crate::typeck::TypedProgram) -> Result<LintBag, Diag
 }
 
 /// Formats lint warnings for stderr (does not fail the build).
+///
+/// Requires a [`DiagnosticContext`] from the same type-check that produced `lints`. Warnings are
+/// non-fatal; the build driver prints this string and continues.
 #[must_use]
 pub fn format_lints(
     lints: &LintBag,
