@@ -1,0 +1,144 @@
+---
+name: v0-sprint-orchestrator
+description: >-
+  10-hour autonomous sprint toward Language v0+ and post-beta gates. Each
+  iteration picks independent tasks, spawns parallel subagents in isolated
+  branches, runs tests, then commits and pushes. Use when continuing a v0
+  sprint loop tick or starting a new sprint iteration.
+---
+
+# V0 Sprint Orchestrator
+
+Autonomous multi-agent sprint for the Phoenix compiler. **Authority:** `docs/design/language-v0.md`, `docs/design/language-v0-completion-roadmap.md`, `docs/mvp-finish-todo.md`, `docs/ROADMAP.md`.
+
+## Sprint constraints
+
+- **Duration:** Loop until `END_EPOCH` (set when the loop starts; default 10 hours).
+- **Base branch:** `trunk` (must be clean before spawning agents).
+- **Parallelism:** Up to 3 subagents per iteration on **independent** tasks (no overlapping files).
+- **Isolation:** Each subagent works on `agent/v0-sprint/<YYYYMMDD>-<task-id>-<slug>`.
+- **Quality gate before push:** `just test` must pass. For compiler/VM semantic changes, also run `just pre-commit`.
+- **Commit format:** `[stage]: description` (e.g. `[typeck]: split expr checking into submodule`).
+- **Push:** Push the feature branch to `origin` after tests pass. Do **not** merge to `trunk` automatically.
+- **Design rule:** Never invent language semantics — update design docs first when behavior is ambiguous.
+
+## Current priority backlog (post Language v0)
+
+Work top-to-bottom within a priority tier. Skip items already in flight on an open branch.
+
+### Tier A — M8 contributor readiness (ROADMAP M8)
+
+| ID | Task | Stage | Notes |
+|---|---|---|---|
+| PHX-039 | IR validator (terminator-last, target-in-range, optional depth sim) in debug builds | lower/ir | Catches lowering bugs early |
+| PHX-012 | Move parse-error formatting into `phx-diagnostics` | diagnostics | |
+| PHX-013 | Complete `phx explain` for E3002–E3005, E2033 | diagnostics/cli | |
+| PHX-058 | ICE handler debug escape hatch (`PHX_ICE_DEBUG`) | cli | |
+| PHX-031 | Split `typeck/check.rs` into `check/{decl,impl,expr,stmt,pattern,intrinsic}.rs` | typeck | Large refactor; one submodule per PR |
+
+### Tier B — Post-beta foundations
+
+| ID | Task | Stage | Notes |
+|---|---|---|---|
+| PHX-070 | PHX0 section 5 source maps: encode `(function_id, pc) → span` at link; CLI maps runtime errors | codegen/link/cli | Read `docs/design/features/debug.md` first |
+| PHX-061 | PXI round-trip property tests for nested generic types | tests/pxi | ROADMAP M3 infra |
+| PHX-050-adj | `load_project_binary` optional verify-on-load | vm/cli | Defense in depth |
+
+### Tier C — Explicitly deferred (do not start)
+
+Scheduler, full borrow checker, actors, std I/O, JIT, stable FFI Phase B — see `mvp-finish-todo.md` P3.
+
+## Iteration workflow (every loop tick)
+
+### 1. Orient (5 min)
+
+```bash
+git fetch origin
+git checkout trunk && git pull --ff-only origin trunk
+just test
+```
+
+If `trunk` is dirty or tests fail on clean trunk, fix or stop the sprint and report.
+
+### 2. Select tasks (parallel-safe)
+
+Pick 1–3 items from Tier A/B that:
+
+- Have no file overlap (e.g. do not run PHX-031 and another typeck edit together).
+- Have clear acceptance criteria in ROADMAP or mvp-finish-todo.
+- Fit in ~30–90 minutes of agent work.
+
+Record selected IDs for this iteration.
+
+### 3. Spawn subagents (parallel)
+
+Launch one Task per task with `subagent_type: "generalPurpose"` (or `best-of-n-runner` when comparing approaches). Each prompt must include:
+
+```
+Full Repository Path: /Users/jamallyons/Developer/GitHub/phoenix-lang/phoenix
+Branch: agent/v0-sprint/<date>-<task-id>-<slug> (create from trunk)
+
+Task ID: <PHX-NNN or V0-NNN>
+Goal: <one sentence>
+Acceptance: <from ROADMAP>
+Design refs: <doc paths>
+
+Workflow:
+1. git checkout -b <branch> from trunk
+2. Implement minimal correct diff
+3. Add/extend tests for observable behavior
+4. Run `just test`; if compiler/VM semantics changed, run `just pre-commit`
+5. If green: commit with [stage]: message, push -u origin <branch>
+6. Return: branch name, commit SHA, test summary, PR-ready bullet summary
+
+Do NOT merge to trunk. Do NOT push if tests fail.
+```
+
+Launch all tasks in **one message** so they run concurrently.
+
+### 4. Integrate results
+
+When subagents return:
+
+- If all green: log branches pushed; optionally open PRs with `gh pr create`.
+- If any failed: log failure; do not push failed work; leave branch for manual review or retry next iteration.
+- Update this skill's mental backlog — mark completed items.
+
+### 5. Schedule next tick
+
+If `date +%s` < `END_EPOCH`:
+
+- Arm next loop tick (40-minute fallback heartbeat unless all agents still running).
+- If agents still running, wait for completion before next spawn (avoid branch conflicts).
+
+## Subagent spawn template
+
+Use the Task tool:
+
+```
+description: "V0 sprint: <task-id>"
+subagent_type: generalPurpose
+prompt: |
+  <full prompt from section 3>
+```
+
+For risky refactors with multiple valid approaches, use `best-of-n-runner` instead (2 approaches max per task).
+
+## Stop conditions
+
+Stop the sprint loop when:
+
+- `END_EPOCH` reached
+- User asks to stop
+- `trunk` tests fail and cannot be fixed in one iteration
+- No Tier A/B tasks remain
+
+## Loop sentinel
+
+The background shell emits:
+
+```
+AGENT_LOOP_TICK_v0sprint {"prompt":"Run v0-sprint-orchestrator iteration","end_epoch":<unix>}
+```
+
+On wake: read `.cursor/skills/v0-sprint-orchestrator/SKILL.md`, execute iteration workflow, re-arm if before `end_epoch`.
