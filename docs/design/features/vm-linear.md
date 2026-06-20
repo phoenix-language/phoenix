@@ -395,6 +395,50 @@ Invariant: worker threads must never block on user-level I/O in safe paths.
 
 MVP bytecode does not include these opcodes; they are added via format versioning when the scheduler ships.
 
+#### `AWAIT_IO` opcode contract (post-MVP)
+
+Normative stub for schedulable std I/O lowering. Wire number is **reserved** — assigned when the scheduler bytecode format ships (outside MVP opcode range `0`–`50`). Language semantics and error visibility: [runtime-transparency.md — Schedulable I/O contract](runtime-transparency.md#schedulable-io-contract). In-tree harness: [`ParkReason::AwaitIo`](../../source/phx-vm/src/scheduler/park.rs), [`IoWaitRegistry`](../../source/phx-vm/src/scheduler/io_wait.rs).
+
+| Field | Contract |
+|---|---|
+| **Opcode name** | `AWAIT_IO` |
+| **Stack (enter)** | `[…, pending_io]` — operand stack holds the runtime I/O request lowered from the schedulable std call (exact cell shape TBD per `io_kind`) |
+| **Stack (park)** | Unchanged — the suspending frame's PC remains at the `AWAIT_IO` site until resume |
+| **Stack (resume, success)** | `[…, ok_value]` — pushes the success payload for the enclosing `Result` |
+| **Stack (resume, failure)** | `[…, err_value]` — pushes the typed error payload; caller `?` propagates as for synchronous `Result` calls |
+| **Operands** | `io_kind: u32` — discriminant for file / network / timer lowering; `request_id: u32` — index into the VM/host I/O table for this suspend site (exact encoding TBD) |
+
+**Park reason mapping**
+
+| VM step | Execution context state | Scheduler [`ParkReason`](../../source/phx-vm/src/scheduler/park.rs) |
+|---|---|---|
+| Dispatcher begins non-blocking I/O for `AWAIT_IO` | `Running` | — |
+| Syscall/submission would block a worker | `ParkedAwaitIO` | `AwaitIo` |
+| Worker slot released | context removed from active run slot; not on runnable queue | — |
+
+The dispatcher must **never** block a worker thread on safe I/O. If data is already available or validation fails synchronously, the opcode completes without parking (see [runtime-transparency.md](runtime-transparency.md#how-errors-surface-to-phoenix)).
+
+**Scheduler resume flow**
+
+1. Context executes `AWAIT_IO`; VM issues non-blocking I/O (or observes immediate completion).
+2. If not ready: transition `Running` → `ParkedAwaitIO` via `park(AwaitIo)`; register `(IoHandle, ContextId)` in [`IoWaitRegistry`](../../source/phx-vm/src/scheduler/io_wait.rs).
+3. Scheduler runs other runnable contexts on the worker pool.
+4. Host readiness (epoll / kqueue / IOCP or equivalent) or async completion calls `IoWaitRegistry::signal_ready`.
+5. Registry removes the wait entry and calls `SingleThreadScheduler::resume(context)`.
+6. Context becomes `Runnable`, is enqueued, and continues at the `AWAIT_IO` continuation PC with `Ok(T)` or `Err(E)` pushed per the std signature.
+
+Multi-stage I/O (partial reads, connect-then-read) repeats steps 1–6 at each would-block point until the std API's `Result` is ready to return.
+
+**Wakeup invariants**
+
+- A context registered in `IoWaitRegistry` must be in `ParkedAwaitIO` (`ParkReason::AwaitIo`); registering a running or mailbox-parked context is a harness/runtime fault ([`IoWaitError::ContextNotAwaitingIo`](../../source/phx-vm/src/scheduler/io_wait.rs)).
+- Each `IoHandle` maps to at most one parked context until `signal_ready` removes the entry.
+- `signal_ready` for an unknown handle is `IoWaitError::HandleNotFound` — wakeups must target a registered pending operation.
+- Resume while not parked (`SchedulerError::InvalidTransition`) is an internal VM fault, not a catchable Phoenix error.
+- Worker threads must not block on user-level I/O in safe paths; `#unsafe` FFI blocking I/O is outside this contract ([runtime-transparency.md](runtime-transparency.md#schedulable-io-contract)).
+
+Verifier obligations (post-MVP, TBD with opcode wire assignment): `AWAIT_IO` must appear only in functions whose Phoenix signature includes schedulable-I/O typing; stack effect at the suspend site must match the lowered std `Result` contract.
+
 ### 6) Supervision and lifecycle ownership
 
 - VM owns actor spawn/despawn transitions and mailbox registration

@@ -77,6 +77,8 @@ Use these when you need fault isolation, supervision, or structured message prot
 
 Post-MVP contract between **typed std I/O**, the **VM scheduler**, and **Phoenix call sites**. Concrete schedulable-I/O type syntax remains TBD; this section pins down park/resume and error behavior so std and VM can integrate without surprises.
 
+Normative bytecode stub (stack effect, `ParkReason::AwaitIo`, wakeup invariants): [vm-linear.md — `AWAIT_IO` opcode contract](vm-linear.md#await_io-opcode-contract-post-mvp).
+
 Implementation reference (in-tree harness, PHX-sched-0): [`source/phx-vm/src/scheduler/mod.rs`](../../source/phx-vm/src/scheduler/mod.rs) — [`ParkReason`](../../source/phx-vm/src/scheduler/park.rs), [`SingleThreadScheduler::resume`](../../source/phx-vm/src/scheduler/harness.rs), execution-context states in [vm-linear.md](vm-linear.md).
 
 ### Who calls park
@@ -206,5 +208,5 @@ When the type shape is chosen, update examples in [concurrency.md](concurrency.m
 | Message ownership (actors) | [messages.md](messages.md) |
 | Ownership vs parking vs `@send` | [ownership.md](ownership.md) |
 | Types vs runtime primitives | [type-system.md](type-system.md) |
-| `AWAIT_IO` bytecode | [vm-linear.md](vm-linear.md) |
+| `AWAIT_IO` bytecode | [vm-linear.md — `AWAIT_IO` opcode contract](vm-linear.md#await_io-opcode-contract-post-mvp) |
 | MVP scope | [../mvp.md](../mvp.md) |
