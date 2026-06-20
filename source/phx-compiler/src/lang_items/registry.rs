@@ -1,8 +1,34 @@
-//! [`LangItemRegistry`] — unified compiler-known std definitions.
+//! [`LangItemRegistry`] — compiler-known std definitions keyed by [`DefId`](crate::resolver::DefId).
 //!
-//! Maps stable `(kind, name)` language item markers to [`DefId`](crate::resolver::DefId)
-//! values. Cached fields on [`LangItemRegistry`] provide fast lookups for the type
-//! checker, monomorphizer, and lowering passes without scanning the entry map.
+//! Maps stable `(kind, name)` language item markers to resolved definition ids. Cached fields
+//! on [`LangItemRegistry`] (`option_enum`, `alloc_bytes`, trait markers, …) provide fast
+//! lookups for the type checker, monomorphizer, and lowering passes without scanning the
+//! entry map on every query.
+//!
+//! Populated once per program by [`super::build_lang_item_registry`] at the start of type
+//! checking and stored on [`TypedProgram`](crate::typeck::TypedProgram). Optional fields remain
+//! `None` when std is not linked or a required marker is missing from the build.
+//!
+//! ## Pipeline position
+//!
+//! Read throughout type checking (intrinsic calls, `Option`/`Result` special cases, trait
+//! bound rules), monomorphization, IR lowering (opcode selection for intrinsics), and PXI
+//! export (re-emitting registered markers).
+//!
+//! ## Owning passes
+//!
+//! - **Type checking** — `is_std_option` / `is_std_result`, trait bound helpers, intrinsic
+//!   call sites via [`LangItemRegistry::site_for_call`].
+//! - **Lowering** — variant tags for `?` desugaring and pattern matching via
+//!   [`LangItemRegistry::success_tag_for`] / [`LangItemRegistry::failure_tag_for`].
+//! - **PXI export** — serializes the full `entries` map for dependency consumers.
+//!
+//! ## In this module
+//!
+//! - [`LangItemKind`] — closed item category (`intrinsic`, `enum`, `variant`, `trait`).
+//! - [`LangItemMarker`] — one parsed `#[lang_item]` marker (`name` + `kind`).
+//! - [`LangItemRegistry`] — per-program registry with cached std/VM/trait `DefId` fields and
+//!   lookup helpers for intrinsics, `Option`/`Result` typing, and trait bounds.
 
 use phx_syntax::Interner;
 use phx_syntax::token::Keyword;
@@ -28,7 +54,10 @@ pub enum LangItemKind {
 }
 
 impl LangItemKind {
-    /// Parses a `kind` string from an attribute or `.pxi` file.
+    /// Parses a `kind` string from a `#[lang_item]` attribute or `.pxi` import record.
+    ///
+    /// Accepts `"intrinsic"`, `"enum"`, `"variant"`, and `"trait"`. Returns `None` for
+    /// unknown strings — callers treat that as a skipped or invalid marker.
     #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
@@ -40,7 +69,7 @@ impl LangItemKind {
         }
     }
 
-    /// Serializes this kind for `.pxi` export.
+    /// Serializes this kind for `.pxi` export and duplicate-error messages.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -52,7 +81,7 @@ impl LangItemKind {
     }
 }
 
-/// One `#[lang_item]` marker parsed from source or `.pxi`.
+/// One `#[lang_item]` marker parsed from source or rehydrated from `.pxi` import metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LangItemMarker {
     /// Stable language item name (`alloc_bytes`, `Option`, `Copyable`, …).
@@ -122,6 +151,8 @@ impl LangItemRegistry {
     }
 
     /// Returns the marker for `def`, if registered.
+    ///
+    /// Linear scan of the entry map — intended for diagnostics and PXI export, not hot paths.
     #[must_use]
     pub fn marker_for_def(&self, def: DefId) -> Option<LangItemMarker> {
         for ((kind, name), &id) in &self.entries {
@@ -246,7 +277,10 @@ impl LangItemRegistry {
         }
     }
 
-    /// Returns the std trait `DefId` for an interned trait name, if linked.
+    /// Returns the std trait [`DefId`](crate::resolver::DefId) for a trait name, if linked.
+    ///
+    /// Matches the closed v1 trait language items (`Copyable`, `Clone`, `Drop`, …). Returns
+    /// `None` for user traits or when std is not linked.
     #[must_use]
     pub fn trait_def_for_name(&self, _interner: &Interner, name: &str) -> Option<DefId> {
         match name {
@@ -264,7 +298,7 @@ impl LangItemRegistry {
         }
     }
 
-    /// Returns the std trait `DefId` for an interned trait symbol, if linked.
+    /// Returns the std trait [`DefId`](crate::resolver::DefId) for an interned trait symbol, if linked.
     #[must_use]
     pub fn trait_def_for_symbol(
         &self,
@@ -333,6 +367,10 @@ impl LangItemRegistry {
     }
 
     /// Inserts `marker` → `def_id`, updating cached fields and the entry map.
+    ///
+    /// Called by [`super::collect::build_lang_item_registry`] during collection. Known
+    /// `(kind, name)` pairs also populate the typed cache fields on [`LangItemRegistry`]
+    /// (`option_enum`, `alloc_bytes`, trait markers, …).
     ///
     /// Returns the previous `DefId` for the same `(kind, name)` key, if any.
     pub(crate) fn insert_entry(&mut self, marker: &LangItemMarker, def_id: DefId) -> Option<DefId> {
