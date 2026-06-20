@@ -1,16 +1,26 @@
 //! VM-hosted foreign stub table for `extern "C"` symbols (Phase A).
 //!
+//! Phase A resolves `extern "C"` imports at VM load time via Rust-hosted stubs instead of
+//! `dlopen`/`dlsym`. The compiler records foreign signatures; codegen lowers calls to
+//! [`Opcode::CallIndirect`](phx_bytecode::Opcode::CallIndirect) with `target_kind = 1`; the interpreter
+//! routes those calls through [`dispatch_foreign`]. See `docs/design/features/ffi.md`.
+//!
 //! ## Phase A contract
 //!
-//! Phase A is **VM-hosted** foreign calls: the compiler records `extern "C"` signatures
-//! and the VM resolves symbols at load time via test stubs. See `docs/design/features/ffi.md`.
+//! | Rule | Detail |
+//! | --- | --- |
+//! | Registration | Stubs are keyed by symbol name and assigned ids in **registration order** (`next_id` starting at 0) |
+//! | Re-registration | Same `name` returns the existing id and replaces the stub fn |
+//! | Id stability | Intentional for test harnesses; **not** linker-stable — see ROADMAP "Stable FFI symbol identity" |
+//! | Stack convention | Stubs pop arguments from [`Machine::stack`] (first param at lower index) and push the return value |
 //!
-//! Stub ids are assigned in **registration order** (`next_id` starting at 0). Re-registering
-//! the same name returns the existing id. This is intentional for Phase A test harnesses but
-//! **not stable for real linking** — linker-assigned symbol ids are deferred to post-beta
-//! link hardening (ROADMAP "Stable FFI symbol identity").
+//! ## Global vs explicit registry
 //!
-//! Stubs are invoked via `CallIndirect` with `target_kind = 1`.
+//! [`register_foreign_stub`] and [`dispatch_foreign`] use a process-global [`ForeignRegistry`]
+//! behind a mutex — sufficient for `phx run` and integration tests. [`dispatch_foreign_in`] accepts
+//! an explicit registry for future per-runtime linking (Phase B).
+//!
+//! [`clear_foreign_stubs`] resets the global registry; test harness only.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
@@ -21,9 +31,18 @@ use crate::VmErrorKind;
 use crate::context::Machine;
 
 /// Foreign stub signature: receives the live machine and module; pops args and pushes return.
+///
+/// Stubs run synchronously on the interpreter thread. They must follow the VM stack convention:
+/// pop arguments in codegen order (first parameter at the lower stack index), then push one
+/// [`crate::frame::Value`] return cell (or none for `()` returns — push is omitted by convention in
+/// Phase A tests).
 pub type ForeignStubFn = fn(&mut Machine, &BytecodeModule) -> Result<(), VmErrorKind>;
 
 /// Registry of foreign stubs keyed by id and name.
+///
+/// Owns stub function pointers and the name→id map used when codegen assigns foreign ids by
+/// declaration order. Prefer the process-global helpers ([`register_foreign_stub`],
+/// [`dispatch_foreign`]) unless embedding the VM with a dedicated link table.
 #[derive(Default)]
 pub struct ForeignRegistry {
     by_id: HashMap<u32, ForeignStubFn>,
@@ -43,7 +62,8 @@ impl std::fmt::Debug for ForeignRegistry {
 impl ForeignRegistry {
     /// Registers a foreign stub under `name` and returns its stub id.
     ///
-    /// Re-registering the same `name` returns the existing id and updates the stub fn.
+    /// Ids are assigned sequentially from zero on first registration. Re-registering the same
+    /// `name` returns the existing id and replaces the stub fn.
     #[must_use]
     pub fn register(&mut self, name: &str, stub: ForeignStubFn) -> u32 {
         if let Some(&id) = self.by_name.get(name) {
@@ -61,7 +81,8 @@ impl ForeignRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`VmErrorKind::InvalidForeignStub`] when `id` was never registered.
+    /// Returns [`VmErrorKind::InvalidForeignStub`] when `id` was never registered. Propagates
+    /// any error returned by the stub itself.
     pub fn dispatch(
         &self,
         id: u32,
@@ -76,7 +97,9 @@ impl ForeignRegistry {
         stub(machine, module)
     }
 
-    /// Clears all registered stubs.
+    /// Clears all registered stubs and resets id allocation.
+    ///
+    /// Test harness only — production callers should not rely on clearing mid-process.
     pub fn clear(&mut self) {
         *self = Self::default();
     }
@@ -94,7 +117,8 @@ fn lock_registry() -> MutexGuard<'static, ForeignRegistry> {
 
 /// Registers a foreign stub under `name` in the process-global Phase A registry.
 ///
-/// Re-registering the same `name` returns the existing id.
+/// Re-registering the same `name` returns the existing id and replaces the stub fn. Registration
+/// order must match codegen foreign id assignment for the linked program.
 #[must_use]
 pub fn register_foreign_stub(name: &str, stub: ForeignStubFn) -> u32 {
     lock_registry().register(name, stub)
@@ -102,9 +126,12 @@ pub fn register_foreign_stub(name: &str, stub: ForeignStubFn) -> u32 {
 
 /// Dispatches a foreign stub by id from the process-global Phase A registry.
 ///
+/// Called by the interpreter's `CallIndirect` handler when `target_kind = 1`.
+///
 /// # Errors
 ///
-/// Returns [`VmErrorKind::InvalidForeignStub`] when `id` was never registered.
+/// Returns [`VmErrorKind::InvalidForeignStub`] when `id` was never registered. Propagates any
+/// error returned by the stub itself.
 pub fn dispatch_foreign(
     id: u32,
     machine: &mut Machine,
@@ -116,9 +143,12 @@ pub fn dispatch_foreign(
 
 /// Dispatches a foreign stub using an explicit registry (future per-runtime linking).
 ///
+/// Same contract as [`dispatch_foreign`], but reads from `registry` instead of the global table.
+///
 /// # Errors
 ///
-/// Returns [`VmErrorKind::InvalidForeignStub`] when `id` was never registered.
+/// Returns [`VmErrorKind::InvalidForeignStub`] when `id` was never registered. Propagates any
+/// error returned by the stub itself.
 #[doc(hidden)]
 pub fn dispatch_foreign_in(
     registry: &ForeignRegistry,
@@ -129,7 +159,9 @@ pub fn dispatch_foreign_in(
     registry.dispatch(id, machine, module)
 }
 
-/// Clears all registered stubs in the process-global registry (test harness only).
+/// Clears all registered stubs in the process-global registry.
+///
+/// Test harness only — resets id allocation to zero.
 pub fn clear_foreign_stubs() {
     lock_registry().clear();
 }
