@@ -1,6 +1,6 @@
 # Agent task queue
 
-**Updated:** 2026-06-20  
+**Updated:** 2026-06-21  
 **Maintainer:** v0 sprint orchestrator (master agent) — **not** a static checklist.
 
 This file is the **active work queue** for autonomous agents. The orchestrator **reads it every iteration**, assigns the top unchecked items to workers, and **updates it** when tasks complete, block, or are split.
@@ -47,13 +47,11 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
-| 20 | Golden diagnostic — release build without source spans | TESTS | P3 | `[ ]` |
-
-**Optional (queue when &lt; 5 active):**
-
-| # | Task | Stream | Status |
-|---|------|--------|--------|
-| — | _Replenish from Backlog when #20 completes_ | — | — |
+| 21 | PHX-070-p6 — Multi-module PC span stress fixtures | TESTS | P3 | `[ ]` |
+| 22 | Golden diagnostic — loop mut borrow across iterations | TESTS | P3 | `[ ]` |
+| 23 | PHX-sched-4 — M:N OS-thread scheduler harness | FEATURE | P3 | `[ ]` |
+| 24 | ROADMAP PHX-070 / P3 status sync | INFRA | P3 | `[ ]` |
+| 25 | `phx explain` gap for borrow errors E2047–E2049 | QOL | P3 | `[ ]` |
 
 ---
 
@@ -296,6 +294,14 @@ _Also on trunk from same sprint window: PHX-sched-2 I/O wait registry stub — P
 | 18 | mvp-finish P3 doc truth (ROADMAP + agent queue) | this PR |
 | 19 | PHX-borrow-2 — loop / branch borrow join | PR #128 |
 
+## Completed — sprint iteration 3 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 20 | Golden diagnostic — release build without source spans | PR #130 |
+
+_Also on trunk from same sprint window: PHX-borrow-3 loop body / back-edge join — PR #131._
+
 ---
 
 ## Task 16 — PHX-sched-3: AwaitIo opcode contract doc
@@ -406,12 +412,121 @@ Golden locks CLI stderr for a release-built program that traps: no Phoenix sourc
 
 ---
 
+## Task 21 — PHX-070-p6: Multi-module PC span stress fixtures
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/debug.md` (Phase 1 PC span map)  
+**Depends on:** PHX-070-p4 (#101, #121, #123), PHX-070-p5 (#103)
+
+### Goal
+
+Integration fixtures linking **multiple** Phoenix modules; VM trap in a callee module resolves to the correct `.phx` line after link-time `PcSpanTable` merge.
+
+### Work
+
+1. Add `tests/integration/` fixture with at least two modules and a cross-module call that traps.
+2. Assert CLI stderr shows callee module `path:line:col` (dev build).
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- New integration test passes on trunk; fails if link merge or callee span recording regresses.
+
+---
+
+## Task 22 — Golden diagnostic: loop mut borrow across iterations
+
+**Stream:** TESTS  
+**Depends on:** PHX-borrow-3 (#131)
+
+### Goal
+
+CLI golden locks user-visible diagnostic when a `&mut` borrow would carry across loop iterations.
+
+### Work
+
+1. `tests/integration/diagnostics/loop_mut_borrow.phx` + `.stderr` golden.
+2. Register in `phx-test` diagnostic case list.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- `cargo test -p phx-integration-tests --test diagnostics` passes.
+
+---
+
+## Task 23 — PHX-sched-4: M:N OS-thread scheduler harness
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/runtime-transparency.md`, `docs/design/mvp.md` shipping order  
+**Depends on:** PHX-sched-0 (#104), PHX-sched-2 (#116)
+
+### Goal
+
+Extend in-tree scheduler from single-threaded park/resume to **multiple OS threads** running runnable contexts — still no Phoenix syntax or std I/O.
+
+### Work
+
+1. Add run-queue worker pool (fixed thread count) in `phx-vm` / runtime module.
+2. Unit tests: N contexts spread across threads; park/resume; clean shutdown.
+3. Run `just test`.
+
+### Acceptance
+
+- Tests pass without new opcodes or `phx` CLI changes.
+- No new crates.io deps.
+
+---
+
+## Task 24 — ROADMAP PHX-070 / P3 status sync
+
+**Stream:** INFRA  
+**Design:** `docs/ROADMAP.md`, `docs/mvp-finish-todo.md`
+
+### Goal
+
+Sync ROADMAP and P3 rows with trunk after PHX-070 release golden (#130), loop borrow join (#131), and remaining partial items.
+
+### Work
+
+1. Update PHX-070 row status and sub-bullets in `ROADMAP.md`.
+2. Align `mvp-finish-todo.md` P3 checkboxes with shipped PRs (#127–#131).
+3. No Rust changes.
+
+### Acceptance
+
+- PHX-070 shows partial completion with release golden + loop borrow noted; sched/borrow rows match trunk.
+
+---
+
+## Task 25 — `phx explain` gap for borrow errors E2047–E2049
+
+**Stream:** QOL  
+**Depends on:** PHX-borrow-0 (#106), PHX-borrow-2 (#128), PHX-borrow-3 (#131)
+
+### Goal
+
+`phx explain E2047` (and related borrow codes) returns actionable text matching typeck diagnostics.
+
+### Work
+
+1. Audit borrow-related `TypeCheckError` codes emitted by typeck.
+2. Add or extend explain entries in CLI explain registry.
+3. CLI test: `phx explain E2047` (and siblings) non-empty and mentions exclusivity / join context.
+4. Run `just pre-commit`.
+
+### Acceptance
+
+- Explain output covers if-arm, shared/mut conflict, and loop back-edge borrow errors.
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #16–#19 (iteration 2; #18 = ROADMAP/agent queue sync) |
-| Last trunk SHA | `2921773c` |
-| Active queue count | 1 / 8 |
+| Last completed task | #20 (iteration 3; release trap golden PR #130) |
+| Last trunk SHA | `65ad5e9e` |
+| Active queue count | 5 / 8 |
 | Blockers | — |
-| Next replenish | When #20 complete → pull from Backlog (unscheduled) |
+| Next replenish | When active count drops below 5 → pull from Backlog (unscheduled) |

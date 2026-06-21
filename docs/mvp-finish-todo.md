@@ -15,7 +15,7 @@
 | **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
 
 
-**Last verified:** 2026-06-20 — `just pre-commit` green on trunk (`627fd8ec`); sprint iteration 1 merged PHX-070-p4/p5, borrow phase-0, scheduler harness + I/O contract (PRs #101–#123).
+**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`65ad5e9e`); sprint iteration 3 merged release trap golden (PR #130) and loop borrow join (PR #131).
 
 ---
 
@@ -117,7 +117,9 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
   - [x] Overlapping `&mut T` rejection (PR #106)
   - [x] Shared `&T` + `&T`/`&mut T` conflict (PR #111, #115)
   - [x] Golden diagnostics E2047 / E2048 (PR #110, #119)
-  - [ ] Loop / branch borrow join rules; lifetime syntax (post-MVP)
+  - [x] If/match arm borrow join (PR #128)
+  - [x] Loop body / back-edge borrow join (PR #131)
+  - [ ] Lifetime syntax (post-MVP)
 
 - [ ] **M:N scheduler + schedulable I/O** — **Partial (2026-06-20):** in-tree harness + design contract + I/O wait stub; no Phoenix syntax or std I/O yet. **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
   - [x] Scheduler types + single-thread park/resume harness (PR #104)
