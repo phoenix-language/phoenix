@@ -113,13 +113,26 @@ mod tests {
         }
     }
 
+    fn lock_registry<'a>(
+        registry: &'a Arc<Mutex<IoWaitRegistry>>,
+        label: &str,
+    ) -> std::sync::MutexGuard<'a, IoWaitRegistry> {
+        match registry.lock() {
+            Ok(guard) => guard,
+            Err(err) => panic!("{label}: registry lock poisoned: {err}"),
+        }
+    }
+
     #[test]
     fn await_io_operands_parse_from_instruction() {
         let inst = Instruction {
             opcode: Opcode::AwaitIo,
             operands: vec![1, 42],
         };
-        let ops = AwaitIoOperands::from_instruction(&inst).expect("parse await_io operands");
+        let ops = match AwaitIoOperands::from_instruction(&inst) {
+            Ok(ops) => ops,
+            Err(err) => panic!("parse await_io operands: {err:?}"),
+        };
         assert_eq!(ops.io_kind, 1);
         assert_eq!(ops.request_id, 42);
         assert_eq!(ops.io_handle(), IoHandle::from_index(42));
@@ -155,25 +168,34 @@ mod tests {
             pool.state_of(ctx),
             Some(ContextState::Parked(ParkReason::AwaitIo))
         );
-        assert_eq!(registry.lock().expect("registry lock").pending_count(), 1);
         assert_eq!(
-            registry.lock().expect("registry lock").context_for(handle),
+            lock_registry(&registry, "pending after park").pending_count(),
+            1
+        );
+        assert_eq!(
+            lock_registry(&registry, "context_for after park").context_for(handle),
             Some(ctx)
         );
 
-        let resumed = signal_ready_ok(
-            &mut registry.lock().expect("registry lock"),
-            handle,
-            &mut pool,
-            "external I/O readiness wakeup",
-        );
+        let resumed = {
+            let mut reg = lock_registry(&registry, "signal_ready");
+            signal_ready_ok(
+                &mut reg,
+                handle,
+                &mut pool,
+                "external I/O readiness wakeup",
+            )
+        };
         assert_eq!(resumed, ctx);
 
         pool.wait_all_done();
 
         assert_eq!(pool.state_of(ctx), Some(ContextState::Done));
         assert_eq!(pool.parked_count(), 0);
-        assert_eq!(registry.lock().expect("registry lock").pending_count(), 0);
+        assert_eq!(
+            lock_registry(&registry, "pending after done").pending_count(),
+            0
+        );
         pool.shutdown();
     }
 }
