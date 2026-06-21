@@ -15,7 +15,7 @@
 | **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
 
 
-**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`8e2ed9d0`); sprint iteration 6 merged multi-module span test (PR #137), M:N worker pool (PR #136), borrow explain coverage (PR #135), loop/if-arm borrow goldens (PR #134), and link test flake stabilization.
+**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`e82158f7`); sprint iteration 7 merged IoWaitRegistry+WorkerPool wiring (PR #139) and sandbox build lock batch (PR #140).
 
 ---
 
@@ -125,13 +125,14 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
   - [x] `phx explain` for E2047 / E2048 (PR #135)
   - [ ] Lifetime syntax (post-MVP)
 
-- [ ] **M:N scheduler + schedulable I/O** — **Partial (2026-06-21):** in-tree harness, design contract, I/O wait stub, and M:N worker pool on trunk; no Phoenix syntax or std I/O yet. **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
+- [ ] **M:N scheduler + schedulable I/O** — **Partial (2026-06-21):** in-tree harness, design contract, I/O wait stub, M:N worker pool, and IoWaitRegistry wired through WorkerPool on trunk; no Phoenix syntax or std I/O yet. **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
   - [x] Scheduler types + single-thread park/resume harness (PR #104)
   - [x] Schedulable I/O contract documented (PR #113)
   - [x] I/O wait registry stub + `AwaitIo` wakeup (PR #116)
   - [x] `AWAIT_IO` opcode contract in `vm-linear.md` (PR #127)
   - [x] M:N OS-thread `WorkerPool` harness (PR #136)
-  - [ ] Wire I/O registry through worker pool; std I/O integration
+  - [x] Wire I/O registry through worker pool (PR #139)
+  - [ ] AwaitIo opcode VM harness; std I/O integration
 
 - [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
 

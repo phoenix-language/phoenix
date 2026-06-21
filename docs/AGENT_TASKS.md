@@ -47,11 +47,14 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
-| 26 | PHX-sched-5 — Wire `IoWaitRegistry` through `WorkerPool` | FEATURE | P3 | `[ ]` |
 | 27 | Integration — multi-module release build without spans | TESTS | P3 | `[ ]` |
 | 28 | `phx explain` gaps E3002–E3005 and E2033 | QOL | P3 | `[ ]` |
 | 29 | PHX-070-p7 — Section 5 function-name symbol stub | FEATURE | P3 | `[ ]` |
 | 30 | Golden diagnostic — match scrutinee overlapping borrow | TESTS | P3 | `[ ]` |
+| 31 | PHX-sched-6 — AwaitIo opcode VM harness stub | FEATURE | P3 | `[ ]` |
+| 32 | PHX-borrow-4 — borrow across function call arguments | FEATURE | P3 | `[ ]` |
+| 33 | PXI nested generic round-trip property tests | TESTS | P3 | `[ ]` |
+| 34 | PHX-070-p8 — CLI `format_vm_error` function name display | FEATURE | P3 | `[ ]` |
 
 ---
 
@@ -312,6 +315,14 @@ _Also on trunk from same sprint window: PHX-borrow-3 loop body / back-edge join 
 | 25 | `phx explain` gap for borrow errors E2047–E2048 | PR #135 |
 
 _Also on trunk from same sprint window: link/integration test flake stabilization — PR #133, unique module-tree temp dirs, `std_result_match` build race._
+
+## Completed — sprint iteration 7 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 26 | PHX-sched-5 — Wire `IoWaitRegistry` through `WorkerPool` | PR #139 |
+
+_Also on trunk from same sprint window: sandbox build lock batch — PR #140 (`ensure_built_project` in std integration runs)._
 
 ---
 
@@ -642,12 +653,102 @@ CLI golden locks user-visible diagnostic when a `match` scrutinee or arm would l
 
 ---
 
+## Task 31 — PHX-sched-6: AwaitIo opcode VM harness stub
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/vm-linear.md`, `docs/design/features/runtime-transparency.md`  
+**Depends on:** PHX-sched-5 (#139)
+
+### Goal
+
+Implement the in-tree **AwaitIo** opcode handler in the VM scheduler harness: park on `ParkReason::AwaitIo`, register with `IoWaitRegistry`, resume on wakeup — still no Phoenix syntax or std I/O.
+
+### Work
+
+1. Add opcode dispatch stub wired to `WorkerPool` park/resume + `IoWaitRegistry` paths.
+2. Unit tests: synthetic context executes `AwaitIo`, wakes via registry, completes on a worker thread.
+3. Run `just test`.
+
+### Acceptance
+
+- Tests pass without new `phx` CLI changes.
+- No new crates.io deps.
+
+---
+
+## Task 32 — PHX-borrow-4: borrow across function call arguments
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/ownership.md`  
+**Depends on:** PHX-borrow-2 (#128), PHX-borrow-3 (#131)
+
+### Goal
+
+Reject overlapping borrows when a **function call** would pass aliasing `&mut T` references (e.g. two `&mut` params from the same binding).
+
+### Work
+
+1. Extend borrow map at call sites: check actual arguments against active borrows.
+2. Unit tests in `source/phx-compiler/tests/typeck.rs` (positive + negative).
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Fixture with `f(&mut x, &mut x)` fails type-check with clear diagnostic.
+- Non-conflicting distinct bindings still accepted.
+
+---
+
+## Task 33 — PXI nested generic round-trip property tests
+
+**Stream:** TESTS  
+**Design:** `docs/ROADMAP.md` M3  
+**Depends on:** PHX-040 PXI validation on trunk
+
+### Goal
+
+Property-style tests proving nested generic type exports round-trip through `.pxi` encode/decode without loss or panic.
+
+### Work
+
+1. Extend `tests/integration/tests/pxi_roundtrip.rs` (or equivalent) with nested generic fixtures.
+2. Assert stable error kinds on malformed nested payloads — no panic.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- At least 3 nested generic round-trip cases; workspace tests green.
+
+---
+
+## Task 34 — PHX-070-p8: CLI `format_vm_error` function name display
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/debug.md`  
+**Depends on:** PHX-070-p7 (Task 29)
+
+### Goal
+
+When section 5 carries function debug names, VM fault output includes the **function name** alongside `path:line:col`.
+
+### Work
+
+1. Extend `format_vm_error` to resolve `function_id` via merged function-name table.
+2. Integration test: dev build trap shows function name in stderr.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- New or extended integration test passes on trunk; release build unchanged (no section 5).
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #25 (iteration 6; explain borrow codes PR #135) |
-| Last trunk SHA | `8e2ed9d0` |
-| Active queue count | 5 / 8 |
+| Last completed task | #26 (iteration 7; PHX-sched-5 PR #139) |
+| Last trunk SHA | `e82158f7` |
+| Active queue count | 8 / 8 |
 | Blockers | — |
 | Next replenish | When active count drops below 5 → pull from Backlog (unscheduled) |
