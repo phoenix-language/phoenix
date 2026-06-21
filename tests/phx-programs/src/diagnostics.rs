@@ -574,6 +574,29 @@ pub const DIAG_MATCH_SCRUTINEE_MUT_BORROW: DiagnosticCase = DiagnosticCase {
    = help: finish using the first `&mut x` borrow before creating another",
 };
 
+const DIAG_CALL_SITE_MUT_BORROW_SOURCE: &str = r"swap :: (a: &mut s32, b: &mut s32) => () {
+    const _ = ();
+};
+
+main :: () => {
+    var x: s32 = 1;
+    swap(&mut x, &mut x);
+};
+";
+
+pub const DIAG_CALL_SITE_MUT_BORROW: DiagnosticCase = DiagnosticCase {
+    name: r"call_site_mut_borrow",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_CALL_SITE_MUT_BORROW_SOURCE),
+    expected: r"error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/call_site_mut_borrow.phx:7:18
+  |
+7 |     swap(&mut x, &mut x);
+  |                  ^^^^^^
+   = note: `x` was mutably borrowed here
+   = help: finish using the first `&mut x` borrow before creating another",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -601,4 +624,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_IF_ARM_OVERLAPPING_MUT,
     DIAG_LOOP_OVERLAPPING_MUT,
     DIAG_MATCH_SCRUTINEE_MUT_BORROW,
+    DIAG_CALL_SITE_MUT_BORROW,
 ];
