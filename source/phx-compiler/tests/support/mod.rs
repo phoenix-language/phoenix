@@ -11,6 +11,9 @@
 )]
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static MODULE_TREE_MATERIALIZE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 use phx_bytecode::Instruction;
 use phx_compiler::{CompileError, compile_source};
@@ -225,7 +228,8 @@ pub fn expect_typeck_err(source: &str) -> TypeCheckBag {
 /// Write a module tree to a temp directory; returns `(module_root, entry_path)`.
 pub fn materialize_module_tree(tree: &ModuleTree) -> (PathBuf, PathBuf) {
     let n = std::process::id();
-    let root = std::env::temp_dir().join(format!("phx_compiler_test_{}_{}", tree.name, n));
+    let unique = MODULE_TREE_MATERIALIZE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!("phx_compiler_test_{}_{}_{unique}", tree.name, n));
     let _ = std::fs::remove_dir_all(&root);
     let module_root = root.join("tests/cli/fixtures/modules");
     for (rel, source) in tree.files {
