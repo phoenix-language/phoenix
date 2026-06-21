@@ -29,6 +29,7 @@
 //! | [`IoWaitRegistry`] | Tracks [`ParkReason::AwaitIo`] waits and wakeups (PHX-sched-2) |
 //! | [`WorkerPool`] | M:N worker threads + shared [`RunQueue`] (PHX-sched-4) |
 //! | [`AwaitIoOperands`] | Harness operands for [`Opcode::AwaitIo`](phx_bytecode::Opcode::AwaitIo) (PHX-sched-6) |
+//! | [`StdIoParkHarness`] | Synthetic std I/O park contract harness (PHX-sched-7) |
 
 mod await_io;
 mod context;
@@ -36,6 +37,7 @@ mod harness;
 mod io_wait;
 mod park;
 mod queue;
+mod std_io_harness;
 mod worker_pool;
 
 pub use await_io::{AwaitIoHarnessError, AwaitIoOperands, dispatch_await_io_harness};
@@ -44,4 +46,5 @@ pub use harness::{RunningGuard, SchedulerError, SingleThreadScheduler};
 pub use io_wait::{IoHandle, IoWaitError, IoWaitRegistry};
 pub use park::ParkReason;
 pub use queue::RunQueue;
+pub use std_io_harness::{StdIoKind, StdIoParkHarness, StdIoParkRequest, park_std_io_synthetic};
 pub use worker_pool::{WorkerPool, WorkerPoolStatus};
