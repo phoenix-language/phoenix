@@ -542,6 +542,38 @@ pub const DIAG_LOOP_OVERLAPPING_MUT: DiagnosticCase = DiagnosticCase {
    = help: finish using the first `&mut x` borrow before creating another",
 };
 
+const DIAG_MATCH_SCRUTINEE_MUT_BORROW_SOURCE: &str = r"main :: () => {
+    var x: s32 = 1;
+    var c: bool = true;
+    match c {
+        true => {
+            const _a = &mut x;
+        };
+        false => {
+            const _b = &mut x;
+        };
+    };
+    const _ = ();
+};
+";
+
+pub const DIAG_MATCH_SCRUTINEE_MUT_BORROW: DiagnosticCase = DiagnosticCase {
+    name: r"match_scrutinee_mut_borrow",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_MATCH_SCRUTINEE_MUT_BORROW_SOURCE),
+    expected: r"error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/match_scrutinee_mut_borrow.phx:9:24
+  |
+9 |             const _b = &mut x;
+  |                        ^^^^^^
+   = note: `x` was mutably borrowed here
+  --> tests/integration/diagnostics/match_scrutinee_mut_borrow.phx:6:24
+  |
+6 |             const _a = &mut x;
+  |                        ^^^^^^
+   = help: finish using the first `&mut x` borrow before creating another",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -568,4 +600,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_SHARED_MUT_BORROW,
     DIAG_IF_ARM_OVERLAPPING_MUT,
     DIAG_LOOP_OVERLAPPING_MUT,
+    DIAG_MATCH_SCRUTINEE_MUT_BORROW,
 ];
