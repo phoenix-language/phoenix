@@ -301,6 +301,22 @@ fn explain_phx_013_codes() {
 }
 
 #[test]
+fn explain_borrow_codes_e2047_e2048() {
+    let cli = shared_cli();
+    let cases = [
+        ("E2047", "overlapping"),
+        ("E2047", "&mut"),
+        ("E2048", "shared"),
+        ("E2048", "mutable"),
+    ];
+    for (code, needle) in cases {
+        cli.run(&["explain", code])
+            .assert_success()
+            .assert_contains(needle);
+    }
+}
+
+#[test]
 fn panic_is_caught_without_rust_backtrace() {
     let cli = shared_cli();
     let out = cli.run_with_env(&["version"], &[("PHX_TEST_FORCE_PANIC", "1")]);
