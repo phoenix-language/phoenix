@@ -374,6 +374,60 @@ fn if_single_arm_mut_borrow_ok() {
 }
 
 #[test]
+fn while_overlapping_mut_borrow_across_iterations_rejected() {
+    let source = "main :: () => { var x: s32 = 1; var c: bool = true; while c { const _a = &mut x; }; const _ = (); };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "overlapping mut borrow across loop iterations");
+    if let TypeCheckError::OverlappingMutBorrow {
+        name,
+        prior_span,
+        span,
+    } = &err.error
+    {
+        assert_eq!(name, "x");
+        let borrow = test_find(source, "&mut x", "&mut x");
+        assert_eq!(prior_span.start, u32_from_usize(borrow, "offset fits u32"));
+        assert_eq!(span.start, u32_from_usize(borrow, "offset fits u32"));
+    }
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
+    assert!(msg.contains("mutably borrowed"));
+    assert!(msg.contains("note:"));
+}
+
+#[test]
+fn loop_overlapping_mut_borrow_across_iterations_rejected() {
+    let source = "main :: () => { var x: s32 = 1; loop { const _a = &mut x; }; };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "overlapping mut borrow across loop iterations");
+    if let TypeCheckError::OverlappingMutBorrow { name, .. } = &err.error {
+        assert_eq!(name, "x");
+    }
+}
+
+#[test]
+fn while_sequential_mut_borrow_after_loop_ok() {
+    compile_ok(
+        "main :: () => { var x: s32 = 1; var c: bool = true; while c { { const _a = &mut x; }; }; const _b = &mut x; };",
+    );
+}
+
+#[test]
+fn while_sequential_block_mut_borrows_in_body_ok() {
+    compile_ok(
+        "main :: () => { var x: s32 = 1; var c: bool = true; while c { { const _a = &mut x; }; { const _b = &mut x; }; }; const _ = (); };",
+    );
+}
+
+#[test]
 fn if_move_in_then_use_in_else_ok() {
     compile_ok(
         "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { var q: Point = p; } else { const _ = p.r; }; };",
