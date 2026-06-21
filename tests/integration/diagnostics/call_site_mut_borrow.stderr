@@ -1,0 +1,7 @@
+error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/call_site_mut_borrow.phx:7:18
+  |
+7 |     swap(&mut x, &mut x);
+  |                  ^^^^^^
+   = note: `x` was mutably borrowed here
+   = help: finish using the first `&mut x` borrow before creating another

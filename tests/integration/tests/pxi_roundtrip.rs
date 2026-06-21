@@ -141,6 +141,30 @@ fn nested_option(depth: usize) -> PxiType {
     }
 }
 
+fn nested_result(depth: usize) -> PxiType {
+    if depth == 0 {
+        prim("bool")
+    } else {
+        named(
+            "std::core::result::Result",
+            vec![nested_result(depth - 1), prim("s32")],
+        )
+    }
+}
+
+fn minimal_v2_pxi(exports: &str) -> String {
+    format!(
+        r#"{{
+  "format_version": 2,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": {exports},
+  "dependencies": []
+}}"#
+    )
+}
+
 fn assert_pxi_file_round_trips(pxi: &PxiFile) {
     let json = pxi.to_json();
     let back = PxiFile::parse(&json).expect("parse round-trip json");
@@ -187,24 +211,25 @@ fn pxi_v2_nested_generic_type_json_round_trip() {
 #[test]
 fn pxi_v2_nested_generic_depth_property_round_trip() {
     for depth in 1..=6 {
-        let ty = nested_option(depth);
-        let pxi = PxiFile {
-            format_version: 2,
-            logical_module: "m".to_owned(),
-            source_hash: "h".to_owned(),
-            origin: None,
-            exports: vec![PxiExport {
-                export_id: format!("m::depth_{depth}::fn"),
-                name: format!("depth_{depth}"),
-                kind: "fn".to_owned(),
-                signature: "(s32) => s32".to_owned(),
-                ty: Some(ty),
-                function_id: None,
-                lang_item: None,
-            }],
-            dependencies: vec![],
-        };
-        assert_pxi_file_round_trips(&pxi);
+        for ty in [nested_option(depth), nested_result(depth)] {
+            let pxi = PxiFile {
+                format_version: 2,
+                logical_module: "m".to_owned(),
+                source_hash: "h".to_owned(),
+                origin: None,
+                exports: vec![PxiExport {
+                    export_id: format!("m::depth_{depth}::fn"),
+                    name: format!("depth_{depth}"),
+                    kind: "fn".to_owned(),
+                    signature: "(s32) => s32".to_owned(),
+                    ty: Some(ty),
+                    function_id: None,
+                    lang_item: None,
+                }],
+                dependencies: vec![],
+            };
+            assert_pxi_file_round_trips(&pxi);
+        }
     }
 }
 
@@ -246,6 +271,131 @@ fn pxi_v2_nested_generic_write_read_round_trip() {
     let back = PxiFile::read_from_path(&path).expect("read pxi");
     assert_eq!(&back, &pxi);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pxi_v2_nested_generic_in_fn_signature_round_trip() {
+    let ret = named(
+        "std::core::result::Result",
+        vec![
+            named("std::core::option::Option", vec![prim("s32")]),
+            prim("bool"),
+        ],
+    );
+    let ty = PxiType::Fn {
+        params: vec![named(
+            "std::collections::dynamic_array::DynamicArray",
+            vec![named(
+                "std::core::option::Option",
+                vec![named(
+                    "std::core::result::Result",
+                    vec![prim("s32"), prim("bool")],
+                )],
+            )],
+        )],
+        ret: Box::new(ret),
+    };
+    let pxi = PxiFile {
+        format_version: 2,
+        logical_module: "m".to_owned(),
+        source_hash: "h".to_owned(),
+        origin: None,
+        exports: vec![PxiExport {
+            export_id: "m::nested_fn::fn".to_owned(),
+            name: "nested_fn".to_owned(),
+            kind: "fn".to_owned(),
+            signature: "(DynamicArray<Option<Result<s32, bool>>>) => Result<Option<s32>, bool>"
+                .to_owned(),
+            ty: Some(ty),
+            function_id: Some(3),
+            lang_item: None,
+        }],
+        dependencies: vec![],
+    };
+    assert_pxi_file_round_trips(&pxi);
+}
+
+#[test]
+fn pxi_v2_malformed_nested_generic_payloads_return_stable_errors() {
+    let nested_type = r#"{"kind": "named", "path": "std::core::option::Option", "args": [{"kind": "primitive", "name": "s32"}]}"#;
+    let cases: &[(&str, &str)] = &[
+        (
+            &format!(
+                r#"{{
+  "format_version": 2,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [
+    {{"export_id": "m::wrap::fn", "name": "wrap", "kind": "fn", "signature": "() => ()", "type": {nested_type}}},
+"#
+            ),
+            "invalid .pxi: malformed exports: truncated exports array",
+        ),
+        (
+            r#"{
+  "format_version": 2,
+  "logical_module": "m",
+  "source_hash": "h",
+  "origin": null,
+  "exports": [{"export_id": "m::wrap::fn", "name": "wrap", "kind": "fn", "signature": "() => ()", "type": {"kind": "named", "path": "std::core::option::Option", "args": [
+  "dependencies": []
+}"#,
+            "invalid .pxi: malformed exports: unclosed object",
+        ),
+        (
+            &minimal_v2_pxi(&format!(
+                r#"[{{"export_id": "m::wrap::fn", "name": "wrap", "kind": "fn", "signature": "() => ()", "type": {nested_type}}}, 123]"#
+            )),
+            "invalid .pxi: malformed exports: expected object or ']'",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let err = PxiFile::parse(input).unwrap_err();
+        assert_eq!(err.to_string(), *expected, "input: {input}");
+    }
+}
+
+#[test]
+fn pxi_v2_invalid_nested_generic_type_drops_structured_type_without_panic() {
+    let cases: &[(&str, bool)] = &[
+        (
+            r#"{"kind": "bogus", "path": "std::core::option::Option", "args": []}"#,
+            true,
+        ),
+        (
+            r#"{"kind": "fn", "params": [{"kind": "named", "path": "std::core::option::Option", "args": [{"kind": "primitive", "name": "s32"}]}], "ret": {"kind": "bogus"}}"#,
+            true,
+        ),
+        (
+            r#"{"kind": "named", "path": "std::core::option::Option", "args": [{"kind": "bogus"}]}"#,
+            false,
+        ),
+    ];
+
+    for (type_json, expect_ty_none) in cases {
+        let json = minimal_v2_pxi(&format!(
+            r#"[{{"export_id": "m::wrap::fn", "name": "wrap", "kind": "fn", "signature": "() => ()", "type": {type_json}}}]"#
+        ));
+        let pxi = PxiFile::parse(&json).expect("parse export shell");
+        assert_eq!(pxi.exports.len(), 1);
+        if *expect_ty_none {
+            assert!(
+                pxi.exports[0].ty.is_none(),
+                "invalid nested type should be dropped: {type_json}"
+            );
+        } else {
+            let ty = pxi.exports[0]
+                .ty
+                .as_ref()
+                .expect("partial nested type should parse");
+            assert!(
+                matches!(ty, PxiType::Named { args, .. } if args.is_empty()),
+                "bogus nested arg should be skipped: {type_json}"
+            );
+        }
+    }
 }
 
 #[test]
