@@ -15,7 +15,7 @@
 | **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
 
 
-**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`e82158f7`); sprint iteration 7 merged IoWaitRegistry+WorkerPool wiring (PR #139) and sandbox build lock batch (PR #140).
+**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`f9b37b4d`); sprint iteration 9 merged AwaitIo opcode VM harness (PR #145) and call-argument borrow checking (PR #146).
 
 ---
 
@@ -123,7 +123,8 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
   - [x] Loop body / back-edge borrow join (PR #131)
   - [x] If-arm and loop overlapping-mut goldens (PR #134)
   - [x] `phx explain` for E2047 / E2048 (PR #135)
-  - [ ] Lifetime syntax (post-MVP)
+  - [x] Call-argument overlapping `&mut T` rejection (PR #146)
+  - [ ] Return-path borrow join; lifetime syntax (post-MVP)
 
 - [ ] **M:N scheduler + schedulable I/O** — **Partial (2026-06-21):** in-tree harness, design contract, I/O wait stub, M:N worker pool, and IoWaitRegistry wired through WorkerPool on trunk; no Phoenix syntax or std I/O yet. **Ref:** `mvp.md` shipping order, [`runtime-transparency.md` — Schedulable I/O contract](design/features/runtime-transparency.md#schedulable-io-contract). **Owner:** VM + std. **Gate:** Post-MVP.
   - [x] Scheduler types + single-thread park/resume harness (PR #104)
@@ -132,7 +133,8 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
   - [x] `AWAIT_IO` opcode contract in `vm-linear.md` (PR #127)
   - [x] M:N OS-thread `WorkerPool` harness (PR #136)
   - [x] Wire I/O registry through worker pool (PR #139)
-  - [ ] AwaitIo opcode VM harness; std I/O integration
+  - [x] AwaitIo opcode VM harness (PR #145)
+  - [ ] Std I/O park contract harness; std I/O integration
 
 - [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
 
