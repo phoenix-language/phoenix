@@ -597,6 +597,50 @@ pub const DIAG_CALL_SITE_MUT_BORROW: DiagnosticCase = DiagnosticCase {
    = help: finish using the first `&mut x` borrow before creating another",
 };
 
+const DIAG_RETURN_PATH_MUT_BORROW_SOURCE: &str = r"bad :: () => &mut s32 {
+    var x: s32 = 1;
+    const a = &mut x;
+    return &mut x;
+};
+
+main :: () => {
+};
+";
+
+pub const DIAG_RETURN_PATH_MUT_BORROW: DiagnosticCase = DiagnosticCase {
+    name: r"return_path_mut_borrow",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_RETURN_PATH_MUT_BORROW_SOURCE),
+    expected: r"error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/return_path_mut_borrow.phx:4:12
+  |
+4 |     return &mut x;
+  |            ^^^^^^
+   = note: `x` was mutably borrowed here
+  --> tests/integration/diagnostics/return_path_mut_borrow.phx:3:15
+  |
+3 |     const a = &mut x;
+  |               ^^^^^^
+   = help: finish using the first `&mut x` borrow before creating another
+
+error[E2022]: cannot return a borrow of a local variable
+  --> tests/integration/diagnostics/return_path_mut_borrow.phx:4:12
+  |
+4 |     return &mut x;
+  |            ^^^^^^
+   = note: borrow of local created here
+   = help: return an owned value instead of a borrow, slice view, or `str` view of a local binding
+
+error[E2022]: cannot return a borrow of a local variable
+  --> tests/integration/diagnostics/return_path_mut_borrow.phx:4:12
+  |
+4 |     return &mut x;
+  |            ^^^^^^
+   = note: borrow of local created here
+   = help: return an owned value instead of a borrow, slice view, or `str` view of a local binding
+error: aborting due to 3 previous errors",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -625,4 +669,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_LOOP_OVERLAPPING_MUT,
     DIAG_MATCH_SCRUTINEE_MUT_BORROW,
     DIAG_CALL_SITE_MUT_BORROW,
+    DIAG_RETURN_PATH_MUT_BORROW,
 ];
