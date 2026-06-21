@@ -1,0 +1,7 @@
+#import util::div_zero;
+
+mod util;
+
+main :: () => {
+    const _ = div_zero(1, 0);
+};
