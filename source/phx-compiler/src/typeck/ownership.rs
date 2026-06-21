@@ -353,6 +353,51 @@ impl OwnershipTracker {
         None
     }
 
+    /// Returns overlapping `&mut` borrow sites when a loop back-edge would carry an active
+    /// borrow into the next iteration while the body recorded a borrow of the same binding.
+    #[must_use]
+    pub fn overlapping_mut_borrow_loop_back_edge(
+        body_end: &Self,
+        loop_head: &Self,
+    ) -> Option<(Symbol, Span, Span)> {
+        let mut seen = std::collections::HashSet::new();
+        for entry in loop_head
+            .bindings
+            .iter()
+            .rev()
+            .filter(|entry| entry.depth <= loop_head.scope_depth)
+        {
+            if !seen.insert((entry.symbol, entry.depth)) {
+                continue;
+            }
+            let symbol = entry.symbol;
+            let binding_depth = entry.depth;
+            let Some(active_span) = loop_head
+                .mut_borrows
+                .iter()
+                .find(|borrow| borrow.symbol == symbol && borrow.binding_depth == binding_depth)
+                .map(|borrow| borrow.span)
+            else {
+                continue;
+            };
+            let Some(log_borrow) = body_end
+                .mut_borrow_log
+                .iter()
+                .find(|borrow| borrow.symbol == symbol && borrow.binding_depth == binding_depth)
+            else {
+                continue;
+            };
+            return Some((symbol, log_borrow.span, active_span));
+        }
+        None
+    }
+
+    /// Clears active borrows created at `depth` without touching the borrow log.
+    pub fn strip_active_borrows_at_depth(&mut self, depth: u32) {
+        self.mut_borrows.retain(|borrow| borrow.depth != depth);
+        self.shared_borrows.retain(|borrow| borrow.depth != depth);
+    }
+
     fn binding_state_at_depth(&self, symbol: Symbol, depth: u32) -> Option<BindingState> {
         self.bindings
             .iter()
@@ -607,6 +652,51 @@ mod tests {
 
         let joined = OwnershipTracker::join_arms(&base, &[arm_a, arm_b]);
         assert_eq!(joined.conflicting_mut_borrow(sym), Some(borrow_span));
+    }
+
+    #[test]
+    fn overlapping_mut_borrow_loop_back_edge_detects_carried_active_borrow() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let borrow_span = Span::new(5, 6);
+
+        let mut pre = OwnershipTracker::new();
+        pre.enter_scope();
+        pre.define(sym, ty);
+
+        let mut body_end = pre.clone();
+        body_end.register_mut_borrow(sym, borrow_span);
+
+        let loop_head = OwnershipTracker::join_arms(&pre, &[body_end.clone()]);
+        let overlap =
+            OwnershipTracker::overlapping_mut_borrow_loop_back_edge(&body_end, &loop_head);
+        assert_eq!(overlap, Some((sym, borrow_span, borrow_span)));
+    }
+
+    #[test]
+    fn overlapping_mut_borrow_loop_back_edge_none_for_block_scoped_borrows() {
+        let sym = Symbol::from_raw(1);
+        let ty = TypeId::from_raw(0);
+        let first = Span::new(1, 2);
+        let second = Span::new(3, 4);
+
+        let mut pre = OwnershipTracker::new();
+        pre.enter_scope();
+        pre.define(sym, ty);
+
+        let mut body_end = pre.clone();
+        body_end.enter_scope();
+        body_end.register_mut_borrow(sym, first);
+        body_end.exit_scope();
+        body_end.enter_scope();
+        body_end.register_mut_borrow(sym, second);
+        body_end.exit_scope();
+
+        let loop_head = OwnershipTracker::join_arms(&pre, &[body_end.clone()]);
+        assert!(
+            OwnershipTracker::overlapping_mut_borrow_loop_back_edge(&body_end, &loop_head)
+                .is_none()
+        );
     }
 
     #[test]

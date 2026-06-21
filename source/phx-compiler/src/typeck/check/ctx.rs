@@ -270,6 +270,28 @@ impl<'a> TypeChecker<'a> {
         else {
             return;
         };
+        self.push_overlapping_mut_borrow(symbol, prior_span, borrow_span);
+    }
+
+    pub(in crate::typeck::check) fn report_overlapping_mut_borrow_loop_back_edge(
+        &mut self,
+        body_end: &OwnershipTracker,
+        loop_head: &OwnershipTracker,
+    ) {
+        let Some((symbol, prior_span, borrow_span)) =
+            OwnershipTracker::overlapping_mut_borrow_loop_back_edge(body_end, loop_head)
+        else {
+            return;
+        };
+        self.push_overlapping_mut_borrow(symbol, prior_span, borrow_span);
+    }
+
+    pub(in crate::typeck::check) fn push_overlapping_mut_borrow(
+        &mut self,
+        symbol: phx_syntax::Symbol,
+        prior_span: Span,
+        borrow_span: Span,
+    ) {
         let name = self.symbol_name(symbol);
         self.bag.push(
             self.current_module,

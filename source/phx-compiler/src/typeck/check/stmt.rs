@@ -95,14 +95,19 @@ impl TypeChecker<'_> {
         f: F,
     ) {
         self.loop_depth = self.loop_depth.saturating_add(1);
+        self.enter_scope();
         let body_scope = self.layout_scope_depth();
         self.loop_body_scope_depths.push(body_scope);
         let pre = self.ownership.clone();
         let ((), body_end) = self.check_with_ownership_fork(&pre, f);
-        let loop_head = OwnershipTracker::join_arms(&pre, &[body_end]);
+        let loop_head = OwnershipTracker::join_arms(&pre, std::slice::from_ref(&body_end));
         self.check_loop_back_edge_uses(&pre, &loop_head, body);
-        self.ownership = loop_head;
+        self.report_overlapping_mut_borrow_loop_back_edge(&body_end, &loop_head);
+        let mut post_loop = loop_head;
+        post_loop.strip_active_borrows_at_depth(body_scope);
+        self.ownership = post_loop;
         self.loop_body_scope_depths.pop();
+        self.exit_scope();
         self.loop_depth = self.loop_depth.saturating_sub(1);
     }
 
@@ -693,6 +698,16 @@ impl TypeChecker<'_> {
     /// Never panics on malformed user input.
     pub(in crate::typeck::check) fn check_block_value(&mut self, block: &Block) -> TypeId {
         self.enter_scope();
+        let last = self.check_block_value_in_current_scope(block);
+        self.exit_scope();
+        last
+    }
+
+    /// Type-checks `block` items without entering or leaving a scope.
+    pub(in crate::typeck::check) fn check_block_value_in_current_scope(
+        &mut self,
+        block: &Block,
+    ) -> TypeId {
         let trailing = super::decl::trailing_value_expr(block);
         let mut last = self.unit;
         for item in &block.items {
@@ -708,7 +723,6 @@ impl TypeChecker<'_> {
                 BlockItem::Import(_) => self.unit,
             };
         }
-        self.exit_scope();
         last
     }
 
@@ -874,7 +888,9 @@ impl TypeChecker<'_> {
                 if !self.types_equal(c, self.bool_ty) {
                     self.error_mismatch(self.bool_ty, c, cond.span, MismatchKind::Condition);
                 }
-                self.with_loop_body(&body.inner, |this| this.check_block(&body.inner));
+                self.with_loop_body(&body.inner, |this| {
+                    this.check_block_value_in_current_scope(&body.inner);
+                });
             }
             Stmt::ForIn {
                 binding,
@@ -884,7 +900,9 @@ impl TypeChecker<'_> {
                 self.check_for_in(*binding, iter, &body.inner, binding.span);
             }
             Stmt::Loop(body) => {
-                self.with_loop_body(&body.inner, |this| this.check_block(&body.inner));
+                self.with_loop_body(&body.inner, |this| {
+                    this.check_block_value_in_current_scope(&body.inner);
+                });
             }
             Stmt::Unsafe(body) => self.with_unsafe(|this| this.check_block(&body.inner)),
         }
@@ -921,37 +939,51 @@ impl TypeChecker<'_> {
                     span: iter.span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(item_sym) = self.symbol_named("Item") else {
             self.push_unsupported("IntoIter::Item associated type", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(into_iter_assoc_sym) = self.symbol_named("IntoIter") else {
             self.push_unsupported("IntoIter::IntoIter associated type", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(into_iter_fn_sym) = self.symbol_named("into_iter") else {
             self.push_unsupported("IntoIter::into_iter", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(next_fn_sym) = self.symbol_named("next") else {
             self.push_unsupported("Iterator::next", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(into_iter_trait) = self.resolve_trait_def_by_name("IntoIter") else {
             self.push_unsupported("IntoIter trait (import std::core::iter)", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(iterator_trait) = self.resolve_trait_def_by_name("Iterator") else {
             self.push_unsupported("Iterator trait (import std::core::iter)", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         if !type_satisfies_trait_inst(
@@ -977,7 +1009,9 @@ impl TypeChecker<'_> {
                     span: iter.span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         }
         let into_key = TraitInstKey::new(
@@ -999,7 +1033,9 @@ impl TypeChecker<'_> {
                     span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(iter_state_ty) = self
@@ -1015,7 +1051,9 @@ impl TypeChecker<'_> {
                     span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(into_iter_fn) = find_trait_method_def(
@@ -1031,7 +1069,9 @@ impl TypeChecker<'_> {
                     span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some((state_def, state_args)) = self.named_type_args(iter_state_ty) else {
@@ -1048,7 +1088,9 @@ impl TypeChecker<'_> {
                     span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         if !type_satisfies_trait_inst(
@@ -1074,7 +1116,9 @@ impl TypeChecker<'_> {
                     span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         }
         let iter_key = TraitInstKey::new(
@@ -1102,7 +1146,9 @@ impl TypeChecker<'_> {
                     span,
                 },
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(option_ty) = self.option_ty_for_item(item_ty) else {
@@ -1110,12 +1156,16 @@ impl TypeChecker<'_> {
                 "for-in requires std Option (import std::core::option)",
                 span,
             );
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let Some(some_variant) = self.some_variant_symbol(option_ty) else {
             self.push_unsupported("Option::Some variant for for-loop", span);
-            self.with_loop_body(body, |this| this.check_block(body));
+            self.with_loop_body(body, |this| {
+                this.check_block_value_in_current_scope(body);
+            });
             return;
         };
         let (iter_temp_slot, option_match_temp) = if let Some(layout) = &mut self.layout {
@@ -1140,7 +1190,9 @@ impl TypeChecker<'_> {
             None,
             binding.span,
         );
-        self.with_loop_body(body, |this| this.check_block(body));
+        self.with_loop_body(body, |this| {
+            this.check_block_value_in_current_scope(body);
+        });
         if let Some(layout) = &mut self.layout {
             layout.exit_scope();
             layout.plan_for_in(ForInPlan {
