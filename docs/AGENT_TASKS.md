@@ -48,13 +48,13 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
 | 29 | PHX-070-p7 — Section 5 function-name symbol stub | FEATURE | P3 | `[ ]` |
-| 31 | PHX-sched-6 — AwaitIo opcode VM harness stub | FEATURE | P3 | `[ ]` |
-| 32 | PHX-borrow-4 — borrow across function call arguments | FEATURE | P3 | `[ ]` |
 | 33 | PXI nested generic round-trip property tests | TESTS | P3 | `[ ]` |
 | 34 | PHX-070-p8 — CLI `format_vm_error` function name display | FEATURE | P3 | `[ ]` |
 | 35 | Golden diagnostic — call-site overlapping mut borrow | TESTS | P3 | `[ ]` |
 | 36 | PHX-sched-7 — Std I/O park contract harness stub | FEATURE | P3 | `[ ]` |
 | 37 | Stable FFI symbol identity — registration-order tests | TESTS | P3 | `[ ]` |
+| 38 | PHX-borrow-5 — return-path overlapping borrow | FEATURE | P3 | `[ ]` |
+| 39 | PHX-sched-8 — Multi-context AwaitIo stress harness | TESTS | P3 | `[ ]` |
 
 ---
 
@@ -331,6 +331,13 @@ _Also on trunk from same sprint window: sandbox build lock batch — PR #140 (`e
 | 27 | Integration — multi-module release build without spans | PR #142 |
 | 28 | `phx explain` gaps E3002–E3005 and E2033 | already on trunk — `explain_coverage` + `cli_e2e` guard E3002–E3005 and E2033 |
 | 30 | Golden diagnostic — match scrutinee overlapping borrow | PR #143 |
+
+## Completed — sprint iteration 9 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 31 | PHX-sched-6 — AwaitIo opcode VM harness stub | PR #145 |
+| 32 | PHX-borrow-4 — borrow across function call arguments | PR #146 |
 
 ---
 
@@ -817,12 +824,58 @@ Mutation-style tests proving foreign symbol registration order does **not** affe
 
 ---
 
+## Task 38 — PHX-borrow-5: return-path overlapping borrow
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/ownership.md`  
+**Depends on:** PHX-borrow-4 (#146)
+
+### Goal
+
+Reject overlapping borrows when a **function return** or **out-parameter** would leave aliasing `&mut T` references active across the call boundary.
+
+### Work
+
+1. Extend borrow map at return sites: check returned references against active borrows in the caller.
+2. Unit tests in `source/phx-compiler/tests/typeck.rs` (positive + negative).
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Fixture returning `&mut` to a binding already mutably borrowed fails type-check.
+- Non-conflicting distinct bindings still accepted.
+
+---
+
+## Task 39 — PHX-sched-8: Multi-context AwaitIo stress harness
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/runtime-transparency.md`, `docs/design/features/vm-linear.md`  
+**Depends on:** PHX-sched-6 (#145)
+
+### Goal
+
+Stress the in-tree **AwaitIo** harness with **multiple** parked contexts and out-of-order wakeups — still no Phoenix syntax or std I/O.
+
+### Work
+
+1. Unit tests: N contexts execute `AwaitIo`, register with `IoWaitRegistry`, wake in varied order on `WorkerPool`.
+2. Assert clean shutdown and no duplicate wakeups or leaked registrations.
+3. Run `just test`.
+
+### Acceptance
+
+- At least 3 multi-context cases; workspace tests green.
+- No new crates.io deps.
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #30 (iteration 8; match scrutinee golden PR #143) |
-| Last trunk SHA | `6643296c` |
+| Last completed task | #32 (iteration 9; borrow call-args PR #146) |
+| Last trunk SHA | `f9b37b4d` |
 | Active queue count | 8 / 8 |
 | Blockers | — |
 | Next replenish | When active count drops below 5 → pull from `mvp-finish-todo.md` P3 |
