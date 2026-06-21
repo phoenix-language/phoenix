@@ -48,13 +48,13 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
 | 29 | PHX-070-p7 — Section 5 function-name symbol stub | FEATURE | P3 | `[ ]` |
-| 33 | PXI nested generic round-trip property tests | TESTS | P3 | `[ ]` |
 | 34 | PHX-070-p8 — CLI `format_vm_error` function name display | FEATURE | P3 | `[ ]` |
-| 35 | Golden diagnostic — call-site overlapping mut borrow | TESTS | P3 | `[ ]` |
 | 36 | PHX-sched-7 — Std I/O park contract harness stub | FEATURE | P3 | `[ ]` |
 | 37 | Stable FFI symbol identity — registration-order tests | TESTS | P3 | `[ ]` |
 | 38 | PHX-borrow-5 — return-path overlapping borrow | FEATURE | P3 | `[ ]` |
 | 39 | PHX-sched-8 — Multi-context AwaitIo stress harness | TESTS | P3 | `[ ]` |
+| 40 | Golden diagnostic — return-path overlapping mut borrow | TESTS | P3 | `[ ]` |
+| 41 | `phx explain` gaps for call-site borrow errors | QOL | P3 | `[ ]` |
 
 ---
 
@@ -338,6 +338,15 @@ _Also on trunk from same sprint window: sandbox build lock batch — PR #140 (`e
 |---|------|-------|
 | 31 | PHX-sched-6 — AwaitIo opcode VM harness stub | PR #145 |
 | 32 | PHX-borrow-4 — borrow across function call arguments | PR #146 |
+
+## Completed — sprint iteration 10 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 33 | PXI nested generic round-trip property tests | PR #149 |
+| 35 | Golden diagnostic — call-site overlapping mut borrow | PR #148 |
+
+_Also on trunk from same sprint window: AwaitIo spawn race fix — PR #150 (`WorkerPool` context registration ordering)._
 
 ---
 
@@ -870,12 +879,54 @@ Stress the in-tree **AwaitIo** harness with **multiple** parked contexts and out
 
 ---
 
+## Task 40 — Golden diagnostic: return-path overlapping mut borrow
+
+**Stream:** TESTS  
+**Depends on:** PHX-borrow-5 (Task 38)
+
+### Goal
+
+CLI golden locks user-visible diagnostic when a function return or out-parameter would leave overlapping `&mut T` references active across the call boundary.
+
+### Work
+
+1. `tests/integration/diagnostics/return_path_mut_borrow.phx` + `.stderr` golden.
+2. Register in `phx-test` diagnostic case list.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- `cargo test -p phx-integration-tests --test diagnostics` passes.
+
+---
+
+## Task 41 — `phx explain` gaps for call-site borrow errors
+
+**Stream:** QOL  
+**Depends on:** PHX-borrow-4 (#146), Task 35 (PR #148)
+
+### Goal
+
+`phx explain` returns actionable text for call-site overlapping `&mut T` borrow codes emitted by typeck.
+
+### Work
+
+1. Audit call-site borrow `TypeCheckError` codes from PHX-borrow-4.
+2. Add or extend explain entries in CLI explain registry.
+3. CLI test: each code non-empty and mentions call-site / aliasing context; run `just pre-commit`.
+
+### Acceptance
+
+- Explain output covers call-site overlapping mut borrow; coverage guard extended or new test added.
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #32 (iteration 9; borrow call-args PR #146) |
-| Last trunk SHA | `f9b37b4d` |
+| Last completed task | #35 (iteration 10; call-site mut golden PR #148) |
+| Last trunk SHA | `0b1cf68d` |
 | Active queue count | 8 / 8 |
 | Blockers | — |
 | Next replenish | When active count drops below 5 → pull from `mvp-finish-todo.md` P3 |
