@@ -985,7 +985,8 @@ fn verify_operands(
         | Opcode::MatchTag
         | Opcode::PtrLoad
         | Opcode::PtrStore
-        | Opcode::IndexStore => {
+        | Opcode::IndexStore
+        | Opcode::AwaitIo => {
             if inst.operands.len() != 2 {
                 return Err(VerifyError::MalformedInstruction {
                     function_id,

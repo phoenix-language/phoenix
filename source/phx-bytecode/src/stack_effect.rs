@@ -155,7 +155,8 @@ pub fn apply_stack_effect(
         | Opcode::BitNot
         | Opcode::Jump
         | Opcode::Return
-        | Opcode::Trap => {}
+        | Opcode::Trap
+        | Opcode::AwaitIo => {}
         Opcode::PtrStore | Opcode::Free => pop(depth, 2)?,
         Opcode::IndexStore => pop(depth, 3)?,
     }

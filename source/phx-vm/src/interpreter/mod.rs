@@ -365,6 +365,9 @@ fn dispatch_opcode(
         Opcode::Trap => return Err(VmErrorKind::GivenMismatch),
         Opcode::MakeFnPtr => indirect::exec_make_fn_ptr(&mut machine.ctx, inst),
         Opcode::CallIndirect => indirect::exec_call_indirect(machine, module, inst)?,
+        Opcode::AwaitIo => {
+            return Err(VmErrorKind::UnsupportedOpcode(inst.opcode.as_u8()));
+        }
     }
     Ok(None)
 }

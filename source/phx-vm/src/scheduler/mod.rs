@@ -3,7 +3,8 @@
 //! Post-MVP this module drives M:N context scheduling on a worker pool; worker threads
 //! dequeue [`RunnableContext`] values from a shared [`RunQueue`], execute bytecode, and
 //! park on schedulable I/O or mailbox waits. PHX-sched-0 introduces the in-tree types
-//! and a cooperative harness for unit tests — no Phoenix syntax, no std I/O, no opcodes.
+//! and a cooperative harness for unit tests — no Phoenix syntax, no std I/O. PHX-sched-6 adds
+//! [`Opcode::AwaitIo`](phx_bytecode::Opcode::AwaitIo) harness dispatch wired to [`IoWaitRegistry`].
 //!
 //! Design references: `docs/design/features/vm-linear.md` (execution context state machine),
 //! `docs/design/features/runtime-transparency.md`, `docs/design/features/concurrency.md`.
@@ -27,7 +28,9 @@
 //! | [`SchedulerError`] | Invalid park/resume transitions |
 //! | [`IoWaitRegistry`] | Tracks [`ParkReason::AwaitIo`] waits and wakeups (PHX-sched-2) |
 //! | [`WorkerPool`] | M:N worker threads + shared [`RunQueue`] (PHX-sched-4) |
+//! | [`AwaitIoOperands`] | Harness operands for [`Opcode::AwaitIo`](phx_bytecode::Opcode::AwaitIo) (PHX-sched-6) |
 
+mod await_io;
 mod context;
 mod harness;
 mod io_wait;
@@ -35,6 +38,7 @@ mod park;
 mod queue;
 mod worker_pool;
 
+pub use await_io::{AwaitIoHarnessError, AwaitIoOperands, dispatch_await_io_harness};
 pub use context::{ContextId, ContextState, RunnableContext, StepOutcome};
 pub use harness::{RunningGuard, SchedulerError, SingleThreadScheduler};
 pub use io_wait::{IoHandle, IoWaitError, IoWaitRegistry};

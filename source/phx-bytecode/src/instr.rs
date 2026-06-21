@@ -149,7 +149,8 @@ impl Instruction {
             | Opcode::LoadAggViaLocalPtr
             | Opcode::MakeSliceFromPtr
             | Opcode::Free
-            | Opcode::IndexStore => {}
+            | Opcode::IndexStore
+            | Opcode::AwaitIo => {}
         }
         Self {
             opcode: self.opcode,

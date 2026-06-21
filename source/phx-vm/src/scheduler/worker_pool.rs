@@ -10,8 +10,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 
+use super::await_io::AwaitIoOperands;
 use super::context::{ContextId, ContextState, RunnableContext, StepOutcome};
 use super::harness::SchedulerError;
+use super::io_wait::{IoWaitRegistry, IoWaitState};
 use super::park::ParkReason;
 use super::queue::RunQueue;
 
@@ -39,9 +41,45 @@ struct PoolInner {
     running: Vec<ContextId>,
     /// Harness hook: park a context immediately when a worker dequeues it.
     park_on_dequeue: HashMap<ContextId, ParkReason>,
+    /// Harness hook: register [`Opcode::AwaitIo`](phx_bytecode::Opcode::AwaitIo) after park on dequeue.
+    await_io_on_dequeue: HashMap<ContextId, AwaitIoOperands>,
+    /// Shared I/O wait registry for await-I/O harness contexts (PHX-sched-6).
+    io_registry: Option<Arc<Mutex<IoWaitRegistry>>>,
+}
+
+/// Read-only worker-pool snapshot for [`IoWaitRegistry::register`] from worker threads.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PoolInnerSnapshot {
+    contexts: *const RunnableContext,
+    context_count: usize,
+}
+
+impl PoolInnerSnapshot {
+    fn state_of(self, id: ContextId) -> Option<ContextState> {
+        // SAFETY: `contexts` points at `PoolInner::contexts` while the pool mutex is held.
+        let contexts = unsafe { std::slice::from_raw_parts(self.contexts, self.context_count) };
+        contexts
+            .iter()
+            .find(|ctx| ctx.id() == id)
+            .map(RunnableContext::state)
+    }
+}
+
+struct PoolIoWaitState(PoolInnerSnapshot);
+
+impl IoWaitState for PoolIoWaitState {
+    fn io_wait_state_of(&self, id: ContextId) -> Option<ContextState> {
+        self.0.state_of(id)
+    }
 }
 
 impl PoolInner {
+    fn snapshot(&self) -> PoolInnerSnapshot {
+        PoolInnerSnapshot {
+            contexts: self.contexts.as_ptr(),
+            context_count: self.contexts.len(),
+        }
+    }
     fn context(&self, id: ContextId) -> Option<&RunnableContext> {
         self.contexts.iter().find(|ctx| ctx.id() == id)
     }
@@ -186,6 +224,8 @@ impl WorkerPool {
             next_id: 0,
             running: Vec::new(),
             park_on_dequeue: HashMap::new(),
+            await_io_on_dequeue: HashMap::new(),
+            io_registry: None,
         }));
         let cvar = Arc::new(Condvar::new());
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -209,6 +249,45 @@ impl WorkerPool {
             shutdown,
             workers,
         }
+    }
+
+    /// Creates a worker pool with `worker_count` OS threads wired to `io_registry`.
+    ///
+    /// Worker threads register [`Opcode::AwaitIo`](phx_bytecode::Opcode::AwaitIo) parks through
+    /// `io_registry` when contexts are spawned via [`Self::spawn_await_io_on_first_run`].
+    #[must_use]
+    pub fn with_io_registry(worker_count: usize, io_registry: Arc<Mutex<IoWaitRegistry>>) -> Self {
+        let pool = Self::new(worker_count);
+        lock_inner(&pool.inner).io_registry = Some(io_registry);
+        pool
+    }
+
+    /// Spawns a context that parks on [`ParkReason::AwaitIo`] at its first worker dequeue and
+    /// registers the pending [`super::IoHandle`] in the pool's I/O registry.
+    ///
+    /// Simulates a synthetic harness context executing [`Opcode::AwaitIo`] with `operands`.
+    #[must_use]
+    pub fn spawn_await_io_on_first_run(&self, steps: u32, operands: AwaitIoOperands) -> ContextId {
+        let id = self.spawn_inner(steps, Some(ParkReason::AwaitIo));
+        let mut inner = lock_inner(&self.inner);
+        inner.await_io_on_dequeue.insert(id, operands);
+        id
+    }
+
+    /// Parks a currently running context without re-enqueueing it.
+    ///
+    /// Harness-only; production schedulers park from bytecode dispatch on the owning worker.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError`] when `id` is unknown or not [`ContextState::Running`].
+    pub fn park_running(&self, id: ContextId, reason: ParkReason) -> Result<(), SchedulerError> {
+        {
+            let mut inner = lock_inner(&self.inner);
+            inner.park_context(id, reason)?;
+        }
+        self.cvar.notify_all();
+        Ok(())
     }
 
     /// Spawns a context with `steps` harness work units and enqueues it for workers.
@@ -381,7 +460,19 @@ fn worker_loop(inner: &Arc<Mutex<PoolInner>>, cvar: &Arc<Condvar>, shutdown: &Ar
         let step_result = {
             let mut guard = lock_inner(inner);
             if let Some(reason) = guard.park_on_dequeue.remove(&id) {
+                let await_io = guard.await_io_on_dequeue.remove(&id);
                 let park_result = guard.park_context(id, reason);
+                if park_result.is_ok()
+                    && let (Some(registry), Some(operands)) = (&guard.io_registry, await_io)
+                {
+                    let snapshot = guard.snapshot();
+                    let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
+                    let register_result =
+                        registry.register(operands.io_handle(), id, &PoolIoWaitState(snapshot));
+                    if let Err(err) = register_result {
+                        panic!("await_io register failed: {err:?}");
+                    }
+                }
                 cvar.notify_all();
                 if let Err(err) = park_result {
                     panic!("worker park failed: {err:?}");

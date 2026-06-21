@@ -96,6 +96,7 @@ mod tests {
         assert_eq!(Opcode::Call.as_u8(), 14);
         assert_eq!(Opcode::MakeFnPtr.as_u8(), 45);
         assert_eq!(Opcode::CallIndirect.as_u8(), 46);
+        assert_eq!(Opcode::AwaitIo.as_u8(), 52);
     }
 
     #[test]
