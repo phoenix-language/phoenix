@@ -186,6 +186,7 @@ pub fn park_std_io_synthetic(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
