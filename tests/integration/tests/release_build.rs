@@ -2,10 +2,15 @@
 
 #![allow(clippy::expect_used)]
 
+use std::path::Path;
+
 use phx_bytecode::{PHX0_HAS_DEBUG, verify};
 use phx_cli::vm_diag::{SourceContext, format_vm_error};
 use phx_compiler::{BuildOptions, BuildProfile};
-use phx_test::{force_built_project_with_options, require_cli_project};
+use phx_test::{
+    assert_golden, force_built_project_with_options, integration_diagnostics_dir,
+    require_cli_project, shared_cli, with_project_fs_lock,
+};
 use phx_vm::{VmErrorKind, run};
 
 #[test]
@@ -95,4 +100,32 @@ fn release_build_runtime_error_falls_back_to_bytecode_site() {
         !msg.contains("src/main.phx:"),
         "release build should not cite Phoenix source spans, got:\n{msg}"
     );
+}
+
+#[test]
+fn release_trap_cli_golden_stderr() {
+    with_project_fs_lock("heap_uaf", || {
+        let project = require_cli_project("heap_uaf");
+        let cli = shared_cli();
+        cli.run(&[
+            "build",
+            "--release",
+            "--build",
+            "--project-root",
+            &project.display().to_string(),
+        ])
+        .assert_success();
+        let out = cli.run_no_build_project_fails(&project);
+        let golden_dir = integration_diagnostics_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
+        assert_golden(&golden_dir, "release_trap", &out.combined);
+        out.assert_contains("runtime error:");
+        out.assert_contains("use after free");
+        out.assert_contains("(function");
+        out.assert_contains("pc");
+        assert!(
+            !out.combined.contains("src/main.phx:"),
+            "release trap stderr must not cite Phoenix source spans, got:\n{}",
+            out.combined
+        );
+    });
 }
