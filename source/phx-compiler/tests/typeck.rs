@@ -470,6 +470,76 @@ fn call_mut_borrow_released_after_call_ok() {
 }
 
 #[test]
+fn return_overlapping_mut_borrow_rejected() {
+    let source = "bad :: () => &mut s32 { var x: s32 = 1; const a = &mut x; return &mut x; }; main :: () => { };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "return-path overlapping mut borrow");
+    if let TypeCheckError::OverlappingMutBorrow {
+        name,
+        prior_span,
+        span,
+    } = &err.error
+    {
+        assert_eq!(name, "x");
+        let first = test_find(source, "&mut x", "first &mut x");
+        let second = test_rfind(source, "&mut x", "second &mut x");
+        assert!(second > first, "expected two distinct borrow sites");
+        assert_eq!(prior_span.start, u32_from_usize(first, "offset fits u32"));
+        assert_eq!(span.start, u32_from_usize(second, "offset fits u32"));
+    }
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
+    assert!(msg.contains("mutably borrowed"));
+    assert!(msg.contains("note:"));
+}
+
+#[test]
+fn return_mut_borrow_not_left_active_after_return_stmt() {
+    let source = "bad :: () => &mut s32 { var x: s32 = 1; return &mut x; const b = &mut x; }; main :: () => { };";
+    let bag = typeck_err(source);
+    assert!(
+        !bag.errors()
+            .iter()
+            .any(|e| { matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }) }),
+        "return operand borrow must not persist after return: {:?}",
+        bag.errors()
+    );
+}
+
+#[test]
+fn return_mut_borrow_param_ok() {
+    compile_ok(
+        "id :: (y: &mut s32) => &mut s32 { return y; }; main :: () => { var n: s32 = 1; const r = id(&mut n); const _ = r; };",
+    );
+}
+
+#[test]
+fn return_mut_borrow_distinct_bindings_ok() {
+    compile_ok(
+        "pick :: (y: &mut s32) => &mut s32 { var x: s32 = 1; const _a = &mut x; return y; }; main :: () => { var n: s32 = 1; const r = pick(&mut n); const _ = r; };",
+    );
+}
+
+#[test]
+fn trailing_return_overlapping_mut_borrow_rejected() {
+    let source =
+        "bad :: () => &mut s32 { var x: s32 = 1; const a = &mut x; &mut x; }; main :: () => { };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "trailing return overlapping mut borrow");
+    if let TypeCheckError::OverlappingMutBorrow { name, .. } = &err.error {
+        assert_eq!(name, "x");
+    }
+}
+
+#[test]
 fn if_move_in_then_use_in_else_ok() {
     compile_ok(
         "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { var q: Point = p; } else { const _ = p.r; }; };",
