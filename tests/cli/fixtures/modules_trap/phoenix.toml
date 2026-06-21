@@ -1,0 +1,10 @@
+[project]
+name = "modules_trap"
+version = "0.1.0"
+description = "Multi-module VM trap resolves to callee source line"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"

@@ -1190,6 +1190,50 @@ dir = "build"
     files: PROJECT_MODULES_BIN_BARREL_FILES,
 };
 
+static PROJECT_MODULES_TRAP_FILES: &[(&str, &str)] = &[
+    (
+        r"src/main.phx",
+        r"#import util::div_zero;
+
+mod util;
+
+main :: () => {
+    const _ = div_zero(1, 0);
+};
+",
+    ),
+    (
+        r"src/util/trap.phx",
+        r"pub div_zero :: (a: s32, b: s32) => s32 {
+    a / b
+};
+",
+    ),
+    (
+        r"src/util/mod.phx",
+        r"pub mod trap;
+
+pub reexport :: trap::div_zero;
+",
+    ),
+];
+
+pub const PROJECT_MODULES_TRAP: ProjectSpec = ProjectSpec {
+    name: r"modules_trap",
+    toml: r#"[project]
+name = "modules_trap"
+version = "0.1.0"
+description = "Multi-module VM trap resolves to callee source line"
+type = "bin"
+module_src = "src"
+bundle_std = false
+
+[build]
+dir = "build"
+"#,
+    files: PROJECT_MODULES_TRAP_FILES,
+};
+
 static PROJECT_MODULES_MISSING_MOD_FILES: &[(&str, &str)] = &[
     (
         r"src/main.phx",
@@ -2689,6 +2733,7 @@ pub const PROJECTS: &[ProjectSpec] = &[
     PROJECT_LINT_STD_OPTION_DISCARD,
     PROJECT_MATH_LIB,
     PROJECT_MODULES_BIN_BARREL,
+    PROJECT_MODULES_TRAP,
     PROJECT_MODULES_MISSING_MOD,
     PROJECT_MODULES_ORPHAN_FILE,
     PROJECT_MVP_ACCEPTANCE,
