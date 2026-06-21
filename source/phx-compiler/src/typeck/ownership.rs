@@ -210,8 +210,8 @@ impl OwnershipTracker {
 
     /// Drops active borrows and log entries registered after `snapshot`.
     ///
-    /// Used after type-checking function call arguments: borrows taken for `&T` / `&mut T`
-    /// parameters exist only for the duration of the call expression.
+    /// Used after type-checking function call arguments and `return` operands: borrows taken
+    /// for `&T` / `&mut T` in those expressions exist only for the duration of the check.
     pub fn restore_borrow_snapshot(&mut self, snapshot: BorrowSnapshot) {
         self.mut_borrows.truncate(snapshot.mut_borrows);
         self.shared_borrows.truncate(snapshot.shared_borrows);

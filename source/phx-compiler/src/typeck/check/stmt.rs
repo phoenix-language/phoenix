@@ -762,7 +762,9 @@ impl TypeChecker<'_> {
     /// Validates a `return` (with or without value) against the enclosing function's return type.
     ///
     /// Plans drops from the current scope depth down to the function root before checking the
-    /// returned expression. Borrow-typed returns are checked for local escape.
+    /// returned expression. Mutable borrows formed in the return operand are checked against
+    /// active borrows in the function body but are not left on the borrow map afterward (same
+    /// ephemeral model as call arguments). Borrow-typed returns are checked for local escape.
     pub(in crate::typeck::check) fn check_return(
         &mut self,
         span: Span,
@@ -773,7 +775,9 @@ impl TypeChecker<'_> {
         if let Some(e) = expr {
             let saved_ctor = self.ctor_expected;
             self.ctor_expected = self.fn_ret;
+            let borrow_snapshot = self.ownership.borrow_snapshot();
             let got = self.check_expr_node(e);
+            self.ownership.restore_borrow_snapshot(borrow_snapshot);
             self.ctor_expected = saved_ctor;
             if self.is_borrow_type(got) {
                 self.check_expr_escapes_local(e);
