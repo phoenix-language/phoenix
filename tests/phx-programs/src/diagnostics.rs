@@ -493,6 +493,54 @@ pub const DIAG_SHARED_MUT_BORROW: DiagnosticCase = DiagnosticCase {
   |               ^^
    = help: finish using shared borrows of `x` before creating `&mut x`",
 };
+const DIAG_IF_ARM_OVERLAPPING_MUT_SOURCE: &str = r"main :: () => {
+    var x: s32 = 1;
+    var c: bool = true;
+    if c {
+        const _a = &mut x;
+    } else {
+        const _b = &mut x;
+    };
+    const _ = ();
+};
+";
+
+pub const DIAG_IF_ARM_OVERLAPPING_MUT: DiagnosticCase = DiagnosticCase {
+    name: r"if_arm_overlapping_mut",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_IF_ARM_OVERLAPPING_MUT_SOURCE),
+    expected: r"error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/if_arm_overlapping_mut.phx:7:20
+  |
+7 |         const _b = &mut x;
+  |                    ^^^^^^
+   = note: `x` was mutably borrowed here
+  --> tests/integration/diagnostics/if_arm_overlapping_mut.phx:5:20
+  |
+5 |         const _a = &mut x;
+  |                    ^^^^^^
+   = help: finish using the first `&mut x` borrow before creating another",
+};
+const DIAG_LOOP_OVERLAPPING_MUT_SOURCE: &str = r"main :: () => {
+    var x: s32 = 1;
+    loop {
+        const _a = &mut x;
+    };
+};
+";
+
+pub const DIAG_LOOP_OVERLAPPING_MUT: DiagnosticCase = DiagnosticCase {
+    name: r"loop_overlapping_mut",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_LOOP_OVERLAPPING_MUT_SOURCE),
+    expected: r"error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/loop_overlapping_mut.phx:4:20
+  |
+4 |         const _a = &mut x;
+  |                    ^^^^^^
+   = note: `x` was mutably borrowed here
+   = help: finish using the first `&mut x` borrow before creating another",
+};
 
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
@@ -518,4 +566,6 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_INVALID_CAST,
     DIAG_DOUBLE_MUT_BORROW,
     DIAG_SHARED_MUT_BORROW,
+    DIAG_IF_ARM_OVERLAPPING_MUT,
+    DIAG_LOOP_OVERLAPPING_MUT,
 ];

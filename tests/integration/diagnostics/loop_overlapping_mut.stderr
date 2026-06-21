@@ -1,0 +1,7 @@
+error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/loop_overlapping_mut.phx:4:20
+  |
+4 |         const _a = &mut x;
+  |                    ^^^^^^
+   = note: `x` was mutably borrowed here
+   = help: finish using the first `&mut x` borrow before creating another

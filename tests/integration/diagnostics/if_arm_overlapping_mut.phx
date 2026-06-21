@@ -1,0 +1,10 @@
+main :: () => {
+    var x: s32 = 1;
+    var c: bool = true;
+    if c {
+        const _a = &mut x;
+    } else {
+        const _b = &mut x;
+    };
+    const _ = ();
+};
