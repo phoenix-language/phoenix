@@ -47,14 +47,14 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
-| 29 | PHX-070-p7 — Section 5 function-name symbol stub | FEATURE | P3 | `[ ]` |
 | 34 | PHX-070-p8 — CLI `format_vm_error` function name display | FEATURE | P3 | `[ ]` |
 | 36 | PHX-sched-7 — Std I/O park contract harness stub | FEATURE | P3 | `[ ]` |
 | 37 | Stable FFI symbol identity — registration-order tests | TESTS | P3 | `[ ]` |
 | 38 | PHX-borrow-5 — return-path overlapping borrow | FEATURE | P3 | `[ ]` |
-| 39 | PHX-sched-8 — Multi-context AwaitIo stress harness | TESTS | P3 | `[ ]` |
 | 40 | Golden diagnostic — return-path overlapping mut borrow | TESTS | P3 | `[ ]` |
 | 41 | `phx explain` gaps for call-site borrow errors | QOL | P3 | `[ ]` |
+| 42 | PHX-070-p9 — Multi-module function name link merge test | TESTS | P3 | `[ ]` |
+| 43 | PHX-borrow-6 — struct field overlapping mut borrow | FEATURE | P3 | `[ ]` |
 
 ---
 
@@ -347,6 +347,13 @@ _Also on trunk from same sprint window: sandbox build lock batch — PR #140 (`e
 | 35 | Golden diagnostic — call-site overlapping mut borrow | PR #148 |
 
 _Also on trunk from same sprint window: AwaitIo spawn race fix — PR #150 (`WorkerPool` context registration ordering)._
+
+## Completed — sprint iteration 11 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 29 | PHX-070-p7 — Section 5 function-name symbol stub | PR #153 |
+| 39 | PHX-sched-8 — Multi-context AwaitIo stress harness | PR #152 |
 
 ---
 
@@ -921,12 +928,57 @@ CLI golden locks user-visible diagnostic when a function return or out-parameter
 
 ---
 
+## Task 42 — PHX-070-p9: Multi-module function name link merge test
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/debug.md` (Full symbols planned D1+)  
+**Depends on:** PHX-070-p7 (#153)
+
+### Goal
+
+Integration test linking **multiple** Phoenix modules; merged section 5 carries per-`function_id` debug names from each module after link-time merge.
+
+### Work
+
+1. Add `tests/integration/` fixture with at least two modules and a cross-module call that traps.
+2. Assert dev-build PHX0 round-trips function debug names via linker `merge_from`.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- New integration test passes on trunk; fails if link merge or function-name table regresses.
+
+---
+
+## Task 43 — PHX-borrow-6: struct field overlapping mut borrow
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/ownership.md`  
+**Depends on:** PHX-borrow-4 (#146)
+
+### Goal
+
+Reject overlapping borrows when **struct field** accesses would alias the same binding with concurrent `&mut T` references (e.g. `&mut s.a` + `&mut s.b` when fields overlap storage — or same binding via field paths).
+
+### Work
+
+1. Extend borrow map for field-path keys at field borrow sites (minimal — no lifetime syntax).
+2. Unit tests in `source/phx-compiler/tests/typeck.rs` (positive + negative).
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Fixture with overlapping field `&mut` borrows fails type-check with clear diagnostic.
+- Non-conflicting distinct fields still accepted.
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #35 (iteration 10; call-site mut golden PR #148) |
-| Last trunk SHA | `0b1cf68d` |
+| Last completed task | #39 (iteration 11; AwaitIo stress harness PR #152) |
+| Last trunk SHA | `61277991` |
 | Active queue count | 8 / 8 |
 | Blockers | — |
 | Next replenish | When active count drops below 5 → pull from `mvp-finish-todo.md` P3 |

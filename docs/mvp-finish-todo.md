@@ -15,7 +15,7 @@
 | **Post-MVP**    | Explicitly out of `mvp.md`; do not implement until gates pass                           |
 
 
-**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`f9b37b4d`); sprint iteration 9 merged AwaitIo opcode VM harness (PR #145) and call-argument borrow checking (PR #146).
+**Last verified:** 2026-06-21 — `just pre-commit` green on trunk (`61277991`); sprint iteration 11 merged section 5 function-name symbol stub (PR #153) and multi-context AwaitIo stress harness (PR #152).
 
 ---
 
@@ -105,7 +105,7 @@ Per [language-v0-completion-roadmap.md](design/language-v0-completion-roadmap.md
 
 Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
 
-- [ ] **Bytecode source maps / debugger (PHX0 section 5)** — **Partial (2026-06-21):** PC span pipeline and multi-module stress fixtures on trunk; remaining work is function-name symbols and full debugger. **Ref:** PHX-070. **Owner:** compiler + VM + CLI. **Gate:** Post-beta.
+- [ ] **Bytecode source maps / debugger (PHX0 section 5)** — **Partial (2026-06-21):** PC span pipeline, multi-module stress fixtures, and function-name symbol stub on trunk; remaining work is CLI function-name display and full debugger. **Ref:** PHX-070. **Owner:** compiler + VM + CLI. **Gate:** Post-beta.
   - [x] `PcSpanTable` codegen + CLI `format_vm_error` (PR #12–#13)
   - [x] Link-time merge + `heap_uaf` integration span test
   - [x] Release profile strips section 5; verifier accepts stripped modules (PR #101, #121, #123)
@@ -113,7 +113,8 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
   - [x] Hostile section 5 verifier mutation tests (PR #102)
   - [x] Release trap golden without source spans (PR #130)
   - [x] Multi-module linked callee span integration test (PR #137)
-  - [ ] Function-name symbol stub; full debugger
+  - [x] Function-name symbol stub (PR #153)
+  - [ ] CLI `format_vm_error` function name display; full debugger
 
 - [ ] **Full borrow checker** — **Partial (2026-06-21):** phase-0 exclusivity slices on trunk; lifetimes remain. **Ref:** `ownership.md`, ROADMAP Deferred. **Owner:** compiler. **Gate:** Post-MVP.
   - [x] Overlapping `&mut T` rejection (PR #106)
@@ -134,6 +135,7 @@ Explicitly out of [mvp.md](design/mvp.md) scope. Track for planning only.
   - [x] M:N OS-thread `WorkerPool` harness (PR #136)
   - [x] Wire I/O registry through worker pool (PR #139)
   - [x] AwaitIo opcode VM harness (PR #145)
+  - [x] Multi-context AwaitIo stress harness (PR #152)
   - [ ] Std I/O park contract harness; std I/O integration
 
 - [ ] **Actors, mailboxes, supervision** — `@spawn` / `@send` execution semantics. **Ref:** `concurrency.md`, `messages.md`. **Owner:** VM + compiler. **Gate:** Post-MVP.
