@@ -3,17 +3,15 @@
 #![allow(clippy::expect_used)]
 
 use phx_bytecode::{Instruction, Opcode, verify};
-use phx_compiler::{BuildOptions, build_project, load_project_binary};
-use phx_test::{discover_cli_project, require_cli_project};
+use phx_test::{ensure_built_project, require_cli_project};
 use phx_vm::run;
 
 #[test]
 fn std_try_fixture_runs() {
-    let root = require_cli_project("std_try");
-    let config = discover_cli_project(&root);
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_try");
-    let module = load_project_binary(&config).expect("load bytecode");
-    let verified = verify(&module).expect("verify");
+    require_cli_project("std_try");
+    let built = ensure_built_project("std_try");
+    let module = &built.module;
+    let verified = verify(module).expect("verify");
 
     let entry_id = module.header.entry_function_id;
     let read_config = module
