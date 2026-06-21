@@ -360,10 +360,9 @@ mod tests {
         let mut registry = IoWaitRegistry::new();
         let handle = IoHandle::from_index(42);
 
-        let io_blocked = pool.spawn(3);
+        let io_blocked = pool.spawn_parking_on_first_run(3, ParkReason::AwaitIo);
         let fast_a = pool.spawn(1);
         let fast_b = pool.spawn(2);
-        pool.park_on_next_run(io_blocked, ParkReason::AwaitIo);
 
         pool.wait_until(|status| status.done_count >= 2 && status.parked_count >= 1);
 
@@ -389,7 +388,11 @@ mod tests {
         let resumed = signal_ready_ok(&mut registry, handle, &mut pool, "worker pool I/O wakeup");
         assert_eq!(resumed, io_blocked);
         assert_eq!(registry.pending_count(), 0);
-        assert_eq!(pool.state_of(io_blocked), Some(ContextState::Runnable));
+        // Workers may dequeue and finish the context before this thread observes Runnable.
+        assert_ne!(
+            pool.state_of(io_blocked),
+            Some(ContextState::Parked(ParkReason::AwaitIo))
+        );
 
         pool.wait_all_done();
 
