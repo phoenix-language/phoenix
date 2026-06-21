@@ -333,16 +333,14 @@ fn pxi_v2_malformed_nested_generic_payloads_return_stable_errors() {
             "invalid .pxi: malformed exports: truncated exports array",
         ),
         (
-            &format!(
-                r#"{{
+            r#"{
   "format_version": 2,
   "logical_module": "m",
   "source_hash": "h",
   "origin": null,
-  "exports": [{{"export_id": "m::wrap::fn", "name": "wrap", "kind": "fn", "signature": "() => ()", "type": {{"kind": "named", "path": "std::core::option::Option", "args": [
+  "exports": [{"export_id": "m::wrap::fn", "name": "wrap", "kind": "fn", "signature": "() => ()", "type": {"kind": "named", "path": "std::core::option::Option", "args": [
   "dependencies": []
-}}"#
-            ),
+}"#,
             "invalid .pxi: malformed exports: unclosed object",
         ),
         (
