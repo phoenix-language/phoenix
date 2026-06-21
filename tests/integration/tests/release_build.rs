@@ -8,8 +8,8 @@ use phx_bytecode::{PHX0_HAS_DEBUG, verify};
 use phx_cli::vm_diag::{SourceContext, format_vm_error};
 use phx_compiler::{BuildOptions, BuildProfile};
 use phx_test::{
-    assert_golden, force_built_project_with_options, integration_diagnostics_dir,
-    require_cli_project, shared_cli, with_project_fs_lock,
+    assert_golden, ensure_built_project_with_options, force_built_project_with_options,
+    integration_diagnostics_dir, require_cli_project, shared_cli, with_project_fs_lock,
 };
 use phx_vm::{VmErrorKind, run};
 
@@ -100,6 +100,85 @@ fn release_build_runtime_error_falls_back_to_bytecode_site() {
         !msg.contains("src/main.phx:"),
         "release build should not cite Phoenix source spans, got:\n{msg}"
     );
+}
+
+#[test]
+fn release_multimodule_strips_section_5_and_verifies() {
+    let built = ensure_built_project_with_options(
+        "modules_trap",
+        BuildOptions::force(true).with_profile(BuildProfile::Release),
+    );
+    assert!(
+        built.module.pc_spans.entries.is_empty(),
+        "release multi-module build should omit PC span rows"
+    );
+    assert_eq!(
+        built.module.header.flags & PHX0_HAS_DEBUG,
+        0,
+        "release multi-module build should clear PHX0_HAS_DEBUG"
+    );
+    assert_eq!(
+        built.module.header.section_count, 5,
+        "release multi-module build should omit section 5"
+    );
+    verify(&built.module).expect("release modules_trap should verify");
+}
+
+#[test]
+fn release_multimodule_runtime_error_falls_back_to_bytecode_site() {
+    let built = ensure_built_project_with_options(
+        "modules_trap",
+        BuildOptions::force(true).with_profile(BuildProfile::Release),
+    );
+    let verified = verify(&built.module).expect("verify release modules_trap");
+    let err = run(verified).expect_err("division by zero should fail");
+    assert!(
+        matches!(err.kind, VmErrorKind::DivisionByZero),
+        "expected DivisionByZero, got {err:?}"
+    );
+
+    let project = require_cli_project("modules_trap");
+    let entry = project.join("src/main.phx");
+    let ctx = SourceContext {
+        project_root: Some(&project),
+        entry_path: Some(&entry),
+        entry_source: None,
+    };
+    let msg = format_vm_error(&built.module, &err, &ctx);
+    assert!(
+        msg.contains("(function") && msg.contains("pc"),
+        "expected bytecode site fallback without section 5, got:\n{msg}"
+    );
+    assert!(
+        !msg.contains("src/util/trap.phx:") && !msg.contains("src/main.phx:"),
+        "release multi-module build should not cite Phoenix source spans, got:\n{msg}"
+    );
+}
+
+#[test]
+fn release_multimodule_trap_cli_no_source_spans() {
+    with_project_fs_lock("modules_trap", || {
+        let project = require_cli_project("modules_trap");
+        let cli = shared_cli();
+        cli.run(&[
+            "build",
+            "--release",
+            "--build",
+            "--project-root",
+            &project.display().to_string(),
+        ])
+        .assert_success();
+        let out = cli.run_no_build_project_fails(&project);
+        out.assert_contains("runtime error:");
+        out.assert_contains("division by zero");
+        out.assert_contains("(function");
+        out.assert_contains("pc");
+        assert!(
+            !out.combined.contains("src/util/trap.phx:") && !out.combined.contains("src/main.phx:"),
+            "release multi-module trap stderr must not cite Phoenix source spans, got:\n{}",
+            out.combined
+        );
+    });
 }
 
 #[test]
