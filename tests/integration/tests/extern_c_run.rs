@@ -2,8 +2,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use phx_bytecode::{BytecodeModule, ScalarValue, verify};
-use phx_compiler::{BuildOptions, ProjectConfig, build_project};
-use phx_test::{ExpectedLocal, assert_main_locals, load_built_binary, require_cli_project};
+use phx_test::{ExpectedLocal, assert_main_locals, ensure_built_project, require_cli_project};
 use phx_vm::{
     ForeignStubFn, Machine, Value, VmErrorKind, clear_foreign_stubs,
     register_builtin_foreign_stubs, register_foreign_stub,
@@ -28,11 +27,9 @@ fn c_add_stub(machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmE
 fn extern_c_fixture_runs_with_registered_stub() {
     clear_foreign_stubs();
     register_builtin_foreign_stubs();
-    let root = require_cli_project("extern_c");
+    require_cli_project("extern_c");
     let _stub_id: u32 = register_foreign_stub("c_add", c_add_stub as ForeignStubFn);
-    let config = ProjectConfig::load(&root).expect("load extern_c");
-    build_project(&config, None, BuildOptions::force(true)).expect("build extern_c");
-    let module = load_built_binary(&config).expect("load binary");
-    verify(&module).expect("verify extern_c");
-    assert_main_locals(&module, &[(0, ExpectedLocal::S32(12))]);
+    let built = ensure_built_project("extern_c");
+    verify(&built.module).expect("verify extern_c");
+    assert_main_locals(&built.module, &[(0, ExpectedLocal::S32(12))]);
 }
