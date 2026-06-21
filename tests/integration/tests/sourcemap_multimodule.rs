@@ -27,8 +27,8 @@ fn callee_module_runtime_error_maps_to_util_source_line() {
     };
     let msg = format_vm_error(&built.module, &err, &ctx);
     assert!(
-        msg.contains("division by zero") && msg.contains("src/util/trap.phx:2:"),
-        "expected callee util/trap line in formatted error, got:\n{msg}"
+        msg.contains("division by zero in div_zero at") && msg.contains("util/trap.phx:2:"),
+        "expected merged callee function debug name and util/trap line, got:\n{msg}"
     );
     assert!(
         !msg.contains("src/main.phx:"),
@@ -46,5 +46,28 @@ fn callee_module_cli_shows_util_source_line_on_stderr() {
     let out = shared_cli().run_project_fails(&project);
     out.assert_contains("runtime error:");
     out.assert_contains("division by zero");
-    out.assert_contains("src/util/trap.phx:2:");
+    out.assert_contains("div_zero");
+    out.assert_contains("util/trap.phx:2:");
+}
+
+#[test]
+fn linked_module_merged_function_debug_names_survive_link() {
+    require_cli_project("modules_trap");
+    let built = ensure_built_project("modules_trap");
+    assert!(
+        built
+            .module
+            .pc_spans
+            .function_names
+            .iter()
+            .any(|entry| { entry.name == "div_zero" || entry.name == "main" }),
+        "dev link should merge function debug names from all modules, got: {:?}",
+        built
+            .module
+            .pc_spans
+            .function_names
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect::<Vec<_>>()
+    );
 }
