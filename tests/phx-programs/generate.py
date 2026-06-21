@@ -355,6 +355,8 @@ def gen_diagnostics() -> None:
         ("invalid_cast", "DiagFile", "invalid_cast.phx", None, None),
         ("double_mut_borrow", "DiagFile", "double_mut_borrow.phx", None, None),
         ("shared_mut_borrow", "DiagFile", "shared_mut_borrow.phx", None, None),
+        ("if_arm_overlapping_mut", "DiagFile", "if_arm_overlapping_mut.phx", None, None),
+        ("loop_overlapping_mut", "DiagFile", "loop_overlapping_mut.phx", None, None),
     ]
     lines = [
         "//! Golden diagnostic cases.\n",
