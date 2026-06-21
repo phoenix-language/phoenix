@@ -47,21 +47,13 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
-| 6 | PHX-070-p4 — Release strip of PHX0 section 5 | FEATURE | P3 | `[ ]` |
-| 7 | PHX-070-p5 — PC span map across nested / indirect calls | FEATURE | P3 | `[ ]` |
-| 8 | PHX-borrow-0 — `&mut T` exclusivity (no lifetimes) | FEATURE | P3 | `[ ]` |
-| 9 | PHX-borrow-1 — `&T` shared borrow + double-borrow diagnostic | FEATURE | P3 | `[ ]` |
-| 10 | PHX-sched-0 — Scheduler types + park/resume unit harness | FEATURE | P3 | `[ ]` |
-| 11 | PHX-sched-1 — Document schedulable I/O contract in runtime-transparency | INFRA | P3 | `[ ]` |
-| 12 | Golden diagnostic — double mutable borrow | TESTS | P3 | `[ ]` |
-| 13 | Verifier — hostile PHX0 section 5 / stripped-module cases | TESTS | P3 | `[ ]` |
+| 20 | Golden diagnostic — release build without source spans | TESTS | P3 | `[ ]` |
 
 **Optional (queue when &lt; 5 active):**
 
 | # | Task | Stream | Status |
 |---|------|--------|--------|
-| 14 | README + CONTRIBUTING sync with `just pre-commit` / sprint workflow | INFRA | `[ ]` |
-| 15 | Stabilize flaky `heap_uaf_cli_shows_source_span_on_stderr` | BUGFIX | `[ ]` |
+| — | _Replenish from Backlog when #20 completes_ | — | — |
 
 ---
 
@@ -295,6 +287,15 @@ _Do not re-queue the above unless a regression appears._
 
 _Also on trunk from same sprint window: PHX-sched-2 I/O wait registry stub — PR #116._
 
+## Completed — sprint iteration 2 (2026-06-20)
+
+| # | Task | Notes |
+|---|------|-------|
+| 16 | PHX-sched-3 — AwaitIo opcode contract doc | PR #127 |
+| 17 | CLI `--release` e2e integration test | PR #124 |
+| 18 | mvp-finish P3 doc truth (ROADMAP + agent queue) | this PR |
+| 19 | PHX-borrow-2 — loop / branch borrow join | PR #128 |
+
 ---
 
 ## Task 16 — PHX-sched-3: AwaitIo opcode contract doc
@@ -409,8 +410,8 @@ Golden locks CLI stderr for a release-built program that traps: no Phoenix sourc
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #6–#13, #15 (iteration 1 merge batch) |
-| Last trunk SHA | `627fd8ec` |
-| Active queue count | 5 / 8 |
+| Last completed task | #16–#19 (iteration 2; #18 = ROADMAP/agent queue sync) |
+| Last trunk SHA | `2921773c` |
+| Active queue count | 1 / 8 |
 | Blockers | — |
-| Next replenish | When #16–#18 complete → borrow join + release goldens |
+| Next replenish | When #20 complete → pull from Backlog (unscheduled) |
