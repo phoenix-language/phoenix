@@ -193,4 +193,201 @@ mod tests {
         );
         pool.shutdown();
     }
+
+    fn spawn_await_io_batch(
+        pool: &WorkerPool,
+        specs: &[(u32, u32)],
+    ) -> Vec<(ContextId, IoHandle, AwaitIoOperands)> {
+        specs
+            .iter()
+            .map(|&(steps, request_id)| {
+                let operands = AwaitIoOperands {
+                    io_kind: 1,
+                    request_id,
+                };
+                let handle = operands.io_handle();
+                let ctx = pool.spawn_await_io_on_first_run(steps, operands);
+                (ctx, handle, operands)
+            })
+            .collect()
+    }
+
+    fn wait_all_parked(pool: &WorkerPool, expected: usize, label: &str) {
+        pool.wait_until(|status| status.parked_count >= expected);
+        assert_eq!(
+            pool.parked_count(),
+            expected,
+            "{label}: expected {expected} parked contexts"
+        );
+    }
+
+    fn assert_all_parked_await_io(
+        pool: &WorkerPool,
+        contexts: &[(ContextId, IoHandle, AwaitIoOperands)],
+        registry: &Arc<Mutex<IoWaitRegistry>>,
+        label: &str,
+    ) {
+        for &(ctx, handle, _) in contexts {
+            assert_eq!(
+                pool.state_of(ctx),
+                Some(ContextState::Parked(ParkReason::AwaitIo)),
+                "{label}: context {ctx:?} should be parked for I/O"
+            );
+            assert_eq!(
+                lock_registry(registry, label).context_for(handle),
+                Some(ctx),
+                "{label}: registry should map handle to context"
+            );
+        }
+        assert_eq!(
+            lock_registry(registry, label).pending_count(),
+            contexts.len(),
+            "{label}: registry pending count"
+        );
+    }
+
+    fn wake_handles_in_order(
+        registry: &Arc<Mutex<IoWaitRegistry>>,
+        pool: &mut WorkerPool,
+        handles: &[IoHandle],
+        label: &str,
+    ) {
+        for &handle in handles {
+            let resumed = {
+                let mut reg = lock_registry(registry, label);
+                signal_ready_ok(&mut reg, handle, pool, label)
+            };
+            assert_eq!(
+                lock_registry(registry, label).context_for(handle),
+                None,
+                "{label}: handle should be unregistered after wakeup"
+            );
+            let _ = resumed;
+        }
+    }
+
+    fn assert_clean_completion(
+        pool: &WorkerPool,
+        contexts: &[(ContextId, IoHandle, AwaitIoOperands)],
+        registry: &Arc<Mutex<IoWaitRegistry>>,
+        label: &str,
+    ) {
+        pool.wait_all_done();
+        assert_eq!(pool.parked_count(), 0, "{label}: no parked contexts");
+        assert_eq!(pool.runnable_count(), 0, "{label}: no runnable contexts");
+        assert_eq!(
+            lock_registry(registry, label).pending_count(),
+            0,
+            "{label}: no leaked I/O registrations"
+        );
+        for &(ctx, handle, _) in contexts {
+            assert_eq!(
+                pool.state_of(ctx),
+                Some(ContextState::Done),
+                "{label}: context {ctx:?} should be done"
+            );
+            assert!(
+                !lock_registry(registry, label).is_registered(handle),
+                "{label}: handle should not remain registered"
+            );
+        }
+    }
+
+    #[test]
+    fn multi_context_await_io_wake_in_spawn_order_completes() {
+        let registry = Arc::new(Mutex::new(IoWaitRegistry::new()));
+        let mut pool = WorkerPool::with_io_registry(3, Arc::clone(&registry));
+        let contexts = spawn_await_io_batch(&pool, &[(2, 10), (3, 11), (4, 12), (1, 13)]);
+
+        wait_all_parked(&pool, contexts.len(), "spawn-order");
+        assert_all_parked_await_io(&pool, &contexts, &registry, "spawn-order");
+
+        let handles: Vec<IoHandle> = contexts.iter().map(|(_, handle, _)| *handle).collect();
+        wake_handles_in_order(&registry, &mut pool, &handles, "spawn-order wakeup");
+
+        assert_clean_completion(&pool, &contexts, &registry, "spawn-order");
+        pool.shutdown();
+    }
+
+    #[test]
+    fn multi_context_await_io_wake_reverse_order_completes() {
+        let registry = Arc::new(Mutex::new(IoWaitRegistry::new()));
+        let mut pool = WorkerPool::with_io_registry(4, Arc::clone(&registry));
+        let contexts = spawn_await_io_batch(&pool, &[(5, 20), (2, 21), (3, 22), (4, 23), (1, 24)]);
+
+        wait_all_parked(&pool, contexts.len(), "reverse-order");
+        assert_all_parked_await_io(&pool, &contexts, &registry, "reverse-order");
+
+        let mut handles: Vec<IoHandle> = contexts.iter().map(|(_, handle, _)| *handle).collect();
+        handles.reverse();
+        wake_handles_in_order(&registry, &mut pool, &handles, "reverse-order wakeup");
+
+        assert_clean_completion(&pool, &contexts, &registry, "reverse-order");
+        pool.shutdown();
+    }
+
+    #[test]
+    fn multi_context_await_io_interleaved_fast_contexts_completes() {
+        let registry = Arc::new(Mutex::new(IoWaitRegistry::new()));
+        let mut pool = WorkerPool::with_io_registry(3, Arc::clone(&registry));
+
+        let fast_a = pool.spawn(1);
+        let io_a = spawn_await_io_batch(&pool, &[(3, 30)]);
+        let fast_b = pool.spawn(2);
+        let io_b = spawn_await_io_batch(&pool, &[(2, 31), (4, 32)]);
+        let fast_c = pool.spawn(1);
+
+        let mut io_contexts = io_a;
+        io_contexts.extend(io_b);
+
+        pool.wait_until(|status| {
+            status.done_count >= 3 && status.parked_count >= io_contexts.len()
+        });
+
+        assert_eq!(pool.state_of(fast_a), Some(ContextState::Done));
+        assert_eq!(pool.state_of(fast_b), Some(ContextState::Done));
+        assert_eq!(pool.state_of(fast_c), Some(ContextState::Done));
+        assert_all_parked_await_io(&pool, &io_contexts, &registry, "interleaved");
+
+        let handles = [
+            IoHandle::from_index(32),
+            IoHandle::from_index(30),
+            IoHandle::from_index(31),
+        ];
+        wake_handles_in_order(&registry, &mut pool, &handles, "interleaved wakeup");
+
+        assert_clean_completion(&pool, &io_contexts, &registry, "interleaved");
+        assert_eq!(pool.done_count(), 6);
+        pool.shutdown();
+    }
+
+    #[test]
+    fn multi_context_await_io_duplicate_signal_returns_not_found() {
+        let registry = Arc::new(Mutex::new(IoWaitRegistry::new()));
+        let mut pool = WorkerPool::with_io_registry(2, Arc::clone(&registry));
+        let contexts = spawn_await_io_batch(&pool, &[(2, 40), (2, 41)]);
+
+        wait_all_parked(&pool, contexts.len(), "duplicate-signal");
+        let handle = contexts[0].1;
+
+        {
+            let mut reg = lock_registry(&registry, "first signal");
+            signal_ready_ok(&mut reg, handle, &mut pool, "first wakeup");
+        }
+
+        let err = {
+            let mut reg = lock_registry(&registry, "duplicate signal");
+            match reg.signal_ready(handle, &mut pool) {
+                Err(err) => err,
+                Ok(_) => panic!("duplicate signal_ready should fail"),
+            }
+        };
+        assert_eq!(err, IoWaitError::HandleNotFound(handle));
+
+        let remaining = contexts[1].1;
+        wake_handles_in_order(&registry, &mut pool, &[remaining], "finish remaining");
+
+        assert_clean_completion(&pool, &contexts, &registry, "duplicate-signal");
+        pool.shutdown();
+    }
 }
