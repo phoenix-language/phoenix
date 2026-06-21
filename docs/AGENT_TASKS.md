@@ -47,14 +47,14 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
-| 27 | Integration — multi-module release build without spans | TESTS | P3 | `[ ]` |
-| 28 | `phx explain` gaps E3002–E3005 and E2033 | QOL | P3 | `[ ]` |
 | 29 | PHX-070-p7 — Section 5 function-name symbol stub | FEATURE | P3 | `[ ]` |
-| 30 | Golden diagnostic — match scrutinee overlapping borrow | TESTS | P3 | `[ ]` |
 | 31 | PHX-sched-6 — AwaitIo opcode VM harness stub | FEATURE | P3 | `[ ]` |
 | 32 | PHX-borrow-4 — borrow across function call arguments | FEATURE | P3 | `[ ]` |
 | 33 | PXI nested generic round-trip property tests | TESTS | P3 | `[ ]` |
 | 34 | PHX-070-p8 — CLI `format_vm_error` function name display | FEATURE | P3 | `[ ]` |
+| 35 | Golden diagnostic — call-site overlapping mut borrow | TESTS | P3 | `[ ]` |
+| 36 | PHX-sched-7 — Std I/O park contract harness stub | FEATURE | P3 | `[ ]` |
+| 37 | Stable FFI symbol identity — registration-order tests | TESTS | P3 | `[ ]` |
 
 ---
 
@@ -323,6 +323,14 @@ _Also on trunk from same sprint window: link/integration test flake stabilizatio
 | 26 | PHX-sched-5 — Wire `IoWaitRegistry` through `WorkerPool` | PR #139 |
 
 _Also on trunk from same sprint window: sandbox build lock batch — PR #140 (`ensure_built_project` in std integration runs)._
+
+## Completed — sprint iteration 8 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 27 | Integration — multi-module release build without spans | PR #142 |
+| 28 | `phx explain` gaps E3002–E3005 and E2033 | already on trunk — `explain_coverage` + `cli_e2e` guard E3002–E3005 and E2033 |
+| 30 | Golden diagnostic — match scrutinee overlapping borrow | PR #143 |
 
 ---
 
@@ -743,12 +751,78 @@ When section 5 carries function debug names, VM fault output includes the **func
 
 ---
 
+## Task 35 — Golden diagnostic: call-site overlapping mut borrow
+
+**Stream:** TESTS  
+**Depends on:** PHX-borrow-4 (Task 32)
+
+### Goal
+
+CLI golden locks user-visible diagnostic when a function call passes overlapping `&mut T` arguments from the same binding.
+
+### Work
+
+1. `tests/integration/diagnostics/call_site_mut_borrow.phx` + `.stderr` golden.
+2. Register in `phx-test` diagnostic case list.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- `cargo test -p phx-integration-tests --test diagnostics` passes.
+
+---
+
+## Task 36 — PHX-sched-7: Std I/O park contract harness stub
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/runtime-transparency.md`, `docs/design/features/io-bridge.md`  
+**Depends on:** PHX-sched-6 (Task 31)
+
+### Goal
+
+In-tree harness stub exercising the **Std I/O park contract**: a synthetic context parks on schedulable I/O, registers with `IoWaitRegistry`, and resumes on wakeup — still no Phoenix syntax or real host I/O.
+
+### Work
+
+1. Add unit/integration harness that models a pending I/O handle and wakeup path through `WorkerPool`.
+2. Tests: park → register → wake → context completes on a worker thread.
+3. Run `just test`.
+
+### Acceptance
+
+- Tests pass without new `phx` CLI changes.
+- No new crates.io deps.
+
+---
+
+## Task 37 — Stable FFI symbol identity: registration-order tests
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/ffi.md` (Phase B), `docs/ROADMAP.md` M3  
+**Depends on:** link/FFI stubs on trunk
+
+### Goal
+
+Mutation-style tests proving foreign symbol registration order does **not** affect stable identity once Phase B identity is wired — and documenting current registration-order behavior until the stub lands.
+
+### Work
+
+1. Extend linker/FFI tests: two registration orders yield the same stable foreign id (or assert current gap with a `#[ignore]` forward test).
+2. Assert stable error kinds on malformed foreign metadata — no panic.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- At least 2 registration-order cases; workspace tests green.
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #26 (iteration 7; PHX-sched-5 PR #139) |
-| Last trunk SHA | `e82158f7` |
+| Last completed task | #30 (iteration 8; match scrutinee golden PR #143) |
+| Last trunk SHA | `6643296c` |
 | Active queue count | 8 / 8 |
 | Blockers | — |
-| Next replenish | When active count drops below 5 → pull from Backlog (unscheduled) |
+| Next replenish | When active count drops below 5 → pull from `mvp-finish-todo.md` P3 |
