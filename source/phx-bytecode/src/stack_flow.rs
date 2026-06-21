@@ -301,7 +301,8 @@ fn terminators_successors(inst: &Instruction, next: Option<&(u32, Instruction)>)
         | Opcode::LoadAggViaLocalPtr
         | Opcode::MakeSliceFromPtr
         | Opcode::Free
-        | Opcode::IndexStore => Vec::new(),
+        | Opcode::IndexStore
+        | Opcode::AwaitIo => Vec::new(),
     }
 }
 

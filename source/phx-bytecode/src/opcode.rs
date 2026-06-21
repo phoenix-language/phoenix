@@ -139,6 +139,10 @@ pub enum Opcode {
     IndexStore = 50,
     /// Read length from slice or `str` aggregate. Stack: `[slice] → [len: u32]`
     SliceLen = 51,
+    /// Initiate non-blocking I/O and park until ready (post-MVP scheduler). Stack: `[…, pending_io] → […, pending_io]` at park; resume pushes `Result` payload.
+    ///
+    /// Operands: `io_kind: u32`, `request_id: u32`. See `docs/design/features/vm-linear.md` § `AWAIT_IO` opcode contract.
+    AwaitIo = 52,
 }
 
 impl Opcode {
@@ -201,6 +205,7 @@ impl Opcode {
             49 => Ok(Self::Free),
             50 => Ok(Self::IndexStore),
             51 => Ok(Self::SliceLen),
+            52 => Ok(Self::AwaitIo),
             _ => Err(OpcodeError::Unknown(byte)),
         }
     }
