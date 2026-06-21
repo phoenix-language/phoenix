@@ -47,11 +47,11 @@ Work **top to bottom** within each priority band. Orchestrator may run up to thr
 
 | # | Task | Stream | Priority | Status |
 |---|------|--------|----------|--------|
-| 21 | PHX-070-p6 — Multi-module PC span stress fixtures | TESTS | P3 | `[ ]` |
-| 22 | Golden diagnostic — loop mut borrow across iterations | TESTS | P3 | `[ ]` |
-| 23 | PHX-sched-4 — M:N OS-thread scheduler harness | FEATURE | P3 | `[ ]` |
-| 24 | ROADMAP PHX-070 / P3 status sync | INFRA | P3 | `[ ]` |
-| 25 | `phx explain` gap for borrow errors E2047–E2049 | QOL | P3 | `[ ]` |
+| 26 | PHX-sched-5 — Wire `IoWaitRegistry` through `WorkerPool` | FEATURE | P3 | `[ ]` |
+| 27 | Integration — multi-module release build without spans | TESTS | P3 | `[ ]` |
+| 28 | `phx explain` gaps E3002–E3005 and E2033 | QOL | P3 | `[ ]` |
+| 29 | PHX-070-p7 — Section 5 function-name symbol stub | FEATURE | P3 | `[ ]` |
+| 30 | Golden diagnostic — match scrutinee overlapping borrow | TESTS | P3 | `[ ]` |
 
 ---
 
@@ -240,7 +240,6 @@ _Not counted toward the 8-task cap._ Orchestrator promotes items here when the a
 
 | Idea | Stream | Source |
 |------|--------|--------|
-| `phx explain` gap for new borrow errors | QOL | recon |
 | Tier-A rustdoc on one **complex** pass (only if no FEATURE queued) | DOCS | last resort |
 | Website a11y / copy | WEBSITE | `website/` submodule |
 | Actors / mailboxes | — | **Deferred** — post-MVP, no slice without design |
@@ -301,6 +300,18 @@ _Also on trunk from same sprint window: PHX-sched-2 I/O wait registry stub — P
 | 20 | Golden diagnostic — release build without source spans | PR #130 |
 
 _Also on trunk from same sprint window: PHX-borrow-3 loop body / back-edge join — PR #131._
+
+## Completed — sprint iteration 6 (2026-06-21)
+
+| # | Task | Notes |
+|---|------|-------|
+| 21 | PHX-070-p6 — Multi-module PC span stress fixtures | PR #137 |
+| 22 | Golden diagnostic — loop mut borrow across iterations | PR #134 |
+| 23 | PHX-sched-4 — M:N OS-thread scheduler harness | PR #136 |
+| 24 | ROADMAP PHX-070 / P3 status sync | this PR |
+| 25 | `phx explain` gap for borrow errors E2047–E2048 | PR #135 |
+
+_Also on trunk from same sprint window: link/integration test flake stabilization — PR #133, unique module-tree temp dirs, `std_result_match` build race._
 
 ---
 
@@ -521,12 +532,122 @@ Sync ROADMAP and P3 rows with trunk after PHX-070 release golden (#130), loop bo
 
 ---
 
+## Task 26 — PHX-sched-5: Wire `IoWaitRegistry` through `WorkerPool`
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/runtime-transparency.md`, `docs/design/features/vm-linear.md`  
+**Depends on:** PHX-sched-2 (#116), PHX-sched-4 (#136)
+
+### Goal
+
+Connect the I/O wait registry to the M:N worker pool: contexts parked on `AwaitIo` register with `IoWaitRegistry`; readiness wakeups enqueue on the shared run queue.
+
+### Work
+
+1. Extend `WorkerPool` park/resume paths to register/deregister `(IoHandle, ContextId)` pairs.
+2. Unit tests: park on `AwaitIo`, wake via registry, context completes on a worker thread.
+3. Run `just test`.
+
+### Acceptance
+
+- Tests pass without new opcodes or `phx` CLI changes.
+- No new crates.io deps.
+
+---
+
+## Task 27 — Integration: multi-module release build without spans
+
+**Stream:** TESTS  
+**Design:** `docs/design/features/debug.md` (release profile)  
+**Depends on:** PHX-070-p4 (#101, #121, #123), PHX-070-p6 (#137)
+
+### Goal
+
+End-to-end test: `phx build --release` on a **multi-module** fixture; linked artifact verifies, runs, and stderr omits dev source spans on trap.
+
+### Work
+
+1. Extend `tests/integration/tests/release_build.rs` (or new fixture) using `modules_trap` or similar.
+2. Assert no section 5 in linked PHX0; VM fault has no `path:line:col` mapping.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- Integration test passes on trunk; fails if release strip or multi-module link regresses.
+
+---
+
+## Task 28 — `phx explain` gaps E3002–E3005 and E2033
+
+**Stream:** QOL  
+**Design:** `docs/ROADMAP.md` M8 (PHX-012, PHX-013)  
+**Depends on:** type error registry on trunk
+
+### Goal
+
+`phx explain` returns actionable text for parse/diagnostic codes E3002–E3005 and E2033 that currently have codes but no explain entries.
+
+### Work
+
+1. Audit `explain_code` / registry for missing entries.
+2. Add explain text matching existing diagnostic tone.
+3. CLI test: each code non-empty; run `just pre-commit`.
+
+### Acceptance
+
+- `every_*_has_explain_entry`-style coverage extended or new test guards the added codes.
+
+---
+
+## Task 29 — PHX-070-p7: Section 5 function-name symbol stub
+
+**Stream:** FEATURE  
+**Design:** `docs/design/features/debug.md` (Full symbols planned D1+)  
+**Depends on:** PHX-070-p1–p6 on trunk
+
+### Goal
+
+First slice toward full section 5 symbols: emit and merge **function debug names** (display only) alongside the PC span map in dev builds.
+
+### Work
+
+1. Extend section 5 wire format (new `sub_version` or appended table) with per-`function_id` name entries.
+2. Linker merge for multi-module programs; verifier accepts valid payloads.
+3. Unit tests in `phx-bytecode`; run `just pre-commit`.
+
+### Acceptance
+
+- Dev build round-trips function names; release build still omits section 5.
+
+---
+
+## Task 30 — Golden diagnostic: match scrutinee overlapping borrow
+
+**Stream:** TESTS  
+**Depends on:** PHX-borrow-2 (#128), PHX-borrow-3 (#131)
+
+### Goal
+
+CLI golden locks user-visible diagnostic when a `match` scrutinee or arm would leave overlapping `&mut` borrows.
+
+### Work
+
+1. `tests/integration/diagnostics/match_scrutinee_mut_borrow.phx` + `.stderr` golden.
+2. Register in `phx-test` diagnostic case list.
+3. Run `just pre-commit`.
+
+### Acceptance
+
+- `cargo test -p phx-integration-tests --test diagnostics` passes.
+
+---
+
 ## Handoff notes (orchestrator fills in)
 
 | Field | Value |
 |-------|-------|
-| Last completed task | #20 (iteration 3; release trap golden PR #130) |
-| Last trunk SHA | `65ad5e9e` |
+| Last completed task | #25 (iteration 6; explain borrow codes PR #135) |
+| Last trunk SHA | `8e2ed9d0` |
 | Active queue count | 5 / 8 |
 | Blockers | — |
 | Next replenish | When active count drops below 5 → pull from Backlog (unscheduled) |
