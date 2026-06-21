@@ -26,15 +26,18 @@
 //! | [`SingleThreadScheduler`] | Spawn, run, park, resume harness |
 //! | [`SchedulerError`] | Invalid park/resume transitions |
 //! | [`IoWaitRegistry`] | Tracks [`ParkReason::AwaitIo`] waits and wakeups (PHX-sched-2) |
+//! | [`WorkerPool`] | M:N worker threads + shared [`RunQueue`] (PHX-sched-4) |
 
 mod context;
 mod harness;
 mod io_wait;
 mod park;
 mod queue;
+mod worker_pool;
 
 pub use context::{ContextId, ContextState, RunnableContext, StepOutcome};
 pub use harness::{RunningGuard, SchedulerError, SingleThreadScheduler};
 pub use io_wait::{IoHandle, IoWaitError, IoWaitRegistry};
 pub use park::ParkReason;
 pub use queue::RunQueue;
+pub use worker_pool::{WorkerPool, WorkerPoolStatus};
