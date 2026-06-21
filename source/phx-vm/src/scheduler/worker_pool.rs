@@ -268,9 +268,17 @@ impl WorkerPool {
     /// Simulates a synthetic harness context executing [`Opcode::AwaitIo`] with `operands`.
     #[must_use]
     pub fn spawn_await_io_on_first_run(&self, steps: u32, operands: AwaitIoOperands) -> ContextId {
-        let id = self.spawn_inner(steps, Some(ParkReason::AwaitIo));
-        let mut inner = lock_inner(&self.inner);
-        inner.await_io_on_dequeue.insert(id, operands);
+        let id = {
+            let mut inner = lock_inner(&self.inner);
+            let id = ContextId::from_index(inner.next_id);
+            inner.next_id += 1;
+            inner.contexts.push(RunnableContext::new(id, steps));
+            inner.park_on_dequeue.insert(id, ParkReason::AwaitIo);
+            inner.await_io_on_dequeue.insert(id, operands);
+            inner.run_queue.push(id);
+            id
+        };
+        self.cvar.notify_all();
         id
     }
 
