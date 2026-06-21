@@ -51,7 +51,10 @@ pub use instr::{InstrError, Instruction};
 pub use local_layout::{FunctionLocalLayout, LocalLayoutError, LocalLayoutTable, LocalSlotKind};
 pub use module::{BytecodeModule, ModuleError};
 pub use opcode::{Opcode, OpcodeError};
-pub use pc_span::{PC_SPAN_SUB_VERSION, PHX0_HAS_DEBUG, PcSpanEntry, PcSpanError, PcSpanTable};
+pub use pc_span::{
+    FunctionNameEntry, PC_SPAN_SUB_VERSION, PC_SPAN_SUB_VERSION_V1, PHX0_HAS_DEBUG, PcSpanEntry,
+    PcSpanError, PcSpanTable,
+};
 pub use scalar::{
     PTR_AGG_TAG, PTR_CONST_TAG, PTR_FN_TAG, PTR_LOCAL_TAG, ScalarValue, decode_fn_ptr,
     fn_ptr_from_id, is_fn_ptr, mask_shift_amount, scalar_from_f64, scalar_from_i128,

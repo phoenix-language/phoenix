@@ -583,6 +583,10 @@ fn link_dev_profile_keeps_merged_debug_sections() {
         !linked.pc_spans.entries.is_empty(),
         "dev link should keep merged PC span rows"
     );
+    assert!(
+        linked.pc_spans.lookup_function_name(0).is_some(),
+        "dev link should keep merged function debug names"
+    );
     assert_ne!(
         linked.header.flags & PHX0_HAS_DEBUG,
         0,

@@ -83,6 +83,29 @@ fn codegen_emits_pc_span_section_in_dev_builds() {
             .lookup_exact(0, 0)
             .is_some_and(|e| e.span_end > e.span_start)
     );
+    assert_eq!(
+        module.pc_spans.lookup_function_name(0),
+        Some("main"),
+        "dev codegen should record function debug names"
+    );
+}
+
+#[test]
+fn codegen_emits_function_debug_names_in_dev_builds() {
+    let source = "helper :: () => { }; main :: () => { helper(); };";
+    let (_, _, module) = compile_lower_codegen(source);
+    verify_module(&module);
+    let names: Vec<_> = module
+        .pc_spans
+        .function_names
+        .iter()
+        .map(|e| e.name.as_str())
+        .collect();
+    assert!(names.contains(&"main"));
+    assert!(names.contains(&"helper"));
+    let bytes = test_ok(module.encode(), "encode");
+    let decoded = test_ok(BytecodeModule::decode(&bytes), "decode");
+    assert_eq!(decoded.pc_spans.function_names.len(), 2);
 }
 
 #[test]

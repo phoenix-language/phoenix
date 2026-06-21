@@ -11,19 +11,25 @@
 //! ## Payload layout
 //!
 //! `sub_version` (4), `file_count` (4), path strings (`path_len` + UTF-8 bytes), `entry_count`
-//! (4), then 20-byte rows (`function_id`, `pc`, `file_id`, `span_start`, `span_end`). Rows must
-//! be strictly ordered by `(function_id, pc)` ascending.
+//! (4), then 20-byte rows (`function_id`, `pc`, `file_id`, `span_start`, `span_end`). Sub-version
+//! `2` appends `function_name_count` (4) and rows (`function_id`, `name_len`, UTF-8 name).
+//! PC span rows must be strictly ordered by `(function_id, pc)` ascending; function names by
+//! `function_id`.
 //!
 //! ## In this module
 //!
 //! - [`PcSpanEntry`] — one `(function_id, pc)` site mapped to a source file and span.
-//! - [`PcSpanTable`] — paths plus sorted entries; encode/decode and lookup APIs.
+//! - [`FunctionNameEntry`] — per-`function_id` display name (phase-2 stub).
+//! - [`PcSpanTable`] — paths, PC span rows, and function names; encode/decode and lookup APIs.
 //! - [`PcSpanError`] — decode validation failures.
 
 use crate::decode::checked_entry_count;
 
-/// Sub-version of the section 5 PC span map (phase 1).
-pub const PC_SPAN_SUB_VERSION: u32 = 1;
+/// Sub-version of the section 5 PC span map (phase 1, PC spans only).
+pub const PC_SPAN_SUB_VERSION_V1: u32 = 1;
+
+/// Sub-version of section 5: phase-1 PC spans plus per-function debug names.
+pub const PC_SPAN_SUB_VERSION: u32 = 2;
 
 /// Header flag: section 5 (debug metadata) is present.
 pub const PHX0_HAS_DEBUG: u32 = 0x0000_0001;
@@ -63,20 +69,39 @@ impl PcSpanEntry {
     }
 }
 
-/// PC span map and compilation-unit paths for section 5 (phase 1).
+/// Per-`function_id` debug display name (section 5 phase-2 stub).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionNameEntry {
+    /// Owning function id (matches the functions section).
+    pub function_id: u32,
+    /// UTF-8 display name for traces and diagnostics.
+    pub name: String,
+}
+
+impl FunctionNameEntry {
+    /// Creates one function-name row.
+    #[must_use]
+    pub fn new(function_id: u32, name: String) -> Self {
+        Self { function_id, name }
+    }
+}
+
+/// PC span map, compilation-unit paths, and function debug names for section 5.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PcSpanTable {
     /// Project-relative or logical source paths (`file_id` indexes this vec).
     pub files: Vec<String>,
     /// Rows sorted by `(function_id, pc)` ascending.
     pub entries: Vec<PcSpanEntry>,
+    /// Rows sorted by `function_id` ascending (phase-2 stub).
+    pub function_names: Vec<FunctionNameEntry>,
 }
 
 impl PcSpanTable {
     /// Returns `true` when the table has no serialized payload beyond empty headers.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.files.is_empty() && self.entries.is_empty()
+        self.files.is_empty() && self.entries.is_empty() && self.function_names.is_empty()
     }
 
     /// Inserts a row and keeps [`Self::entries`] sorted.
@@ -90,6 +115,18 @@ impl PcSpanTable {
         }
     }
 
+    /// Inserts or replaces a function debug name and keeps [`Self::function_names`] sorted.
+    pub fn push_function_name(&mut self, function_id: u32, name: String) {
+        let entry = FunctionNameEntry::new(function_id, name);
+        match self
+            .function_names
+            .binary_search_by_key(&function_id, |e| e.function_id)
+        {
+            Ok(idx) => self.function_names[idx] = entry,
+            Err(idx) => self.function_names.insert(idx, entry),
+        }
+    }
+
     /// Returns the span entry for an exact `(function_id, pc)` site, if recorded.
     #[must_use]
     pub fn lookup_exact(&self, function_id: u32, pc: u32) -> Option<&PcSpanEntry> {
@@ -97,6 +134,15 @@ impl PcSpanTable {
             .binary_search_by_key(&(function_id, pc), |e| (e.function_id, e.pc))
             .ok()
             .map(|idx| &self.entries[idx])
+    }
+
+    /// Returns the debug display name for `function_id`, if recorded.
+    #[must_use]
+    pub fn lookup_function_name(&self, function_id: u32) -> Option<&str> {
+        self.function_names
+            .binary_search_by_key(&function_id, |e| e.function_id)
+            .ok()
+            .map(|idx| self.function_names[idx].name.as_str())
     }
 
     /// Returns the entry with the greatest `pc` not exceeding `pc` for `function_id`.
@@ -136,9 +182,12 @@ impl PcSpanTable {
             }
             self.push_sorted(entry);
         }
+        for name_entry in other.function_names {
+            self.push_function_name(name_entry.function_id, name_entry.name);
+        }
     }
 
-    /// Encodes the section 5 phase-1 payload.
+    /// Encodes the section 5 payload.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -162,10 +211,20 @@ impl PcSpanTable {
             out.extend_from_slice(&entry.span_start.to_le_bytes());
             out.extend_from_slice(&entry.span_end.to_le_bytes());
         }
+
+        let function_name_count = u32::try_from(self.function_names.len()).unwrap_or(u32::MAX);
+        out.extend_from_slice(&function_name_count.to_le_bytes());
+        for entry in &self.function_names {
+            out.extend_from_slice(&entry.function_id.to_le_bytes());
+            let bytes = entry.name.as_bytes();
+            let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+            out.extend_from_slice(&len.to_le_bytes());
+            out.extend_from_slice(bytes);
+        }
         out
     }
 
-    /// Decodes a section 5 phase-1 payload.
+    /// Decodes a section 5 payload.
     ///
     /// # Errors
     ///
@@ -175,7 +234,7 @@ impl PcSpanTable {
             return Err(PcSpanError::Truncated);
         }
         let sub_version = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
-        if sub_version != PC_SPAN_SUB_VERSION {
+        if sub_version != PC_SPAN_SUB_VERSION && sub_version != PC_SPAN_SUB_VERSION_V1 {
             return Err(PcSpanError::UnsupportedSubVersion { found: sub_version });
         }
         let mut offset = 4usize;
@@ -251,11 +310,59 @@ impl PcSpanTable {
                 std::cmp::Ordering::Less => {}
             }
         }
+
+        let function_names = if sub_version >= PC_SPAN_SUB_VERSION {
+            decode_function_names(payload, &mut offset)?
+        } else if offset != payload.len() {
+            return Err(PcSpanError::TrailingData);
+        } else {
+            Vec::new()
+        };
+
         Ok(Self {
             files,
             entries: rows,
+            function_names,
         })
     }
+}
+
+fn decode_function_names(
+    payload: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<FunctionNameEntry>, PcSpanError> {
+    let function_name_count = read_u32(payload, offset)?;
+    let count_usize = usize::try_from(function_name_count).map_err(|_| PcSpanError::Truncated)?;
+    let mut names = Vec::with_capacity(count_usize);
+    for _ in 0..count_usize {
+        let function_id = read_u32(payload, offset)?;
+        let len = usize::try_from(read_u32(payload, offset)?)
+            .map_err(|_| PcSpanError::InvalidStringLen { len: u32::MAX })?;
+        let end = offset.saturating_add(len);
+        if end > payload.len() {
+            return Err(PcSpanError::Truncated);
+        }
+        let name = std::str::from_utf8(&payload[*offset..end])
+            .map_err(|_| PcSpanError::InvalidUtf8Name)?
+            .to_owned();
+        *offset = end;
+        names.push(FunctionNameEntry::new(function_id, name));
+    }
+    for pair in names.windows(2) {
+        match pair[0].function_id.cmp(&pair[1].function_id) {
+            std::cmp::Ordering::Greater => return Err(PcSpanError::UnsortedFunctionNames),
+            std::cmp::Ordering::Equal => {
+                return Err(PcSpanError::DuplicateFunctionName {
+                    function_id: pair[0].function_id,
+                });
+            }
+            std::cmp::Ordering::Less => {}
+        }
+    }
+    if *offset != payload.len() {
+        return Err(PcSpanError::TrailingData);
+    }
+    Ok(names)
 }
 
 fn read_u32(payload: &[u8], offset: &mut usize) -> Result<u32, PcSpanError> {
@@ -313,6 +420,17 @@ pub enum PcSpanError {
         /// PC shared by both rows.
         pc: u32,
     },
+    /// Bytes remain after the declared payload.
+    TrailingData,
+    /// Function name bytes are not UTF-8.
+    InvalidUtf8Name,
+    /// Function name rows are not sorted by `function_id`.
+    UnsortedFunctionNames,
+    /// Two function name rows share the same `function_id`.
+    DuplicateFunctionName {
+        /// Duplicated function id.
+        function_id: u32,
+    },
 }
 
 #[cfg(test)]
@@ -325,6 +443,7 @@ mod tests {
         let mut table = PcSpanTable {
             files: vec!["src/main.phx".to_owned()],
             entries: Vec::new(),
+            function_names: Vec::new(),
         };
         table.push_sorted(PcSpanEntry::new(0, 0, 0, 10, 14));
         table.push_sorted(PcSpanEntry::new(0, 12, 0, 20, 25));
@@ -344,6 +463,7 @@ mod tests {
                 PcSpanEntry::new(2, 8, 0, 3, 4),
                 PcSpanEntry::new(2, 16, 0, 5, 6),
             ],
+            function_names: Vec::new(),
         };
         assert_eq!(
             table.lookup_at_or_before(2, 10).map(|e| e.span_start),
@@ -357,14 +477,57 @@ mod tests {
     }
 
     #[test]
+    fn function_name_table_round_trip() {
+        let mut table = PcSpanTable::default();
+        table.push_function_name(1, "helper".to_owned());
+        table.push_function_name(0, "main".to_owned());
+
+        let bytes = table.encode();
+        let decoded = PcSpanTable::decode(&bytes).expect("decode");
+        assert_eq!(decoded.function_names.len(), 2);
+        assert_eq!(decoded.lookup_function_name(0), Some("main"));
+        assert_eq!(decoded.lookup_function_name(1), Some("helper"));
+        assert_eq!(decoded, table);
+    }
+
+    #[test]
+    fn decode_v1_payload_without_function_names() {
+        let table = PcSpanTable {
+            files: vec!["a.phx".to_owned()],
+            entries: vec![PcSpanEntry::new(0, 0, 0, 1, 2)],
+            function_names: Vec::new(),
+        };
+        let mut bytes = table.encode();
+        bytes.truncate(bytes.len().saturating_sub(4));
+        bytes[0..4].copy_from_slice(&PC_SPAN_SUB_VERSION_V1.to_le_bytes());
+
+        let decoded = PcSpanTable::decode(&bytes).expect("decode v1");
+        assert!(decoded.function_names.is_empty());
+        assert_eq!(decoded.entries, table.entries);
+    }
+
+    #[test]
+    fn merge_merges_function_names() {
+        let mut left = PcSpanTable::default();
+        left.push_function_name(0, "main".to_owned());
+        let mut right = PcSpanTable::default();
+        right.push_function_name(1, "helper".to_owned());
+        left.merge_from(right);
+        assert_eq!(left.lookup_function_name(0), Some("main"));
+        assert_eq!(left.lookup_function_name(1), Some("helper"));
+    }
+
+    #[test]
     fn merge_rebases_file_ids() {
         let mut left = PcSpanTable {
             files: vec!["shared.phx".to_owned()],
             entries: vec![PcSpanEntry::new(0, 0, 0, 1, 2)],
+            function_names: Vec::new(),
         };
         let right = PcSpanTable {
             files: vec!["shared.phx".to_owned(), "other.phx".to_owned()],
             entries: vec![PcSpanEntry::new(1, 4, 1, 9, 10)],
+            function_names: Vec::new(),
         };
         left.merge_from(right);
         assert_eq!(left.files, vec!["shared.phx", "other.phx"]);
