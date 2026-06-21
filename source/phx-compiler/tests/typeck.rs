@@ -428,6 +428,48 @@ fn while_sequential_block_mut_borrows_in_body_ok() {
 }
 
 #[test]
+fn call_overlapping_mut_borrow_args_rejected() {
+    let source = "swap :: (a: &mut s32, b: &mut s32) => () { const _ = (); }; main :: () => { var x: s32 = 1; swap(&mut x, &mut x); };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "overlapping mut borrow in call args");
+    if let TypeCheckError::OverlappingMutBorrow {
+        name,
+        prior_span,
+        span,
+    } = &err.error
+    {
+        assert_eq!(name, "x");
+        let first = test_find(source, "&mut x", "first &mut x");
+        let second = test_rfind(source, "&mut x", "second &mut x");
+        assert!(second > first, "expected two distinct borrow sites");
+        assert_eq!(prior_span.start, u32_from_usize(first, "offset fits u32"));
+        assert_eq!(span.start, u32_from_usize(second, "offset fits u32"));
+    }
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
+    assert!(msg.contains("mutably borrowed"));
+    assert!(msg.contains("note:"));
+}
+
+#[test]
+fn call_distinct_mut_borrow_args_ok() {
+    compile_ok(
+        "swap :: (a: &mut s32, b: &mut s32) => () { const _ = (); }; main :: () => { var x: s32 = 1; var y: s32 = 2; swap(&mut x, &mut y); const _a = &mut x; const _ = _a; };",
+    );
+}
+
+#[test]
+fn call_mut_borrow_released_after_call_ok() {
+    compile_ok(
+        "touch :: (a: &mut s32) => () { const _ = (); }; main :: () => { var x: s32 = 1; touch(&mut x); const _a = &mut x; const _ = _a; };",
+    );
+}
+
+#[test]
 fn if_move_in_then_use_in_else_ok() {
     compile_ok(
         "Point :: struct { r: &s32 }; main :: () => { var n: s32 = 1; var p: Point = Point { r: &n }; var c: bool = true; if c { var q: Point = p; } else { const _ = p.r; }; };",

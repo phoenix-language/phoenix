@@ -831,12 +831,7 @@ impl TypeChecker<'_> {
                     },
                 );
             }
-            for (index, (p, arg)) in applied_params.iter().zip(args).enumerate() {
-                let got = self.check_expr_node(arg);
-                if !self.types_equal(got, *p) {
-                    self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-                }
-            }
+            self.check_call_arguments(&applied_params, args);
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
             self.record_mono_inst(fn_def, mono_args, method.id, span);
@@ -861,12 +856,7 @@ impl TypeChecker<'_> {
                 },
             );
         }
-        for (index, (p, arg)) in params.iter().zip(args).enumerate() {
-            let got = self.check_expr_node(arg);
-            if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-            }
-        }
+        self.check_call_arguments(&params, args);
         ret
     }
 
@@ -1550,12 +1540,7 @@ impl TypeChecker<'_> {
                 },
             );
         }
-        for (index, (p, arg)) in param_types.iter().zip(args.iter()).enumerate() {
-            let got = self.check_expr_node(arg);
-            if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-            }
-        }
+        self.check_call_arguments(&param_types, args);
         struct_ty
     }
 
@@ -2575,12 +2560,7 @@ impl TypeChecker<'_> {
                 },
             );
         }
-        for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
-            let got = self.check_expr_node(arg);
-            if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-            }
-        }
+        self.check_call_arguments(&params, args);
         let site = callee_name_use_id(base);
         if let Some(site) = site {
             self.record_mono_inst(fn_def, concrete_args, site, span);
@@ -2659,12 +2639,7 @@ impl TypeChecker<'_> {
                 },
             );
         }
-        for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
-            let got = self.check_expr_node(arg);
-            if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-            }
-        }
+        self.check_call_arguments(&params, args);
         enum_ty
     }
 
@@ -2695,12 +2670,7 @@ impl TypeChecker<'_> {
                     },
                 );
             }
-            for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
-                let got = self.check_expr_node(arg);
-                if !self.types_equal(got, *p) {
-                    self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-                }
-            }
+            self.check_call_arguments(&params, args);
             ret
         }
     }
@@ -2928,12 +2898,7 @@ impl TypeChecker<'_> {
                     },
                 );
             }
-            for (index, (p, arg)) in applied_arg_params.iter().zip(args).enumerate() {
-                let got = self.check_expr_node(arg);
-                if !self.types_equal(got, *p) {
-                    self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-                }
-            }
+            self.check_call_arguments(&applied_arg_params, args);
             let mut mono_args = impl_args;
             mono_args.extend(method_args);
             self.record_mono_inst(fn_def, mono_args.clone(), name.id, span);
@@ -2971,12 +2936,7 @@ impl TypeChecker<'_> {
                 },
             );
         }
-        for (index, (p, arg)) in arg_param_types.iter().zip(args).enumerate() {
-            let got = self.check_expr_node(arg);
-            if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-            }
-        }
+        self.check_call_arguments(&arg_param_types, args);
         self.plan_ref_receiver_temp_if_needed(receiver_expr, receiver, fn_def, span);
         if let Some(expr) = receiver_expr {
             self.mark_method_receiver_moved(expr, receiver, fn_def);

@@ -37,6 +37,7 @@ use std::collections::HashMap;
 
 use phx_diagnostics::{MismatchKind, Span, TypeCheckBag, TypeCheckError};
 use phx_syntax::Symbol;
+use phx_syntax::ast::ExprNode;
 use phx_syntax::ast::decl::Function;
 use phx_syntax::ast::expr::Expr;
 use phx_syntax::ast::lit::Literal;
@@ -301,6 +302,26 @@ impl<'a> TypeChecker<'a> {
                 span: borrow_span,
             },
         );
+    }
+
+    /// Type-checks call arguments left-to-right, enforcing borrow rules across parameters.
+    ///
+    /// Borrows formed for `&T` / `&mut T` arguments are active only while arguments are
+    /// evaluated; they are released before the call expression completes so a later
+    /// `&mut` on the same binding remains valid.
+    pub(in crate::typeck::check) fn check_call_arguments(
+        &mut self,
+        params: &[TypeId],
+        args: &[ExprNode],
+    ) {
+        let borrow_snapshot = self.ownership.borrow_snapshot();
+        for (index, (p, arg)) in params.iter().zip(args.iter()).enumerate() {
+            let got = self.check_expr_node(arg);
+            if !self.types_equal(got, *p) {
+                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
+            }
+        }
+        self.ownership.restore_borrow_snapshot(borrow_snapshot);
     }
 
     /// Enters a nested binding scope in ownership and optional function layout builders.

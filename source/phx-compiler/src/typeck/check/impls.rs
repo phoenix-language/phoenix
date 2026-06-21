@@ -937,12 +937,7 @@ impl TypeChecker<'_> {
                 },
             );
         }
-        for (index, (p, arg)) in arg_param_types.iter().zip(args).enumerate() {
-            let got = self.check_expr_node(arg);
-            if !self.types_equal(got, *p) {
-                self.error_mismatch(*p, got, arg.span, MismatchKind::Argument { index });
-            }
-        }
+        self.check_call_arguments(&arg_param_types, args);
         self.plan_ref_receiver_temp_if_needed(receiver_expr, receiver, fn_def, span);
         if let Some(expr) = receiver_expr {
             self.mark_method_receiver_moved(expr, receiver, fn_def);

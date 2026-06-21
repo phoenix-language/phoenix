@@ -87,6 +87,18 @@ struct MutBorrowEntry {
     span: Span,
 }
 
+/// Saved lengths of active borrow vectors before a call-site argument pass.
+///
+/// [`OwnershipTracker::restore_borrow_snapshot`] truncates active borrows and the
+/// `&mut` borrow log back to these counts so ephemeral borrows formed while checking
+/// call arguments do not outlive the call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BorrowSnapshot {
+    mut_borrows: usize,
+    shared_borrows: usize,
+    mut_borrow_log: usize,
+}
+
 /// Tracks move state for locals while type-checking a function body.
 ///
 /// Invariants maintained by callers in `typeck::check`:
@@ -183,6 +195,27 @@ impl OwnershipTracker {
             depth: self.scope_depth,
             span,
         });
+    }
+
+    /// Records the current active-borrow vector lengths for a later
+    /// [`Self::restore_borrow_snapshot`].
+    #[must_use]
+    pub fn borrow_snapshot(&self) -> BorrowSnapshot {
+        BorrowSnapshot {
+            mut_borrows: self.mut_borrows.len(),
+            shared_borrows: self.shared_borrows.len(),
+            mut_borrow_log: self.mut_borrow_log.len(),
+        }
+    }
+
+    /// Drops active borrows and log entries registered after `snapshot`.
+    ///
+    /// Used after type-checking function call arguments: borrows taken for `&T` / `&mut T`
+    /// parameters exist only for the duration of the call expression.
+    pub fn restore_borrow_snapshot(&mut self, snapshot: BorrowSnapshot) {
+        self.mut_borrows.truncate(snapshot.mut_borrows);
+        self.shared_borrows.truncate(snapshot.shared_borrows);
+        self.mut_borrow_log.truncate(snapshot.mut_borrow_log);
     }
 
     /// Records an active `&mut` borrow of the innermost binding named `symbol`.
@@ -534,6 +567,22 @@ mod tests {
         let joined = base.clone();
         let newly = OwnershipTracker::newly_moved_since(&base, &joined);
         assert!(newly.is_empty());
+    }
+
+    #[test]
+    fn restore_borrow_snapshot_drops_ephemeral_borrows() {
+        let mut t = OwnershipTracker::new();
+        let sym = Symbol::from_raw(1);
+        let first = Span::new(1, 2);
+        let second = Span::new(3, 4);
+        t.define(sym, TypeId::from_raw(0));
+        let snapshot = t.borrow_snapshot();
+        t.register_mut_borrow(sym, first);
+        assert_eq!(t.conflicting_mut_borrow(sym), Some(first));
+        t.restore_borrow_snapshot(snapshot);
+        assert_eq!(t.conflicting_mut_borrow(sym), None);
+        t.register_mut_borrow(sym, second);
+        assert_eq!(t.conflicting_mut_borrow(sym), Some(second));
     }
 
     #[test]
