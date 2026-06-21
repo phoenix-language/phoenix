@@ -376,6 +376,19 @@ fn worker_loop(inner: &Arc<Mutex<PoolInner>>, cvar: &Arc<Condvar>, shutdown: &Ar
 mod tests {
     use super::*;
 
+    fn resume_ok(pool: &WorkerPool, id: ContextId, label: &str) {
+        if let Err(err) = pool.resume(id) {
+            panic!("{label}: {err:?}");
+        }
+    }
+
+    fn resume_err(pool: &WorkerPool, id: ContextId, label: &str) -> SchedulerError {
+        match pool.resume(id) {
+            Err(err) => err,
+            Ok(()) => panic!("{label}: expected resume error"),
+        }
+    }
+
     #[test]
     fn worker_pool_drains_spawned_contexts_across_threads() {
         let pool = WorkerPool::new(3);
@@ -410,7 +423,7 @@ mod tests {
         assert_eq!(pool.done_count(), 2);
         assert_eq!(pool.parked_count(), 1);
 
-        pool.resume(parked).expect("resume parked context");
+        resume_ok(&pool, parked, "resume parked context");
         pool.wait_all_done();
 
         assert_eq!(pool.done_count(), 3);
@@ -424,7 +437,7 @@ mod tests {
         let pool = WorkerPool::new(2);
         let id = pool.spawn(1);
         pool.wait_all_done();
-        let err = pool.resume(id).expect_err("done context cannot resume");
+        let err = resume_err(&pool, id, "done context cannot resume");
         assert!(matches!(
             err,
             SchedulerError::InvalidTransition {
