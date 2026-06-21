@@ -36,8 +36,10 @@ fn nested_helper_runtime_error_maps_to_helper_source_line() {
     };
     let msg = format_vm_error(&built.module, &err, &ctx);
     assert!(
-        msg.contains("use after free") && msg.contains("src/main.phx:7:"),
-        "expected helper *buf line in formatted error, got:\n{msg}"
+        msg.contains("use after free")
+            && msg.contains("read_after_free")
+            && msg.contains("src/main.phx:7:"),
+        "expected helper function name and source line in formatted error, got:\n{msg}"
     );
     assert!(
         !msg.contains("(function"),
@@ -46,11 +48,12 @@ fn nested_helper_runtime_error_maps_to_helper_source_line() {
 }
 
 #[test]
-fn nested_helper_cli_shows_helper_source_line_on_stderr() {
+fn nested_helper_cli_shows_function_name_and_source_line_on_stderr() {
     let project = require_cli_project("nested_trap");
     let out = shared_cli().run_project_fails(&project);
     out.assert_contains("runtime error:");
     out.assert_contains("use after free");
+    out.assert_contains("read_after_free");
     out.assert_contains("src/main.phx:7:");
 }
 
@@ -86,8 +89,8 @@ main :: () => {
     };
     let msg = format_vm_error(&module, &err, &ctx);
     assert!(
-        msg.contains("division by zero at indirect_trap.phx:2:"),
-        "expected callee div_zero line, got:\n{msg}"
+        msg.contains("division by zero in div_zero at indirect_trap.phx:2:"),
+        "expected callee div_zero line and name, got:\n{msg}"
     );
 }
 

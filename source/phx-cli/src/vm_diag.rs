@@ -35,6 +35,7 @@ pub struct SourceContext<'a> {
 /// Resolved Phoenix source site for a VM fault.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolvedSite {
+    function_name: Option<String>,
     path_display: String,
     line: u32,
     col: u32,
@@ -42,17 +43,24 @@ struct ResolvedSite {
 
 /// Formats a VM runtime error for CLI output.
 ///
-/// When section 5 PC spans are present and resolvable, appends `at path:line:col`
-/// to the error kind (for example `division by zero at src/main.phx:3:1`).
+/// When section 5 PC spans are present and resolvable, appends `in name at path:line:col`
+/// to the error kind when a function debug name is available (for example
+/// `division by zero in div_zero at src/main.phx:3:1`), otherwise `at path:line:col`.
 /// Otherwise falls back to the default [`VmError`] display, which includes
 /// `(function id, pc)` when the error carries a bytecode site.
 #[must_use]
 pub fn format_vm_error(module: &BytecodeModule, err: &VmError, ctx: &SourceContext<'_>) -> String {
     match resolve_vm_site(module, err, ctx) {
-        Some(site) => format!(
-            "{} at {}:{}:{}",
-            err.kind, site.path_display, site.line, site.col
-        ),
+        Some(site) => match site.function_name {
+            Some(name) => format!(
+                "{} in {} at {}:{}:{}",
+                err.kind, name, site.path_display, site.line, site.col
+            ),
+            None => format!(
+                "{} at {}:{}:{}",
+                err.kind, site.path_display, site.line, site.col
+            ),
+        },
         None => err.to_string(),
     }
 }
@@ -67,7 +75,12 @@ fn resolve_vm_site(
     let source_path = resolve_source_path(&module.pc_spans, entry, ctx)?;
     let source = load_source_text(&source_path, ctx)?;
     let (line, col) = line_col(&source, entry.span_start);
+    let function_name = module
+        .pc_spans
+        .lookup_function_name(function_id)
+        .map(str::to_owned);
     Some(ResolvedSite {
+        function_name,
         path_display: display_path(&source_path, ctx),
         line,
         col,
@@ -122,7 +135,7 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
-    use phx_bytecode::{PcSpanEntry, PcSpanTable};
+    use phx_bytecode::{FunctionNameEntry, PcSpanEntry, PcSpanTable};
     use phx_vm::{VmError, VmErrorKind};
 
     use super::*;
@@ -193,6 +206,38 @@ mod tests {
         assert!(
             !msg.contains("(function"),
             "should not fall back to bytecode site, got: {msg}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn format_vm_error_includes_function_debug_name_when_present() {
+        let source = "read_after_free :: () => { const n: s32 = 1 / 0; const _ = n; };\nmain :: () => { read_after_free(); };\n";
+        let module = BytecodeModule {
+            pc_spans: PcSpanTable {
+                files: vec!["src/main.phx".to_owned()],
+                entries: vec![PcSpanEntry::new(0, 0, 0, 40, 41)],
+                function_names: vec![FunctionNameEntry::new(0, "read_after_free".to_owned())],
+            },
+            ..BytecodeModule::empty()
+        };
+        let err = VmError::at(0, 0, VmErrorKind::DivisionByZero);
+        let root = std::env::temp_dir().join("phx_vm_diag_fn_name_test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).expect("mkdir");
+        let main_path = root.join("src/main.phx");
+        std::fs::write(&main_path, source).expect("write");
+        let ctx = SourceContext {
+            project_root: Some(&root),
+            entry_path: Some(&main_path),
+            entry_source: Some(source),
+        };
+
+        let msg = format_vm_error(&module, &err, &ctx);
+        assert!(
+            msg.contains("division by zero in read_after_free at src/main.phx:1:"),
+            "got: {msg}"
         );
 
         let _ = std::fs::remove_dir_all(&root);
