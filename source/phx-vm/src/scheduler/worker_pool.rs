@@ -214,11 +214,27 @@ impl WorkerPool {
     /// Spawns a context with `steps` harness work units and enqueues it for workers.
     #[must_use]
     pub fn spawn(&self, steps: u32) -> ContextId {
+        self.spawn_inner(steps, None)
+    }
+
+    /// Spawns a context that parks with `reason` on its first worker dequeue.
+    ///
+    /// Unlike [`Self::park_on_next_run`] after [`Self::spawn`], the park hook is registered
+    /// before the context is enqueued, so workers cannot run it first.
+    #[must_use]
+    pub fn spawn_parking_on_first_run(&self, steps: u32, reason: ParkReason) -> ContextId {
+        self.spawn_inner(steps, Some(reason))
+    }
+
+    fn spawn_inner(&self, steps: u32, park_on_first_run: Option<ParkReason>) -> ContextId {
         let id = {
             let mut inner = lock_inner(&self.inner);
             let id = ContextId::from_index(inner.next_id);
             inner.next_id += 1;
             inner.contexts.push(RunnableContext::new(id, steps));
+            if let Some(reason) = park_on_first_run {
+                inner.park_on_dequeue.insert(id, reason);
+            }
             inner.run_queue.push(id);
             id
         };
@@ -286,10 +302,7 @@ impl WorkerPool {
         self.workers.len()
     }
 
-    /// Returns a snapshot of queue and lifecycle counts.
-    #[must_use]
-    pub fn status(&self) -> WorkerPoolStatus {
-        let inner = lock_inner(&self.inner);
+    fn status_from_inner(inner: &PoolInner) -> WorkerPoolStatus {
         WorkerPoolStatus {
             context_count: inner.contexts.len(),
             runnable_count: inner.run_queue.len(),
@@ -299,10 +312,24 @@ impl WorkerPool {
         }
     }
 
+    /// Returns a snapshot of queue and lifecycle counts.
+    #[must_use]
+    pub fn status(&self) -> WorkerPoolStatus {
+        Self::status_from_inner(&lock_inner(&self.inner))
+    }
+
     /// Blocks until `predicate` returns true on a [`WorkerPoolStatus`] snapshot.
     pub fn wait_until(&self, mut predicate: impl FnMut(WorkerPoolStatus) -> bool) {
-        while !predicate(self.status()) {
+        loop {
+            let status = self.status();
+            if predicate(status) {
+                break;
+            }
             let inner = lock_inner(&self.inner);
+            let status = Self::status_from_inner(&inner);
+            if predicate(status) {
+                break;
+            }
             let _guard = self
                 .cvar
                 .wait(inner)
