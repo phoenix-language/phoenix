@@ -179,12 +179,7 @@ mod tests {
 
         let resumed = {
             let mut reg = lock_registry(&registry, "signal_ready");
-            signal_ready_ok(
-                &mut reg,
-                handle,
-                &mut pool,
-                "external I/O readiness wakeup",
-            )
+            signal_ready_ok(&mut reg, handle, &mut pool, "external I/O readiness wakeup")
         };
         assert_eq!(resumed, ctx);
 
