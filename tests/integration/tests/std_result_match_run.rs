@@ -3,26 +3,21 @@
 #![allow(clippy::expect_used)]
 
 use phx_bytecode::verify;
-use phx_compiler::{BuildOptions, build_project, load_project_binary};
-use phx_test::{ExpectedLocal, assert_main_locals, discover_cli_project, require_cli_project};
+use phx_test::{ExpectedLocal, assert_main_locals, ensure_built_project, require_cli_project};
 use phx_vm::run;
 
 #[test]
 fn std_result_match_fixture_runs() {
-    let root = require_cli_project("std_result_match");
-    let config = discover_cli_project(&root);
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_result_match");
-    let module = load_project_binary(&config).expect("load bytecode");
-    let verified = verify(&module).expect("verify");
+    require_cli_project("std_result_match");
+    let built = ensure_built_project("std_result_match");
+    let verified = verify(&built.module).expect("verify");
 
     run(verified).expect("run std_result_match");
 }
 
 #[test]
 fn std_result_match_reads_forty_two() {
-    let root = require_cli_project("std_result_match");
-    let config = discover_cli_project(&root);
-    build_project(&config, None, BuildOptions::force(true)).expect("build std_result_match");
-    let module = load_project_binary(&config).expect("load bytecode");
-    assert_main_locals(&module, &[(2, ExpectedLocal::S32(42))]);
+    require_cli_project("std_result_match");
+    let built = ensure_built_project("std_result_match");
+    assert_main_locals(&built.module, &[(2, ExpectedLocal::S32(42))]);
 }
