@@ -1,0 +1,11 @@
+error[E2047]: cannot borrow `x` as mutable more than once
+  --> tests/integration/diagnostics/match_scrutinee_mut_borrow.phx:9:24
+  |
+9 |             const _b = &mut x;
+  |                        ^^^^^^
+   = note: `x` was mutably borrowed here
+  --> tests/integration/diagnostics/match_scrutinee_mut_borrow.phx:6:24
+  |
+6 |             const _a = &mut x;
+  |                        ^^^^^^
+   = help: finish using the first `&mut x` borrow before creating another

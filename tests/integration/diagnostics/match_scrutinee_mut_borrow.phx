@@ -1,0 +1,13 @@
+main :: () => {
+    var x: s32 = 1;
+    var c: bool = true;
+    match c {
+        true => {
+            const _a = &mut x;
+        };
+        false => {
+            const _b = &mut x;
+        };
+    };
+    const _ = ();
+};
