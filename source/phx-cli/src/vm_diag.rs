@@ -134,6 +134,7 @@ mod tests {
             pc_spans: PcSpanTable {
                 files: vec!["src/main.phx".to_owned()],
                 entries: vec![PcSpanEntry::new(0, 4, 0, 12, 18)],
+                function_names: Vec::new(),
             },
             ..BytecodeModule::empty()
         };
@@ -168,6 +169,7 @@ mod tests {
                     PcSpanEntry::new(0, 0, 0, 0, 10),
                     PcSpanEntry::new(1, 0, 0, 50, 60),
                 ],
+                function_names: Vec::new(),
             },
             ..BytecodeModule::empty()
         };
@@ -211,6 +213,7 @@ mod tests {
             pc_spans: PcSpanTable {
                 files: Vec::new(),
                 entries: vec![PcSpanEntry::new(0, 0, 0, 28, 29)],
+                function_names: Vec::new(),
             },
             ..BytecodeModule::empty()
         };

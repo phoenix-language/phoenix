@@ -62,6 +62,11 @@ pub enum VerifyError {
         /// Function body length.
         code_len: u32,
     },
+    /// Function debug name references an unknown function id.
+    UnknownFunctionDebugName {
+        /// Function id from section 5.
+        function_id: u32,
+    },
     /// Header major/minor version is not supported.
     UnsupportedVersion {
         /// Major version read from header.
@@ -278,6 +283,10 @@ impl std::fmt::Display for VerifyError {
             } => write!(
                 f,
                 "PC span pc {pc} out of range for function {function_id} (code_len {code_len})"
+            ),
+            Self::UnknownFunctionDebugName { function_id } => write!(
+                f,
+                "function debug name references unknown function id {function_id}"
             ),
             Self::UnsupportedVersion { major, minor } => {
                 write!(f, "unsupported bytecode version {major}.{minor}")
@@ -541,6 +550,18 @@ fn verify_pc_spans(module: &BytecodeModule) -> Result<(), VerifyError> {
                 function_id: entry.function_id,
                 pc: entry.pc,
                 code_len: func.code_len,
+            });
+        }
+    }
+    for name_entry in &module.pc_spans.function_names {
+        if !module
+            .functions
+            .functions
+            .iter()
+            .any(|f| f.function_id == name_entry.function_id)
+        {
+            return Err(VerifyError::UnknownFunctionDebugName {
+                function_id: name_entry.function_id,
             });
         }
     }

@@ -70,6 +70,19 @@ fn record_emitted_pc_spans(
     }
 }
 
+fn record_function_debug_name(
+    table: &mut PcSpanTable,
+    function_id: u32,
+    typed: &TypedProgram,
+    def: DefId,
+) {
+    let Some(def_record) = typed.resolved.defs.get(def.index() as usize) else {
+        return;
+    };
+    let name = typed.resolved.interner.resolve_display(def_record.name);
+    table.push_function_name(function_id, name);
+}
+
 fn module_header(
     entry_function_id: u32,
     pc_spans: &PcSpanTable,
@@ -440,6 +453,7 @@ pub fn codegen_with_profile(
         )?;
         if emit_pc_spans_enabled(profile) {
             record_emitted_pc_spans(&mut pc_spans, func.id.index(), file_id, &emitted.pc_spans);
+            record_function_debug_name(&mut pc_spans, func.id.index(), typed, func.def);
         }
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {
@@ -547,6 +561,7 @@ pub fn codegen_module(
         )?;
         if emit_pc_spans_enabled(profile) {
             record_emitted_pc_spans(&mut pc_spans, fn_id, file_id, &emitted.pc_spans);
+            record_function_debug_name(&mut pc_spans, fn_id, typed, func.def);
         }
         let len = u32_section("code_len", emitted.code.len())?;
         records.push(FunctionRecord {

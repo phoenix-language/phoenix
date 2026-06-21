@@ -87,6 +87,7 @@ fn debug_module_with_pc_spans() -> BytecodeModule {
     module.pc_spans = PcSpanTable {
         files: vec!["main.phx".to_owned()],
         entries: vec![PcSpanEntry::new(0, 0, 0, 4, 9)],
+        function_names: Vec::new(),
     };
     module
 }
@@ -459,6 +460,7 @@ fn mutate_section5_overlapping_entries_rejected_at_decode() {
     payload.extend_from_slice(&duplicate_entry.file_id.to_le_bytes());
     payload.extend_from_slice(&duplicate_entry.span_start.to_le_bytes());
     payload.extend_from_slice(&duplicate_entry.span_end.to_le_bytes());
+    payload.extend_from_slice(&0u32.to_le_bytes());
     assert_eq!(payload.len(), original.len() + 20);
 
     bytes.splice(symbols_range, payload);
@@ -474,6 +476,13 @@ fn mutate_section5_overlapping_entries_rejected_at_decode() {
             pc: 0
         })
     ));
+}
+
+#[test]
+fn mutate_unknown_function_debug_name_rejected() {
+    let mut module = debug_module_with_pc_spans();
+    module.pc_spans.push_function_name(99, "missing".to_owned());
+    assert_verify_rejects(&module);
 }
 
 #[test]
