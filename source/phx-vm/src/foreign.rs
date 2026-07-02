@@ -167,7 +167,7 @@ pub fn clear_foreign_stubs() {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     //! Phase A foreign stub registration-order contract (`docs/design/features/ffi.md`).
     //!
@@ -178,6 +178,7 @@ mod tests {
     use super::*;
     use crate::Machine;
 
+    #[allow(clippy::unnecessary_wraps)]
     fn noop_stub(_machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmErrorKind> {
         Ok(())
     }
