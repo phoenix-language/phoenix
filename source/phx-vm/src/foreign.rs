@@ -165,3 +165,90 @@ pub fn dispatch_foreign_in(
 pub fn clear_foreign_stubs() {
     lock_registry().clear();
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    //! Phase A foreign stub registration-order contract (`docs/design/features/ffi.md`).
+    //!
+    //! Ids are assigned sequentially from zero in registration order. Same order yields the same
+    //! id map; reversed order assigns different ids to the same symbol names. Phase B linker-stable
+    //! identity is deferred — see the ignored test below.
+
+    use super::*;
+    use crate::Machine;
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn noop_stub(_machine: &mut Machine, _module: &BytecodeModule) -> Result<(), VmErrorKind> {
+        Ok(())
+    }
+
+    fn register_sequence(names: &[&str]) -> Vec<u32> {
+        let mut reg = ForeignRegistry::default();
+        names
+            .iter()
+            .map(|name| reg.register(name, noop_stub))
+            .collect()
+    }
+
+    #[test]
+    fn same_registration_order_yields_consistent_ids() {
+        let ids_a = register_sequence(&["c_add", "c_free"]);
+        let ids_b = register_sequence(&["c_add", "c_free"]);
+        assert_eq!(ids_a, ids_b);
+        assert_eq!(ids_a, [0, 1]);
+    }
+
+    #[test]
+    fn reversed_registration_order_yields_different_ids() {
+        let mut reg_fwd = ForeignRegistry::default();
+        let id_add_fwd = reg_fwd.register("c_add", noop_stub);
+        let id_free_fwd = reg_fwd.register("c_free", noop_stub);
+
+        let mut reg_rev = ForeignRegistry::default();
+        let id_free_rev = reg_rev.register("c_free", noop_stub);
+        let id_add_rev = reg_rev.register("c_add", noop_stub);
+
+        assert_eq!((id_add_fwd, id_free_fwd), (0, 1));
+        assert_eq!((id_free_rev, id_add_rev), (0, 1));
+        assert_ne!(
+            id_add_fwd, id_add_rev,
+            "c_add id must depend on registration order in Phase A"
+        );
+        assert_ne!(
+            id_free_fwd, id_free_rev,
+            "c_free id must depend on registration order in Phase A"
+        );
+    }
+
+    #[test]
+    fn dispatch_unregistered_id_returns_invalid_foreign_stub() {
+        let reg = ForeignRegistry::default();
+        let mut machine = Machine::default();
+        let module = BytecodeModule::empty();
+        let err = reg
+            .dispatch(0, &mut machine, &module)
+            .expect_err("unregistered id must not panic");
+        assert_eq!(err, VmErrorKind::InvalidForeignStub(0));
+    }
+
+    /// Phase B (deferred): linker-stable symbol ids independent of registration order.
+    ///
+    /// See `docs/design/features/ffi.md` — stable FFI symbol identity is post-beta.
+    #[test]
+    #[ignore = "Phase B stable FFI symbol identity not implemented"]
+    fn phase_b_stable_identity_across_registration_orders() {
+        let mut reg_a = ForeignRegistry::default();
+        let id_add_a = reg_a.register("c_add", noop_stub);
+        let _ = reg_a.register("c_free", noop_stub);
+
+        let mut reg_b = ForeignRegistry::default();
+        let _ = reg_b.register("c_free", noop_stub);
+        let id_add_b = reg_b.register("c_add", noop_stub);
+
+        assert_eq!(
+            id_add_a, id_add_b,
+            "Phase B: same symbol should receive the same id regardless of registration order"
+        );
+    }
+}
