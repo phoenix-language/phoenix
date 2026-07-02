@@ -227,4 +227,192 @@ mod tests {
         assert_eq!(ops.request_id, 42);
         assert_eq!(ops.io_handle(), request.io_handle());
     }
+
+    fn spawn_std_io_batch(
+        harness: &StdIoParkHarness,
+        specs: &[(u32, StdIoParkRequest)],
+    ) -> Vec<(ContextId, StdIoParkRequest)> {
+        specs
+            .iter()
+            .map(|&(steps, request)| {
+                let ctx = harness.spawn_schedulable(steps, request);
+                (ctx, request)
+            })
+            .collect()
+    }
+
+    fn wait_all_std_io_parked(
+        harness: &StdIoParkHarness,
+        contexts: &[(ContextId, StdIoParkRequest)],
+        label: &str,
+    ) {
+        harness
+            .pool
+            .wait_until(|status| status.parked_count >= contexts.len());
+        assert_eq!(
+            harness.pending_io_count(),
+            contexts.len(),
+            "{label}: registry pending count"
+        );
+        for &(ctx, request) in contexts {
+            assert_eq!(
+                harness.context_state(ctx),
+                Some(ContextState::Parked(ParkReason::AwaitIo)),
+                "{label}: context {ctx:?} should be parked for I/O"
+            );
+            assert_eq!(
+                harness.registered_context(request),
+                Some(ctx),
+                "{label}: registry should map request to context"
+            );
+            assert!(
+                harness.is_registered(request),
+                "{label}: request should be registered"
+            );
+        }
+    }
+
+    fn wake_requests_in_order(
+        harness: &mut StdIoParkHarness,
+        requests: &[StdIoParkRequest],
+        label: &str,
+    ) {
+        for &request in requests {
+            let resumed = harness
+                .signal_host_ready(request)
+                .unwrap_or_else(|err| panic!("{label}: signal_host_ready failed: {err:?}"));
+            assert_eq!(
+                harness.registered_context(request),
+                None,
+                "{label}: request should be unregistered after wakeup"
+            );
+            assert!(
+                !harness.is_registered(request),
+                "{label}: handle should be cleared"
+            );
+            let _ = resumed;
+        }
+    }
+
+    fn assert_clean_std_io_completion(
+        harness: &StdIoParkHarness,
+        contexts: &[(ContextId, StdIoParkRequest)],
+        label: &str,
+    ) {
+        harness.wait_all_done();
+        assert_eq!(
+            harness.pending_io_count(),
+            0,
+            "{label}: no leaked I/O registrations"
+        );
+        for &(ctx, request) in contexts {
+            assert_eq!(
+                harness.context_state(ctx),
+                Some(ContextState::Done),
+                "{label}: context {ctx:?} should be done"
+            );
+            assert!(
+                !harness.is_registered(request),
+                "{label}: request should not remain registered"
+            );
+        }
+    }
+
+    #[test]
+    fn multi_context_std_io_wake_in_spawn_order_completes() {
+        let mut harness = StdIoParkHarness::new(3);
+        let contexts = spawn_std_io_batch(
+            &harness,
+            &[
+                (2, StdIoParkRequest::new(StdIoKind::WriteStdout, 10)),
+                (3, StdIoParkRequest::new(StdIoKind::ReadStdin, 11)),
+                (4, StdIoParkRequest::new(StdIoKind::File, 12)),
+                (1, StdIoParkRequest::new(StdIoKind::WriteStdout, 13)),
+            ],
+        );
+
+        wait_all_std_io_parked(&harness, &contexts, "spawn-order");
+        let requests: Vec<StdIoParkRequest> = contexts.iter().map(|(_, req)| *req).collect();
+        wake_requests_in_order(&mut harness, &requests, "spawn-order wakeup");
+
+        assert_clean_std_io_completion(&harness, &contexts, "spawn-order");
+        harness.shutdown();
+    }
+
+    #[test]
+    fn multi_context_std_io_wake_reverse_order_completes() {
+        let mut harness = StdIoParkHarness::new(4);
+        let contexts = spawn_std_io_batch(
+            &harness,
+            &[
+                (5, StdIoParkRequest::new(StdIoKind::File, 20)),
+                (2, StdIoParkRequest::new(StdIoKind::ReadStdin, 21)),
+                (3, StdIoParkRequest::new(StdIoKind::WriteStdout, 22)),
+                (4, StdIoParkRequest::new(StdIoKind::File, 23)),
+                (1, StdIoParkRequest::new(StdIoKind::ReadStdin, 24)),
+            ],
+        );
+
+        wait_all_std_io_parked(&harness, &contexts, "reverse-order");
+        let mut requests: Vec<StdIoParkRequest> = contexts.iter().map(|(_, req)| *req).collect();
+        requests.reverse();
+        wake_requests_in_order(&mut harness, &requests, "reverse-order wakeup");
+
+        assert_clean_std_io_completion(&harness, &contexts, "reverse-order");
+        harness.shutdown();
+    }
+
+    #[test]
+    fn multi_context_std_io_interleaved_kinds_out_of_order_completes() {
+        let mut harness = StdIoParkHarness::new(3);
+        let contexts = spawn_std_io_batch(
+            &harness,
+            &[
+                (3, StdIoParkRequest::new(StdIoKind::WriteStdout, 30)),
+                (2, StdIoParkRequest::new(StdIoKind::ReadStdin, 31)),
+                (4, StdIoParkRequest::new(StdIoKind::File, 32)),
+            ],
+        );
+
+        wait_all_std_io_parked(&harness, &contexts, "interleaved");
+        let out_of_order = [
+            StdIoParkRequest::new(StdIoKind::File, 32),
+            StdIoParkRequest::new(StdIoKind::WriteStdout, 30),
+            StdIoParkRequest::new(StdIoKind::ReadStdin, 31),
+        ];
+        wake_requests_in_order(&mut harness, &out_of_order, "interleaved wakeup");
+
+        assert_clean_std_io_completion(&harness, &contexts, "interleaved");
+        harness.shutdown();
+    }
+
+    #[test]
+    fn multi_context_std_io_duplicate_signal_returns_not_found() {
+        let mut harness = StdIoParkHarness::new(2);
+        let contexts = spawn_std_io_batch(
+            &harness,
+            &[
+                (2, StdIoParkRequest::new(StdIoKind::WriteStdout, 40)),
+                (2, StdIoParkRequest::new(StdIoKind::ReadStdin, 41)),
+            ],
+        );
+
+        wait_all_std_io_parked(&harness, &contexts, "duplicate-signal");
+        let first = contexts[0].1;
+
+        harness
+            .signal_host_ready(first)
+            .expect("first host readiness wakeup");
+
+        let err = harness
+            .signal_host_ready(first)
+            .expect_err("duplicate signal_host_ready should fail");
+        assert_eq!(err, IoWaitError::HandleNotFound(first.io_handle()));
+
+        let remaining = [contexts[1].1];
+        wake_requests_in_order(&mut harness, &remaining, "finish remaining");
+
+        assert_clean_std_io_completion(&harness, &contexts, "duplicate-signal");
+        harness.shutdown();
+    }
 }
