@@ -3241,9 +3241,14 @@ fn callee_name_use_id(base: &ExprNode) -> Option<phx_syntax::AstNodeId> {
     }
 }
 
+/// Root local binding for borrow exclusivity when `expr` is an identifier or a pure field-access
+/// chain (`s.a`, `s.a.b`, …). Field borrows alias the whole receiver binding per MVP ownership.
 fn borrow_target(expr: &Expr) -> Option<Symbol> {
     match expr {
         Expr::Ident(ident) => Some(ident.symbol),
+        Expr::Postfix { base, ops } if ops.iter().all(|op| matches!(op, PostfixOp::Field(_))) => {
+            borrow_target(&base.inner)
+        }
         _ => None,
     }
 }

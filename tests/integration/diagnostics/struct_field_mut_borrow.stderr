@@ -1,0 +1,11 @@
+error[E2047]: cannot borrow `s` as mutable more than once
+  --> tests/integration/diagnostics/struct_field_mut_borrow.phx:6:15
+  |
+6 |     const b = &mut s.b;
+  |               ^^^^^^^^
+   = note: `s` was mutably borrowed here
+  --> tests/integration/diagnostics/struct_field_mut_borrow.phx:5:15
+  |
+5 |     const a = &mut s.a;
+  |               ^^^^^^^^
+   = help: finish using the first `&mut s` borrow before creating another

@@ -360,6 +360,7 @@ def gen_diagnostics() -> None:
         ("match_scrutinee_mut_borrow", "DiagFile", "match_scrutinee_mut_borrow.phx", None, None),
         ("call_site_mut_borrow", "DiagFile", "call_site_mut_borrow.phx", None, None),
         ("return_path_mut_borrow", "DiagFile", "return_path_mut_borrow.phx", None, None),
+        ("struct_field_mut_borrow", "DiagFile", "struct_field_mut_borrow.phx", None, None),
     ]
     lines = [
         "//! Golden diagnostic cases.\n",

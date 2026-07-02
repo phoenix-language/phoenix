@@ -1,0 +1,8 @@
+Pair :: struct { a: s32, b: s32 };
+
+main :: () => {
+    var s: Pair = Pair { a: 1, b: 2 };
+    const a = &mut s.a;
+    const b = &mut s.b;
+    const _ = ();
+};
