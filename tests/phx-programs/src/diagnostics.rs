@@ -641,6 +641,33 @@ error[E2022]: cannot return a borrow of a local variable
 error: aborting due to 3 previous errors",
 };
 
+const DIAG_STRUCT_FIELD_MUT_BORROW_SOURCE: &str = r"Pair :: struct { a: s32, b: s32 };
+
+main :: () => {
+    var s: Pair = Pair { a: 1, b: 2 };
+    const a = &mut s.a;
+    const b = &mut s.b;
+    const _ = ();
+};
+";
+
+pub const DIAG_STRUCT_FIELD_MUT_BORROW: DiagnosticCase = DiagnosticCase {
+    name: r"struct_field_mut_borrow",
+    kind: DiagnosticKind::SingleFile,
+    source: Some(DIAG_STRUCT_FIELD_MUT_BORROW_SOURCE),
+    expected: r"error[E2047]: cannot borrow `s` as mutable more than once
+  --> tests/integration/diagnostics/struct_field_mut_borrow.phx:6:15
+  |
+6 |     const b = &mut s.b;
+  |               ^^^^^^^^
+   = note: `s` was mutably borrowed here
+  --> tests/integration/diagnostics/struct_field_mut_borrow.phx:5:15
+  |
+5 |     const a = &mut s.a;
+  |               ^^^^^^^^
+   = help: finish using the first `&mut s` borrow before creating another",
+};
+
 pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_BAD_TYPE,
     DIAG_USE_AFTER_MOVE,
@@ -670,4 +697,5 @@ pub const DIAGNOSTIC_CASES: &[DiagnosticCase] = &[
     DIAG_MATCH_SCRUTINEE_MUT_BORROW,
     DIAG_CALL_SITE_MUT_BORROW,
     DIAG_RETURN_PATH_MUT_BORROW,
+    DIAG_STRUCT_FIELD_MUT_BORROW,
 ];

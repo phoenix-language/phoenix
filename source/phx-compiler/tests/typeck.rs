@@ -325,6 +325,48 @@ fn single_mut_borrow_ok() {
 }
 
 #[test]
+fn struct_field_overlapping_mut_borrow_rejected() {
+    let source = "Pair :: struct { a: s32, b: s32 }; main :: () => { var s: Pair = Pair { a: 1, b: 2 }; const a = &mut s.a; const b = &mut s.b; const _ = (); };";
+    let bag = typeck_err(source);
+    let err = bag
+        .errors()
+        .iter()
+        .find(|e| matches!(&e.error, TypeCheckError::OverlappingMutBorrow { .. }));
+    let err = test_some(err, "overlapping field mut borrow");
+    if let TypeCheckError::OverlappingMutBorrow {
+        name,
+        prior_span,
+        span,
+    } = &err.error
+    {
+        assert_eq!(name, "s");
+        let first = test_find(source, "&mut s.a", "first &mut s.a");
+        let second = test_rfind(source, "&mut s.b", "second &mut s.b");
+        assert!(second > first, "expected two distinct borrow sites");
+        assert_eq!(prior_span.start, u32_from_usize(first, "offset fits u32"));
+        assert_eq!(span.start, u32_from_usize(second, "offset fits u32"));
+    }
+    let interner = phx_syntax::Interner::new();
+    let msg = phx_diagnostics::format_typecheck_error(source, &interner, &err.error);
+    assert!(msg.contains("mutably borrowed"));
+    assert!(msg.contains("note:"));
+}
+
+#[test]
+fn struct_field_distinct_bindings_mut_borrow_ok() {
+    compile_ok(
+        "Pair :: struct { a: s32, b: s32 }; main :: () => { var s: Pair = Pair { a: 1, b: 2 }; var t: Pair = Pair { a: 3, b: 4 }; const a = &mut s.a; const b = &mut t.b; const _ = (); };",
+    );
+}
+
+#[test]
+fn struct_field_sequential_mut_borrow_ok() {
+    compile_ok(
+        "Pair :: struct { a: s32, b: s32 }; main :: () => { var s: Pair = Pair { a: 1, b: 2 }; { const _a = &mut s.a; }; const _b = &mut s.b; const _ = (); };",
+    );
+}
+
+#[test]
 fn if_overlapping_mut_borrow_across_arms_rejected() {
     let source = "main :: () => { var x: s32 = 1; var c: bool = true; if c { const _a = &mut x; } else { const _b = &mut x; }; const _ = (); };";
     let bag = typeck_err(source);
